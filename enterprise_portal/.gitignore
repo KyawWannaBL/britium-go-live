@@ -99,23 +99,3 @@ Thumbs.db
 # --- Uploaded Files ---
 uploaded_files/
 
-
-.vercel
-*.apk
-*.apk
-
-/NUL
-*.apk
-*.jks
-
-# Local environment files
-.env
-.env.*
-enterprise_portal/.env
-enterprise_portal/.env.*
-
-# Local environment files
-.env
-.env.*
-enterprise_portal/.env
-enterprise_portal/.env.*
