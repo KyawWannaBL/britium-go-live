@@ -5,40 +5,6 @@ import { AlertCircle, CheckCircle2, Download, FileUp, Loader2, Plus, RefreshCw, 
 import { supabase } from '@/integrations/supabase/client'
 
 const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
-
-function pickText(...values: unknown[]): string {
-  for (const value of values) {
-    const text = String(value ?? "").trim()
-    if (text) return text
-  }
-  return ""
-}
-
-function merchantPickupAddress(row: any): string {
-  return pickText(
-    row?.pickup_address,
-    row?.merchant_pickup_address,
-    row?.default_pickup_address,
-    row?.registered_address,
-    row?.business_address,
-    row?.address,
-    row?.shop_address,
-    row?.warehouse_address,
-    row?.origin_address
-  )
-}
-
-function merchantDefaultParcelCount(row: any): number {
-  const raw = Number(
-    row?.default_parcel_count ??
-    row?.parcel_count ??
-    row?.expected_parcel_count ??
-    row?.avg_parcel_count ??
-    1
-  )
-  return Number.isFinite(raw) && raw > 0 ? raw : 1
-}
-
 const FF = { body:"'Poppins',Inter,system-ui,sans-serif", sub:"'Helvetica Neue',Helvetica,Arial,sans-serif" }
 
 function text(v:any, fallback='—') { return v === null || v === undefined || v === '' ? fallback : String(v) }
@@ -179,7 +145,6 @@ const TEMPLATE = [
 export default function CustomerServicePortalPage() {
   const [header, setHeader] = useState<any>(EMPTY_HEADER)
   const [items, setItems] = useState<any[]>([{ ...EMPTY_ITEM }])
-  const [orderParcelCount, setOrderParcelCount] = useState<number>(1)
   const [merchants, setMerchants] = useState<any[]>([])
   const [queue, setQueue] = useState<any[]>([])
   const [selected, setSelected] = useState<any>(null)
@@ -233,7 +198,6 @@ export default function CustomerServicePortalPage() {
       pickup_address: m.pickup_address,
       pickup_township: m.pickup_township,
       pickup_city: m.pickup_city,
-        parcel_count: orderParcelCount,
       payment_profile: m.payment_profile,
       service_profile: m.service_profile,
       tariff_tier: m.tariff_tier,
@@ -395,28 +359,7 @@ export default function CustomerServicePortalPage() {
           <div style={{ marginTop:12 }}><Field label="Pickup Address"><textarea style={textarea()} value={header.pickup_address} onChange={e => patchHeader('pickup_address', e.target.value)}/></Field></div>
 
           <div style={{ marginTop:18 }}>
-            
-              <div>
-                <label style={lbl}>Order Parcel Count</label>
-                <input
-                  type="number"
-                  min={1}
-                  value={orderParcelCount}
-                  onChange={(e) => {
-                    const next = Math.max(1, Number(e.target.value || 1))
-                    setOrderParcelCount(next)
-                    setItems((prev: any[]) => {
-                      const rows = prev && prev.length ? prev : [{}]
-                      return rows.map((item, index) =>
-                        index === 0 ? { ...item, parcels: next } : item
-                      )
-                    })
-                  }}
-                  style={inp}
-                />
-              </div>
-
-<SectionTitle title="Delivery Items / Recipients" subtitle="One pickup request may contain many delivery item rows." right={<button style={button()} onClick={() => setItems(r => [...r, { ...EMPTY_ITEM }])}><Plus size={15}/>Add Item</button>} />
+            <SectionTitle title="Delivery Items / Recipients" subtitle="One pickup request may contain many delivery item rows." right={<button style={button()} onClick={() => setItems(r => [...r, { ...EMPTY_ITEM }])}><Plus size={15}/>Add Item</button>} />
             <div style={{ overflowX:'auto' }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead><tr>{['#','Recipient','Phone','Delivery Address','Township','Parcels','Weight','COD','Priority',''].map(h => <th key={h} style={th()}>{h}</th>)}</tr></thead>
