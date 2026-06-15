@@ -1,0 +1,7 @@
+﻿fleet_id,vehicle_no,vehicle_type,capacity_kg,capacity_cbm,assigned_driver_id,ownership_type,insurance_expiry_date,status,zone_note
+FLT001,6H - 7397,Van,700,5,Ko Tun Min Aung,Owned,2027.01.31,Assigned,Aungmingalar highway bus stop — nearby cargo pickup
+FLT002,4S - 1626,Mini Truck,850,4,Ko Wai Phyo Lwin,Owned,2027.01.31,Assigned,Zone 1
+FLT003,2Q - 6524,Mini Truck,850,4,Ko Win Naing Tun,Owned,2027.01.31,Assigned,Zone 2
+FLT004,7R - 1473,Mini Truck,780,1,Ko Aung Zaw Moe,Owned,2027.01.31,Assigned,Zone 3
+FLT005,9R - 4431,Van,300,3,Ko Kyaw Myo Aung,Owned,2026.07.06,Assigned,Zone 4
+FLT006,7K - 1890,Box Truck,1000,10,Ko Wai Yan Phyo,,2027.01.31,Assigned,Dagonthiri highway bus stop — nearby cargo pickup

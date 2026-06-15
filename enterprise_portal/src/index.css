@@ -2,8 +2,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-/* Britium Rider App — Mobile-first base reset */
-*, *::before, *::after { box-sizing: border-box; }
+before, after { box-sizing: border-box; }
 html, body, #root {
   margin: 0; padding: 0;
   min-height: 100vh;
@@ -12,21 +11,16 @@ html, body, #root {
   color: #eef8ff;
   -webkit-font-smoothing: antialiased;
 }
-/* Pyidaungsu Unicode — Myanmar text rendering */
 .mm, [lang="mm"], [data-lang="mm"] {
   font-family: 'Pyidaungsu', 'Myanmar Text', 'Padauk', 'Inter', sans-serif;
 }
-/* Mobile scroll */
 body { overflow-x: hidden; }
-/* Remove default button/input styles in Rider App */
 button { cursor: pointer; }
 input, textarea, select { font-family: inherit; }
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:is(.dark ));
 
-/*
-==========================================================================
-【AI HANDOVER NOTE】
+/* 【AI HANDOVER NOTE】
 1. DESIGN PHILOSOPHY:
    - Atmosphere-First Enterprise Logistics: Combines professional corporate identity with modern glassmorphism aesthetics for a premium logistics management experience
    - Visual Style: Acrylic glassmorphism with neon-glow accents, creating depth through layered surfaces with subtle backdrop-blur effects
@@ -52,18 +46,12 @@ input, textarea, select { font-family: inherit; }
    - Data Tables: Use --muted-foreground for secondary columns (audit fields), --foreground for primary data (shipment_id, customer info), and --accent for actionable items (commission amounts, next_action)
    - Exception Center: Color-code exception types — Pickup (blue tint), Warehouse (amber tint), Delivery (red tint) using chart color variants with 15% opacity backgrounds
    - Animation: Framer Motion for status transitions (25 states), use --ring color for loading spinners and progress indicators. Animate KPI cards with subtle scale and glow effects on data updates
-==========================================================================
 */
 
 :root {
-  /* Typography */
   --font-sans: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: JetBrains Mono, 'Courier New', monospace;
-  
-  /* Radius */
   --radius: 0.75rem;
-
-  /* Core UI Tokens */
   --background: oklch(0.98 0.005 210);
   --foreground: oklch(0.15 0.02 210);
   --card: oklch(0.99 0.003 210);
@@ -83,15 +71,11 @@ input, textarea, select { font-family: inherit; }
   --border: oklch(0.88 0.01 210);
   --input: oklch(0.88 0.01 210);
   --ring: oklch(0.78 0.15 45);
-  
-  /* Chart Tokens */
   --chart-1: oklch(0.55 0.18 210);
   --chart-2: oklch(0.78 0.15 45);
   --chart-3: oklch(0.62 0.2 150);
   --chart-4: oklch(0.68 0.18 280);
   --chart-5: oklch(0.65 0.2 25);
-  
-  /* Sidebar Tokens */
   --sidebar: oklch(0.96 0.005 210);
   --sidebar-foreground: oklch(0.22 0.02 210);
   --sidebar-primary: oklch(0.22 0.08 210);
@@ -122,15 +106,11 @@ input, textarea, select { font-family: inherit; }
   --border: oklch(0.28 0.03 210);
   --input: oklch(0.28 0.03 210);
   --ring: oklch(0.82 0.18 45);
-  
-  /* Chart Tokens */
   --chart-1: oklch(0.62 0.22 210);
   --chart-2: oklch(0.82 0.18 45);
   --chart-3: oklch(0.68 0.24 150);
   --chart-4: oklch(0.72 0.22 280);
   --chart-5: oklch(0.70 0.23 25);
-  
-  /* Sidebar Tokens */
   --sidebar: oklch(0.10 0.028 210);
   --sidebar-foreground: oklch(0.88 0.01 210);
   --sidebar-primary: oklch(0.25 0.09 210);
@@ -142,7 +122,6 @@ input, textarea, select { font-family: inherit; }
 }
 
 @theme inline {
-  /* Shadcn Core Mapping */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -162,15 +141,11 @@ input, textarea, select { font-family: inherit; }
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-
-  /* Charts Mapping */
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-
-  /* Sidebar Mapping */
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -179,12 +154,8 @@ input, textarea, select { font-family: inherit; }
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
-  /* Typography */
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
-
-  /* Radius */
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
@@ -195,28 +166,22 @@ input, textarea, select { font-family: inherit; }
   * {
     @apply border-border outline-ring/50;
   }
-
   html {
     @apply scroll-smooth antialiased;
   }
-
   body {
     @apply bg-background text-foreground font-sans min-h-screen;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
-
   h1, h2, h3, h4, h5, h6 {
     @apply font-semibold tracking-tight;
   }
-
   code, pre {
     @apply font-mono;
   }
-
   ::selection {
     @apply bg-primary/20 text-primary;
   }
-
   ::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -229,11 +194,7 @@ input, textarea, select { font-family: inherit; }
   }
 }
 
-/* ==========================================================================
-   TYPOGRAPHY SCALE — standardised across all screens
-   ========================================================================== */
 @layer base {
-  /* Page-level hero titles */
   .be-title {
     font-size: 1.125rem;   /* 18px — prominent but not oversized */
     font-weight: 700;
@@ -241,7 +202,6 @@ input, textarea, select { font-family: inherit; }
     letter-spacing: -0.01em;
     color: #fff;
   }
-  /* Section / card headings */
   .be-heading {
     font-size: 0.875rem;   /* 14px */
     font-weight: 600;
@@ -271,17 +231,12 @@ input, textarea, select { font-family: inherit; }
   }
 }
 
-/* ==========================================================================
-   GLOBAL HEADING SIZE OVERRIDE — tone down text-2xl hero titles
-   ========================================================================== */
 @layer utilities {
   /* Redefine text-2xl to 20px (was 24px) — prevents oversized page titles */
   .text-2xl { font-size: 1.25rem !important; line-height: 1.75rem !important; }
 }
 
-/* ==========================================================================
-   RESPONSIVE LAYOUT HELPERS
-   ========================================================================== */
+/* == RESPONSIVE LAYOUT HELPERS == */
 @layer utilities {
   .be-page { padding: 1.25rem; min-height: 100%; }
   @media (max-width: 640px) {
@@ -306,9 +261,7 @@ input, textarea, select { font-family: inherit; }
   }
 }
 
-/* ==========================================================================
-   PRINT STYLES — waybill label printing
-   ========================================================================== */
+/* == PRINT STYLES — waybill label printing == */
 @media print {
   /* Hide all screen UI */
   body > #root > * { display: none !important; }
@@ -349,4 +302,95 @@ input, textarea, select { font-family: inherit; }
 /* Screen preview of waybill area */
 .waybill-print-area {
   display: none;
+}
+
+/* UAT emergency input unlock */
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  pointer-events: auto !important;
+  user-select: auto !important;
+}
+
+.uat-login-screen {
+  min-height: 100vh;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 999999;
+}
+
+.uat-login-card {
+  width: 100%;
+  max-width: 420px;
+  background: white;
+  border-radius: 24px;
+  padding: 32px;
+  display: grid;
+  gap: 16px;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000000;
+}
+
+.uat-login-card label {
+  display: grid;
+  gap: 8px;
+  font-weight: 700;
+  color: #334155;
+  pointer-events: auto !important;
+}
+
+.uat-login-card input {
+  height: 48px;
+  border: 1px solid #cbd5e1;
+  border-radius: 12px;
+  padding: 0 14px;
+  font-size: 16px;
+  background: white;
+  color: #0f172a;
+  pointer-events: auto !important;
+  user-select: text !important;
+  cursor: text !important;
+}
+
+.uat-login-card button {
+  height: 48px;
+  border: 0;
+  border-radius: 12px;
+  background: #0f172a;
+  color: white;
+  font-weight: 800;
+  cursor: pointer;
+  pointer-events: auto !important;
+}
+
+html, body, #root, * {
+  pointer-events: auto !important;
+}
+
+input, textarea, select, button, a {
+  pointer-events: auto !important;
+  user-select: auto !important;
+}
+
+/* Absolute UAT unlock */
+html, body, #root, #root * {
+  pointer-events: auto !important;
+}
+
+button, a, input, textarea, select {
+  pointer-events: auto !important;
+  cursor: pointer !important;
+  opacity: 1 !important;
+}
+
+input, textarea {
+  cursor: text !important;
 }

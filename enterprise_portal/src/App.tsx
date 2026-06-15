@@ -1,437 +1,372 @@
-// App.tsx — Britium Express Enterprise Management Portal
-// 43 management pages | HashRouter | Supabase Auth | EN/MM bilingual
+import React, { useEffect, useState } from "react";
 
-import { useState, FormEvent, lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
-import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
-import { AuthProvider, useAuth } from '@/contexts/auth';
-import AppShell from '@/components/AppShell';
-import AppErrorBoundary from '@/components/system/AppErrorBoundary';
-import EnvironmentBadge from '@/components/system/EnvironmentBadge';
-
-/* ═══════════════════════════════════════════════════════════════
-   LAZY PAGE IMPORTS — Enterprise Management Only
-   (Rider App is a separate mobile APK/iOS product)
-═══════════════════════════════════════════════════════════════ */
-const DashboardPage                        = lazy(() => import('@/pages/DashboardPage'));
-const AccountsPage                         = lazy(() => import('@/pages/AccountsPage'));
-const AdminHRPage                          = lazy(() => import('@/pages/AdminHRPage'));
-const AnalyticsPage                        = lazy(() => import('@/pages/AnalyticsPage'));
-const AuditLogsPage                        = lazy(() => import('@/pages/AuditLogsPage'));
-const BizDevPage                           = lazy(() => import('@/pages/BizDevPage'));
-const BranchAdminPage                      = lazy(() => import('@/pages/BranchAdminPage'));
-const BranchOfficePage                     = lazy(() => import('@/pages/BranchOfficePage'));
-const CODSettlementPage                    = lazy(() => import('@/pages/CODSettlementPage'));
-const CustomerPortalPage                   = lazy(() => import('@/pages/CustomerPortalPage'));
-const CustomerServiceCommandCenterPage     = lazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
-const CustomerServicePortalPage            = lazy(() => import('@/pages/CustomerServicePortalPage'));
-const DataEntryPage                        = lazy(() => import('@/pages/DataEntryPage'));
-const DeliveryDispatchPage                 = lazy(() => import('@/pages/DeliveryDispatchPage'));
-const DeliveryWorkflowPage                 = lazy(() => import('@/pages/DeliveryWorkflowPage'));
-const DispatchPage                         = lazy(() => import('@/pages/DispatchPage'));
-const DocumentPrintStudioPage              = lazy(() => import('@/pages/DocumentPrintStudioPage'));
-const DriverPage                           = lazy(() => import('@/pages/DriverPage'));
-const ExceptionsPage                       = lazy(() => import('@/pages/ExceptionsPage'));
-const ExecutiveOpsPage                     = lazy(() => import('@/pages/ExecutiveOpsPage'));
-const FinancePortalPage                    = lazy(() => import('@/pages/FinancePortalPage'));
-const ForgotPasswordPage                   = lazy(() => import('@/pages/ForgotPasswordPage'));
-const InvoiceStudioPage                    = lazy(() => import('@/pages/InvoiceStudioPage'));
-const MarketingPage                        = lazy(() => import('@/pages/MarketingPage'));
-const MarketingPortalPage                  = lazy(() => import('@/pages/MarketingPortalPage'));
-const MasterDataPage                       = lazy(() => import('@/pages/MasterDataPage'));
-const MerchantPortalPage                   = lazy(() => import('@/pages/MerchantPortalPage'));
-const OpsCommandPage                       = lazy(() => import('@/pages/OpsCommandPage'));
-const OpsManagerPage                       = lazy(() => import('@/pages/OpsManagerPage'));
-const PickupFormPage                       = lazy(() => import('@/pages/PickupFormPage'));
-const ProfilePage                          = lazy(() => import('@/pages/ProfilePage'));
-const RiderPage                            = lazy(() => import('@/pages/RiderPage'));
-const RiderSettlementPage                  = lazy(() => import('@/pages/RiderSettlementPage'));
-const SettingsPage                         = lazy(() => import('@/pages/SettingsPage'));
-const SignupPage                           = lazy(() => import('@/pages/SignupPage'));
-const SupervisorPickupAssignmentGoLivePage = lazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage'));
-const SupervisorPortalPage                 = lazy(() => import('@/pages/SupervisorPortalPage'));
-const TariffPage                           = lazy(() => import('@/pages/TariffPage'));
-const WarehousePage                        = lazy(() => import('@/pages/WarehousePage'));
-const WaybillStudioPage                    = lazy(() => import('@/pages/WaybillStudioPage'));
-const WayplanCommandCenterPage             = lazy(() => import('@/pages/WayplanCommandCenterPage'));
-const WayplanZonePage                      = lazy(() => import('@/pages/WayplanZonePage'));
-const WorkforceCommissionPage              = lazy(() => import('@/pages/WorkforceCommissionPage'));
-
-/* ═══════════════════════════════════════════════════════════════
-   BRAND CONSTANTS
-═══════════════════════════════════════════════════════════════ */
-const VIDEO_URL = 'https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/background_a93e0a05bfce4d5fa60d226584905742.mp4';
-const LOGO_URL  = 'https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/logo_869b883bce9e40f59d6394b5f754ef08.png';
-const YEAR = new Date().getFullYear();
-
-/* ═══════════════════════════════════════════════════════════════
-   LOGIN PAGE — Inline (no AppShell, video background)
-═══════════════════════════════════════════════════════════════ */
-type L = 'en' | 'my';
-
-const LT: Record<L, Record<string, string>> = {
-  en: {
-    title: 'BRITIUM EXPRESS', tagline: 'Enterprise Management Portal',
-    login: 'Sign In', signup: 'Request Access', reset: 'Recover Password',
-    email: 'Email Address', pw: 'Password', role: 'Select Your Role',
-    admin: 'Admin', supervisor: 'Supervisor', finance: 'Finance', operations: 'Operations',
-    superadmin: 'Super Admin',
-    cs: 'CS Agent', warehouse: 'Warehouse', marketing: 'Marketing', executive: 'Executive',
-    data_entry: 'Data Entry', branch: 'Branch Mgr',
-    btnLogin: 'Sign In to Portal', btnSignup: 'Request Access', btnReset: 'Send Reset Link',
-    forgot: 'Forgot password?', createAcc: 'Request portal access →',
-    backLogin: '← Back to Sign In', footer: 'Authorised personnel only',
-    phEmail: 'you@britiumexpress.com', phPw: '••••••••',
-    phName: 'Full Name', phPhone: 'Phone (09-XXXXXXX)',
-    processing: 'Authenticating…', success: '✅ Access granted — redirecting…',
-    errRole: 'Please select your role', errEmail: 'Email is required', errPw: 'Password is required',
-    noRole: '—', portal: 'ENTERPRISE PORTAL', version: 'v2026',
-  },
-  my: {
-    title: 'BRITIUM EXPRESS', tagline: 'စီမံခန့်ခွဲမှု Enterprise Portal',
-    login: 'ဝင်ရောက်', signup: 'ဝင်ခွင့်တောင်းဆို', reset: 'စကားဝှက်ပြန်ရယူ',
-    email: 'အီးမေးလ်လိပ်စာ', pw: 'စကားဝှက်', role: 'အခန်းကဏ္ဍရွေးပါ',
-    admin: 'စီမံခန့်ခွဲမှူး', supervisor: 'ကြီးကြပ်ရေးမှူး', finance: 'ဘဏ္ဍာရေး', operations: 'လုပ်ငန်းဆောင်ရွက်',
-    superadmin: 'Super Admin',
-    cs: 'CS အေးဂျင့်', warehouse: 'သိုလှောင်ရုံ', marketing: 'မားကတ်တင်း', executive: 'အမှုဆောင်',
-    data_entry: 'ဒေတာသွင်းရေး', branch: 'ဌာနခွဲမန်နေဂျာ',
-    btnLogin: 'Portal ဝင်ရောက်', btnSignup: 'ဝင်ခွင့်တောင်းဆိုရန်', btnReset: 'Link ပို့မည်',
-    forgot: 'မေ့သွားသလား?', createAcc: 'Portal ဝင်ခွင့်တောင်းဆို →',
-    backLogin: '← ဝင်ရောက်မှုသို့', footer: 'ခွင့်ပြုထားသောဝန်ထမ်းများသာ',
-    phEmail: 'you@britiumexpress.com', phPw: '••••••••',
-    phName: 'အမည်အပြည့်အစုံ', phPhone: 'ဖုန်း (09-XXXXXXX)',
-    processing: 'အတည်ပြုနေသည်…', success: '✅ ဝင်ခွင့်ရပြီ — ဆောင်ရွက်နေသည်…',
-    errRole: 'အခန်းကဏ္ဍ ရွေးချယ်ပါ', errEmail: 'အီးမေးလ် လိုအပ်သည်', errPw: 'စကားဝှက် လိုအပ်သည်',
-    noRole: '—', portal: 'ENTERPRISE PORTAL', version: 'v2026',
-  },
+type TemplateItem = {
+  title: string;
+  file: string;
+  uploadRoute: string;
 };
 
-function LoginPage() {
-  const [lang, setLang] = useState<L>('en');
-  const [tab, setTab]   = useState<'login' | 'signup' | 'reset'>('login');
-  const [email, setEmail]   = useState('');
-  const [pw, setPw]         = useState('');
-  const [name, setName]     = useState('');
-  const [phone, setPhone]   = useState('');
-  const [role, setRole]     = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg]         = useState('');
-  const [errs, setErrs]       = useState<Record<string, string>>({});
-  const navigate = useNavigate();
-  const t = LT[lang];
+const templates: TemplateItem[] = [
+  {
+    title: "Data Entry Upload Template",
+    file: "/templates/Britium_Data_Entry_UAT_GoLive_Template.xlsx",
+    uploadRoute: "/data-entry/upload",
+  },
+  {
+    title: "Merchant / Customer Upload Template",
+    file: "/templates/Britium_Merchant_Customer_Upload_UAT_Template.xlsx",
+    uploadRoute: "/merchant/upload",
+  },
+  {
+    title: "Warehouse Scan Template",
+    file: "/templates/Britium_Warehouse_Scan_UAT_GoLive_Template.xlsx",
+    uploadRoute: "/warehouse/upload",
+  },
+];
 
-  // If already authenticated, go to dashboard
-  useEffect(() => {
-    import('@/integrations/supabase/client').then(({ supabase: sb }) => {
-      sb.auth.getSession().then(({ data }) => {
-        if (data.session) navigate('/dashboard', { replace: true });
-      });
-    });
-  }, []);
+const nav = [
+  ["/go-live-readiness", "Go-Live Readiness"],
+  ["/templates", "Template Center"],
+  ["/data-entry/upload", "Data Entry Upload"],
+  ["/merchant/upload", "Merchant Upload"],
+  ["/customer/upload", "Customer Upload"],
+  ["/warehouse/upload", "Warehouse Upload"],
+  ["/warehouse/scan", "Warehouse Scan"],
+];
 
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '11px 14px',
-    border: '1.5px solid #e4e4e7', borderRadius: 10,
-    background: '#fafafa', color: '#18181b',
-    fontSize: 13.5, fontWeight: 500, outline: 'none',
-    fontFamily: 'Poppins,Inter,system-ui,sans-serif',
-    transition: 'border-color 0.15s',
-  };
+function getRoute() {
+  const raw = window.location.hash.replace("#", "") || "/go-live-readiness";
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const e2: Record<string, string> = {};
-    if (tab !== 'reset' && !role) e2.role = t.errRole;
-    if (!email.trim()) e2.email = t.errEmail;
-    if (tab !== 'reset' && !pw.trim()) e2.pw = t.errPw;
-    if (Object.keys(e2).length) { setErrs(e2); return; }
-    setLoading(true); setErrs({});
-    try {
-      const { supabase: sb } = await import('@/integrations/supabase/client');
-      if (tab === 'login') {
-        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
-        if (error) throw error;
-        setMsg(t.success);
-        setTimeout(() => navigate('/dashboard', { replace: true }), 700);
-      } else if (tab === 'signup') {
-        const { error } = await sb.auth.signUp({ email: email.trim(), password: pw, options: { data: { full_name: name, phone, role } } });
-        if (error) throw error;
-        setMsg(lang === 'en' ? '✅ Request submitted. Await admin approval.' : '✅ တောင်းဆိုချက် ပို့ပြီး — Admin ခွင့်ပြုချက် စောင့်ဆိုင်းနေသည်');
-      } else {
-        const { error } = await sb.auth.resetPasswordForEmail(email.trim());
-        if (error) throw error;
-        setMsg(lang === 'en' ? '📧 Reset link sent to your email.' : '📧 Reset link ကို email သို့ ပို့ပြီးပါပြီ');
-      }
-    } catch (err: any) { setErrs({ g: err.message || 'Authentication error' }); }
-    finally { setLoading(false); }
+  if (
+    raw === "/" ||
+    raw === "/login" ||
+    raw === "/dashboard" ||
+    raw === "login" ||
+    raw === "dashboard"
+  ) {
+    return "/go-live-readiness";
   }
 
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
+
+export default function App() {
+  const [route, setRoute] = useState(getRoute());
+
+  function go(nextRoute: string) {
+    window.location.hash = nextRoute;
+    setRoute(nextRoute);
+  }
+
+  useEffect(() => {
+    const initialRoute = getRoute();
+
+    if (window.location.hash === "#/login" || window.location.hash === "#/dashboard") {
+      window.location.hash = "/go-live-readiness";
+      setRoute("/go-live-readiness");
+    } else {
+      setRoute(initialRoute);
+    }
+
+    const handler = () => setRoute(getRoute());
+    window.addEventListener("hashchange", handler);
+    return () => window.removeEventListener("hashchange", handler);
+  }, []);
+
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', width: '100%', overflow: 'hidden', fontFamily: 'Poppins,Inter,system-ui,sans-serif' }}>
-      {/* Video BG */}
-      <video style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} src={VIDEO_URL} autoPlay muted loop playsInline/>
-      {/* Gradient overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(140deg,rgba(4,14,28,0.90) 0%,rgba(8,22,45,0.78) 50%,rgba(6,12,24,0.88) 100%)' }}/>
+    <div style={styles.app}>
+      <aside style={styles.sidebar}>
+        <h2 style={styles.brand}>Britium UAT</h2>
+        <p style={styles.note}>Login bypassed for UAT smoke testing.</p>
 
-      {/* Lang toggle — top right */}
-      <button onClick={() => setLang(l => l === 'en' ? 'my' : 'en')} style={{ position: 'absolute', top: 18, right: 18, zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)' }}>
-        🌐 {lang === 'en' ? 'မြန်မာ' : 'EN'}
-      </button>
+        {nav.map(([path, label]) => (
+          <button
+            key={path}
+            type="button"
+            onClick={() => go(path)}
+            style={{
+              ...styles.nav,
+              background:
+                route === path
+                  ? "rgba(255,255,255,0.22)"
+                  : "rgba(255,255,255,0.08)",
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </aside>
 
-      {/* Center card */}
-      <div style={{ position: 'relative', zIndex: 10, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}>
-        <div style={{ width: '100%', maxWidth: 420 }}>
+      <main style={styles.main}>
+        {route === "/templates" ? (
+          <TemplateCenter go={go} />
+        ) : route === "/data-entry/upload" ? (
+          <UploadPage title="Data Entry Upload" template={templates[0].file} />
+        ) : route === "/merchant/upload" ? (
+          <UploadPage title="Merchant Upload" template={templates[1].file} />
+        ) : route === "/customer/upload" ? (
+          <UploadPage title="Customer Upload" template={templates[1].file} />
+        ) : route === "/warehouse/upload" ? (
+          <UploadPage title="Warehouse Upload" template={templates[2].file} />
+        ) : route === "/warehouse/scan" ? (
+          <WarehouseScan />
+        ) : (
+          <Readiness />
+        )}
+      </main>
+    </div>
+  );
+}
 
-          {/* Header branding */}
-          <div style={{ textAlign: 'center', marginBottom: 26 }}>
-            <div style={{ width: 62, height: 62, borderRadius: 16, overflow: 'hidden', background: '#fff', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 30px rgba(0,0,0,0.35)' }}>
-              <img src={LOGO_URL} alt="Britium Express" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
-            </div>
-            <h1 style={{ fontSize: 20, fontWeight: 900, color: '#fff', letterSpacing: '0.09em', margin: 0 }}>{t.title}</h1>
-            <p style={{ fontSize: 9.5, fontWeight: 700, color: '#f59e0b', letterSpacing: '0.18em', marginTop: 5, textTransform: 'uppercase' }}>{t.tagline}</p>
+function Readiness() {
+  return (
+    <section>
+      <h1>Go-Live Readiness Center</h1>
+      <p style={styles.muted}>
+        Use this screen for UAT smoke testing before reconnecting live auth and backend cleanup RPCs.
+      </p>
+
+      <div style={styles.grid}>
+        <StatusCard title="Mock / Demo Runtime Data" value="Must be zero" />
+        <StatusCard title="Dispatch Routes" value="Zero until generated" />
+        <StatusCard title="Warehouse Manifests" value="Real records only" />
+        <StatusCard title="Template Uploads" value="Ready for UAT" />
+      </div>
+
+      <div style={styles.card}>
+        <h2>UAT Dry Run Flow</h2>
+        <ol>
+          <li>Download the needed template.</li>
+          <li>Upload Data Entry, Merchant/Customer, or Warehouse file.</li>
+          <li>Confirm row validation result.</li>
+          <li>Create one real pickup request.</li>
+          <li>
+            Verify one canonical Pickup ID flows through supervisor, warehouse, dispatch,
+            rider, tracking, and finance.
+          </li>
+        </ol>
+      </div>
+    </section>
+  );
+}
+
+function TemplateCenter({ go }: { go: (route: string) => void }) {
+  return (
+    <section>
+      <h1>Template Download Center</h1>
+      <p style={styles.muted}>Header-only UAT templates. No mock/sample/demo rows.</p>
+
+      <div style={styles.grid}>
+        {templates.map((item) => (
+          <div key={item.title} style={styles.card}>
+            <h2>{item.title}</h2>
+            <p>Download the approved upload format.</p>
+
+            <a href={item.file} download style={styles.button}>
+              Download XLSX
+            </a>
+
+            <button
+              type="button"
+              onClick={() => go(item.uploadRoute)}
+              style={styles.secondaryButton}
+            >
+              Open Upload Screen
+            </button>
           </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
-          {/* Card */}
-          <div style={{ background: '#fff', borderRadius: 20, boxShadow: '0 24px 70px rgba(0,0,0,0.50)', overflow: 'hidden' }}>
+function UploadPage({ title, template }: { title: string; template: string }) {
+  const [fileName, setFileName] = useState("");
+  const [message, setMessage] = useState("No file selected.");
 
-            {/* Tab switcher */}
-            <div style={{ display: 'flex', background: '#f4f4f5', margin: '20px 20px 0', borderRadius: 12, padding: 3 }}>
-              {(['login', 'signup', 'reset'] as const).map(m => (
-                <button key={m} onClick={() => { setTab(m); setMsg(''); setErrs({}); }} style={{ flex: 1, padding: '8px 4px', borderRadius: 9, border: 'none', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, fontFamily: 'Poppins,Inter,sans-serif', background: tab === m ? '#fff' : 'transparent', color: tab === m ? '#18181b' : '#71717a', boxShadow: tab === m ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
-                  {m === 'login' ? t.login : m === 'signup' ? t.signup : t.reset}
-                </button>
-              ))}
-            </div>
+  return (
+    <section>
+      <h1>{title}</h1>
+      <p style={styles.muted}>Upload CSV/XLSX for UAT validation. This screen does not load mock data.</p>
 
-            {/* Form area */}
-            <div style={{ padding: '22px 24px 20px' }}>
-              {msg && <div style={{ padding: '10px 13px', marginBottom: 14, borderRadius: 10, fontSize: 12, fontWeight: 600, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontFamily: 'Poppins,Inter,sans-serif' }}>{msg}</div>}
-              {errs.g && <div style={{ padding: '10px 13px', marginBottom: 14, borderRadius: 10, fontSize: 12, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontFamily: 'Poppins,Inter,sans-serif' }}>{errs.g}</div>}
+      <div style={styles.card}>
+        <a href={template} download style={styles.button}>
+          Download Template
+        </a>
 
-              {/* Role selector (login + signup only) */}
-              {tab !== 'reset' && (
-                <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.role}</label>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: 6 }}>
-                  {/* Super Admin — full-width crown row */}
-                  <button type="button" onClick={() => setRole('superadmin')} style={{ gridColumn: '1 / -1', padding: '9px 8px', borderRadius: 8, border: role === 'superadmin' ? '2px solid #f59e0b' : '1.5px solid #fbbf24', background: role === 'superadmin' ? 'linear-gradient(135deg,#fffbeb,#fef3c7)' : 'linear-gradient(135deg,#fffdf0,#fffbeb)', color: role === 'superadmin' ? '#92400e' : '#a16207', fontWeight: 800, fontSize: 11, cursor: 'pointer', fontFamily: 'Poppins,Inter,sans-serif', transition: 'all 0.14s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, boxShadow: role === 'superadmin' ? '0 3px 12px rgba(245,158,11,0.30)' : '0 1px 4px rgba(245,158,11,0.10)' }}>
-                    <span style={{ fontSize: 15 }}>👑</span>
-                    <span>{t.superadmin}</span>
-                    <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.08em', color: '#b45309', background: '#fde68a', borderRadius: 4, padding: '2px 6px' }}>FULL ACCESS</span>
-                  </button>
-                  {/* Standard management roles */}
-                  {[
-                      { v: 'admin',      l: t.admin },
-                      { v: 'supervisor', l: t.supervisor },
-                      { v: 'finance',    l: t.finance },
-                      { v: 'operations', l: t.operations },
-                      { v: 'cs',         l: t.cs },
-                      { v: 'warehouse',  l: t.warehouse },
-                      { v: 'marketing',  l: t.marketing },
-                      { v: 'executive',  l: t.executive },
-                      { v: 'data_entry', l: t.data_entry },
-                      { v: 'branch',     l: t.branch },
-                    ].map(r => (
-                      <button key={r.v} type="button" onClick={() => setRole(r.v)} style={{ padding: '8px 4px', borderRadius: 8, border: role === r.v ? '2px solid #f59e0b' : '1.5px solid #e4e4e7', background: role === r.v ? '#fffbeb' : '#fafafa', color: role === r.v ? '#b45309' : '#52525b', fontWeight: 700, fontSize: 10, cursor: 'pointer', fontFamily: 'Poppins,Inter,sans-serif', transition: 'all 0.12s', textAlign: 'center', lineHeight: 1.3 }}>
-                        {r.l}
-                      </button>
-                    ))}
-                  </div>
-                  {errs.role && <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontFamily: 'Poppins,Inter,sans-serif' }}>{errs.role}</p>}
-                </div>
-              )}
+        <div style={{ marginTop: 24 }}>
+          <label style={styles.label}>
+            Select upload file
+            <input
+              style={styles.input}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) {
+                  setFileName("");
+                  setMessage("No file selected.");
+                  return;
+                }
 
-              <form onSubmit={submit} style={{ display: 'grid', gap: 14 }}>
-                {tab === 'signup' && (
-                  <>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.phName}</label>
-                      <input value={name} onChange={e => setName(e.target.value)} placeholder={t.phName} style={inp}/>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.phPhone}</label>
-                      <input value={phone} onChange={e => setPhone(e.target.value)} placeholder={t.phPhone} style={inp}/>
-                    </div>
-                  </>
-                )}
+                setFileName(file.name);
+                setMessage(`Selected ${file.name}. Ready for backend validation/import.`);
+              }}
+            />
+          </label>
+        </div>
 
-                <div>
-                  <label style={{ display: 'block', fontSize: 10.5, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 5, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.email}</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t.phEmail} style={inp}/>
-                  {errs.email && <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontFamily: 'Poppins,Inter,sans-serif' }}>{errs.email}</p>}
-                </div>
-
-                {tab !== 'reset' && (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
-                      <label style={{ fontSize: 10.5, fontWeight: 800, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: 'Poppins,Inter,sans-serif' }}>{t.pw}</label>
-                      {tab === 'login' && <button type="button" onClick={() => setTab('reset')} style={{ fontSize: 11, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.forgot}</button>}
-                    </div>
-                    <div style={{ position: 'relative' }}>
-                      <input type={showPw ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} placeholder={t.phPw} style={inp}/>
-                      <button type="button" onClick={() => setShowPw(p => !p)} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: '#71717a', padding: '2px 4px' }}>
-                        {showPw ? '🙈' : '👁'}
-                      </button>
-                    </div>
-                    {errs.pw && <p style={{ fontSize: 11, color: '#dc2626', marginTop: 4, fontFamily: 'Poppins,Inter,sans-serif' }}>{errs.pw}</p>}
-                  </div>
-                )}
-
-                <button type="submit" disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '12px 0', borderRadius: 12, border: 'none', background: loading ? '#d4a438' : '#f59e0b', color: '#1c1917', fontSize: 13.5, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', marginTop: 2, boxShadow: '0 4px 18px rgba(245,158,11,0.32)', fontFamily: 'Poppins,Inter,sans-serif', transition: 'all 0.15s' }}>
-                  {loading ? t.processing : tab === 'login' ? t.btnLogin : tab === 'signup' ? t.btnSignup : t.btnReset}
-                </button>
-              </form>
-
-              <div style={{ textAlign: 'center', marginTop: 16 }}>
-                {tab === 'login'
-                  ? <button onClick={() => setTab('signup')} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.createAcc}</button>
-                  : <button onClick={() => setTab('login')} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.backLogin}</button>}
-              </div>
-            </div>
-          </div>
-
-          {/* Footer note */}
-          <div style={{ marginTop: 14, padding: '10px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)', textAlign: 'center' }}>
-            <p style={{ fontSize: 10.5, color: 'rgba(255,255,255,0.28)', margin: 0, fontFamily: 'Poppins,Inter,sans-serif' }}>{t.footer}</p>
-          </div>
-          <p style={{ textAlign: 'center', marginTop: 10, fontSize: 10, color: 'rgba(255,255,255,0.20)', fontFamily: 'Inter,sans-serif' }}>
-            © {YEAR} Britium Express · Britium Ventures Co., Ltd · All rights reserved
-          </p>
+        <div style={styles.result}>
+          <strong>File:</strong> {fileName || "None"}
+          <br />
+          <strong>Status:</strong> {message}
         </div>
       </div>
-      <style>{`*{box-sizing:border-box}input:focus{border-color:#f59e0b!important;box-shadow:0 0 0 3px rgba(245,158,11,0.12)!important}input::placeholder{color:#a1a1aa}`}</style>
-    </div>
+    </section>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   LOADING FALLBACK
-═══════════════════════════════════════════════════════════════ */
-function Loading() {
+function WarehouseScan() {
+  const [scan, setScan] = useState("");
+
   return (
-    <div style={{ minHeight: '100vh', background: '#061524', display: 'grid', placeItems: 'center' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 40, height: 40, border: '3px solid #1a3a5c', borderTopColor: '#f6b84b', borderRadius: '50%', margin: '0 auto 14px', animation: 'spin 0.8s linear infinite' }}/>
-        <p style={{ color: '#4d7a9b', fontSize: 12, fontWeight: 700, letterSpacing: '0.08em', fontFamily: 'Poppins,Inter,sans-serif' }}>BRITIUM ENTERPRISE</p>
+    <section>
+      <h1>Warehouse Scan</h1>
+      <p style={styles.muted}>
+        Scan or enter Pickup ID, Deliver ID, Invoice No, Waybill No, or Bag Code.
+      </p>
+
+      <div style={styles.card}>
+        <label style={styles.label}>
+          Scan value
+          <input
+            style={styles.input}
+            value={scan}
+            onChange={(event) => setScan(event.target.value)}
+            placeholder="Example: W0525-BBK-015"
+            autoFocus
+          />
+        </label>
+
+        <div style={styles.result}>
+          <strong>Current Scan:</strong> {scan || "Waiting for scan..."}
+          <br />
+          <strong>Status:</strong> Ready for backend lookup / warehouse intake validation.
+        </div>
       </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </section>
+  );
+}
+
+function StatusCard({ title, value }: { title: string; value: string }) {
+  return (
+    <div style={styles.card}>
+      <h2>{title}</h2>
+      <p style={styles.status}>{value}</p>
     </div>
   );
 }
 
-/* ═══════════════════════════════════════════════════════════════
-   AUTH LAYOUT — wraps ALL authenticated management pages with AppShell
-   sidebar + header + lang toggle visible on every management page
-═══════════════════════════════════════════════════════════════ */
-function AuthLayout() {
-  const auth = useAuth() as any;
-  const session = auth?.session;
-  const loading = Boolean(auth?.loading || auth?.isLoading || auth?.initializing);
-
-  if (loading) return <Loading />;
-  if (!session) return <Navigate to="/" replace />;
-
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════
-   APP ROOT
-═══════════════════════════════════════════════════════════════ */
-export default function App() {
-  return (
-    <LanguageProvider>
-      <AuthProvider>
-        <HashRouter>
-          <EnvironmentBadge />
-          <AppErrorBoundary>
-            <Suspense fallback={<Loading />}>
-            <Routes>
-            {/* ── Public routes (no AppShell) ── */}
-            <Route path="/"                  element={<LoginPage />} />
-            <Route path="/login"             element={<LoginPage />} />
-            <Route path="/signup"            element={<SignupPage />} />
-            <Route path="/forgot-password"   element={<ForgotPasswordPage />} />
-
-            {/* ══ ALL 43 management pages — wrapped by AuthLayout (AppShell + auth guard) ══ */}
-            <Route element={<AuthLayout />}>
-
-              {/* Overview */}
-              <Route path="/dashboard"            element={<DashboardPage />} />
-
-              {/* Operations */}
-              <Route path="/warehouse"            element={<WarehousePage />} />
-              <Route path="/pickup-form"          element={<PickupFormPage />} />
-              <Route path="/dispatch"             element={<DispatchPage />} />
-              <Route path="/delivery-dispatch"    element={<DeliveryDispatchPage />} />
-              <Route path="/delivery-workflow"    element={<DeliveryWorkflowPage />} />
-              <Route path="/exceptions"           element={<ExceptionsPage />} />
-
-              {/* Workforce */}
-              <Route path="/supervisor"           element={<SupervisorPortalPage />} />
-              <Route path="/supervisor-pickup"    element={<SupervisorPickupAssignmentGoLivePage />} />
-              <Route path="/rider"                element={<RiderPage />} />
-              <Route path="/driver"               element={<DriverPage />} />
-              <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
-
-              {/* Command Center */}
-              <Route path="/ops-command"          element={<OpsCommandPage />} />
-              <Route path="/ops-manager"          element={<OpsManagerPage />} />
-              <Route path="/executive-ops"        element={<ExecutiveOpsPage />} />
-              <Route path="/wayplan-command"      element={<WayplanCommandCenterPage />} />
-              <Route path="/wayplan-zone"         element={<WayplanZonePage />} />
-
-              {/* Finance */}
-              <Route path="/finance"              element={<FinancePortalPage />} />
-              <Route path="/cod-settlement"       element={<CODSettlementPage />} />
-              <Route path="/accounts"             element={<AccountsPage />} />
-              <Route path="/tariff"               element={<TariffPage />} />
-              <Route path="/invoice-studio"       element={<InvoiceStudioPage />} />
-              <Route path="/rider-settlement"     element={<RiderSettlementPage />} />
-
-              {/* Documents */}
-              <Route path="/waybill-studio"       element={<WaybillStudioPage />} />
-              <Route path="/document-studio"      element={<DocumentPrintStudioPage />} />
-
-              {/* Portals */}
-              <Route path="/merchant-portal"      element={<MerchantPortalPage />} />
-              <Route path="/customer-portal"      element={<CustomerPortalPage />} />
-              <Route path="/cs-portal"            element={<CustomerServicePortalPage />} />
-              <Route path="/cs-command"           element={<CustomerServiceCommandCenterPage />} />
-
-              {/* Branch & Admin */}
-              <Route path="/branch-admin"         element={<BranchAdminPage />} />
-              <Route path="/branch-office"        element={<BranchOfficePage />} />
-              <Route path="/admin-hr"             element={<AdminHRPage />} />
-              <Route path="/data-entry"           element={<DataEntryPage />} />
-              <Route path="/master-data"          element={<MasterDataPage />} />
-
-              {/* Analytics */}
-              <Route path="/analytics"            element={<AnalyticsPage />} />
-              <Route path="/audit-logs"           element={<AuditLogsPage />} />
-
-              {/* Growth */}
-              <Route path="/marketing"            element={<MarketingPage />} />
-              <Route path="/marketing-portal"     element={<MarketingPortalPage />} />
-              <Route path="/biz-dev"              element={<BizDevPage />} />
-
-              {/* System */}
-              <Route path="/profile"              element={<ProfilePage />} />
-              <Route path="/settings"             element={<SettingsPage />} />
-
-            </Route>{/* ── end AuthLayout ── */}
-
-              {/* Catch-all */}
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-          </AppErrorBoundary>
-        </HashRouter>
-      </AuthProvider>
-    </LanguageProvider>
-  );
-}
+const styles: Record<string, React.CSSProperties> = {
+  app: {
+    minHeight: "100vh",
+    display: "grid",
+    gridTemplateColumns: "270px 1fr",
+    background: "#f8fafc",
+    color: "#0f172a",
+    fontFamily: "Arial, sans-serif",
+  },
+  sidebar: {
+    background: "#0f172a",
+    color: "white",
+    padding: 20,
+  },
+  brand: {
+    margin: "0 0 8px",
+  },
+  note: {
+    color: "#cbd5e1",
+    fontSize: 12,
+    marginBottom: 20,
+  },
+  nav: {
+    display: "block",
+    width: "100%",
+    color: "white",
+    border: 0,
+    textAlign: "left",
+    padding: "14px 16px",
+    borderRadius: 10,
+    marginBottom: 8,
+    fontWeight: 800,
+    cursor: "pointer",
+    pointerEvents: "auto",
+  },
+  main: {
+    padding: 32,
+    overflow: "auto",
+  },
+  muted: {
+    color: "#64748b",
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+    gap: 16,
+    marginTop: 20,
+  },
+  card: {
+    background: "white",
+    borderRadius: 18,
+    padding: 24,
+    boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
+  },
+  status: {
+    color: "#065f46",
+    fontWeight: 800,
+  },
+  button: {
+    display: "inline-block",
+    background: "#0f172a",
+    color: "white",
+    textDecoration: "none",
+    padding: "12px 16px",
+    borderRadius: 10,
+    fontWeight: 800,
+    marginRight: 10,
+    marginBottom: 10,
+  },
+  secondaryButton: {
+    display: "inline-block",
+    background: "#e2e8f0",
+    color: "#0f172a",
+    border: 0,
+    textDecoration: "none",
+    padding: "12px 16px",
+    borderRadius: 10,
+    fontWeight: 800,
+    cursor: "pointer",
+  },
+  label: {
+    display: "grid",
+    gap: 8,
+    fontWeight: 800,
+  },
+  input: {
+    height: 48,
+    border: "1px solid #cbd5e1",
+    borderRadius: 12,
+    padding: "0 14px",
+    fontSize: 16,
+    background: "white",
+    color: "#0f172a",
+  },
+  result: {
+    marginTop: 20,
+    padding: 16,
+    borderRadius: 12,
+    background: "#ecfdf5",
+    color: "#065f46",
+    lineHeight: 1.7,
+  },
+};
