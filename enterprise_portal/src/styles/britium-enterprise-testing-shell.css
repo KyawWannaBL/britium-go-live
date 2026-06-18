@@ -1,0 +1,77 @@
+html,
+body,
+#root {
+  min-height: 100%;
+  margin: 0;
+  font-family: Inter, Arial, sans-serif;
+  background: #f8fafc;
+  color: #0f172a;
+  pointer-events: auto !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+input,
+textarea,
+select,
+button,
+a {
+  pointer-events: auto !important;
+}
+
+button,
+a {
+  cursor: pointer;
+}
+
+.be-shell,
+.uat-shell,
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  background: #f8fafc;
+}
+
+.be-sidebar,
+.uat-sidebar,
+.app-sidebar {
+  background: #0f172a;
+  color: white;
+  padding: 20px;
+}
+
+.be-main,
+.uat-main,
+.app-main {
+  padding: 24px;
+}
+
+.be-card,
+.uat-card,
+.app-card {
+  background: white;
+  border-radius: 18px;
+  padding: 24px;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+.be-link,
+.uat-link,
+.app-link {
+  display: block;
+  color: white;
+  text-decoration: none;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  margin-bottom: 8px;
+}
+
+.be-link:hover,
+.uat-link:hover,
+.app-link:hover {
+  background: rgba(255, 255, 255, 0.16);
+}

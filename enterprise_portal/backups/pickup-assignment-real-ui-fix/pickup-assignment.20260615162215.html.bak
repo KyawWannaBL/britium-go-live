@@ -1,0 +1,14 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Pickup Assignment</title></head>
+<body style="margin:0;font-family:Arial;background:#020b18;color:#eef8ff;padding:32px">
+  <div style="color:#fbbf24;font-weight:900;letter-spacing:3px">BRITIUM EXPRESS</div>
+  <h1>Pickup Assignment</h1>
+  <div style="border:1px solid rgba(56,189,248,.35);background:#071527;border-radius:18px;padding:22px">
+    <b style="color:#86efac">REAL PAGE LOADED</b>
+    <p>Pickup Assignment static file route is working.</p>
+  </div>
+  <br>
+  <button style="border:0;border-radius:14px;background:#f97316;color:white;padding:14px 18px;font-weight:900" onclick="location.href='/?ts=' + Date.now() + '#/dashboard'">Back to Dashboard</button>
+</body>
+</html>

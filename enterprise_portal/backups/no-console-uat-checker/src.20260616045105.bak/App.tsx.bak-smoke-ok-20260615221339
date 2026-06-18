@@ -1,0 +1,62 @@
+import React from "react";
+
+export default function App() {
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "#f8fafc",
+      color: "#0f172a",
+      padding: "32px",
+      fontFamily: "Arial, sans-serif"
+    }}>
+      <div style={{
+        maxWidth: "960px",
+        margin: "0 auto",
+        background: "#ffffff",
+        borderRadius: "20px",
+        padding: "32px",
+        boxShadow: "0 10px 40px rgba(15,23,42,0.12)"
+      }}>
+        <h1>Britium UAT / Go-Live Dashboard</h1>
+        <p>The React app is rendering correctly. Login is bypassed for UAT smoke testing.</p>
+
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+          gap: "16px",
+          marginTop: "24px"
+        }}>
+          <a href="/go-live-readiness" style={card}>Go-Live Readiness</a>
+          <a href="/templates" style={card}>Template Center</a>
+          <a href="/data-entry/upload" style={card}>Data Entry Upload</a>
+          <a href="/merchant/upload" style={card}>Merchant Upload</a>
+          <a href="/customer/upload" style={card}>Customer Upload</a>
+          <a href="/warehouse/upload" style={card}>Warehouse Upload</a>
+          <a href="/warehouse/scan" style={card}>Warehouse Scan</a>
+        </div>
+
+        <div style={{
+          marginTop: "28px",
+          padding: "16px",
+          borderRadius: "12px",
+          background: "#ecfdf5",
+          color: "#065f46",
+          fontWeight: 700
+        }}>
+          Status: visible smoke-test shell loaded.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const card: React.CSSProperties = {
+  display: "block",
+  padding: "18px",
+  borderRadius: "14px",
+  background: "#0f172a",
+  color: "#ffffff",
+  textDecoration: "none",
+  fontWeight: 800,
+  textAlign: "center"
+};

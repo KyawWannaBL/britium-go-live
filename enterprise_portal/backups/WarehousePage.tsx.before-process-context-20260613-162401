@@ -1,0 +1,14 @@
+import React from "react";
+import BulkTemplateWorkbench from "../components/BulkTemplateWorkbench";
+
+export default function WarehousePage() {
+  return (
+    <BulkTemplateWorkbench
+      module="warehouse"
+      titleEn="Warehouse Operations / Inventory Bulk Load"
+      titleMm="ဂိုဒေါင်လုပ်ငန်း / Inventory အစုလိုက်တင်ခြင်း"
+      subtitleEn="Filter inbound source, select warehouse inventory template, download/upload Excel, and stage rows into backend bulk load."
+      subtitleMm="အဝင်ရင်းမြစ် Filter လုပ်ပြီး Warehouse Inventory Template ရွေးပါ၊ Excel Download/Upload လုပ်ပြီး Backend ထဲသို့ အစုလိုက်သိမ်းပါ။"
+    />
+  );
+}

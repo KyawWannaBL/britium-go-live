@@ -1,0 +1,177 @@
+// src/pages/DataEntryPage.tsx
+import { useState, useRef, useEffect } from 'react';
+import { fetchBulkHistory, submitBulkBatch, validateBulkRow, BulkRow, BulkBatch } from '@/lib/dataEntryApi';
+
+const G='#D4AF37'; const N='#0A1628';
+const inp:React.CSSProperties={background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:12,outline:'none'};
+
+const CSV_HEADERS=['merchant_code','recipient_name','recipient_phone','delivery_address','delivery_township','weight_kg','service_tier','payment_method','cod_amount','priority','rider_remarks'];
+
+function downloadTemplate(){
+  const csv=[CSV_HEADERS.join(','), 'BBK,Ko Mg,09123456789,"No 1 Pagoda Road",Dagon,1.5,Standard,COD,5000,NORMAL,Handle with care'].join('\n');
+  const a=document.createElement('a'); a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv); a.download='britium_bulk_template.csv'; a.click();
+}
+
+function parseCSV(text:string): BulkRow[] {
+  const lines=text.trim().split('\n'); if(lines.length<2) return [];
+  const headers=lines[0].split(',').map(h=>h.trim().replace(/^"|"$/g,''));
+  return lines.slice(1).map(line=>{
+    const vals=line.split(',').map(v=>v.trim().replace(/^"|"$/g,''));
+    const row:BulkRow={};
+    headers.forEach((h,i)=>{ row[h]=vals[i]??''; });
+    return row;
+  });
+}
+
+export default function DataEntryPage(){
+  const [rows,setRows]=useState<BulkRow[]>([]);
+  const [fileName,setFileName]=useState('');
+  const [validations,setValidations]=useState<Array<{valid:boolean;errors:string[]}>>([]);
+  const [validating,setValidating]=useState(false);
+  const [submitting,setSubmitting]=useState(false);
+  const [result,setResult]=useState<{batch_id:string;valid:number;invalid:number}|null>(null);
+  const [history,setHistory]=useState<BulkBatch[]>([]);
+  const [tab,setTab]=useState<'upload'|'history'>('upload');
+  const fileRef=useRef<HTMLInputElement>(null);
+
+  const loadHistory=()=>fetchBulkHistory(20).then(setHistory).catch(()=>{});
+  useEffect(()=>{ loadHistory(); },[]);
+
+  const onFile=async(f:File)=>{
+    setFileName(f.name); setRows([]); setValidations([]); setResult(null);
+    const text=await f.text(); const parsed=parseCSV(text); setRows(parsed);
+  };
+
+  const validate=async()=>{
+    setValidating(true); const results=[];
+    for(const row of rows){ try{ const v=await validateBulkRow(row); results.push(v); }catch{ results.push({valid:false,errors:['Server validation failed']}); } }
+    setValidations(results); setValidating(false);
+  };
+
+  const submit=async()=>{
+    if(!rows.length||!fileName) return;
+    setSubmitting(true);
+    try{ const r=await submitBulkBatch(rows,fileName); setResult(r); await loadHistory(); }catch(e:unknown){ alert(e instanceof Error?e.message:'Submit failed'); }
+    finally{ setSubmitting(false); }
+  };
+
+  const validCount=validations.filter(v=>v.valid).length;
+  const invalidCount=validations.filter(v=>!v.valid).length;
+  const allValid=validations.length>0&&invalidCount===0;
+
+  return (
+    <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 60px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:'#fff',margin:'0 0 3px'}}>Data Entry / Bulk Upload</h1>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>CSV batch shipment import — up to 500 rows per file</div>
+        </div>
+        <button onClick={downloadTemplate} style={{background:'rgba(212,175,55,0.12)',border:'1px solid rgba(212,175,55,0.3)',borderRadius:8,padding:'8px 16px',color:G,fontSize:12,fontWeight:600,cursor:'pointer'}}>↓ Download Template</button>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:'flex',gap:4,marginBottom:20}}>
+        {(['upload','history'] as const).map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?'rgba(212,175,55,0.12)':'transparent',border:'1px solid '+(tab===t?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)'),borderRadius:8,padding:'7px 16px',color:tab===t?G:'rgba(255,255,255,0.5)',fontSize:12,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{t==='upload'?'Upload':'Upload History'}</button>
+        ))}
+      </div>
+
+      {tab==='upload'&&(
+        <div>
+          {/* Drop zone */}
+          <div
+            onClick={()=>fileRef.current?.click()}
+            onDragOver={e=>{e.preventDefault();}}
+            onDrop={e=>{e.preventDefault();const f=e.dataTransfer.files[0];if(f)onFile(f);}}
+            style={{border:'2px dashed rgba(212,175,55,0.3)',borderRadius:12,padding:'36px 20px',textAlign:'center',cursor:'pointer',marginBottom:20,background:'rgba(212,175,55,0.03)',transition:'border-color .2s'}}
+          >
+            <div style={{fontSize:32,marginBottom:8}}>📂</div>
+            <div style={{fontSize:14,color:'rgba(255,255,255,0.7)',marginBottom:4}}>{fileName||'Click or drag & drop CSV file here'}</div>
+            {rows.length>0&&<div style={{fontSize:12,color:G}}>{rows.length} rows loaded</div>}
+            <input ref={fileRef} type="file" accept=".csv" style={{display:'none'}} onChange={e=>{const f=e.target.files?.[0];if(f)onFile(f);}}/>
+          </div>
+
+          {rows.length>0&&(
+            <div>
+              {/* Action bar */}
+              <div style={{display:'flex',gap:10,marginBottom:16,alignItems:'center'}}>
+                <button onClick={validate} disabled={validating} style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.35)',borderRadius:8,padding:'8px 18px',color:'#a5b4fc',fontSize:12,fontWeight:600,cursor:validating?'default':'pointer'}}>
+                  {validating?'Validating…':'✓ Validate Rows'}
+                </button>
+                {validations.length>0&&<div style={{fontSize:12,color:'rgba(255,255,255,0.5)'}}>{validCount} valid · <span style={{color:'#f87171'}}>{invalidCount} invalid</span></div>}
+                {allValid&&(
+                  <button onClick={submit} disabled={submitting} style={{background:submitting?'rgba(255,255,255,0.1)':G,color:submitting?'rgba(255,255,255,0.3)':N,border:'none',borderRadius:8,padding:'8px 20px',fontSize:12,fontWeight:700,cursor:submitting?'default':'pointer',marginLeft:'auto'}}>
+                    {submitting?'Submitting…':'⬆ Submit Batch'}
+                  </button>
+                )}
+              </div>
+
+              {/* Result banner */}
+              {result&&(
+                <div style={{background:'rgba(34,197,94,0.1)',border:'1px solid rgba(34,197,94,0.3)',borderRadius:8,padding:'12px 16px',marginBottom:16,fontSize:13}}>
+                  ✅ Batch submitted — <b style={{color:G}}>{result.batch_id}</b> · {result.valid} created · {result.invalid} skipped
+                </div>
+              )}
+
+              {/* Preview table */}
+              <div style={{overflowX:'auto',borderRadius:10,border:'1px solid rgba(255,255,255,0.07)'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                  <thead>
+                    <tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                      <th style={{padding:'8px 10px',color:'rgba(255,255,255,0.4)',textAlign:'left',width:32}}>#</th>
+                      {CSV_HEADERS.slice(0,6).map(h=><th key={h} style={{padding:'8px 10px',color:'rgba(255,255,255,0.4)',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}
+                      {validations.length>0&&<th style={{padding:'8px 10px',color:'rgba(255,255,255,0.4)'}}>Status</th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(rows??[]).slice(0,50).map((row,i)=>{
+                      const v=validations[i];
+                      return (
+                        <tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.04)',background:v?v.valid?'rgba(34,197,94,0.04)':'rgba(239,68,68,0.06)':'transparent'}}>
+                          <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.3)'}}>{i+1}</td>
+                          {CSV_HEADERS.slice(0,6).map(h=><td key={h} style={{padding:'6px 10px',color:'rgba(255,255,255,0.75)',maxWidth:140,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{String(row[h]??'')}</td>)}
+                          {v&&<td style={{padding:'6px 10px'}}>
+                            {v.valid?<span style={{color:'#22c55e',fontSize:10}}>✓ Valid</span>:<span style={{color:'#f87171',fontSize:10}} title={v.errors.join('; ')}>✗ {v.errors[0]}</span>}
+                          </td>}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {rows.length>50&&<div style={{padding:'8px 12px',fontSize:11,color:'rgba(255,255,255,0.3)'}}>Showing first 50 of {rows.length} rows</div>}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab==='history'&&(
+        <div>
+          <div style={{overflowX:'auto',borderRadius:10,border:'1px solid rgba(255,255,255,0.07)'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+              <thead>
+                <tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                  {['Batch ID','File Name','Total','Valid','Invalid','Status','Uploaded At'].map(h=><th key={h} style={{padding:'10px 14px',color:'rgba(255,255,255,0.4)',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {(history??[]).map(b=>(
+                  <tr key={b.batch_id} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                    <td style={{padding:'8px 14px',color:G,fontFamily:'monospace',fontSize:11}}>{b.batch_id}</td>
+                    <td style={{padding:'8px 14px',color:'rgba(255,255,255,0.7)'}}>{b.original_filename}</td>
+                    <td style={{padding:'8px 14px',color:'rgba(255,255,255,0.7)',textAlign:'right'}}>{b.total_rows}</td>
+                    <td style={{padding:'8px 14px',color:'#22c55e',textAlign:'right'}}>{b.valid_rows}</td>
+                    <td style={{padding:'8px 14px',color:b.invalid_rows>0?'#f87171':'rgba(255,255,255,0.3)',textAlign:'right'}}>{b.invalid_rows}</td>
+                    <td style={{padding:'8px 14px'}}><span style={{fontSize:10,padding:'3px 8px',borderRadius:20,background:b.status==='COMPLETED'?'rgba(34,197,94,0.15)':'rgba(251,191,36,0.15)',color:b.status==='COMPLETED'?'#22c55e':'#fbbf24'}}>{b.status}</span></td>
+                    <td style={{padding:'8px 14px',color:'rgba(255,255,255,0.35)',fontSize:11}}>{new Date(b.uploaded_at).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {history.length===0&&<tr><td colSpan={7} style={{padding:24,textAlign:'center',color:'rgba(255,255,255,0.25)',fontSize:12}}>No upload history.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,126 @@
+import React, { useEffect, useState } from "react";
+import { supabase } from "../integrations/supabase/client";
+
+type Props = {
+  title: string;
+  code: string;
+};
+
+export default function GenericRolePortalPage({ title, code }: Props) {
+  const [state, setState] = useState<any>({ loading: true });
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      const { data: userData } = await supabase.auth.getUser();
+      const email = userData.user?.email || "";
+
+      const rules = await supabase.rpc("be_logistics_get_field_rules");
+      const events = await supabase
+        .from("be_logistics_workflow_events")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(8);
+
+      if (!alive) return;
+
+      setState({
+        loading: false,
+        email,
+        rules: rules.data,
+        rulesError: rules.error?.message,
+        events: events.data || [],
+        eventsError: events.error?.message,
+      });
+    }
+
+    load();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const statusCount = state.rules?.processStatusMaster?.length || 0;
+  const exceptionCount = state.rules?.exceptionMaster?.length || 0;
+  const dropdownCount = state.rules?.dropdownValues?.length || 0;
+  const transitionCount = state.rules?.workflowTransitions?.length || 0;
+
+  return (
+    <div className="be-page">
+      <div className="be-page-header">
+        <p className="be-eyebrow">Operational Module</p>
+        <h1>{title}</h1>
+        <p className="be-muted">
+          Backend-wired module shell for {code}. Uses role-authenticated workflow rules and live events.
+        </p>
+      </div>
+
+      <div className="be-card-grid">
+        <section className="be-card">
+          <h3>Backend User</h3>
+          <p>{state.email || "No active user"}</p>
+        </section>
+
+        <section className="be-card">
+          <h3>Workflow Statuses</h3>
+          <p>{statusCount}</p>
+        </section>
+
+        <section className="be-card">
+          <h3>Exception Rules</h3>
+          <p>{exceptionCount}</p>
+        </section>
+
+        <section className="be-card">
+          <h3>Dropdown Values</h3>
+          <p>{dropdownCount}</p>
+        </section>
+
+        <section className="be-card">
+          <h3>Transitions</h3>
+          <p>{transitionCount}</p>
+        </section>
+      </div>
+
+      <section className="be-panel">
+        <h2>Recent Workflow Events</h2>
+        {state.loading ? (
+          <p className="be-muted">Loading...</p>
+        ) : state.eventsError ? (
+          <p className="be-error">{state.eventsError}</p>
+        ) : state.events?.length ? (
+          <div className="be-table-wrap">
+            <table className="be-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Process</th>
+                  <th>Status</th>
+                  <th>Exception</th>
+                  <th>Pickup</th>
+                  <th>Actor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {state.events.map((event: any) => (
+                  <tr key={event.id}>
+                    <td>{event.created_at ? new Date(event.created_at).toLocaleString() : "-"}</td>
+                    <td>{event.process_type || "-"}</td>
+                    <td>{event.status_code || "-"}</td>
+                    <td>{event.exception_code || "-"}</td>
+                    <td>{event.pickup_id || "-"}</td>
+                    <td>{event.actor_email || event.actor_role || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="be-muted">No workflow events yet.</p>
+        )}
+      </section>
+    </div>
+  );
+}

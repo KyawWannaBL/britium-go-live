@@ -1,0 +1,14 @@
+import React from "react";
+import BulkTemplateWorkbench from "../components/BulkTemplateWorkbench";
+
+export default function DataEntryPage() {
+  return (
+    <BulkTemplateWorkbench
+      module="data_entry"
+      titleEn="Data Entry / Bulk Upload"
+      titleMm="ဒေတာထည့်သွင်းခြင်း / အစုလိုက်တင်ခြင်း"
+      subtitleEn="Select inbound data source, choose the exact Excel template, edit as webform rows, then upload or save bulk load."
+      subtitleMm="အဝင်ဒေတာရင်းမြစ် ရွေးပါ၊ Excel Template ပုံစံ ရွေးပါ၊ Webform Row အဖြစ်ပြင်ပါ၊ ထို့နောက် Upload/Save လုပ်ပါ။"
+    />
+  );
+}

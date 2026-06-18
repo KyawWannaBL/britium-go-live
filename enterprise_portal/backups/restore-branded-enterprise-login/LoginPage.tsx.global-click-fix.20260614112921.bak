@@ -1,0 +1,287 @@
+// @ts-nocheck
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+
+const VIDEO_URL =
+  "https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/background_a93e0a05bfce4d5fa60d226584905742.mp4";
+
+const LOGO_URL =
+  "https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/logo_869b883bce9e40f59d6394b5f754ef08.png";
+
+const YEAR = new Date().getFullYear();
+
+function clearOldAuthStorage() {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("sb-") || key.startsWith("be_") || k.includes("supabase") || k.includes("auth-token")) {
+        localStorage.removeItem(key);
+      }
+    });
+    Object.keys(sessionStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("sb-") || key.startsWith("be_") || k.includes("supabase") || k.includes("auth-token")) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
+
+export default function LoginPage() {
+  console.log("enterprise-login-native-button-fix-20260614");
+
+  const [lang, setLang] = useState("en");
+  const [email, setEmail] = useState(localStorage.getItem("be_login_email") || "sai@britiumexpress.com");
+  const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [errs, setErrs] = useState<any>({});
+  const navigate = useNavigate();
+
+  const t = lang === "en"
+    ? {
+        tagline: "Enterprise Management Portal",
+        portal: "ENTERPRISE PORTAL",
+        login: "Sign In",
+        email: "EMAIL ADDRESS",
+        pw: "PASSWORD",
+        btnLogin: "Sign In to Portal",
+        processing: "Authenticating...",
+        backendOnly: "No frontend role selected. Role, portal, branch, and permissions are assigned by backend email access profile.",
+        footer: "Authorised personnel only",
+      }
+    : {
+        tagline: "စီမံခန့်ခွဲမှု Enterprise Portal",
+        portal: "ENTERPRISE PORTAL",
+        login: "ဝင်ရောက်",
+        email: "အီးမေးလ်",
+        pw: "စကားဝှက်",
+        btnLogin: "Portal ဝင်ရောက်",
+        processing: "အတည်ပြုနေသည်...",
+        backendOnly: "Frontend role မရွေးပါ။ Role, portal, branch နှင့် permissions ကို backend email profile မှ သတ်မှတ်သည်။",
+        footer: "ခွင့်ပြုထားသောဝန်ထမ်းများသာ",
+      };
+
+  async function submit(e?: any) {
+    try {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+    } catch {}
+
+    console.log("ENTERPRISE_LOGIN_CLICKED");
+
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const password = String(pw || "").trim();
+
+    if (!normalizedEmail) {
+      setErrs({ g: "Email is required" });
+      console.warn("ENTERPRISE_LOGIN_BLOCKED_NO_EMAIL");
+      return;
+    }
+
+    if (!password) {
+      setErrs({ g: "Password is required" });
+      console.warn("ENTERPRISE_LOGIN_BLOCKED_NO_PASSWORD");
+      return;
+    }
+
+    setLoading(true);
+    setMsg("Authenticating...");
+    setErrs({});
+
+    try {
+      console.log("ENTERPRISE_LOGIN_SUPABASE_START", normalizedEmail);
+
+      clearOldAuthStorage();
+
+      const signResult = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password,
+      });
+
+      console.log("ENTERPRISE_LOGIN_SUPABASE_RESULT", signResult);
+
+      if (signResult.error) throw signResult.error;
+
+      console.log("ENTERPRISE_LOGIN_ACCESS_RPC_START");
+
+      const accessResult = await supabase.rpc("be_resolve_user_access_by_email", {
+        p_email: normalizedEmail,
+      });
+
+      console.log("ENTERPRISE_LOGIN_ACCESS_RPC_RESULT", accessResult);
+
+      if (accessResult.error) throw accessResult.error;
+
+      const accessData = accessResult.data;
+
+      if (!accessData?.ok) {
+        throw new Error(accessData?.error || "Backend access profile not found for this email.");
+      }
+
+      localStorage.setItem("be_user_authenticated", "true");
+      localStorage.setItem("be_login_email", normalizedEmail);
+      localStorage.setItem("be_user_email", normalizedEmail);
+      localStorage.setItem("be_user_role", accessData.role || "");
+      localStorage.setItem("be_user_portal", accessData.portal || "");
+      localStorage.setItem("be_branch_code", accessData.branch_code || "HQ");
+      localStorage.setItem("be_user_access_profile", JSON.stringify(accessData));
+      localStorage.setItem("be_session_ok", "true");
+
+      setMsg("Access granted. Redirecting...");
+      console.log("ENTERPRISE_LOGIN_SUCCESS_REDIRECTING");
+
+      window.location.href = "/#/dashboard";
+    } catch (err: any) {
+      console.error("ENTERPRISE_LOGIN_FAILED", err);
+      setErrs({ g: err?.message || "Authentication failed" });
+      setMsg("");
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    const btn = document.getElementById("be-enterprise-signin-button");
+    if (!btn) return;
+
+    const nativeClick = (ev: any) => {
+      console.log("ENTERPRISE_LOGIN_NATIVE_DOM_CLICK");
+      submit(ev);
+    };
+
+    btn.addEventListener("click", nativeClick, true);
+
+    window.__beEnterpriseLogin = submit;
+
+    return () => {
+      btn.removeEventListener("click", nativeClick, true);
+    };
+  }, [email, pw]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session && localStorage.getItem("be_user_authenticated") === "true") {
+        navigate("/dashboard", { replace: true });
+      }
+    });
+  }, [navigate]);
+
+  const inp: any = {
+    width: "100%",
+    padding: "13px 14px",
+    border: "1.5px solid #e4e4e7",
+    borderRadius: 10,
+    background: "#fafafa",
+    color: "#18181b",
+    fontSize: 14,
+    fontWeight: 600,
+    outline: "none",
+  };
+
+  return (
+    <div style={{ position: "relative", minHeight: "100vh", width: "100%", overflow: "hidden", fontFamily: "Poppins,Inter,system-ui,sans-serif" }}>
+      <video style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} src={VIDEO_URL} autoPlay muted loop playsInline />
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(140deg,rgba(4,14,28,0.86),rgba(8,22,45,0.72),rgba(6,12,24,0.86))" }} />
+
+      <button
+        type="button"
+        onClick={() => setLang((l) => (l === "en" ? "my" : "en"))}
+        style={{
+          position: "absolute",
+          top: 18,
+          right: 18,
+          zIndex: 30,
+          padding: "8px 14px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,.2)",
+          background: "rgba(255,255,255,.1)",
+          color: "#fff",
+          cursor: "pointer",
+          pointerEvents: "auto",
+        }}
+      >
+        🌐 {lang === "en" ? "မြန်မာ" : "EN"}
+      </button>
+
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20, pointerEvents: "auto" }}>
+        <div style={{ width: "100%", maxWidth: 430, pointerEvents: "auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 26 }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, overflow: "hidden", background: "#fff", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 30px rgba(0,0,0,.35)" }}>
+              <img src={LOGO_URL} alt="Britium Express" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: ".08em", margin: 0 }}>BRITIUM EXPRESS</h1>
+            <p style={{ fontSize: 10, fontWeight: 900, color: "#f59e0b", letterSpacing: ".18em", marginTop: 6, textTransform: "uppercase" }}>{t.tagline}</p>
+          </div>
+
+          <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,.5)", overflow: "hidden", pointerEvents: "auto" }}>
+            <div style={{ padding: 26 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 900, letterSpacing: ".16em" }}>{t.portal}</div>
+                  <h2 style={{ margin: "5px 0 0", color: "#18181b", fontSize: 24, fontWeight: 900 }}>{t.login}</h2>
+                </div>
+                <div style={{ color: "#71717a", fontWeight: 900, fontSize: 12 }}>v2026</div>
+              </div>
+
+              {errs.g && <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, color: "#b91c1c", background: "#fee2e2", fontWeight: 700 }}>{errs.g}</div>}
+              {msg && <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, color: "#166534", background: "#dcfce7", fontWeight: 700 }}>{msg}</div>}
+
+              <form onSubmit={submit} style={{ display: "grid", gap: 15, pointerEvents: "auto" }}>
+                <div>
+                  <label style={{ display: "block", color: "#71717a", fontWeight: 900, fontSize: 11, marginBottom: 6 }}>{t.email}</label>
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} style={inp} type="email" autoComplete="username" />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", color: "#71717a", fontWeight: 900, fontSize: 11, marginBottom: 6 }}>{t.pw}</label>
+                  <div style={{ position: "relative" }}>
+                    <input value={pw} onChange={(e) => setPw(e.target.value)} style={inp} type={showPw ? "text" : "password"} autoComplete="current-password" />
+                    <button type="button" onClick={() => setShowPw((p) => !p)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", cursor: "pointer" }}>
+                      {showPw ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  id="be-enterprise-signin-button"
+                  type="button"
+                  onClick={submit}
+                  onMouseDown={() => console.log("ENTERPRISE_LOGIN_BUTTON_MOUSE_DOWN")}
+                  style={{
+                    width: "100%",
+                    padding: "14px 0",
+                    borderRadius: 12,
+                    border: "none",
+                    background: "#f59e0b",
+                    color: "#1c1917",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    cursor: loading ? "wait" : "pointer",
+                    pointerEvents: "auto",
+                    boxShadow: "0 4px 18px rgba(245,158,11,.32)",
+                  }}
+                >
+                  {loading ? t.processing : t.btnLogin}
+                </button>
+              </form>
+
+              <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, background: "#f8fafc", color: "#475569", fontSize: 12, lineHeight: 1.55, fontWeight: 700 }}>
+                {t.backendOnly}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, padding: "10px 16px", borderRadius: 12, background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.75)", textAlign: "center", fontSize: 11 }}>
+            {t.footer}
+          </div>
+
+          <p style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "rgba(255,255,255,.45)" }}>
+            © {YEAR} Britium Express · Britium Ventures Co., Ltd · All rights reserved
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

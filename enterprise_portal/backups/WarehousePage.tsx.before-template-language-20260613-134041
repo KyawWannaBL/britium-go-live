@@ -1,0 +1,164 @@
+// src/pages/WarehousePage.tsx
+import { useState, useEffect, useRef } from 'react';
+import { warehouseSummary, warehouseList, intakeScan, sortScan, dispatchBatch, WarehouseItem, WarehouseSummary } from '@/lib/warehouseApi';
+
+const G='#D4AF37'; const N='#0A1628';
+type Tab = 'summary' | 'intake' | 'sort' | 'dispatch';
+
+function ScanInput({placeholder, onScan}:{placeholder:string;onScan:(id:string)=>void}){
+  const [val,setVal]=useState('');
+  const ref=useRef<HTMLInputElement>(null);
+  useEffect(()=>{ ref.current?.focus(); },[]);
+  const handleKey=(e:React.KeyboardEvent)=>{ if(e.key==='Enter'&&val.trim()){ onScan(val.trim()); setVal(''); } };
+  return (
+    <div style={{display:'flex',gap:10,marginBottom:16}}>
+      <input ref={ref} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(212,175,55,0.3)',borderRadius:8,padding:'10px 14px',color:'#fff',fontSize:14,outline:'none',fontFamily:'monospace'}} value={val} onChange={e=>setVal(e.target.value)} onKeyDown={handleKey} placeholder={placeholder}/>
+      <button onClick={()=>{if(val.trim()){onScan(val.trim());setVal('');}}} style={{background:G,color:N,border:'none',borderRadius:8,padding:'10px 20px',fontSize:12,fontWeight:700,cursor:'pointer'}}>Scan</button>
+    </div>
+  );
+}
+
+export default function WarehousePage(){
+  const [tab,setTab]=useState<Tab>('summary');
+  const [summary,setSummary]=useState<WarehouseSummary|null>(null);
+  const [items,setItems]=useState<WarehouseItem[]>([]);
+  const [scanned,setScanned]=useState<Array<{id:string;status:'ok'|'error';msg:string}>>([]);
+  const [selectedIds,setSelectedIds]=useState<string[]>([]);
+  const [riderId,setRiderId]=useState('');
+  const [sortZone,setSortZone]=useState('ZONE-A');
+  const [msg,setMsg]=useState('');
+
+  const loadSummary=()=>warehouseSummary().then(setSummary).catch(()=>{});
+  const loadItems=()=>warehouseList(undefined,100).then(setItems).catch(()=>{});
+
+  useEffect(()=>{ loadSummary(); loadItems(); },[]);
+
+  const handleIntake=async(id:string)=>{
+    try{ await intakeScan(id); setScanned(p=>[{id,status:'ok',msg:'Intake OK'},...p.slice(0,19)]); loadSummary(); loadItems(); }
+    catch(e:unknown){ setScanned(p=>[{id,status:'error',msg:e instanceof Error?e.message:'Error'},...p.slice(0,19)]); }
+  };
+  const handleSort=async(id:string)=>{
+    try{ await sortScan(id,sortZone); setScanned(p=>[{id,status:'ok',msg:'Sorted to '+sortZone},...p.slice(0,19)]); loadSummary(); }
+    catch(e:unknown){ setScanned(p=>[{id,status:'error',msg:e instanceof Error?e.message:'Error'},...p.slice(0,19)]); }
+  };
+  const handleDispatch=async()=>{
+    if(!selectedIds.length||!riderId.trim()){ setMsg('Select shipments and enter Rider ID'); return; }
+    try{ const r=await dispatchBatch(selectedIds,riderId); setMsg('Dispatched '+r.dispatched+' shipments to '+riderId); setSelectedIds([]); setRiderId(''); loadSummary(); loadItems(); }
+    catch(e:unknown){ setMsg(e instanceof Error?e.message:'Dispatch failed'); }
+  };
+
+  const TABS:Tab[]=['summary','intake','sort','dispatch'];
+
+  return (
+    <div style={{maxWidth:900,margin:'0 auto',padding:'24px 20px 60px'}}>
+      <div style={{marginBottom:24}}>
+        <h1 style={{fontSize:20,fontWeight:800,color:'#fff',margin:'0 0 3px'}}>Warehouse Operations</h1>
+        <div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>Intake · Sort · Dispatch</div>
+      </div>
+
+      <div style={{display:'flex',gap:4,marginBottom:24}}>
+        {TABS.map(t=>(
+          <button key={t} onClick={()=>setTab(t)} style={{background:tab===t?'rgba(212,175,55,0.12)':'transparent',border:'1px solid '+(tab===t?'rgba(212,175,55,0.3)':'rgba(255,255,255,0.08)'),borderRadius:8,padding:'7px 16px',color:tab===t?G:'rgba(255,255,255,0.5)',fontSize:12,fontWeight:600,cursor:'pointer',textTransform:'capitalize'}}>{t}</button>
+        ))}
+      </div>
+
+      {/* SUMMARY */}
+      {tab==='summary'&&summary&&(
+        <div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:24}}>
+            {[['In Warehouse',summary.in_warehouse,'#60a5fa'],['Pending Sort',summary.pending_sort,'#fbbf24'],['Pending Dispatch',summary.pending_dispatch,'#34d399']].map(([l,v,c])=>(
+              <div key={String(l)} style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:'18px 20px'}}>
+                <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:6}}>{l}</div>
+                <div style={{fontSize:26,fontWeight:800,color:String(c)}}>{Number(v).toLocaleString()}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:'rgba(255,255,255,0.02)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:10,padding:'16px 20px'}}>
+            <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:12,letterSpacing:'0.08em'}}>ZONE BREAKDOWN</div>
+            {(summary.zones??[]).map(z=>(
+              <div key={z.zone} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:'1px solid rgba(255,255,255,0.04)',fontSize:13}}>
+                <span style={{color:'rgba(255,255,255,0.7)'}}>{z.zone}</span>
+                <span style={{color:G,fontWeight:700}}>{z.count} parcels</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* INTAKE */}
+      {tab==='intake'&&(
+        <div>
+          <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'20px 22px',marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#fff',marginBottom:14}}>Scan Pickup ID to mark as received</div>
+            <ScanInput placeholder="P0601-BBK-015 — press Enter or click Scan" onScan={handleIntake}/>
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:8,letterSpacing:'0.06em'}}>SCAN LOG</div>
+          {scanned.map((s,i)=>(
+            <div key={i} style={{display:'flex',gap:12,padding:'8px 12px',borderRadius:8,background:s.status==='ok'?'rgba(34,197,94,0.07)':'rgba(239,68,68,0.07)',marginBottom:6,fontSize:12}}>
+              <span style={{fontFamily:'monospace',color:G}}>{s.id}</span>
+              <span style={{color:s.status==='ok'?'#22c55e':'#f87171'}}>{s.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* SORT */}
+      {tab==='sort'&&(
+        <div>
+          <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'20px 22px',marginBottom:20}}>
+            <div style={{fontSize:13,fontWeight:600,color:'#fff',marginBottom:14}}>Scan to assign to sort zone</div>
+            <div style={{display:'flex',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+              {['ZONE-A','ZONE-B','ZONE-C','ZONE-D','ZONE-E'].map(z=>(
+                <button key={z} onClick={()=>setSortZone(z)} style={{background:sortZone===z?'rgba(212,175,55,0.15)':'rgba(255,255,255,0.05)',border:'1px solid '+(sortZone===z?'rgba(212,175,55,0.4)':'rgba(255,255,255,0.1)'),borderRadius:6,padding:'6px 14px',color:sortZone===z?G:'rgba(255,255,255,0.5)',fontSize:11,fontWeight:600,cursor:'pointer'}}>{z}</button>
+              ))}
+            </div>
+            <ScanInput placeholder="Scan Pickup ID → assign to active zone" onScan={handleSort}/>
+          </div>
+          <div style={{fontSize:11,color:'rgba(255,255,255,0.4)',marginBottom:8,letterSpacing:'0.06em'}}>SCAN LOG</div>
+          {scanned.map((s,i)=>(
+            <div key={i} style={{display:'flex',gap:12,padding:'8px 12px',borderRadius:8,background:s.status==='ok'?'rgba(34,197,94,0.07)':'rgba(239,68,68,0.07)',marginBottom:6,fontSize:12}}>
+              <span style={{fontFamily:'monospace',color:G}}>{s.id}</span>
+              <span style={{color:s.status==='ok'?'#22c55e':'#f87171'}}>{s.msg}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* DISPATCH */}
+      {tab==='dispatch'&&(
+        <div>
+          <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:16,flexWrap:'wrap'}}>
+            <input style={{flex:1,minWidth:180,...{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:12,outline:'none'}}} value={riderId} onChange={e=>setRiderId(e.target.value)} placeholder="Rider / Driver User ID"/>
+            <button onClick={handleDispatch} style={{background:G,color:N,border:'none',borderRadius:8,padding:'9px 22px',fontSize:12,fontWeight:700,cursor:'pointer'}}>Dispatch {selectedIds.length>0?selectedIds.length+' selected':''}</button>
+          </div>
+          {msg&&<div style={{padding:'10px 14px',background:'rgba(212,175,55,0.1)',border:'1px solid rgba(212,175,55,0.25)',borderRadius:8,fontSize:12,color:G,marginBottom:14}}>{msg}</div>}
+          <div style={{overflowX:'auto',borderRadius:10,border:'1px solid rgba(255,255,255,0.07)'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+              <thead>
+                <tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                  <th style={{padding:'8px 10px',width:32}}><input type="checkbox" onChange={e=>setSelectedIds(e.target.checked?items.map(i=>i.pickup_id):[])}/></th>
+                  {['Pickup ID','Merchant','Recipient','Township','Zone','Svc','Weight'].map(h=><th key={h} style={{padding:'8px 10px',color:'rgba(255,255,255,0.4)',textAlign:'left',whiteSpace:'nowrap'}}>{h}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {(items??[]).map(row=>(
+                  <tr key={row.pickup_id} style={{borderBottom:'1px solid rgba(255,255,255,0.04)',background:selectedIds.includes(row.pickup_id)?'rgba(212,175,55,0.06)':'transparent'}}>
+                    <td style={{padding:'6px 10px'}}><input type="checkbox" checked={selectedIds.includes(row.pickup_id)} onChange={e=>setSelectedIds(p=>e.target.checked?[...p,row.pickup_id]:p.filter(x=>x!==row.pickup_id))}/></td>
+                    <td style={{padding:'6px 10px',color:G,fontFamily:'monospace',fontSize:10}}>{row.pickup_id}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.7)'}}>{row.merchant_name}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.7)'}}>{row.recipient_name}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.5)'}}>{row.delivery_township}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.5)'}}>{row.warehouse_location||'INTAKE'}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.5)'}}>{row.service_tier}</td>
+                    <td style={{padding:'6px 10px',color:'rgba(255,255,255,0.5)',textAlign:'right'}}>{row.weight_kg} kg</td>
+                  </tr>
+                ))}
+                {items.length===0&&<tr><td colSpan={8} style={{padding:20,textAlign:'center',color:'rgba(255,255,255,0.25)'}}>No items in warehouse.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

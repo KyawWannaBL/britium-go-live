@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Live Dispatch Wayplan Board</title>
+  <style>
+    body{margin:0;font-family:Arial;background:#020b18;color:#eef8ff;padding:32px}
+    .sub{color:#fbbf24;font-weight:900;letter-spacing:3px}
+    h1{font-size:42px}
+    .card{border:1px solid rgba(56,189,248,.35);background:#071527;border-radius:18px;padding:22px;margin:16px 0}
+    button{border:0;border-radius:14px;background:#f97316;color:white;padding:14px 18px;font-weight:900;cursor:pointer}
+    .ok{color:#86efac;font-weight:900}
+  </style>
+</head>
+<body>
+  <div class="sub">BRITIUM EXPRESS</div>
+  <h1>Live Dispatch Wayplan Board</h1>
+  <div class="card">
+    <div class="ok">REAL PAGE LOADED</div>
+    <p>This is not the dashboard shell. Vercel static file routing is now fixed.</p>
+    <p>Next step is reconnecting the RPC content inside this page.</p>
+  </div>
+  <button onclick="location.href='/?ts=' + Date.now() + '#/dashboard'">Back to Dashboard</button>
+</body>
+</html>

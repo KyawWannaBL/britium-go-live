@@ -1,0 +1,78 @@
+// @ts-nocheck
+import { supabase } from "@/integrations/supabase/client";
+
+const BUCKET = "britium-proof-media";
+
+function safe(v:any, fallback = "NA") {
+  return String(v || fallback).trim().replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 90) || fallback;
+}
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function dataUrlToBlob(dataUrl:string) {
+  const [header, base64] = dataUrl.split(",");
+  const mime = header.match(/data:(.*?);/)?.[1] || "image/jpeg";
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return { blob: new Blob([bytes], { type: mime }), mime, size: bytes.length };
+}
+
+export async function uploadProofDataUrl(args:any) {
+  const { dataUrl, proofScope = "WAREHOUSE", proofType = "PHOTO", pickupId, deliveryWayId, trackingNo, waybillNo, invoiceNo, parcelSequence, parcelReference, merchantCode, merchantName, operatorCode, metadata = {} } = args;
+
+  if (!dataUrl) throw new Error("Proof image is required.");
+
+  const { blob, mime, size } = dataUrlToBlob(dataUrl);
+  const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+  const date = today();
+
+  const path = [
+    safe(proofScope),
+    date,
+    safe(merchantCode || "UNKNOWN_MERCHANT"),
+    safe(pickupId || "NO_PICKUP"),
+    safe(parcelReference || deliveryWayId || trackingNo || waybillNo || "WAREHOUSE_SCAN"),
+    `${safe(proofType)}_${Date.now()}.${ext}`,
+  ].join("/");
+
+  const up = await supabase.storage.from(BUCKET).upload(path, blob, { contentType:mime, cacheControl:"3600", upsert:true });
+  if (up.error) throw up.error;
+
+  const signed = await supabase.storage.from(BUCKET).createSignedUrl(path, 60 * 60 * 24 * 7);
+
+  const payload = {
+    proof_scope: proofScope,
+    proof_type: proofType,
+    process_status: metadata?.warehouse_status || null,
+    exception_code: metadata?.exception_code || null,
+    pickup_id: pickupId || null,
+    canonical_pickup_id: pickupId || null,
+    delivery_way_id: deliveryWayId || null,
+    tracking_no: trackingNo || null,
+    waybill_no: waybillNo || null,
+    invoice_no: invoiceNo || null,
+    parcel_sequence: parcelSequence || null,
+    parcel_reference: parcelReference || null,
+    merchant_code: merchantCode || null,
+    merchant_name: merchantName || null,
+    storage_bucket: BUCKET,
+    storage_path: path,
+    signed_url: signed.data?.signedUrl || "",
+    mime_type: mime,
+    file_size_bytes: size,
+    captured_by_role: "warehouse",
+    captured_by_code: operatorCode || null,
+    source_app: "ENTERPRISE_PORTAL",
+    business_date: date,
+    captured_at: new Date().toISOString(),
+    metadata,
+  };
+
+  const { data, error } = await supabase.rpc("be_record_parcel_proof_media", { p_payload: payload });
+  if (error) throw error;
+
+  return { ok:true, path, signedUrl:signed.data?.signedUrl || "", dataUrl, record:data?.proof_media || data };
+}

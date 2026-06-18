@@ -1,0 +1,635 @@
+import React, { FormEvent, useEffect, useMemo, useState } from "react";
+import { BrowserRouter, Navigate, NavLink, Route, Routes, useNavigate } from "react-router-dom";
+import { supabase } from "./integrations/supabase/client";
+import GenericRolePortalPage from "./pages/GenericRolePortalPage";
+import P0 from "./pages/DashboardPage";
+import P1 from "./pages/PickupFormPage";
+import P2 from "./pages/CustomerServicePortalPage";
+import P3 from "./pages/WayplanCommandCenterPage";
+import P4 from "./pages/SupervisorPortalPage";
+import P5 from "./pages/SupervisorPickupAssignmentGoLivePage";
+import P6 from "./pages/DataEntryPage";
+import P7 from "./pages/WarehousePage";
+import P8 from "./pages/DispatchPage";
+import P9 from "./pages/BranchOfficePage";
+import P10 from "./pages/FinancePortalPage";
+import P11 from "./pages/CODSettlementPage";
+import P12 from "./pages/WaybillStudioPage";
+import P13 from "./pages/MerchantPortalPage";
+import P14 from "./pages/CustomerPortalPage";
+import P15 from "./pages/MarketingPortalPage";
+import P16 from "./pages/BizDevPage";
+import P17 from "./pages/OpsManagerPage";
+import P18 from "./pages/RiderPage";
+import P19 from "./pages/MasterDataPage";
+import P20 from "./pages/ExceptionsPage";
+import P21 from "./pages/AnalyticsPage";
+import P22 from "./pages/AccountsPage";
+import P23 from "./pages/TariffPage";
+import P24 from "./pages/SettingsPage";
+import P25 from "./pages/ProfilePage";
+import LanguageToggle from "./components/LanguageToggle";
+
+type AccessProfile = {
+  ok?: boolean;
+  email?: string;
+  display_name?: string;
+  role?: string;
+  portal?: string;
+  branch_code?: string;
+  redirect_path?: string;
+  permissions?: any;
+};
+
+const navItems = [
+  { label: "Dashboard", icon: "📊", path: "/dashboard", code: "dashboard" },
+  { label: "Create Delivery", icon: "📦", path: "/create-delivery", code: "create_delivery" },
+  { label: "Customer Service Portal", icon: "🎧", path: "/cs-portal", code: "customer_service" },
+  { label: "Way Management", icon: "🗺️", path: "/way-management", code: "way_management" },
+  { label: "Supervisor Hub", icon: "🧑‍💼", path: "/supervisor", code: "supervisor" },
+  { label: "Pickup Assignment", icon: "✅", path: "/supervisor/assignment", code: "pickup_assignment" },
+  { label: "Data Entry", icon: "📁", path: "/data-entry", code: "data_entry" },
+  { label: "Warehouse Ops", icon: "🏭", path: "/warehouse", code: "warehouse" },
+  { label: "Dispatch Center", icon: "🚚", path: "/dispatch", code: "dispatch" },
+  { label: "Branch Office", icon: "🏢", path: "/branch-office", code: "branch_office" },
+  { label: "Finance Portal", icon: "💰", path: "/finance", code: "finance" },
+  { label: "COD Settlement", icon: "💵", path: "/cod-settlement", code: "cod_settlement" },
+  { label: "Waybill & Invoice", icon: "🏷️", path: "/waybill-invoice", code: "waybill_invoice" },
+  { label: "Merchant Portal", icon: "🏪", path: "/merchant-portal", code: "merchant" },
+  { label: "Customer Portal", icon: "👤", path: "/customer-portal", code: "customer" },
+  { label: "Marketing", icon: "📣", path: "/marketing", code: "marketing" },
+  { label: "Business Development", icon: "🤝", path: "/business-development", code: "business_development" },
+  { label: "Operations Manager", icon: "🧭", path: "/ops-manager", code: "ops_manager" },
+  { label: "Rider / Driver / Helper Ops", icon: "🏍️", path: "/rider-ops", code: "rider_ops" },
+  { label: "Master Data", icon: "🗂️", path: "/master-data", code: "master_data" },
+  { label: "Exceptions", icon: "⚠️", path: "/exceptions", code: "exceptions" },
+  { label: "Reporting", icon: "📈", path: "/reporting", code: "reporting" },
+  { label: "Accounts / HR", icon: "👥", path: "/accounts", code: "accounts" },
+  { label: "Tariff", icon: "🧾", path: "/tariff", code: "tariff" },
+  { label: "Settings", icon: "⚙️", path: "/settings", code: "settings" },
+  { label: "Profile", icon: "🙋", path: "/profile", code: "profile" }
+];
+
+const roleRoute: Record<string, string> = {
+  superadmin: "/dashboard",
+  admin: "/dashboard",
+  customer_service: "/cs-portal",
+  cs: "/cs-portal",
+  supervisor: "/supervisor",
+  dispatch: "/dispatch",
+  dispatcher: "/dispatch",
+  wayplan: "/way-management",
+  warehouse: "/warehouse",
+  warehouse_staff: "/warehouse",
+  data_entry: "/data-entry",
+  finance: "/finance",
+  accounting: "/finance",
+  cashier: "/finance",
+  branch_office_manager: "/branch-office",
+  branch_manager: "/branch-office",
+  branch_admin: "/branch-office",
+  marketing: "/marketing",
+  business_development_manager: "/business-development",
+  bdm: "/business-development",
+  merchant: "/merchant-portal",
+  customer: "/customer-portal",
+  rider: "/rider-ops",
+  driver: "/rider-ops",
+  helper: "/rider-ops"
+};
+
+function saveProfile(profile: AccessProfile) {
+  localStorage.setItem("be_user_authenticated", "YES");
+  localStorage.setItem("be_user_access_profile", JSON.stringify(profile || {}));
+  localStorage.setItem("be_user_email", profile.email || "");
+  localStorage.setItem("be_user_role", profile.role || "");
+  localStorage.setItem("be_user_portal", profile.portal || "");
+  localStorage.setItem("be_branch_code", profile.branch_code || "");
+}
+
+function readProfile(): AccessProfile | null {
+  try {
+    return JSON.parse(localStorage.getItem("be_user_access_profile") || "null");
+  } catch {
+    return null;
+  }
+}
+
+async function resolveAccess(email: string): Promise<AccessProfile> {
+  const { data, error } = await supabase.rpc("be_resolve_user_access_by_email", {
+    p_email: email.toLowerCase().trim()
+  });
+
+  if (error) throw error;
+
+  const profile = data as AccessProfile;
+
+  if (!profile || profile.ok === false) {
+    throw new Error("This user is authenticated but not mapped in be_user_account_registry.");
+  }
+
+  saveProfile(profile);
+  return profile;
+}
+
+function LoginPage() {
+  const navigate = useNavigate();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+
+    try {
+      const cleanEmail = email.toLowerCase().trim();
+
+      const auth = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password
+      });
+
+      if (auth.error) throw auth.error;
+
+      const profile = await resolveAccess(cleanEmail);
+      navigate(profile.redirect_path || roleRoute[(profile.role || "").toLowerCase()] || "/dashboard", { replace: true });
+    } catch (err: any) {
+      await supabase.auth.signOut();
+      localStorage.removeItem("be_user_authenticated");
+      localStorage.removeItem("be_user_access_profile");
+      setError(err?.message || "Login failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="be-login">
+      <form className="be-login-card" onSubmit={submit}>
+        <div className="be-logo">BE</div>
+        <p className="be-eyebrow">Backend Role Login</p>
+        <h1>Britium Enterprise Portal</h1>
+        <p className="be-muted">
+          Sign in with email and password. The backend assigns role, portal, branch, and access.
+        </p>
+
+        {error && <div className="be-alert">{error}</div>}
+
+        <label>Email</label>
+        <input value={email} onChange={e => setEmail(e.target.value)} placeholder="you@britiumexpress.com" autoComplete="email" />
+
+        <label>Password</label>
+        <input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" />
+
+        <button disabled={busy} type="submit">
+          {busy ? "Signing in..." : "Sign in"}
+        </button>
+      </form>
+    </main>
+  );
+}
+
+function Shell() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+  const [profile, setProfile] = useState<AccessProfile | null>(readProfile());
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+
+    async function init() {
+      const session = await supabase.auth.getSession();
+      const userEmail = session.data.session?.user?.email || "";
+
+      if (!userEmail) {
+        if (alive) setLoading(false);
+        return;
+      }
+
+      try {
+        const resolved = await resolveAccess(userEmail);
+        if (alive) {
+          setProfile(resolved);
+          setError("");
+        }
+      } catch (err: any) {
+        if (alive) setError(err?.message || "Access profile failed to load");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    init();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const filteredNav = useMemo(() => {
+    const role = (profile?.role || "").toLowerCase();
+
+    if (["superadmin", "admin"].includes(role)) return navItems;
+
+    const allowByRole: Record<string, string[]> = {
+      customer_service: ["dashboard", "customer_service", "create_delivery", "way_management", "exceptions", "reporting"],
+      cs: ["dashboard", "customer_service", "create_delivery", "way_management", "exceptions", "reporting"],
+      supervisor: ["dashboard", "supervisor", "pickup_assignment", "rider_ops", "exceptions", "reporting"],
+      dispatch: ["dashboard", "dispatch", "way_management", "rider_ops", "exceptions", "reporting"],
+      dispatcher: ["dashboard", "dispatch", "way_management", "rider_ops", "exceptions", "reporting"],
+      warehouse: ["dashboard", "warehouse", "exceptions", "reporting"],
+      warehouse_staff: ["dashboard", "warehouse", "exceptions", "reporting"],
+      data_entry: ["dashboard", "data_entry", "waybill_invoice", "exceptions"],
+      finance: ["dashboard", "finance", "cod_settlement", "waybill_invoice", "reporting"],
+      cashier: ["dashboard", "finance", "cod_settlement"],
+      branch_office_manager: ["dashboard", "branch_office", "warehouse", "dispatch", "reporting"],
+      branch_manager: ["dashboard", "branch_office", "warehouse", "dispatch", "reporting"],
+      marketing: ["dashboard", "marketing", "merchant", "reporting"],
+      business_development_manager: ["dashboard", "business_development", "merchant", "reporting"],
+      bdm: ["dashboard", "business_development", "merchant", "reporting"],
+      merchant: ["merchant"],
+      customer: ["customer"],
+      rider: ["rider_ops"],
+      driver: ["rider_ops"],
+      helper: ["rider_ops"]
+    };
+
+    const allowed = allowByRole[role];
+    if (!allowed) return navItems.filter(item => item.code === "dashboard" || item.code === "profile");
+
+    return navItems.filter(item => allowed.includes(item.code) || item.code === "profile");
+  }, [profile]);
+
+  async function signOut() {
+    await supabase.auth.signOut();
+    localStorage.clear();
+    navigate("/login", { replace: true });
+  }
+
+  if (loading) {
+    return <div className="be-loading">Loading Britium Enterprise Portal...</div>;
+  }
+
+  return (
+    <div className="be-app">
+      <aside className="be-sidebar">
+        <div className="be-brand">
+          <div className="be-logo">BE</div>
+          <div>
+            <strong>Britium Express</strong>
+            <span>Enterprise Portal</span>
+          </div>
+        </div>
+
+        <nav>
+          {filteredNav.map(item => (
+            <NavLink key={item.path} to={item.path} className={({ isActive }) => isActive ? "active" : ""}>
+              <span>{item.icon}</span>
+              <b>{item.label}</b>
+            </NavLink>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="be-main">
+        <header className="be-topbar">
+          <div>
+            <p className="be-eyebrow">Britium Express UAT Portal</p>
+            <h1>Enterprise Operations</h1>
+          </div>
+
+          <div className="be-user">
+            <strong>{profile?.email || localStorage.getItem("be_user_email") || "unknown"}</strong>
+            <span>{profile?.role || "unmapped"} · {profile?.portal || "-"} · {profile?.branch_code || "-"}</span>
+            <LanguageToggle />
+            <button onClick={signOut}>Sign out</button>
+          </div>
+        </header>
+
+        {error && <div className="be-alert">{error}</div>}
+
+        <section className="be-content">
+          <Routes>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/login" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/dashboard" element={<P0 />} />
+          <Route path="/create-delivery" element={<P1 />} />
+          <Route path="/cs-portal" element={<P2 />} />
+          <Route path="/way-management" element={<P3 />} />
+          <Route path="/supervisor" element={<P4 />} />
+          <Route path="/supervisor/assignment" element={<P5 />} />
+          <Route path="/data-entry" element={<P6 />} />
+          <Route path="/warehouse" element={<P7 />} />
+          <Route path="/dispatch" element={<P8 />} />
+          <Route path="/branch-office" element={<P9 />} />
+          <Route path="/finance" element={<P10 />} />
+          <Route path="/cod-settlement" element={<P11 />} />
+          <Route path="/waybill-invoice" element={<P12 />} />
+          <Route path="/merchant-portal" element={<P13 />} />
+          <Route path="/customer-portal" element={<P14 />} />
+          <Route path="/marketing" element={<P15 />} />
+          <Route path="/business-development" element={<P16 />} />
+          <Route path="/ops-manager" element={<P17 />} />
+          <Route path="/rider-ops" element={<P18 />} />
+          <Route path="/master-data" element={<P19 />} />
+          <Route path="/exceptions" element={<P20 />} />
+          <Route path="/reporting" element={<P21 />} />
+          <Route path="/accounts" element={<P22 />} />
+          <Route path="/tariff" element={<P23 />} />
+          <Route path="/settings" element={<P24 />} />
+          <Route path="/profile" element={<P25 />} />
+            <Route path="*" element={<GenericRolePortalPage title="Screen Not Found" code="not_found" />} />
+          </Routes>
+        </section>
+      </main>
+    </div>
+  );
+}
+
+function Gate() {
+  const [ready, setReady] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setHasSession(Boolean(data.session));
+      setReady(true);
+    });
+  }, []);
+
+  if (!ready) return <div className="be-loading">Checking session...</div>;
+
+  return hasSession ? <Shell /> : <LoginPage />;
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Gate />
+      <style>{`
+        :root {
+          --be-bg: #07111f;
+          --be-panel: rgba(15, 29, 51, 0.92);
+          --be-card: rgba(18, 34, 58, 0.92);
+          --be-border: rgba(255, 255, 255, 0.1);
+          --be-gold: #e4b72e;
+          --be-text: #f8fafc;
+          --be-muted: #94a3b8;
+          --be-danger: #ff4d4f;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+          margin: 0;
+          background: radial-gradient(circle at top, #10223d 0, #07111f 45%, #040812 100%);
+          color: var(--be-text);
+          font-family: Inter, Poppins, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        }
+
+        .be-app {
+          min-height: 100vh;
+          display: grid;
+          grid-template-columns: 300px minmax(0, 1fr);
+        }
+
+        .be-sidebar {
+          background: rgba(6, 13, 25, 0.96);
+          border-right: 1px solid var(--be-border);
+          padding: 24px 18px;
+          position: sticky;
+          top: 0;
+          height: 100vh;
+          overflow: auto;
+        }
+
+        .be-brand {
+          display: flex;
+          align-items: center;
+          gap: 14px;
+          margin-bottom: 26px;
+        }
+
+        .be-logo {
+          width: 54px;
+          height: 54px;
+          border-radius: 16px;
+          background: linear-gradient(135deg, #facc15, #b8870f);
+          color: #06111f;
+          display: grid;
+          place-items: center;
+          font-weight: 950;
+          box-shadow: 0 14px 34px rgba(228, 183, 46, 0.2);
+        }
+
+        .be-brand strong { display: block; font-size: 20px; }
+        .be-brand span { color: var(--be-muted); font-size: 13px; }
+
+        nav {
+          display: grid;
+          gap: 8px;
+        }
+
+        nav a {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 12px 14px;
+          border-radius: 14px;
+          color: #dbeafe;
+          text-decoration: none;
+          border: 1px solid transparent;
+        }
+
+        nav a.active, nav a:hover {
+          background: rgba(228, 183, 46, 0.12);
+          border-color: rgba(228, 183, 46, 0.35);
+          color: #fff;
+        }
+
+        nav a span { width: 24px; text-align: center; }
+        nav a b { font-size: 14px; }
+
+        .be-main {
+          min-width: 0;
+        }
+
+        .be-topbar {
+          min-height: 118px;
+          padding: 28px 32px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          gap: 20px;
+          background: rgba(7, 18, 35, 0.95);
+          border-bottom: 1px solid var(--be-border);
+        }
+
+        .be-eyebrow {
+          color: #facc15;
+          letter-spacing: 0.16em;
+          text-transform: uppercase;
+          font-size: 12px;
+          font-weight: 900;
+          margin: 0 0 8px;
+        }
+
+        h1 { margin: 0; font-size: 30px; }
+        h2 { margin: 0 0 16px; }
+        h3 { margin: 0 0 8px; }
+
+        .be-user {
+          display: grid;
+          gap: 4px;
+          justify-items: end;
+          color: #e2e8f0;
+        }
+
+        .be-user span, .be-muted {
+          color: var(--be-muted);
+        }
+
+        button {
+          border: 0;
+          border-radius: 12px;
+          background: var(--be-gold);
+          color: #07111f;
+          font-weight: 900;
+          padding: 10px 16px;
+          cursor: pointer;
+        }
+
+        .be-content {
+          padding: 28px 32px 60px;
+        }
+
+        .be-alert {
+          margin: 20px 32px 0;
+          padding: 14px 18px;
+          border: 1px solid rgba(228, 183, 46, 0.45);
+          border-radius: 14px;
+          background: rgba(60, 35, 35, 0.55);
+          color: #facc15;
+        }
+
+        .be-page-header {
+          margin-bottom: 24px;
+        }
+
+        .be-card-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+
+        .be-card, .be-panel {
+          background: var(--be-card);
+          border: 1px solid var(--be-border);
+          border-radius: 18px;
+          padding: 20px;
+          box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+        }
+
+        .be-card p {
+          font-size: 24px;
+          font-weight: 950;
+          margin: 0;
+        }
+
+        .be-table-wrap {
+          overflow: auto;
+        }
+
+        .be-table {
+          width: 100%;
+          border-collapse: collapse;
+          min-width: 720px;
+        }
+
+        .be-table th, .be-table td {
+          text-align: left;
+          padding: 12px;
+          border-bottom: 1px solid var(--be-border);
+        }
+
+        .be-table th {
+          color: #facc15;
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.08em;
+        }
+
+        .be-error {
+          color: var(--be-danger);
+        }
+
+        .be-login {
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          padding: 24px;
+        }
+
+        .be-login-card {
+          width: min(440px, 100%);
+          background: rgba(6, 13, 25, 0.96);
+          border: 1px solid var(--be-border);
+          border-radius: 24px;
+          padding: 28px;
+          box-shadow: 0 30px 90px rgba(0,0,0,0.45);
+          display: grid;
+          gap: 14px;
+        }
+
+        .be-login-card label {
+          font-weight: 800;
+          color: #cbd5e1;
+          font-size: 13px;
+        }
+
+        .be-login-card input {
+          width: 100%;
+          padding: 13px 14px;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.14);
+          background: rgba(15, 29, 51, 0.96);
+          color: #fff;
+          outline: none;
+        }
+
+        .be-loading {
+          min-height: 100vh;
+          display: grid;
+          place-items: center;
+          color: #facc15;
+          font-weight: 900;
+        }
+
+        @media (max-width: 900px) {
+          .be-app {
+            grid-template-columns: 1fr;
+          }
+
+          .be-sidebar {
+            position: static;
+            height: auto;
+          }
+
+          .be-topbar {
+            align-items: flex-start;
+            flex-direction: column;
+          }
+
+          .be-user {
+            justify-items: start;
+          }
+        }
+      `}</style>
+    </BrowserRouter>
+  );
+}

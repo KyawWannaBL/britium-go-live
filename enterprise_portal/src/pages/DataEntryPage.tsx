@@ -1,225 +1,296 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { Archive, BarChart2, CheckCheck, CheckCircle2, DollarSign, Download, FileText, Layers, Loader2, Package, Printer, RefreshCw, Scan, Search, Sparkles, Tag, Truck, X } from 'lucide-react'
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Bell, FileSpreadsheet, Loader2, Plus, RefreshCw, Save, Trash2, AlertCircle, CheckCircle2, Package } from 'lucide-react';
 
-type Language = 'EN' | 'MM'
+const C = { bg: '#061524', panel: '#0b2236', panel2: '#081b2e', panelHover: '#0f2a42', border: '#1a3a5c', gold: '#f6b84b', error: '#ff4f86', success: '#22c55e', info: '#38bdf8', text: '#eef8ff', muted: '#4d7a9b' };
 
-interface ParcelRow {
-  id: string
-  tracking_no: string | null
-  pickup_id?: string | null
-  invoice_no?: string | null
-  merchant_name?: string | null
-  recipient_name: string | null
-  recipient_phone: string | null
-  delivery_address: string | null
-  delivery_township: string | null
-  cod_amount: number | null
-  status: string | null
-  created_at: string | null
-  weight_kg: number | null
-  item_value: number | null
-  payment_method: string | null
+interface RegisterRow {
+  row_id: string; waybill_no: string; recipient_name: string; recipient_phone: string;
+  delivery_township: string; delivery_address: string; weight_kg: string; item_price: string;
+  delivery_fee: string; cod_amount: string; remarks: string;
 }
 
-interface SupabaseResult<T> { data: T[] | null; error: Error | null }
-interface QueryChain<T> extends PromiseLike<SupabaseResult<T>> {
-  select: (columns?: string) => QueryChain<T>
-  order: (column: string, options?: { ascending?: boolean }) => QueryChain<T>
-  limit: (count: number) => QueryChain<T>
-}
+const generateId = () => typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 11);
 
-const PREVIEW_ROWS: ParcelRow[] = [
-  { id:'1', tracking_no:'WB-0611-BVE-001', pickup_id:'P0611-BVE-001', invoice_no:'INV-20260611-BVE', merchant_name:'Britium Ventures', recipient_name:'Daw Hnin', recipient_phone:'09970000001', delivery_address:'North Dagon, Yangon', delivery_township:'North Dagon', cod_amount:45000, status:'Printed', created_at:new Date().toISOString(), weight_kg:1.4, item_value:45000, payment_method:'COD' },
-  { id:'2', tracking_no:'WB-0611-MSY-002', pickup_id:'P0611-MSY-002', invoice_no:'INV-20260611-MSY', merchant_name:'Mega Store Yangon', recipient_name:'Ko Min', recipient_phone:'09970000002', delivery_address:'Sanchaung, Yangon', delivery_township:'Sanchaung', cod_amount:0, status:'Picked Up', created_at:new Date().toISOString(), weight_kg:0.8, item_value:18000, payment_method:'PREPAID' },
-  { id:'3', tracking_no:'WB-0611-FHB-003', pickup_id:'P0611-FHB-003', invoice_no:'INV-20260611-FHB', merchant_name:'Fashion Hub', recipient_name:'Ma Thiri', recipient_phone:'09970000003', delivery_address:'Hlaing, Yangon', delivery_township:'Hlaing', cod_amount:72500, status:'Finance Pending', created_at:new Date().toISOString(), weight_kg:2.2, item_value:72500, payment_method:'COD' },
-]
+export default function DataEntryPage() {
+  const { t } = useLanguage();
+  const [pickups, setPickups] = useState<any[]>([]);
+  const [tariffs, setTariffs] = useState<any[]>([]);
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [selectedPickupId, setSelectedPickupId] = useState("");
+  const [rows, setRows] = useState<RegisterRow[]>([]);
+  
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-const createPreviewChain = <T,>(rows: T[]): QueryChain<T> => {
-  const promise = Promise.resolve<SupabaseResult<T>>({ data: rows, error: null })
-  const chain = {
-    select: () => chain,
-    order: () => chain,
-    limit: () => chain,
-    then: promise.then.bind(promise),
-  } as QueryChain<T>
-  return chain
-}
+  const showMessage = useCallback((text: string, type: 'success' | 'error' | 'info') => {
+    setMessage({ text, type });
+    setTimeout(() => setMessage(null), 5000);
+  }, []);
 
-const supabase = { from: (_table: string) => createPreviewChain<ParcelRow>(PREVIEW_ROWS) }
-
-const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
-const FF = { body:"'Poppins',Inter,system-ui,sans-serif", sub:"'Helvetica Neue',Helvetica,Arial,sans-serif" }
-
-const TRANSLATIONS = {
-  EN: {
-    title: 'Waybill Studio',
-    subtitle: 'Label generation · Print queue · Pipeline tracking · Network usage',
-    refresh: 'Refresh',
-    kpiLoaded: 'Loaded Rows', kpiFiltered: 'Filtered Queue', kpiPrinted: 'Printed Status', kpiOpen: 'Open COD Rows', kpiTotal: 'Queue COD Total',
-    plTitle: 'Waybill Status Pipeline',
-    closeTitle: 'Waybill Close Conditions',
-    closeDesc: 'All 8 conditions must be satisfied before Finance can lock and close a waybill.',
-    fieldTitle: 'Waybill Fields',
-    pqTitle: 'Print Queue',
-    searchPh: 'Search waybills…',
-    btnPrint: 'Print', btnCsv: 'CSV', btnStrategy: 'Print Strategy',
-    thNo: '#', thTrack: 'Tracking No', thRecip: 'Recipient Name', thStat: 'Status', thAdd: 'Delivery Address', thPh: 'Phone', thCod: 'COD Amount', thAct: 'Actions',
-    msgLoading: 'Loading waybills…',
-    msgEmptyTitle: 'No waybills in print queue',
-    msgEmptySub: 'Try adjusting your search or generate waybills from a pickup request.',
-    netTitle: 'Waybill Usage Across Network',
-    netDesc: 'Every waybill follows the same network lifecycle. The waybill number and paired invoice number are scanned and validated at each stage.',
-    strategyTitle: 'Batch Optimization Briefing',
-  },
-  MM: {
-    title: 'လမ်းညွှန်စာရွက် လုပ်ငန်းခွင်',
-    subtitle: 'တံဆိပ်ထုတ်လုပ်ခြင်း · ပရင့်ထုတ်မည့်စာရင်း · လုပ်ငန်းစဉ် ခြေရာခံခြင်း',
-    refresh: 'ပြန်လည်ဆန်းသစ်ရန်',
-    kpiLoaded: 'မှတ်တမ်းများ', kpiFiltered: 'စစ်ထုတ်ထားသောစာရင်း', kpiPrinted: 'ပရင့်ထုတ်ပြီး', kpiOpen: 'ကျန်ရှိသော COD', kpiTotal: 'စုစုပေါင်း COD',
-    plTitle: 'လမ်းညွှန်စာရွက် အခြေအနေ လုပ်ငန်းစဉ်',
-    closeTitle: 'လမ်းညွှန်စာရွက် ပိတ်သိမ်းရန် သတ်မှတ်ချက်များ',
-    closeDesc: 'ငွေကြေးဌာနမှ အပြီးသတ်ပိတ်သိမ်းရန်အတွက် အချက် ၈ ချက်စလုံး ပြည့်စုံရမည်။',
-    fieldTitle: 'အချက်အလက် ကွက်လပ်များ',
-    pqTitle: 'ပရင့်ထုတ်မည့် စာရင်း',
-    searchPh: 'ရှာဖွေရန်…',
-    btnPrint: 'ပရင့်ထုတ်မည်', btnCsv: 'CSV', btnStrategy: 'ပရင့် ဗျူဟာ',
-    thNo: 'စဉ်', thTrack: 'ခြေရာခံအမှတ်', thRecip: 'လက်ခံမည့်သူ', thStat: 'အခြေအနေ', thAdd: 'လိပ်စာ', thPh: 'ဖုန်း', thCod: 'COD ပမာဏ', thAct: 'လုပ်ဆောင်ချက်',
-    msgLoading: 'ဆွဲယူနေပါသည်…',
-    msgEmptyTitle: 'ပရင့်ထုတ်ရန် မရှိပါ',
-    msgEmptySub: 'ရှာဖွေမှုကို ပြောင်းလဲကြည့်ပါ သို့မဟုတ် အသစ်ဖန်တီးပါ။',
-    netTitle: 'ကွန်ရက်အတွင်း အသုံးပြုမှုများ',
-    netDesc: 'လမ်းညွှန်စာရွက်တိုင်းသည် တူညီသော လုပ်ငန်းစဉ်ကို ဖြတ်သန်းရပြီး အဆင့်တိုင်းတွင် စကင်န်ဖတ်၍ စစ်ဆေးအတည်ပြုသည်။',
-    strategyTitle: 'အုပ်စုဖွဲ့ ပရင့်ထုတ်မှု အကြံပြုချက်',
-  },
-}
-
-type Translation = typeof TRANSLATIONS.EN
-
-const WAYBILL_STATUSES = [
-  { key:'Printed', color:'#9ca3af', bg:'rgba(156,163,175,0.15)' },
-  { key:'Picked Up', color:'#60a5fa', bg:'rgba(96,165,250,0.15)' },
-  { key:'Received', color:'#2dd4bf', bg:'rgba(45,212,191,0.15)' },
-  { key:'In Warehouse', color:'#818cf8', bg:'rgba(129,140,248,0.15)' },
-  { key:'Sorting', color:'#c084fc', bg:'rgba(192,132,252,0.15)' },
-  { key:'Bagged', color:'#e879f9', bg:'rgba(232,121,249,0.15)' },
-  { key:'Dispatched', color:'#22d3ee', bg:'rgba(34,211,238,0.15)' },
-  { key:'Out for Delivery', color:'#fbbf24', bg:'rgba(251,191,36,0.15)' },
-  { key:'Delivered', color:'#34d399', bg:'rgba(52,211,153,0.15)' },
-  { key:'Failed Attempt', color:'#f87171', bg:'rgba(248,113,113,0.15)' },
-  { key:'Returned', color:'#fbbf24', bg:'rgba(251,191,36,0.12)' },
-  { key:'Finance Pending', color:'#fb923c', bg:'rgba(251,146,60,0.15)' },
-  { key:'Closed', color:'#10b981', bg:'rgba(16,185,129,0.15)' },
-]
-
-const CLOSE_CONDITIONS = ['Shipment delivered, returned, or cancelled', 'POD or failure proof captured and validated', 'COD status = Settled or Not Applicable', 'Rider handover verified', 'Merchant settlement generated or Not Required', 'Invoice status = Issued, Paid, or On Hold', 'No unresolved warehouse exceptions', 'Finance locked the waybill record']
-const WAYBILL_FIELDS = ['Waybill No', 'Pickup ID', 'Deliver ID', 'Invoice No', 'Merchant ID', 'Sender', 'Receiver', 'Pickup Address', 'Delivery Address']
-const NETWORK_USES = [
-  { icon:Tag, label:'Label Printing', color:'#60a5fa' }, { icon:Scan, label:'Warehouse Scanning', color:'#34d399' }, { icon:Archive, label:'Bag Scan / Dispatch', color:'#c084fc' }, { icon:Truck, label:'Rider Delivery', color:'#fbbf24' }, { icon:DollarSign, label:'COD Collection', color:'#F5C842' }, { icon:CheckCheck, label:'POD Validation', color:'#2dd4bf' }, { icon:FileText, label:'Invoice Matching', color:'#fb923c' }, { icon:BarChart2, label:'Merchant Settlement', color:'#e879f9' }, { icon:Layers, label:'Audit Trail', color:'#94a3b8' },
-]
-
-function fmtCOD(n: number | null | undefined) { return n == null || n === 0 ? '—' : Number(n).toLocaleString() }
-function statusStyle(raw: string | null | undefined) {
-  const key = String(raw ?? '').toLowerCase().replace(/_/g, ' ')
-  const match = WAYBILL_STATUSES.find(s => s.key.toLowerCase() === key)
-  return match ? { bg:match.bg, color:match.color } : { bg:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.55)' }
-}
-
-function localPrintStrategy(rows: ParcelRow[], t: Translation): string {
-  if (rows.length === 0) return `${t.strategyTitle}: No waybills are queued. Generate labels after pickup request validation.`
-  const byTownship = rows.reduce<Record<string, number>>((acc, row) => {
-    const key = row.delivery_township ?? 'Unknown'
-    acc[key] = (acc[key] ?? 0) + 1
-    return acc
-  }, {})
-  const top = Object.entries(byTownship).sort((a, b) => b[1] - a[1])[0]
-  const codRows = rows.filter(row => Number(row.cod_amount ?? 0) > 0).length
-  return `Print ${rows.length} waybill(s) by township batch first. Highest queue: ${top?.[0] ?? 'N/A'} (${top?.[1] ?? 0}). Keep COD labels (${codRows}) in a separate tray for finance visibility, then hand warehouse scanning the same township order to speed bagging.`
-}
-
-function downloadCsv(rows: ParcelRow[]) {
-  const headers = ['tracking_no','pickup_id','invoice_no','merchant_name','recipient_name','recipient_phone','delivery_township','cod_amount','status']
-  const body = rows.map(row => headers.map(key => JSON.stringify(String(row[key as keyof ParcelRow] ?? ''))).join(',')).join('\n')
-  const blob = new Blob([headers.join(',') + '\n' + body], { type:'text/csv;charset=utf-8' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `waybill-print-queue-${new Date().toISOString().slice(0,10)}.csv`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
-function WaybillLabel({ row }: { row: ParcelRow }) {
-  const tracking = row.tracking_no ?? 'BE-000000'
-  return (
-    <div style={{ width:'105mm', minHeight:'148mm', background:'#fff', border:'1px solid #ddd', fontFamily:"'Helvetica Neue', Helvetica, Arial, sans-serif", fontSize:11, color:'#111', boxSizing:'border-box', padding:'3mm 4mm', display:'flex', flexDirection:'column' }}>
-      <div style={{ display:'flex', alignItems:'flex-start', gap:8, paddingBottom:'3mm' }}>
-        <div style={{ width:38, height:38, borderRadius:'50%', background:'#0A1628' }} />
-        <div style={{ flex:1 }}><p style={{ fontSize:13, fontWeight:700, margin:0 }}>BRITIUM EXPRESS</p><p style={{ fontSize:9, margin:'2px 0 0' }}>Delivery Service</p><p style={{ fontSize:9, margin:'2px 0 0', color:'#444' }}>HotLine : +95-9-897447711</p></div>
-        <div style={{ textAlign:'right' }}><div style={{ fontSize:8, fontFamily:'monospace' }}>{tracking}</div><div style={{ width:56, height:56, border:'1px solid #111', display:'grid', placeItems:'center', fontSize:9 }}>QR</div></div>
-      </div>
-      <div style={{ height:1, background:'#ccc', margin:'2mm 0' }} />
-      <div style={{ display:'grid', gap:'2mm' }}>
-        <div><strong>Merchant:</strong> {row.merchant_name ?? '—'}</div>
-        <div><strong>Recipient:</strong> {row.recipient_name ?? '—'} / {row.recipient_phone ?? '—'}</div>
-        <div><strong>Address:</strong> {row.delivery_address ?? row.delivery_township ?? '—'}</div>
-        <div><strong>Pickup:</strong> {row.pickup_id ?? '—'} / <strong>Invoice:</strong> {row.invoice_no ?? '—'}</div>
-      </div>
-      <div style={{ marginTop:'auto', borderTop:'1px solid #ccc', paddingTop:'3mm', display:'flex', justifyContent:'space-between' }}><span>Payment: {row.payment_method ?? '—'}</span><strong>COD {fmtCOD(row.cod_amount)}</strong></div>
-    </div>
-  )
-}
-
-function KpiCard({ label, value, tone, icon: Icon }: { label: string; value: string | number; tone: string; icon: React.ComponentType<{ size?: number; color?: string }> }) {
-  return <div style={{ border:`1px solid ${C.border}`, background:`linear-gradient(180deg, rgba(8,27,46,.92), rgba(11,34,54,.98))`, borderRadius:18, padding:16 }}><div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}><div style={{ width:32, height:32, borderRadius:10, display:'grid', placeItems:'center', background:`${tone}16`, border:`1px solid ${tone}33` }}><Icon size={14} color={tone}/></div><span style={{ fontSize:11, fontWeight:700, color:C.muted, textTransform:'uppercase' }}>{label}</span></div><div style={{ fontSize:24, fontWeight:700, color:tone }}>{value}</div></div>
-}
-
-export default function WaybillStudioPage() {
-  const [lang, setLang] = useState<Language>('EN')
-  const [rows, setRows] = useState<ParcelRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [search, setSearch] = useState('')
-  const [briefing, setBriefing] = useState<string | null>(null)
-
-  const t = TRANSLATIONS[lang]
-
-  const loadRows = useCallback(async () => {
-    setLoading(true)
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const result = await supabase.from('parcel_rows').select('*').order('created_at', { ascending: false }).limit(200)
-      if (result.error) throw result.error
-      setRows(result.data ?? [])
-    } catch {
-      setRows(PREVIEW_ROWS)
+      const [pRes, tRes, nRes] = await Promise.all([
+        supabase.from('be_portal_pickup_requests').select('*').in('status', ['SUBMITTED', 'PICKUP_REQUESTED', 'PENDING_PICKUP']).neq('data_entry_status', 'COMPLETED').order('created_at', { ascending: false }).limit(100),
+        supabase.from('be_tariff_master').select('*'),
+        supabase.from('be_app_notifications').select('*').in('target_role', ['DATA_ENTRY', 'data_entry', 'all', 'ALL']).order('created_at', { ascending: false }).limit(15)
+      ]);
+      if (pRes.data) setPickups(pRes.data);
+      if (tRes.data) setTariffs(tRes.data);
+      if (nRes.data) setNotifications(nRes.data);
+    } catch (e: any) {
+      showMessage(e.message, 'error');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }, [])
+  }, [showMessage]);
 
-  useEffect(() => { void loadRows() }, [loadRows])
+  useEffect(() => {
+    loadData();
+    const sub1 = supabase.channel('de-sync-p').on('postgres_changes', { event: '*', schema: 'public', table: 'be_portal_pickup_requests' }, () => loadData()).subscribe();
+    const sub2 = supabase.channel('de-sync-n').on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'be_app_notifications' }, () => loadData()).subscribe();
+    return () => { supabase.removeChannel(sub1); supabase.removeChannel(sub2); };
+  }, [loadData]);
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return rows.filter(row => !q || [row.tracking_no, row.pickup_id, row.invoice_no, row.recipient_name, row.delivery_township].some(v => String(v ?? '').toLowerCase().includes(q)))
-  }, [rows, search])
+  const selectedPickup = useMemo(() => pickups.find(p => p.pickup_id === selectedPickupId || p.id === selectedPickupId) || null, [pickups, selectedPickupId]);
+  const townships = useMemo(() => Array.from(new Set(tariffs.map(t => t.township).filter(Boolean))).sort(), [tariffs]);
 
-  const totalCod = filtered.reduce((sum, row) => sum + Number(row.cod_amount || 0), 0)
-  const printedRows = filtered.filter(row => String(row.status || '').toLowerCase() === 'printed').length
-  const openCod = filtered.filter(row => Number(row.cod_amount || 0) > 0 && String(row.status || '').toLowerCase() !== 'closed').length
+  const calculateFee = useCallback((township: string, weight: number) => {
+    const activeTariff = tariffs.find(t => String(t.township).toLowerCase() === String(township).toLowerCase());
+    if (!activeTariff) return 4000;
+    const base = Number(activeTariff.base_fee_mmk || activeTariff.base_fee || 4000);
+    const allow = Number(activeTariff.free_allowance_kg || activeTariff.weight_allowance || 3);
+    const rate = Number(activeTariff.extra_per_kg_mmk || activeTariff.extra_weight_rate || 500);
+    const extra = Math.max(0, Math.ceil(weight) - allow);
+    return base + (extra * rate);
+  }, [tariffs]);
 
-  return <div style={{ background:C.bg, padding:24, minHeight:'100%', fontFamily:FF.body, color:C.text }}>
-    <style>{`@keyframes spin{to{transform:rotate(360deg)}} input:focus{outline:none;border-color:#f6b84b!important;box-shadow:0 0 0 3px rgba(246,184,75,0.12)!important} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#1a3a5c;border-radius:4px} @media print{body *{visibility:hidden}.print-label,.print-label *{visibility:visible}.print-label{position:absolute;left:0;top:0}}`}</style>
-    <div style={{ display:'grid', gap:18, maxWidth:1600, margin:'0 auto' }}>
-      <section style={{ borderRadius:26, padding:24, background:`linear-gradient(135deg, ${C.panel}, ${C.panel2})`, border:`1px solid ${C.border}` }}><div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}><div><p style={{ margin:0, color:C.orange, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.28em' }}>DATA ENTRY OPERATIONS</p><h1 style={{ margin:'6px 0 0', fontSize:24, fontWeight:700, textTransform:'uppercase', color:C.gold, letterSpacing:'.12em' }}>{t.title}</h1><p style={{ margin:'8px 0 0', fontSize:14, color:C.text2 }}>{t.subtitle}</p></div><div style={{ display:'flex', gap:10, flexWrap:'wrap' }}><div style={{ display:'flex', background:C.panel2, borderRadius:8, padding:4, border:`1px solid ${C.border}` }}><button type="button" onClick={() => setLang('EN')} style={{ padding:'6px 12px', borderRadius:4, background:lang === 'EN' ? C.panelHover : 'transparent', color:lang === 'EN' ? C.text : C.muted, border:'none', cursor:'pointer', fontSize:12, fontWeight:600 }}>EN</button><button type="button" onClick={() => setLang('MM')} style={{ padding:'6px 12px', borderRadius:4, background:lang === 'MM' ? C.panelHover : 'transparent', color:lang === 'MM' ? C.text : C.muted, border:'none', cursor:'pointer', fontSize:12, fontWeight:600 }}>မြန်မာ</button></div><button type="button" onClick={() => setBriefing(localPrintStrategy(filtered, t))} style={{ background:`linear-gradient(135deg, ${C.gold}, ${C.orange})`, color:'#082032', border:'none', borderRadius:10, padding:'0 16px', fontWeight:700, display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}><Sparkles size={14}/>{t.btnStrategy}</button><button type="button" onClick={() => void loadRows()} disabled={loading} style={{ background:C.panel2, border:`1px solid ${C.border}`, color:C.text2, borderRadius:10, padding:'0 16px', fontWeight:600, display:'flex', alignItems:'center', gap:8, cursor:'pointer' }}><RefreshCw size={14} style={loading ? { animation:'spin 1s linear infinite' } : undefined}/>{t.refresh}</button></div></div></section>
+  const generateRows = () => {
+    if (!selectedPickup) return;
+    const count = Math.max(1, Number(selectedPickup.parcel_count) || 1);
+    const dateCode = new Date().toISOString().slice(5, 10).replace('-', '');
+    const mCode = String(selectedPickup.merchant_code || selectedPickup.merchant_name || "MAN").substring(0, 3).toUpperCase();
+    const baseId = selectedPickup.pickup_id ? selectedPickup.pickup_id.replace(/^P-?/, '') : `${dateCode}-${mCode}`;
+    const initialTownship = selectedPickup.delivery_township || selectedPickup.pickup_township || '';
+    const initialFee = initialTownship ? calculateFee(initialTownship, 1) : 4000;
 
-      {briefing ? <section style={{ padding:18, background:'linear-gradient(135deg,#0f2a42,#0b2236)', border:`1px solid ${C.info}`, borderRadius:18 }}><div style={{ display:'flex', justifyContent:'space-between' }}><strong style={{ color:C.info, display:'flex', gap:8, alignItems:'center' }}><Sparkles size={16}/>{t.strategyTitle}</strong><button type="button" onClick={() => setBriefing(null)} style={{ background:'transparent', border:'none', color:C.muted, cursor:'pointer' }}><X size={18}/></button></div><p style={{ color:C.text2, lineHeight:1.6, margin:'10px 0 0' }}>{briefing}</p></section> : null}
+    const newRows = Array.from({ length: count }, (_, i) => ({
+      row_id: generateId(),
+      waybill_no: `W${baseId}-${String(i + 1).padStart(3, '0')}`,
+      recipient_name: '', recipient_phone: '', delivery_township: initialTownship, delivery_address: '',
+      weight_kg: '1', item_price: '0', delivery_fee: String(initialFee), cod_amount: String(initialFee), remarks: ''
+    }));
+    setRows(newRows);
+    showMessage(t(`Generated ${count} waybills.`, `ကုန်ပစ္စည်းပို့ဆောင်ရေး လမ်းညွှန်မှတ်တမ်း ${count} ခု ဖန်တီးပြီးပါပြီ။`), 'info');
+  };
 
-      <section style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(180px,1fr))', gap:12 }}><KpiCard label={t.kpiLoaded} value={rows.length} tone={C.info} icon={Package}/><KpiCard label={t.kpiFiltered} value={filtered.length} tone={C.gold} icon={Printer}/><KpiCard label={t.kpiPrinted} value={printedRows} tone={C.success} icon={CheckCircle2}/><KpiCard label={t.kpiOpen} value={openCod} tone={C.warning} icon={DollarSign}/><KpiCard label={t.kpiTotal} value={fmtCOD(totalCod)} tone={C.orange} icon={BarChart2}/></section>
+  const updateRow = (id: string, field: string, value: any) => {
+    setRows(prev => prev.map(r => {
+      if (r.row_id !== id) return r;
+      const next = { ...r, [field]: value };
+      if (field === 'delivery_township' || field === 'weight_kg') {
+        next.delivery_fee = String(calculateFee(next.delivery_township, Number(next.weight_kg)));
+      }
+      if (field === 'item_price' || field === 'delivery_fee' || field === 'delivery_township') {
+        next.cod_amount = String(Number(next.item_price || 0) + Number(next.delivery_fee || 0));
+      }
+      return next;
+    }));
+  };
 
-      <section style={{ border:`1px solid ${C.border}`, background:C.panel, borderRadius:22, padding:18 }}><div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}><Printer size={16} color={C.gold}/><h2 style={{ margin:0, fontSize:18, fontWeight:600, color:C.text }}>{t.pqTitle}</h2><span style={{ background:`${C.gold}14`, border:`1px solid ${C.gold}33`, color:C.gold, padding:'2px 10px', borderRadius:999, fontSize:11, fontWeight:700 }}>{filtered.length}</span><div style={{ marginLeft:'auto', display:'flex', gap:10, flexWrap:'wrap' }}><div style={{ position:'relative' }}><Search size={14} color={C.muted} style={{ position:'absolute', left:10, top:9 }}/><input value={search} onChange={(e: { target: { value: string } }) => setSearch(e.target.value)} placeholder={t.searchPh} style={{ background:C.panel2, border:`1px solid ${C.border}`, color:C.text, borderRadius:10, padding:'8px 14px 8px 32px', fontSize:13, outline:'none' }}/></div><button type="button" onClick={() => downloadCsv(filtered)} style={{ background:C.panel2, border:`1px solid ${C.border}`, color:C.text2, borderRadius:10, padding:'0 14px', fontWeight:700, cursor:'pointer', display:'flex', alignItems:'center', gap:6 }}><Download size={14}/>{t.btnCsv}</button><button type="button" onClick={() => window.print()} disabled={filtered.length === 0} style={{ background:C.gold, border:'none', color:'#111', borderRadius:10, padding:'0 14px', fontWeight:700, cursor:'pointer' }}>{t.btnPrint}</button></div></div><div style={{ overflowX:'auto' }}><table style={{ width:'100%', borderCollapse:'collapse', textAlign:'left' }}><thead><tr>{[t.thNo,t.thTrack,t.thRecip,t.thStat,t.thAdd,t.thPh,t.thCod].map(h => <th key={h} style={{ padding:12, background:C.panel2, color:C.muted, fontSize:11, fontWeight:700, textTransform:'uppercase', borderBottom:`1px solid ${C.border}` }}>{h}</th>)}</tr></thead><tbody>{loading ? <tr><td colSpan={7} style={{ padding:32, textAlign:'center', color:C.muted }}><Loader2 size={16}/> {t.msgLoading}</td></tr> : filtered.length === 0 ? <tr><td colSpan={7} style={{ padding:32, textAlign:'center', color:C.muted }}><strong>{t.msgEmptyTitle}</strong><br/>{t.msgEmptySub}</td></tr> : filtered.map((row, i) => { const sc = statusStyle(row.status); return <tr key={row.id}><td style={{ padding:12, borderBottom:`1px solid ${C.border}55`, color:C.muted }}>{i + 1}</td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55`, color:C.gold, fontWeight:700 }}>{row.tracking_no ?? '—'}</td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55` }}>{row.recipient_name ?? '—'}</td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55` }}><span style={{ padding:'4px 10px', borderRadius:999, background:sc.bg, color:sc.color, fontSize:11, fontWeight:700 }}>{row.status ?? '—'}</span></td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55`, color:C.text2 }}>{row.delivery_township ?? '—'}</td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55`, color:C.text2 }}>{row.recipient_phone ?? '—'}</td><td style={{ padding:12, borderBottom:`1px solid ${C.border}55`, color:C.gold, fontWeight:700 }}>{fmtCOD(row.cod_amount)}</td></tr>})}</tbody></table></div></section>
+  const addRow = () => {
+    const seq = String(rows.length + 1).padStart(3, '0');
+    const baseId = selectedPickup?.pickup_id ? selectedPickup.pickup_id.replace(/^P-?/, '') : Date.now().toString().slice(-6);
+    setRows(prev => [...prev, {
+      row_id: generateId(), waybill_no: `W${baseId}-${seq}`, recipient_name: '', recipient_phone: '', delivery_township: '', delivery_address: '', weight_kg: '1', item_price: '0', delivery_fee: '4000', cod_amount: '4000', remarks: ''
+    }]);
+  };
 
-      <section style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(320px,.7fr)', gap:18 }}><div style={{ border:`1px solid ${C.border}`, background:C.panel, borderRadius:18, padding:18 }}><h2 style={{ margin:'0 0 12px', fontSize:18 }}>{t.plTitle}</h2><div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>{WAYBILL_STATUSES.map(s => <span key={s.key} style={{ background:s.bg, color:s.color, border:`1px solid ${s.color}33`, borderRadius:999, padding:'6px 10px', fontSize:12, fontWeight:700 }}>{s.key}</span>)}</div><h3 style={{ color:C.text2 }}>{t.netTitle}</h3><p style={{ color:C.muted, fontSize:13 }}>{t.netDesc}</p><div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))', gap:8 }}>{NETWORK_USES.map(item => { const Icon = item.icon; return <div key={item.label} style={{ background:C.panel2, border:`1px solid ${C.border}`, borderRadius:12, padding:10, display:'flex', gap:8, alignItems:'center' }}><Icon size={14} color={item.color}/><span style={{ color:C.text2, fontSize:12 }}>{item.label}</span></div>})}</div></div><div style={{ border:`1px solid ${C.border}`, background:C.panel, borderRadius:18, padding:18 }}><h2 style={{ margin:'0 0 6px', fontSize:18 }}>{t.closeTitle}</h2><p style={{ color:C.muted, fontSize:13 }}>{t.closeDesc}</p><ol style={{ color:C.text2, paddingLeft:18 }}>{CLOSE_CONDITIONS.map(condition => <li key={condition} style={{ marginBottom:6 }}>{condition}</li>)}</ol><h3 style={{ color:C.text2 }}>{t.fieldTitle}</h3><div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>{WAYBILL_FIELDS.map(field => <span key={field} style={{ background:C.panel2, border:`1px solid ${C.border}`, color:C.text2, borderRadius:999, padding:'4px 9px', fontSize:12 }}>{field}</span>)}</div></div></section>
+  const saveToBackend = async () => {
+    if (!selectedPickupId || rows.length === 0) return;
+    if (rows.some(r => !r.recipient_name.trim() || !r.delivery_township.trim() || !r.delivery_address.trim())) {
+      showMessage(t('Recipient Name, Township, and Address are required.', 'လက်ခံမည့်သူ အမည်၊ မြို့နယ်နှင့် လိပ်စာအပြည့်အစုံများကို မဖြစ်မနေ ထည့်သွင်းပါ။'), 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = rows.map((r, i) => ({
+        pickup_id: selectedPickupId, item_no: i + 1, waybill_no: r.waybill_no, recipient_name: r.recipient_name,
+        recipient_phone: r.recipient_phone, delivery_township: r.delivery_township, delivery_address: r.delivery_address,
+        weight_kg: Number(r.weight_kg) || 1, item_price: Number(r.item_price) || 0, delivery_fee: Number(r.delivery_fee) || 0,
+        cod_amount: Number(r.cod_amount) || 0, item_status: 'SUBMITTED'
+      }));
 
-      <div className="print-label" style={{ display:'none' }}>{filtered[0] ? <WaybillLabel row={filtered[0]}/> : null}</div>
+      const { error: insertErr } = await supabase.from('be_portal_pickup_request_items').upsert(payload, { onConflict: 'waybill_no' });
+      if (insertErr && !insertErr.message.includes('does not exist')) throw insertErr;
+
+      await supabase.from('be_portal_pickup_requests').update({ data_entry_status: 'COMPLETED', status: 'READY_FOR_WAYPLAN', updated_at: new Date().toISOString() }).eq('pickup_id', selectedPickupId);
+      
+      showMessage(t(`Successfully registered ${rows.length} waybills.`, `လမ်းညွှန်စာရွက် ${rows.length} စောင်ကို ဗဟိုစနစ်သို့ အောင်မြင်စွာ စာရင်းသွင်းပြီးပါပြီ။`), 'success');
+      setRows([]); setSelectedPickupId(''); loadData();
+    } catch (e: any) {
+      showMessage(e.message || t("Failed to save to database.", "စနစ်တွင်း သိမ်းဆည်းရန် မအောင်မြင်ပါ။"), 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inpCls = "w-full bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] rounded-lg px-3 py-2 text-[13px] outline-none focus:border-[#f6b84b] transition-colors min-w-[120px]";
+  const thCls = "px-3 py-4 text-[11px] font-bold uppercase tracking-wider text-[#4d7a9b] border-b border-[#1a3a5c] text-left whitespace-nowrap bg-[#061524] sticky top-0 z-10";
+
+  return (
+    <div className="notranslate be-page pb-10 bg-[#061524] min-h-[100%] p-6 text-[#eef8ff]" translate="no">
+      <div className="max-w-[1600px] mx-auto flex flex-col gap-5">
+        <div className="flex justify-between items-start flex-wrap gap-4 bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-3xl">
+          <div>
+            <div className="text-[#f6b84b] text-[11px] font-bold uppercase tracking-[0.15em] mb-2"><span>{t('Data Entry & Registration', 'အချက်အလက် စာရင်းသွင်းရေးနှင့် မှတ်ပုံတင်ဌာန')}</span></div>
+            <h1 className="text-2xl font-bold text-white mt-1 mb-2"><span>{t('Waybill Register Workspace', 'လမ်းညွှန်စာရွက် မှတ်တမ်းတင် လုပ်ငန်းခွင်')}</span></h1>
+            <div className="text-[14px] text-[#4d7a9b] m-0"><span>{t('Convert CS Pickup Requests into parcel-level Delivery Waybills.', 'တောင်းဆိုမှုများအား ပါဆယ်အဆင့် လမ်းညွှန်စာရွက်များအဖြစ်သို့ ပြောင်းလဲပါ။')}</span></div>
+          </div>
+          <button onClick={loadData} disabled={loading} className="flex items-center gap-2 bg-[#081b2e] border border-[#1a3a5c] px-4 py-2.5 rounded-xl font-bold hover:border-[#f6b84b] transition-colors cursor-pointer">
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> <span>{t('Refresh Data', 'အချက်အလက် ပြန်လည်ရယူမည်')}</span>
+          </button>
+        </div>
+
+        {message && (
+          <div className={`p-4 rounded-xl flex items-center gap-3 font-bold text-[14px] ${message.type === 'error' ? 'bg-[#ff4f86]/10 text-[#ff4f86] border border-[#ff4f86]/20' : message.type === 'success' ? 'bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20' : 'bg-[#38bdf8]/10 text-[#38bdf8] border border-[#38bdf8]/20'}`}>
+            {message.type === 'error' ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+            <span>{message.text}</span>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-5 items-start">
+          <div className="flex flex-col gap-5">
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-5">
+              <h2 className="text-[15px] font-bold text-white flex items-center gap-2 mb-4 border-b border-[#1a3a5c] pb-3"><Bell size={18} className="text-[#f6b84b]" /> <span>{t('Live Alerts', 'အချိန်ပြည့် သတိပေးချက်များ')}</span></h2>
+              <div className="flex flex-col gap-3 max-h-[250px] overflow-y-auto pr-2">
+                {notifications.length === 0 ? (
+                  <div className="text-center p-4 border border-dashed border-[#1a3a5c] rounded-xl text-[#4d7a9b] text-[12px]"><span>{t('No recent notifications.', 'အသိပေး အကြောင်းကြားစာများ မရှိသေးပါ။')}</span></div>
+                ) : notifications.map(n => (
+                  <div key={n.id} className="bg-[#081b2e] border border-[#1a3a5c] rounded-xl p-3">
+                    <div className="text-[#f6b84b] text-[10px] font-bold uppercase tracking-wider mb-1"><span>{n.target_role || 'System'}</span></div>
+                    <div className="text-[13px] text-white"><span>{n.message || n.title}</span></div>
+                    <div className="text-[#4d7a9b] text-[10px] mt-2"><span>{new Date(n.created_at).toLocaleString()}</span></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col h-[400px]">
+              <div className="p-5 border-b border-[#1a3a5c]">
+                <h2 className="text-[15px] font-bold text-white m-0"><span>{t('Intake Queue', 'အချက်အလက် စာရင်းသွင်းရန် ကျန်ရှိမှုများ')}</span></h2>
+                <div className="text-[#4d7a9b] text-[12px] mt-1"><span>{pickups.length} {t('pickups awaiting data entry', 'ခု ဆောင်ရွက်ရန် ကျန်ရှိသည်')}</span></div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-3">
+                {pickups.length === 0 && !loading ? (
+                  <div className="text-center text-[#4d7a9b] p-8 text-[13px]"><span>{t('All caught up! No pending pickups.', 'ဆောင်ရွက်ရန် ကျန်ရှိသောစာရင်း မရှိပါ။')}</span></div>
+                ) : pickups.map(p => {
+                  const isActive = selectedPickupId === p.pickup_id;
+                  return (
+                    <div key={p.pickup_id} onClick={() => { setSelectedPickupId(p.pickup_id); setRows([]); }} className={`p-4 rounded-xl border cursor-pointer transition-all ${isActive ? 'bg-[#0f2a42] border-[#f6b84b]' : 'bg-[#081b2e] border-[#1a3a5c] hover:border-[#4d7a9b]'}`}>
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-[#f6b84b] font-mono font-bold text-[13px]"><span>{p.pickup_id}</span></span>
+                      </div>
+                      <div className="font-bold text-white text-[13px] mb-2"><span>{p.merchant_name}</span></div>
+                      <div className="flex items-center gap-4 text-[#4d7a9b] text-[11px] font-medium">
+                        <span className="flex items-center gap-1"><Package size={12}/> <span>{p.parcel_count} {t('items', 'ခု')}</span></span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-5">
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6 flex flex-wrap gap-4 items-end">
+              <div className="flex-1 min-w-[260px]">
+                <label className="block mb-2 text-[#4d7a9b] text-[11px] font-bold tracking-wider uppercase"><span>{t('Pending CS Pickups', 'စောင့်ဆိုင်းဆဲ တောင်းဆိုမှုများ')}</span></label>
+                <select value={selectedPickupId} onChange={(e) => { setSelectedPickupId(e.target.value); setRows([]); }} className="w-full h-[46px] bg-[#081b2e] border border-[#1a3a5c] text-white rounded-xl px-4 text-[13px] font-bold outline-none focus:border-[#f6b84b] cursor-pointer">
+                  <option value="">-- <span>{t('Choose a pickup to process', 'စာရင်းသွင်းမည့် မှတ်တမ်းကို ရွေးချယ်ပါ')}</span> --</option>
+                  {pickups.map(p => <option key={`opt-${p.pickup_id}`} value={p.pickup_id}>{p.pickup_id} • {p.merchant_name} ({p.parcel_count} {t('parcels', 'ခု')})</option>)}
+                </select>
+              </div>
+              <button onClick={generateRows} disabled={!selectedPickupId} className="h-[46px] px-6 rounded-xl bg-[#081b2e] border border-[#38bdf8] text-[#38bdf8] text-[13px] font-bold flex items-center gap-2 cursor-pointer hover:bg-[#38bdf8]/10 transition-colors disabled:opacity-50">
+                <FileSpreadsheet size={16} /> <span>{t('Generate Grid', 'အချက်အလက်ဇယား ဖန်တီးမည်')}</span>
+              </button>
+            </div>
+
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col min-h-[500px] overflow-hidden">
+              <div className="p-5 border-b border-[#1a3a5c] bg-[#081b2e] flex justify-between items-center flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <FileSpreadsheet size={18} className="text-[#f6b84b]" />
+                  <h2 className="text-[16px] font-bold text-white m-0"><span>{t('Waybill Grid', 'လမ်းညွှန်စာရွက် အချက်အလက်ဇယား')}</span></h2>
+                  <span className="text-[11px] font-bold text-[#4d7a9b] bg-[#061524] px-3 py-1 rounded-md border border-[#1a3a5c]"><span>{rows.length} {t('Rows', 'တန်း')}</span></span>
+                </div>
+                <div className="flex gap-3">
+                  <button onClick={addRow} disabled={!selectedPickupId} className="flex items-center gap-2 bg-[#061524] border border-[#1a3a5c] text-white px-4 py-2 rounded-lg text-[12px] font-bold cursor-pointer hover:border-[#4d7a9b] transition-colors disabled:opacity-50">
+                    <Plus size={14} /> <span>{t('Add Row', 'အတန်းသစ် ထည့်မည်')}</span>
+                  </button>
+                  <button onClick={saveToBackend} disabled={saving || rows.length === 0} className="flex items-center gap-2 bg-[#f6b84b] text-[#061524] px-5 py-2 rounded-lg text-[12px] font-bold cursor-pointer hover:bg-[#e5a93a] transition-colors disabled:opacity-50 shadow-lg shadow-[#f6b84b]/20 uppercase tracking-wider">
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} <span>{t('Save to Backend', 'ဗဟိုစနစ်သို့ သိမ်းဆည်းမည်')}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-x-auto bg-[#061524]">
+                <table className="w-full text-left border-collapse min-w-[1200px]">
+                  <thead>
+                    <tr>
+                      <th className={thCls}><span>{t('Waybill No', 'လမ်းညွှန်စာရွက်အမှတ်')}</span></th>
+                      <th className={thCls}><span>{t('Recipient Name*', 'လက်ခံမည့်သူ အမည်*')}</span></th>
+                      <th className={thCls}><span>{t('Phone', 'ဖုန်းနံပါတ်')}</span></th>
+                      <th className={thCls}><span>{t('Township*', 'မြို့နယ်*')}</span></th>
+                      <th className={thCls}><span>{t('Full Address*', 'လိပ်စာအပြည့်အစုံ*')}</span></th>
+                      <th className={thCls}><span>{t('Weight (KG)', 'အလေးချိန် (KG)')}</span></th>
+                      <th className={thCls}><span>{t('Deli Fee (MMK)', 'ပို့ဆောင်ခ (ကျပ်)')}</span></th>
+                      <th className={thCls}><span>{t('COD (MMK)', 'ကောက်ခံရန်ငွေ (ကျပ်)')}</span></th>
+                      <th className={`${thCls} text-center`}><span>{t('Action', 'လုပ်ဆောင်ချက်')}</span></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.length === 0 ? (
+                      <tr>
+                        <td colSpan={9} className="p-16 text-center text-[#4d7a9b]">
+                          <Package size={40} className="mx-auto mb-4 opacity-30" />
+                          <div className="text-[13px]"><span>{t('No rows generated. Select a Pickup ID and click Generate Grid.', 'အချက်အလက်ဇယား မရှိသေးပါ။ ကုန်ပစ္စည်းသင်္ကေတကို ရွေးချယ်ပြီး အချက်အလက်ဇယား ဖန်တီးမည် ကို နှိပ်ပါ။')}</span></div>
+                        </td>
+                      </tr>
+                    ) : rows.map((row) => (
+                      <tr key={row.row_id} className="hover:bg-[#0f2a42] border-b border-[#1a3a5c]">
+                        <td className="p-2 align-top"><div className="px-3 py-1.5 bg-[#38bdf8]/10 text-[#38bdf8] rounded-md font-mono font-bold text-[11px] whitespace-nowrap"><span>{row.waybill_no}</span></div></td>
+                        <td className="p-2 align-top"><input className={inpCls} value={row.recipient_name} onChange={e => updateRow(row.row_id, 'recipient_name', e.target.value)} placeholder={t("Name", "အမည်")} /></td>
+                        <td className="p-2 align-top"><input className={`${inpCls} min-w-[130px]`} value={row.recipient_phone} onChange={e => updateRow(row.row_id, 'recipient_phone', e.target.value)} placeholder="09xxxx..." /></td>
+                        <td className="p-2 align-top">
+                          <select className={`${inpCls} min-w-[150px] cursor-pointer`} value={row.delivery_township} onChange={e => updateRow(row.row_id, 'delivery_township', e.target.value)}>
+                            <option value="">{t('Select...', 'ရွေးချယ်ပါ')}</option>
+                            {townships.map(twn => <option key={twn} value={twn}>{twn}</option>)}
+                          </select>
+                        </td>
+                        <td className="p-2 align-top"><input className={`${inpCls} min-w-[200px]`} value={row.delivery_address} onChange={e => updateRow(row.row_id, 'delivery_address', e.target.value)} placeholder={t("House, Street, Ward...", "အိမ်အမှတ်၊ လမ်း၊ ရပ်ကွက်...")} /></td>
+                        <td className="p-2 align-top"><input type="number" min="0.1" step="0.1" className={`${inpCls} w-[80px] text-center`} value={row.weight_kg} onChange={e => updateRow(row.row_id, 'weight_kg', e.target.value)} /></td>
+                        <td className="p-2 align-top"><div className="px-3 py-2 bg-[#22c55e]/10 text-[#22c55e] border border-[#22c55e]/20 rounded-lg font-bold text-right text-[13px]"><span>{Number(row.delivery_fee).toLocaleString()}</span></div></td>
+                        <td className="p-2 align-top"><input type="number" min="0" className={`${inpCls} min-w-[110px] text-right font-bold text-[#f6b84b]`} value={row.cod_amount} onChange={e => updateRow(row.row_id, 'cod_amount', e.target.value)} placeholder="0" /></td>
+                        <td className="p-2 align-top text-center"><button onClick={() => deleteRow(row.row_id)} className="p-2 bg-[#ff4f86]/10 text-[#ff4f86] rounded-lg hover:bg-[#ff4f86]/20 transition-colors cursor-pointer"><Trash2 size={16} /></button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              
+              {rows.length > 0 && (
+                <div className="p-5 bg-[#081b2e] border-t border-[#1a3a5c] flex justify-end items-center gap-8">
+                  <div className="text-[12px] text-[#4d7a9b] font-bold uppercase tracking-wider"><span>{t('Total Deli Fee:', 'စုစုပေါင်း ပို့ဆောင်ခ -')}</span> <strong className="text-[#22c55e] text-[18px] ml-2 font-mono"><span>{rows.reduce((s, r) => s + Number(r.delivery_fee), 0).toLocaleString()}</span></strong></div>
+                  <div className="text-[12px] text-[#4d7a9b] font-bold uppercase tracking-wider"><span>{t('Total COD:', 'စုစုပေါင်း ကောက်ခံရမည့်ငွေ -')}</span> <strong className="text-[#f6b84b] text-[18px] ml-2 font-mono"><span>{rows.reduce((s, r) => s + Number(r.cod_amount), 0).toLocaleString()}</span></strong></div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-  </div>
+  );
 }

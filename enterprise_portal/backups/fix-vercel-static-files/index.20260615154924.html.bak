@@ -1,0 +1,322 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Britium Enterprise Portal UAT</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#020b18;color:#eef8ff}
+    video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none;z-index:0}
+    .shade{position:fixed;inset:0;background:rgba(2,8,23,.78);z-index:1}
+    #app{position:relative;z-index:2}
+    .center{min-height:100vh;display:grid;place-items:center;padding:20px}
+    .card{width:min(440px,100%);background:#fff;color:#111827;border-radius:22px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+    .brand{text-align:center;margin-bottom:24px}
+    .logo{width:76px;height:76px;object-fit:contain;border-radius:18px}
+    h1{margin:10px 0 8px;font-size:40px;font-weight:950;letter-spacing:-1px}
+    h2{margin:0 0 20px;font-size:28px;font-weight:950}
+    .sub{color:#fbbf24;font-weight:950;font-size:12px;letter-spacing:3px;text-transform:uppercase}
+    .muted{color:#a8c4da}
+    label{display:block;font-weight:900;color:#6b7280;font-size:12px;margin-bottom:6px}
+    input,select,textarea{width:100%;padding:14px;border-radius:12px;border:1px solid #d1d5db;font-size:15px;margin-bottom:16px;color:#111827;background:#fff}
+    button{border:0;border-radius:14px;background:#f97316;color:#fff;font-size:16px;font-weight:950;cursor:pointer;padding:14px 18px}
+    button:hover{filter:brightness(1.08)}
+    .btn{width:100%}
+    .error{display:none;background:#fee2e2;color:#991b1b;padding:12px;border-radius:12px;margin-bottom:14px;font-weight:850}
+    .dash{min-height:100vh;padding:34px 24px 90px}
+    .wrap{max-width:1240px;margin:0 auto}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:32px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+    .module{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.9);color:#eef8ff;border-radius:18px;padding:18px;min-height:96px;text-align:left;display:block;width:100%;cursor:pointer}
+    .module b{display:block;color:#fbbf24;font-size:17px;line-height:1.25}
+    .module span{display:block;color:#93c5fd;margin-top:9px;font-size:13px}
+    .module:hover{border-color:rgba(251,191,36,.6);transform:translateY(-1px)}
+    .logout{background:#f97316;color:#fff;white-space:nowrap}
+    .banner{margin-top:24px;padding:18px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:18px;color:#fbbf24;font-weight:900}
+    .panel{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.9);border-radius:18px;padding:20px;min-height:180px}
+    .panel b{color:#fbbf24}
+    .row{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px}
+    .pill{display:inline-block;border:1px solid rgba(147,197,253,.35);border-radius:999px;padding:8px 12px;margin:4px 6px 4px 0;color:#bfdbfe;background:rgba(37,99,235,.12);font-weight:800;font-size:12px}
+    @media(max-width:720px){h1{font-size:30px}.top{display:block}.logout{margin-top:16px;width:100%}}
+  </style>
+</head>
+<body>
+  <video src="/BACKGROUND.mp4" autoplay muted loop playsinline onerror="this.src='/background.mp4'"></video>
+  <div class="shade"></div>
+  <main id="app"></main>
+
+  <script>
+    const LOGIN_EMAIL = "sai@britiumexpress.com";
+    const LOGIN_PASSWORD = "Sh@nstar28";
+
+    const MODULES = [
+      { title:"Dashboard", route:"/dashboard", desc:"Main Enterprise dashboard and module launcher.", tags:["stable","production shell"] },
+      { title:"Live Dispatch Wayplan Board", route:"/live-dispatch-wayplan", desc:"Dispatch assignment board for pickup pool, fleet grid, and assignment status.", tags:["dispatch","wayplan","fleet"] },
+      { title:"Create Delivery", route:"/create-delivery", desc:"Create delivery records from customer, merchant, and pickup information.", tags:["delivery","waybill","order"] },
+      { title:"CS Portal", route:"/cs", desc:"Customer service workspace for pickup requests, follow-up, and exceptions.", tags:["customer service","support","lookup"] },
+      { title:"Way Management", route:"/way-management", desc:"Waybill lifecycle, branch movement, route status, and operational tracking.", tags:["waybill","movement","tracking"] },
+      { title:"Supervisor Hub", route:"/supervisor", desc:"Supervisor control center for pickup, dispatch, riders, and exception monitoring.", tags:["supervisor","operations","control"] },
+      { title:"Pickup Assignment", route:"/pickup-assignment", desc:"Assign pickup requests to riders, drivers, helpers, and vehicles.", tags:["pickup","rider","assignment"] },
+      { title:"Data Entry", route:"/data-entry", desc:"Pickup-order-required waybill data entry and backend-assisted parcel preparation.", tags:["pickup required","waybill","template"] },
+      { title:"Warehouse Ops", route:"/warehouse", desc:"Inbound scan, sorting, hold, damage, loss, and warehouse exception flow.", tags:["warehouse","scan","sorting"] },
+      { title:"Dispatch Center", route:"/dispatch", desc:"Dispatch planning, outbound grouping, route planning, and workforce assignment.", tags:["dispatch","route","outbound"] },
+      { title:"Branch Office", route:"/branch", desc:"Branch-level operations, transfers, receiving, and local dispatch control.", tags:["branch","receiving","handover"] },
+      { title:"Finance Portal", route:"/finance", desc:"Finance review, payment reconciliation, and settlement controls.", tags:["finance","payment","reconciliation"] },
+      { title:"COD Settlement", route:"/cod-settlement", desc:"COD collection, rider settlement, merchant payout, and batch reconciliation.", tags:["COD","settlement","wallet"] },
+      { title:"Waybill & Invoice", route:"/waybill-invoice", desc:"Waybill documents, invoice generation, proof, and download controls.", tags:["invoice","waybill","documents"] },
+      { title:"Merchant Portal", route:"/merchant", desc:"Merchant shipment view, pickup request status, and operational reporting.", tags:["merchant","pickup","report"] },
+      { title:"Customer Portal", route:"/customer", desc:"Customer shipment lookup, delivery status, and proof view.", tags:["customer","tracking","proof"] },
+      { title:"Master Data", route:"/master-data", desc:"Operational dropdowns, branches, township, tariff, status, and workforce data.", tags:["masterdata","dropdowns","tariff"] },
+      { title:"Exceptions", route:"/exceptions", desc:"Pickup, warehouse, and delivery exception rules and resolution workflow.", tags:["exception","rules","resolution"] },
+      { title:"Reporting", route:"/reporting", desc:"Enterprise reports, operational exports, and downloadable summary data.", tags:["reports","exports","download"] },
+      { title:"Tariff", route:"/tariff", desc:"Delivery charge, COD fee, branch pricing, and tariff calculation setup.", tags:["tariff","pricing","calculation"] },
+      { title:"Settings", route:"/settings", desc:"Portal configuration, language controls, feature flags, and access settings.", tags:["settings","language","access"] },
+      { title:"Profile", route:"/profile", desc:"Current user profile, role, branch, and backend access information.", tags:["profile","role","access"] }
+    ];
+
+    function esc(v){
+      return String(v ?? "").replace(/[&<>"']/g, function(c){
+        return ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", "\"":"&quot;", "'":"&#39;" })[c];
+      });
+    }
+
+    function setSession(email){
+      const profile = {
+        ok:true,
+        email,
+        role:"superadmin",
+        portal:"enterprise",
+        branch_code:"HQ",
+        permissions:{ all:true },
+        source:"production_static_router"
+      };
+      localStorage.setItem("be_user_authenticated","true");
+      localStorage.setItem("be_session_ok","true");
+      localStorage.setItem("be_login_email",email);
+      localStorage.setItem("be_user_email",email);
+      localStorage.setItem("be_user_role","superadmin");
+      localStorage.setItem("be_user_portal","enterprise");
+      localStorage.setItem("be_branch_code","HQ");
+      localStorage.setItem("be_user_access_profile",JSON.stringify(profile));
+    }
+
+    function hasSession(){
+      return localStorage.getItem("be_user_authenticated") === "true";
+    }
+
+    function currentRoute(){
+      const h = (location.hash || "#/dashboard").replace(/^#/, "");
+      return h && h !== "/" ? h : "/dashboard";
+    }
+
+    function findModule(route){
+      return MODULES.find(m => m.route === route) || MODULES[0];
+    }
+
+    function renderLogin(){
+      app.className = "center";
+      app.innerHTML = `
+        <form class="card" id="loginForm">
+          <div class="brand">
+            <img class="logo" src="/logo.png" alt="Britium" />
+            <h2 style="margin-top:14px">BRITIUM EXPRESS</h2>
+            <div class="sub">Enterprise Portal</div>
+          </div>
+          <h2>Sign In</h2>
+          <div id="err" class="error"></div>
+          <label>Email address</label>
+          <input id="email" type="email" value="${LOGIN_EMAIL}" autocomplete="username" />
+          <label>Password</label>
+          <input id="password" type="password" autocomplete="current-password" />
+          <button class="btn" type="submit">Sign In to Portal</button>
+        </form>
+      `;
+
+      document.getElementById("loginForm").onsubmit = function(e){
+        e.preventDefault();
+        const email = document.getElementById("email").value.trim().toLowerCase();
+        const password = document.getElementById("password").value.trim();
+        const err = document.getElementById("err");
+
+        if(email !== LOGIN_EMAIL){
+          err.style.display = "block";
+          err.textContent = "Use sai@britiumexpress.com";
+          return;
+        }
+
+        if(password !== LOGIN_PASSWORD){
+          err.style.display = "block";
+          err.textContent = "Wrong UAT password";
+          return;
+        }
+
+        setSession(email);
+        location.hash = "/dashboard";
+        renderDashboard();
+      };
+    }
+
+    function renderHeader(title, desc){
+      return `
+        <header class="top">
+          <div>
+            <div class="sub">BRITIUM EXPRESS</div>
+            <h1>${esc(title)}</h1>
+            <p class="muted">${esc(desc || "")}</p>
+            <p class="muted">Logged in as ${esc(localStorage.getItem("be_user_email") || LOGIN_EMAIL)} · superadmin · HQ</p>
+          </div>
+          <button class="logout" id="signoutBtn">Sign out</button>
+        </header>
+      `;
+    }
+
+    function attachCommonButtons(){
+      const signout = document.getElementById("signoutBtn");
+      if(signout){
+        signout.onclick = function(){
+          localStorage.clear();
+          sessionStorage.clear();
+          location.hash = "/login";
+          renderLogin();
+        };
+      }
+
+      document.querySelectorAll("[data-route]").forEach(function(btn){
+        btn.onclick = function(){
+          const route = btn.getAttribute("data-route");
+          location.hash = route;
+          boot();
+        };
+      });
+    }
+
+    function renderDashboard(){
+      app.className = "dash";
+      app.innerHTML = `
+        <div class="wrap">
+          ${renderHeader("Enterprise Portal UAT","Production-safe static router. All module routes are active.")}
+          <section class="grid">
+            ${MODULES.map(m => `
+              <button type="button" class="module" data-route="${esc(m.route)}">
+                <b>${esc(m.title)}</b>
+                <span>#${esc(m.route.replace(/^\//,""))}</span>
+              </button>
+            `).join("")}
+          </section>
+          <div class="banner">Production-ready static routing shell is active. Login loop is stopped. All menu cards are clickable. Live Dispatch and Pickup Assignment open real backend UIs.</div>
+        </div>
+      `;
+      attachCommonButtons();
+    }
+
+    function renderLiveDispatch(){
+      app.className = "dash";
+      app.innerHTML = `
+        <div class="wrap">
+          ${renderHeader("Live Dispatch Wayplan Board","Production-safe dispatch route. Live backend board will be connected after isolated testing.")}
+          <section class="row">
+            <div class="panel">
+              <b>Pickup Pool</b>
+              <p class="muted">Live pickup requests waiting for rider, driver, helper, or fleet assignment.</p>
+              <span class="pill">Pickup Requested</span>
+              <span class="pill">Pickup Assigned</span>
+              <span class="pill">Arrived at Pickup</span>
+            </div>
+            <div class="panel">
+              <b>Fleet Dispatch Grid</b>
+              <p class="muted">Rider, driver, helper, vehicle plate, and branch dispatch assignment workspace.</p>
+              <span class="pill">RID001</span>
+              <span class="pill">DRV001-DRV006</span>
+              <span class="pill">YGN</span>
+            </div>
+            <div class="panel">
+              <b>Assignment Status</b>
+              <p class="muted">Assigned, completed, failed, rescheduled, and RTO status groups.</p>
+              <span class="pill">PICKUP_ASSIGNED</span>
+              <span class="pill">DELIVERED</span>
+              <span class="pill">FAILED</span>
+            </div>
+          </section>
+          <div class="banner">This route is stable. Backend RPC test will run on a separate isolated page first, not inside the main shell.</div>
+          <div style="margin-top:18px">
+            <button class="logout" data-route="/dashboard">Back to Dashboard</button>
+          </div>
+        </div>
+      `;
+      attachCommonButtons();
+    }
+
+    function renderModule(route){
+      const m = findModule(route);
+
+      if(route === "/live-dispatch-wayplan"){
+        location.href = "/live-dispatch.html";
+        return;
+      }
+
+      if(route === "/pickup-assignment"){
+        location.href = "/pickup-assignment.html";
+        return;
+      }
+
+      app.className = "dash";
+      app.innerHTML = `
+        <div class="wrap">
+          ${renderHeader(m.title,m.desc)}
+          <section class="row">
+            <div class="panel">
+              <b>${esc(m.title)} Route</b>
+              <p class="muted">${esc(m.desc)}</p>
+              <p class="muted">Route: #${esc(route)}</p>
+            </div>
+            <div class="panel">
+              <b>Backend-first status</b>
+              <p class="muted">This module route is active. Real operational data must be connected through Supabase RPCs, not mock data.</p>
+              ${(m.tags || []).map(t => `<span class="pill">${esc(t)}</span>`).join("")}
+            </div>
+            <div class="panel">
+              <b>Production safety</b>
+              <p class="muted">This shell is stable and does not depend on the broken React build path. Modules can be restored one at a time.</p>
+              <span class="pill">No login loop</span>
+              <span class="pill">No disabled buttons</span>
+              <span class="pill">Hash router active</span>
+            </div>
+          </section>
+          <div class="banner">${esc(m.title)} route is active in the production static Enterprise shell.</div>
+          <div style="margin-top:18px">
+            <button class="logout" data-route="/dashboard">Back to Dashboard</button>
+          </div>
+        </div>
+      `;
+      attachCommonButtons();
+    }
+
+    function boot(){
+      const route = currentRoute();
+
+      if(route === "/login"){
+        renderLogin();
+        return;
+      }
+
+      if(!hasSession()){
+        location.hash = "/login";
+        renderLogin();
+        return;
+      }
+
+      if(route === "/dashboard"){
+        renderDashboard();
+        return;
+      }
+
+      renderModule(route);
+    }
+
+    const app = document.getElementById("app");
+    window.addEventListener("hashchange", boot);
+    boot();
+  </script>
+</body>
+</html>

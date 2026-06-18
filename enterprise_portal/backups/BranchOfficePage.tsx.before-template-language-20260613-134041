@@ -1,0 +1,140 @@
+// src/pages/BranchOfficePage.tsx
+import { useState, useEffect } from 'react';
+import { fetchBranchSnapshot, fetchBranchList, BranchSnapshot, BranchSummary } from '@/lib/branchOfficeApi';
+
+const G='#D4AF37'; const N='#0A1628';
+const BRANCHES=['YGN','MDY','NPT'];
+
+function KPI({label,value,color}:{label:string;value:string|number;color?:string}){
+  return (
+    <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,padding:'14px 16px'}}>
+      <div style={{fontSize:10,color:'rgba(255,255,255,0.4)',marginBottom:5,letterSpacing:'0.06em'}}>{label}</div>
+      <div style={{fontSize:20,fontWeight:800,color:color||'#fff'}}>{typeof value==='number'?value.toLocaleString():value}</div>
+    </div>
+  );
+}
+
+const STATUS_COLOR:Record<string,string>={active:'#22c55e',inactive:'#94a3b8',suspended:'#f87171'};
+
+export default function BranchOfficePage(){
+  const [branch,setBranch]=useState<string>('YGN');
+  const [snapshot,setSnapshot]=useState<BranchSnapshot|null>(null);
+  const [summaries,setSummaries]=useState<BranchSummary[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [isAdmin,setIsAdmin]=useState(true); // will be controlled by RBAC in production
+  const [error,setError]=useState('');
+
+  const load=async(b:string)=>{
+    setLoading(true); setError('');
+    try{ setSnapshot(await fetchBranchSnapshot(b)); }
+    catch(e:unknown){ setError(e instanceof Error?e.message:'Failed to load branch data'); }
+    finally{ setLoading(false); }
+  };
+  const loadSummaries=()=>fetchBranchList().then(setSummaries).catch(()=>{ setIsAdmin(false); });
+
+  useEffect(()=>{ load(branch); },[branch]);
+  useEffect(()=>{ loadSummaries(); },[]);
+
+  return (
+    <div style={{maxWidth:960,margin:'0 auto',padding:'24px 20px 60px'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
+        <div>
+          <h1 style={{fontSize:20,fontWeight:800,color:'#fff',margin:'0 0 3px'}}>Branch Office</h1>
+          <div style={{fontSize:12,color:'rgba(255,255,255,0.4)'}}>YGN · MDY · NPT — Performance Snapshot</div>
+        </div>
+        <button onClick={()=>load(branch)} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'7px 14px',color:'rgba(255,255,255,0.6)',fontSize:12,cursor:'pointer'}}>↻ Refresh</button>
+      </div>
+
+      {/* Branch switcher */}
+      <div style={{display:'flex',gap:8,marginBottom:24}}>
+        {BRANCHES.map(b=>(
+          <button key={b} onClick={()=>setBranch(b)} style={{background:branch===b?'rgba(212,175,55,0.15)':'rgba(255,255,255,0.04)',border:'1px solid '+(branch===b?'rgba(212,175,55,0.4)':'rgba(255,255,255,0.1)'),borderRadius:10,padding:'10px 24px',color:branch===b?G:'rgba(255,255,255,0.5)',fontSize:13,fontWeight:700,cursor:'pointer',minWidth:100,textAlign:'center'}}>
+            {b}
+            {summaries.find(s=>s.branch_code===b)&&<div style={{fontSize:10,marginTop:2,color:'rgba(255,255,255,0.35)'}}>{summaries.find(s=>s.branch_code===b)?.today} today</div>}
+          </button>
+        ))}
+      </div>
+
+      {error&&<div style={{color:'#f87171',fontSize:13,padding:'10px 14px',background:'rgba(239,68,68,0.1)',borderRadius:8,marginBottom:16}}>{error}</div>}
+      {loading&&<div style={{color:'rgba(255,255,255,0.3)',fontSize:13,padding:20,textAlign:'center'}}>Loading branch data…</div>}
+
+      {snapshot&&!loading&&(
+        <div>
+          {/* TODAY */}
+          <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.08em',marginBottom:10}}>TODAY</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:12,marginBottom:24}}>
+            <KPI label="NEW SHIPMENTS" value={snapshot.today.new_shipments}/>
+            <KPI label="DELIVERED" value={snapshot.today.delivered} color="#22c55e"/>
+            <KPI label="FAILED" value={snapshot.today.failed} color="#f87171"/>
+            <KPI label="IN TRANSIT" value={snapshot.today.in_transit} color="#60a5fa"/>
+            <KPI label="REVENUE (MMK)" value={snapshot.today.revenue} color={G}/>
+          </div>
+
+          {/* THIS MONTH */}
+          <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.08em',marginBottom:10}}>THIS MONTH</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:24}}>
+            <KPI label="SHIPMENTS" value={snapshot.this_month.new_shipments}/>
+            <KPI label="DELIVERED" value={snapshot.this_month.delivered} color="#22c55e"/>
+            <KPI label="REVENUE (MMK)" value={snapshot.this_month.revenue} color={G}/>
+          </div>
+
+          {/* Staff Roster */}
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20}}>
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.08em',marginBottom:10}}>STAFF ROSTER ({snapshot.staff.length})</div>
+              <div style={{border:'1px solid rgba(255,255,255,0.07)',borderRadius:10,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                  <thead>
+                    <tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                      {['Name','Role','Phone','Status'].map(h=><th key={h} style={{padding:'8px 12px',color:'rgba(255,255,255,0.4)',textAlign:'left'}}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(snapshot.staff??[]).map(s=>(
+                      <tr key={s.user_id} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                        <td style={{padding:'7px 12px',color:'rgba(255,255,255,0.8)',fontWeight:500}}>{s.full_name}</td>
+                        <td style={{padding:'7px 12px'}}>
+                          <span style={{fontSize:9,padding:'2px 7px',borderRadius:20,background:'rgba(255,255,255,0.07)',color:'rgba(255,255,255,0.55)',fontWeight:700,textTransform:'uppercase'}}>{s.role}</span>
+                        </td>
+                        <td style={{padding:'7px 12px',color:'rgba(255,255,255,0.5)',fontSize:10}}>{s.phone_number}</td>
+                        <td style={{padding:'7px 12px'}}>
+                          <span style={{fontSize:9,padding:'2px 7px',borderRadius:20,background:(STATUS_COLOR[s.status]||'#94a3b8')+'22',color:STATUS_COLOR[s.status]||'#94a3b8',fontWeight:700}}>{s.status}</span>
+                        </td>
+                      </tr>
+                    ))}
+                    {snapshot.staff.length===0&&<tr><td colSpan={4} style={{padding:14,textAlign:'center',color:'rgba(255,255,255,0.25)',fontSize:11}}>No staff records.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Recent Shipments */}
+            <div>
+              <div style={{fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.08em',marginBottom:10}}>RECENT SHIPMENTS</div>
+              <div style={{border:'1px solid rgba(255,255,255,0.07)',borderRadius:10,overflow:'hidden'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                  <thead>
+                    <tr style={{borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+                      {['ID','Merchant','Recipient','Status'].map(h=><th key={h} style={{padding:'8px 12px',color:'rgba(255,255,255,0.4)',textAlign:'left'}}>{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(snapshot.recent_shipments??[]).map(s=>(
+                      <tr key={s.pickup_id} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                        <td style={{padding:'7px 12px',color:G,fontFamily:'monospace',fontSize:9}}>{s.pickup_id}</td>
+                        <td style={{padding:'7px 12px',color:'rgba(255,255,255,0.65)',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.merchant_name}</td>
+                        <td style={{padding:'7px 12px',color:'rgba(255,255,255,0.65)',maxWidth:90,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{s.recipient_name}</td>
+                        <td style={{padding:'7px 12px'}}><span style={{fontSize:9,padding:'2px 6px',borderRadius:20,background:'rgba(255,255,255,0.06)',color:'rgba(255,255,255,0.5)'}}>{s.status}</span></td>
+                      </tr>
+                    ))}
+                    {snapshot.recent_shipments.length===0&&<tr><td colSpan={4} style={{padding:14,textAlign:'center',color:'rgba(255,255,255,0.25)',fontSize:11}}>No recent shipments.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

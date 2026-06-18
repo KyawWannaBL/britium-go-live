@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Admin Settings</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#020b18;color:#eef8ff}.page{min-height:100vh;padding:28px}.wrap{max-width:1450px;margin:0 auto}.top{display:flex;justify-content:space-between;gap:16px;margin-bottom:24px}.sub{color:#fbbf24;font-weight:950;font-size:12px;letter-spacing:3px}h1{font-size:42px;margin:8px 0}.muted{color:#a8c4da;font-size:17px}button{border:0;border-radius:14px;background:#f97316;color:#fff;font-size:14px;font-weight:950;cursor:pointer;padding:12px 14px}.toolbar{display:flex;gap:10px;flex-wrap:wrap}.notice{margin-bottom:16px;padding:14px 16px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:16px;color:#fbbf24;font-weight:900}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}.metric{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:16px;padding:16px}.metric b{display:block;color:#fbbf24;font-size:28px}.metric span{color:#93c5fd;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}.panel{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:18px;padding:18px;min-height:620px}.panel h2{margin:0 0 14px;color:#fbbf24}.filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}input,select{width:100%;margin-top:6px;padding:12px;border-radius:10px;background:#0f172a;color:#fff;border:1px solid rgba(148,163,184,.35)}.card{border:1px solid rgba(148,163,184,.22);border-radius:14px;padding:14px;margin-top:12px;background:rgba(15,23,42,.84)}.card-title{color:#fbbf24;font-weight:950}.line{color:#cbd5e1;font-size:13px;line-height:1.5}.small{color:#93c5fd;font-size:12px}.badge{display:inline-block;border-radius:999px;padding:5px 9px;background:rgba(37,99,235,.2);border:1px solid rgba(147,197,253,.28);color:#bfdbfe;font-size:12px;font-weight:800;margin:4px 4px 0 0}table{width:100%;border-collapse:collapse;margin-top:12px}th,td{border-bottom:1px solid rgba(148,163,184,.18);padding:9px;text-align:left;font-size:13px;color:#cbd5e1;vertical-align:top}th{color:#fbbf24}pre{white-space:pre-wrap;overflow:auto;max-height:360px}@media(max-width:1050px){.grid,.filters{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page"><div class="wrap">
+<header class="top">
+<div><div class="sub">BRITIUM EXPRESS</div><h1>Admin Settings</h1><p class="muted">Backend-connected operational masterdata, workflow statuses, dropdowns, and branch configuration.</p></div>
+<div class="toolbar"><button onclick="loadAdmin()">Refresh</button><button onclick="downloadCsv()">Download CSV</button><button onclick="location.href='/?ts='+Date.now()+'#/dashboard'">Back to Dashboard</button></div>
+</header>
+
+<div id="notice" class="notice">Loading admin settings...</div>
+
+<section class="summary">
+<div class="metric"><b id="mBranches">0</b><span>Branches</span></div>
+<div class="metric"><b id="mStatuses">0</b><span>Statuses</span></div>
+<div class="metric"><b id="mDropdowns">0</b><span>Dropdown rows</span></div>
+<div class="metric"><b id="mRules">0</b><span>Rules / transitions</span></div>
+</section>
+
+<section class="grid">
+<div class="panel">
+<h2>Masterdata Browser</h2>
+<div class="filters">
+<input id="searchText" placeholder="Search masterdata..." oninput="renderAdmin()" />
+<select id="typeFilter" onchange="renderAdmin()"><option value="">All types</option></select>
+</div>
+<div id="rowCount" class="small">Loading...</div>
+<div id="rows"></div>
+</div>
+
+<div class="panel">
+<h2>System Snapshot</h2>
+<div id="snapshot" class="card"><div class="line">Loading backend settings...</div></div>
+<div class="card">
+<div class="card-title">Admin safety</div>
+<div class="line">This page reads backend masterdata and exports it. It does not fake write/update settings.</div>
+<span class="badge">be_get_operational_masterdata</span>
+<span class="badge">read-first</span>
+<span class="badge">no mock data</span>
+</div>
+</div>
+</section>
+</div></div>
+
+<script>
+const SUPABASE_URL="https://dltavabvjwocknkyvwgz.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTExMzE5NCwiZXhwIjoyMDg2Njg5MTk0fQ.ckX1XXGgKPzD3IBW6yG2iG2RGfkQXyjE9IQbQZMMymA";
+let RAW=null;
+let FLAT=[];
+let FILTERED=[];
+
+function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+function pick(row,keys,fallback){fallback=fallback||"";for(const key of keys){if(row&&row[key]!=null&&String(row[key]).trim()!=="")return String(row[key]);if(row&&row.payload&&row.payload[key]!=null&&String(row.payload[key]).trim()!=="")return String(row.payload[key]);if(row&&row.metadata&&row.metadata[key]!=null&&String(row.metadata[key]).trim()!=="")return String(row.metadata[key]);}return fallback;}
+async function rpc(fn,payload){const res=await fetch(SUPABASE_URL+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_payload:payload||{}})});const text=await res.text();let json={};try{json=text?JSON.parse(text):{};}catch{json={raw:text};}if(!res.ok)throw new Error(json.message||json.error||json.details||fn+" failed");return json;}
+
+function rowsFromAny(name,val){
+ if(Array.isArray(val))return val.map(function(x,i){return {type:name,index:i,row:x};});
+ if(val&&typeof val==="object")return Object.keys(val).map(function(k){return {type:name,key:k,row:val[k]};});
+ return [];
+}
+
+function flatten(data){
+ const out=[];
+ Object.keys(data||{}).forEach(function(k){
+  if(k==="ok")return;
+  rowsFromAny(k,data[k]).forEach(function(x){out.push(x);});
+ });
+ return out;
+}
+
+async function loadAdmin(){
+ const notice=document.getElementById("notice");notice.textContent="Loading operational masterdata...";
+ try{
+  RAW=await rpc("be_get_operational_masterdata",{portal:"enterprise",branch_code:"ALL",include_all:true});
+  FLAT=flatten(RAW);
+  const types=Array.from(new Set(FLAT.map(function(x){return x.type;}))).sort();
+  document.getElementById("typeFilter").innerHTML='<option value="">All types</option>'+types.map(function(t){return '<option value="'+esc(t)+'">'+esc(t)+'</option>';}).join("");
+
+  document.getElementById("mBranches").textContent=countByName(["branches","branch_options","branch"]);
+  document.getElementById("mStatuses").textContent=countByName(["statuses","workflow_statuses","status_options"]);
+  document.getElementById("mDropdowns").textContent=countByName(["dropdowns","dropdown_options","template_dropdowns"]);
+  document.getElementById("mRules").textContent=countByName(["transitions","rules","workflow_rules","exception_rules"]);
+
+  renderAdmin();
+  renderSnapshot();
+  notice.textContent="Admin settings loaded from backend.";
+ }catch(err){console.error(err);notice.textContent="Failed to load Admin Settings: "+(err.message||err);}
+}
+
+function countByName(names){
+ let total=0;
+ names.forEach(function(n){
+  const v=RAW&&RAW[n];
+  if(Array.isArray(v))total+=v.length;
+  else if(v&&typeof v==="object")total+=Object.keys(v).length;
+ });
+ return total;
+}
+
+function renderAdmin(){
+ const q=document.getElementById("searchText").value.trim().toLowerCase();
+ const tf=document.getElementById("typeFilter").value;
+ let rows=FLAT.slice();
+ if(tf)rows=rows.filter(function(x){return x.type===tf;});
+ if(q)rows=rows.filter(function(x){return JSON.stringify(x).toLowerCase().includes(q);});
+ FILTERED=rows;
+ document.getElementById("rowCount").textContent=rows.length+" backend rows shown";
+
+ document.getElementById("rows").innerHTML=rows.slice(0,200).map(function(x){
+  const r=x.row||{};
+  const label=pick(r,["label","name","title","status_code","code","key","value"],x.key||String(x.index||0));
+  const desc=pick(r,["description","desc","display_name","status_label"],"");
+  return '<div class="card"><div class="card-title">'+esc(label)+'</div><div class="small">'+esc(x.type)+' · '+esc(x.key||x.index||"")+'</div><div class="line">'+esc(desc)+'</div><pre class="small">'+esc(JSON.stringify(r,null,2))+'</pre></div>';
+ }).join("")||'<div class="card"><div class="line">No matching backend rows.</div></div>';
+}
+
+function renderSnapshot(){
+ const keys=Object.keys(RAW||{}).filter(function(k){return k!=="ok";}).sort();
+ document.getElementById("snapshot").innerHTML='<div class="card-title">Backend payload sections</div>'+keys.map(function(k){
+  const v=RAW[k];
+  const count=Array.isArray(v)?v.length:(v&&typeof v==="object"?Object.keys(v).length:1);
+  return '<div class="line"><b>'+esc(k)+':</b> '+esc(count)+' rows/items</div>';
+ }).join("");
+}
+
+function downloadCsv(){
+ const headers=["type","key","index","json"];
+ const lines=[headers.join(",")];
+ FILTERED.forEach(function(x){
+  const vals=[x.type,x.key||"",x.index||"",JSON.stringify(x.row||{})].map(function(v){return '"'+String(v??"").replace(/"/g,'""')+'"';});
+  lines.push(vals.join(","));
+ });
+ const blob=new Blob([lines.join("\n")],{type:"text/csv;charset=utf-8"});
+ const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download="britium_admin_settings.csv";document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+}
+
+loadAdmin();
+</script>
+</body>
+</html>

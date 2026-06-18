@@ -1,0 +1,267 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { AlertCircle, CheckCircle2, Clock, Eye, FileText, Languages, ListChecks, Map, MapPin, Navigation, PackageSearch, Printer, RefreshCw, ShieldCheck, Truck, UserRound, X } from "lucide-react";
+import { assignSupervisorPickup, fetchGoLivePortalSnapshot, generateSupervisorWayplans, type Lang, type PortalSnapshot } from "@/lib/goLivePortalApi";
+import { confirmSupervisorDedicatedWayplan } from "@/lib/beApi";
+
+type Tab = "pickups" | "studio" | "dispatch" | "monitor" | "manifest";
+type AssignmentForm = { pickupId: string; riderName: string; driverName: string; helperName: string; vehiclePlate: string; note: string };
+
+const t = {
+  title: "Supervisor Command Center",
+  subtitle: "Fleet Assignment • Route Optimization • Real-time Monitoring",
+};
+
+function mmk(value: unknown) { return `${Number(value || 0).toLocaleString()} MMK`; }
+function vehicleNo(row: any) { return row?.vehicle_no || row?.vehicleNo || row?.registration_no || row?.plate_no || row?.fleet_no || row?.id || row?.fleet_id || ""; }
+function fleetId(row: any) { return row?.fleet_id || row?.id || row?.code || row?.vehicle_id || vehicleNo(row); }
+function displayName(row: any) { return row?.name || row?.rider_name || row?.driver_name || row?.helper_name || row?.employee_name || row?.staff_name || row?.full_name || row?.label || row?.id || ""; }
+function pickupId(row: any) { return row?.pickup_id || row?.pickup_request_code || row?.way_id || ""; }
+function township(row: any) { return row?.township || row?.pickup_township || row?.delivery_township || row?.group_key || "-"; }
+function parcelCount(row: any) { return Number(row?.parcel_count || row?.total_parcels || row?.count || 0); }
+function codTotal(row: any) { return Number(row?.total_cod || row?.cod_amount || row?.actual_collect || 0); }
+
+export default function SupervisorPortalPage() {
+  const [lang, setLang] = useState<Lang>("en");
+  const [activeTab, setActiveTab] = useState<Tab>("pickups");
+  const [snapshot, setSnapshot] = useState<PortalSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [selectedPickup, setSelectedPickup] = useState<any | null>(null);
+  const [selectedWayplan, setSelectedWayplan] = useState<any | null>(null);
+  const [assignmentForm, setAssignmentForm] = useState<AssignmentForm>({ pickupId: "", riderName: "", driverName: "", helperName: "", vehiclePlate: "", note: "" });
+
+  const pickups = ((snapshot as any)?.pickups || (snapshot as any)?.pickup_batches || []) as any[];
+  const wayplans = ((snapshot as any)?.wayplans || []) as any[];
+  const fleet = ((snapshot as any)?.fleet || []) as any[];
+  const riders = ((snapshot as any)?.riders || []) as any[];
+  const drivers = ((snapshot as any)?.drivers || []) as any[];
+  const helpers = ((snapshot as any)?.helpers || []) as any[];
+  const inventory = ((snapshot as any)?.inventory || (snapshot as any)?.items || []) as any[];
+  const summary = ((snapshot as any)?.summary || {}) as any;
+
+  const selectedParcels = useMemo(() => {
+    if (!selectedPickup) return [];
+    const id = pickupId(selectedPickup);
+    return inventory.filter((item: any) => String(item.pickup_id || item.pickup_request_code || "").trim() === id);
+  }, [inventory, selectedPickup]);
+
+  async function load() {
+    setLoading(true); setError("");
+    try { setSnapshot(await fetchGoLivePortalSnapshot("supervisor", lang)); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unable to load supervisor portal."); }
+    finally { setLoading(false); }
+  }
+
+  useEffect(() => { void load(); }, [lang]);
+
+  function openPickup(row: any) {
+    setSelectedPickup(row);
+    setAssignmentForm({
+      pickupId: pickupId(row),
+      riderName: row.assigned_rider_name || "",
+      driverName: row.assigned_driver_name || "",
+      helperName: row.assigned_helper_name || "",
+      vehiclePlate: row.assigned_vehicle_no || row.assigned_fleet_id || "",
+      note: row.supervisor_note || "",
+    });
+  }
+
+  async function quickAssign(req: any, vehicle: any) {
+    setLoading(true); setError("");
+    try {
+      await assignSupervisorPickup({ pickupId: pickupId(req), fleetId: fleetId(vehicle), vehicleNo: vehicleNo(vehicle), actor: "supervisor" });
+      setMessage(`${pickupId(req)} assigned to ${fleetId(vehicle)}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to assign fleet.");
+    } finally { setLoading(false); }
+  }
+
+  async function confirmAssignment() {
+    if (!assignmentForm.pickupId) return setError("Pickup ID is required.");
+    if (!assignmentForm.riderName && !assignmentForm.driverName) return setError("Assign at least one rider or driver.");
+
+    setLoading(true); setError("");
+    try {
+      const result = await confirmSupervisorDedicatedWayplan({
+        pickupId: assignmentForm.pickupId,
+        merchantName: selectedPickup?.merchant_name || selectedPickup?.sender_name || "",
+        routeName: township(selectedPickup),
+        township: township(selectedPickup),
+        riderName: assignmentForm.riderName,
+        driverName: assignmentForm.driverName,
+        helperName: assignmentForm.helperName,
+        vehiclePlate: assignmentForm.vehiclePlate,
+        note: assignmentForm.note,
+        totalParcels: selectedParcels.length || parcelCount(selectedPickup),
+        totalCod: codTotal(selectedPickup),
+        actor: "supervisor",
+      });
+      setSelectedWayplan({
+        ...selectedPickup,
+        pickup_id: assignmentForm.pickupId,
+        wayplan_code: result?.wayplan_code || `WP-${assignmentForm.pickupId}`,
+        assigned_rider_name: assignmentForm.riderName,
+        assigned_driver_name: assignmentForm.driverName,
+        assigned_helper_name: assignmentForm.helperName,
+        assigned_vehicle_no: assignmentForm.vehiclePlate,
+        supervisor_note: assignmentForm.note,
+        total_parcels: selectedParcels.length || parcelCount(selectedPickup),
+        total_cod: codTotal(selectedPickup),
+        items: selectedParcels,
+      });
+      setSelectedPickup(null);
+      setMessage(`${assignmentForm.pickupId} assigned and wayplan sheet generated.`);
+      await load();
+      setActiveTab("manifest");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to confirm assignment.");
+    } finally { setLoading(false); }
+  }
+
+  async function runEngine() {
+    setLoading(true); setError("");
+    try { await generateSupervisorWayplans({ groupBy: "township", actor: "supervisor" }); setMessage("Wayplan engine completed."); await load(); setActiveTab("dispatch"); }
+    catch (err) { setError(err instanceof Error ? err.message : "Unable to generate wayplans."); }
+    finally { setLoading(false); }
+  }
+
+  function previewSheet(row: any) {
+    setSelectedWayplan({
+      ...row,
+      pickup_id: pickupId(row),
+      wayplan_code: row.wayplan_code || `WP-${pickupId(row)}`,
+      total_parcels: selectedParcels.length || parcelCount(row),
+      total_cod: codTotal(row),
+      items: selectedParcels,
+    });
+    setSelectedPickup(null);
+    setActiveTab("manifest");
+  }
+
+  const stats = [
+    { label: "Pending Wayplan", value: wayplans.length || 0, icon: Clock, color: "text-indigo-600", bg: "bg-indigo-50" },
+    { label: "Active Rows", value: summary.active_staged_rows || summary.active_rows || 0, icon: Navigation, color: "text-orange-600", bg: "bg-orange-50" },
+    { label: "Exceptions", value: summary.exceptions || 0, icon: AlertCircle, color: "text-red-600", bg: "bg-red-50" },
+    { label: "Fleet Ready", value: fleet.length || 0, icon: Truck, color: "text-emerald-600", bg: "bg-emerald-50" },
+  ];
+
+  return (
+    <div className="flex min-h-screen bg-slate-50 text-slate-900">
+      <aside className="sticky top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-800 bg-slate-900 text-slate-400 shadow-2xl">
+        <div className="border-b border-slate-800 p-8">
+          <div className="flex items-center gap-4">
+            <div className="rounded-2xl bg-orange-600 p-2.5 shadow-lg shadow-orange-600/30"><ShieldCheck className="h-6 w-6 text-white" /></div>
+            <div><span className="block text-xl font-black uppercase leading-none tracking-tighter text-white">Supervisor</span><span className="text-[10px] font-bold uppercase tracking-widest text-orange-400">Command Center</span></div>
+          </div>
+        </div>
+        <nav className="flex-1 space-y-1 p-6">
+          {[
+            { id: "pickups", label: "Pickup Assignment", icon: PackageSearch, color: "text-orange-400", badge: pickups.filter((p) => p.assignment_status !== "assigned").length },
+            { id: "studio", label: "Wayplan Studio", icon: Map, color: "text-indigo-400" },
+            { id: "dispatch", label: "Fleet Dispatch", icon: Truck, color: "text-emerald-400" },
+            { id: "monitor", label: "Live Tracking", icon: Navigation, color: "text-blue-400" },
+          ].map((item) => (
+            <button key={item.id} onClick={() => setActiveTab(item.id as Tab)} className={`flex w-full items-center justify-between rounded-2xl px-4 py-4 text-sm font-bold transition-all ${activeTab === item.id ? "border border-white/5 bg-white/10 text-white shadow-xl" : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"}`}>
+              <div className="flex items-center gap-4"><item.icon className={`h-5 w-5 ${item.color}`} />{item.label}</div>
+              {Boolean(item.badge) && <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] text-white">{item.badge}</span>}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="min-w-0 flex-1 space-y-8 overflow-y-auto p-6 lg:p-12">
+        <header className="flex flex-col justify-between gap-6 border-b border-slate-200 pb-8 md:flex-row md:items-start">
+          <div><h1 className="max-w-xl text-4xl font-black uppercase tracking-tight text-slate-900">{t.title}</h1><p className="mt-1 text-sm font-medium uppercase tracking-widest text-slate-500">{t.subtitle}</p></div>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => setLang((x) => (x === "en" ? "my" : "en"))} className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-indigo-600"><Languages className="h-3.5 w-3.5" /> မြန်မာဘာသာ</button>
+            <button className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[10px] font-bold uppercase tracking-widest">Reports</button>
+            <button onClick={load} className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> Sync Database</button>
+          </div>
+        </header>
+
+        {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">{message}</div>}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {stats.map((stat) => <div key={stat.label} className={`flex items-center justify-between rounded-[2rem] border border-slate-200 p-6 shadow-sm ${stat.bg}`}><div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p><p className={`mt-1 text-3xl font-black ${stat.color}`}>{stat.value}</p></div><stat.icon className={`h-8 w-8 opacity-20 ${stat.color}`} /></div>)}
+        </div>
+
+        {activeTab === "pickups" && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            {pickups.map((req) => {
+              const assigned = req.assignment_status === "assigned";
+              return <div key={pickupId(req)} className={`relative overflow-hidden rounded-[2.5rem] border-2 bg-white p-8 shadow-xl transition-all hover:-translate-y-1 ${!assigned ? "border-orange-200" : "border-slate-100"}`}>
+                {!assigned && <div className="absolute right-0 top-0 rounded-bl-3xl bg-red-600 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-white">New</div>}
+                <button onClick={() => openPickup(req)} className="mb-6 flex w-full items-center gap-4 text-left">
+                  <div className={`rounded-3xl p-4 ${!assigned ? "bg-orange-50 text-orange-600" : "bg-slate-50 text-slate-400"}`}><PackageSearch className="h-6 w-6" /></div>
+                  <div><p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Merchant Request</p><h4 className="text-lg font-black leading-tight text-slate-900">{req.merchant_name || req.sender_name || "-"}</h4><p className="font-mono text-xs font-black text-indigo-700">{pickupId(req)}</p></div>
+                </button>
+                <div className="mb-6 space-y-4">
+                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600"><MapPin className="h-4 w-4 text-indigo-500" /> {township(req)}</div>
+                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600"><ListChecks className="h-4 w-4 text-emerald-500" /> {parcelCount(req)} Parcels Awaiting</div>
+                  <div className="text-xs font-bold text-slate-400">COD: {mmk(codTotal(req))}</div>
+                </div>
+
+                {assigned ? <div className="mb-4 flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700"><p className="text-xs font-black uppercase tracking-tighter">Assigned: {req.assigned_fleet_id || req.assigned_vehicle_no || "-"}</p><CheckCircle2 className="h-5 w-5" /></div> :
+                  <div className="mb-4 grid grid-cols-2 gap-2">{fleet.slice(0, 4).map((f) => <button key={fleetId(f)} onClick={() => quickAssign(req, f)} className="rounded-2xl border border-slate-200 px-3 py-3 text-[10px] font-black uppercase transition-all hover:bg-orange-600 hover:text-white">{fleetId(f)}</button>)}</div>}
+
+                <div className="grid grid-cols-3 gap-2 border-t border-slate-100 pt-5">
+                  <button onClick={() => openPickup(req)} className="flex items-center justify-center gap-1 rounded-2xl border border-slate-200 bg-white px-3 py-3 text-[10px] font-black uppercase text-slate-700 transition hover:bg-slate-100"><Eye className="h-3.5 w-3.5" /> Details</button>
+                  <button onClick={() => openPickup(req)} className="flex items-center justify-center gap-1 rounded-2xl bg-orange-600 px-3 py-3 text-[10px] font-black uppercase text-white shadow-lg shadow-orange-600/20 transition hover:bg-orange-500"><UserRound className="h-3.5 w-3.5" /> Assign</button>
+                  <button onClick={() => previewSheet(req)} className="flex items-center justify-center gap-1 rounded-2xl bg-slate-900 px-3 py-3 text-[10px] font-black uppercase text-white transition hover:bg-slate-800"><FileText className="h-3.5 w-3.5" /> Sheet</button>
+                </div>
+              </div>;
+            })}
+            {!loading && pickups.length === 0 && <div className="col-span-full rounded-[2rem] border border-slate-200 bg-white p-12 text-center font-bold text-slate-500">No pickup requests loaded from backend.</div>}
+          </div>
+        )}
+
+        {activeTab === "studio" && <div className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-xl"><div className="flex items-center justify-between bg-slate-900 p-8 text-white"><div><h2 className="text-xl font-black uppercase tracking-tight">Wayplan Engine</h2><p className="text-[10px] uppercase tracking-widest text-slate-400">Zone first, Mapbox stop ordering second</p></div><button onClick={runEngine} className="rounded-xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20">{loading ? "Running..." : "Run Engine"}</button></div><div className="p-8 text-sm font-bold text-slate-500">{wayplans.length} wayplans loaded.</div></div>}
+
+        {activeTab === "dispatch" && <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center font-bold text-slate-500">Fleet Dispatch is backend-loaded. Run engine then print wayplans.</div>}
+        {activeTab === "monitor" && <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 text-center font-bold text-slate-500">Live tracking monitor will show active processes from backend.</div>}
+
+        {activeTab === "manifest" && selectedWayplan && (
+          <div className="py-4">
+            <div className="no-print mb-8 flex justify-center"><button onClick={() => window.print()} className="flex items-center gap-3 rounded-[2.5rem] bg-slate-900 px-12 py-5 text-xs font-black uppercase tracking-widest text-white shadow-2xl transition-all hover:scale-105"><Printer className="h-5 w-5" /> Print</button></div>
+            <div className="mx-auto max-w-[210mm] border border-slate-200 bg-white p-8 text-[11px] text-black shadow-2xl">
+              <div className="mb-6 text-center"><h1 className="mb-1 text-2xl font-bold uppercase tracking-widest underline">Britium Express Wayplan Sheet</h1><p className="font-bold italic text-slate-500">Dedicated Pickup / Drop-off Route Manifest</p></div>
+              <table className="mb-4 w-full border-collapse border border-black"><tbody className="font-bold">
+                <tr><td className="w-1/4 border border-black bg-slate-50 p-2">WAYPLAN NO:</td><td className="w-1/4 border border-black p-2">{selectedWayplan.wayplan_code || "-"}</td><td className="w-1/4 border border-black bg-slate-50 p-2">PICKUP ID:</td><td className="w-1/4 border border-black p-2">{selectedWayplan.pickup_id || "-"}</td></tr>
+                <tr><td className="border border-black bg-slate-50 p-2">RIDER:</td><td className="border border-black p-2">{selectedWayplan.assigned_rider_name || "-"}</td><td className="border border-black bg-slate-50 p-2">DRIVER / VEHICLE:</td><td className="border border-black p-2">{selectedWayplan.assigned_driver_name || "-"} / {selectedWayplan.assigned_vehicle_no || "-"}</td></tr>
+              </tbody></table>
+              <table className="w-full border-collapse border border-black text-[10px]"><thead><tr className="bg-[#D7E4BC]"><th className="border border-black p-1">No</th><th className="border border-black p-1">Way ID</th><th className="border border-black p-1">Recipient</th><th className="border border-black p-1">Township</th><th className="border border-black p-1">Address</th><th className="border border-black p-1">COD</th></tr></thead>
+              <tbody>{((selectedWayplan.items || []) as any[]).map((item, index) => <tr key={item.tracking_no || item.way_id || index}><td className="border border-black p-1 text-center">{index + 1}</td><td className="border border-black p-1 font-mono">{item.tracking_no || item.way_id || "-"}</td><td className="border border-black p-1">{item.customer_name || item.recipient_name || "-"}</td><td className="border border-black p-1">{item.township || "-"}</td><td className="border border-black p-1">{item.delivery_address || item.recipient_address || "-"}</td><td className="border border-black p-1 text-right">{Number(item.cod_amount || item.actual_collect || 0).toLocaleString()}</td></tr>)}
+              {!(selectedWayplan.items || []).length && <tr><td colSpan={6} className="border border-black p-6 text-center">No parcel rows loaded for this pickup yet.</td></tr>}</tbody></table>
+              <div className="mt-8 grid grid-cols-3 gap-6 font-bold"><div className="border-t border-black pt-2">Supervisor Signature</div><div className="border-t border-black pt-2">Rider / Driver Signature</div><div className="border-t border-black pt-2">Warehouse Signature</div></div>
+            </div>
+          </div>
+        )}
+      </main>
+
+      {selectedPickup && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-[2.5rem] border border-orange-100 bg-white shadow-2xl">
+            <div className="sticky top-0 z-10 border-b border-slate-100 bg-white/95 p-6 backdrop-blur"><div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-black uppercase tracking-[0.3em] text-orange-500">Merchant Request Details + Assignment</p><h2 className="mt-1 text-3xl font-black tracking-tight text-slate-900">{selectedPickup.merchant_name || selectedPickup.sender_name || "-"}</h2><p className="mt-1 font-mono text-sm font-black text-indigo-700">{pickupId(selectedPickup)}</p></div><button onClick={() => setSelectedPickup(null)} className="rounded-2xl border border-slate-200 p-3 text-slate-500 transition hover:bg-slate-100"><X className="h-5 w-5" /></button></div></div>
+            <div className="grid gap-6 p-6 lg:grid-cols-12">
+              <div className="space-y-5 lg:col-span-7">
+                <div className="grid gap-3 md:grid-cols-3"><div className="rounded-2xl border border-orange-100 bg-orange-50 p-4"><p className="text-[10px] font-black uppercase text-orange-500">Parcels</p><p className="text-2xl font-black text-slate-900">{selectedParcels.length || parcelCount(selectedPickup)}</p></div><div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4"><p className="text-[10px] font-black uppercase text-emerald-600">COD</p><p className="text-xl font-black text-slate-900">{mmk(codTotal(selectedPickup))}</p></div><div className="rounded-2xl border border-indigo-100 bg-indigo-50 p-4"><p className="text-[10px] font-black uppercase text-indigo-600">Township</p><p className="text-lg font-black text-slate-900">{township(selectedPickup)}</p></div></div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="space-y-2"><span className="text-sm font-black text-slate-700">Assigned Rider</span><select value={assignmentForm.riderName} onChange={(e) => setAssignmentForm((p) => ({ ...p, riderName: e.target.value }))} className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-orange-400"><option value="">Select rider...</option>{riders.map((r: any) => <option key={r.id || displayName(r)} value={displayName(r)}>{displayName(r)}</option>)}</select></label>
+                  <label className="space-y-2"><span className="text-sm font-black text-slate-700">Assigned Driver</span><select value={assignmentForm.driverName} onChange={(e) => setAssignmentForm((p) => ({ ...p, driverName: e.target.value }))} className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-orange-400"><option value="">Select driver...</option>{drivers.map((d: any) => <option key={d.id || displayName(d)} value={displayName(d)}>{displayName(d)}</option>)}</select></label>
+                  <label className="space-y-2"><span className="text-sm font-black text-slate-700">Helper</span><select value={assignmentForm.helperName} onChange={(e) => setAssignmentForm((p) => ({ ...p, helperName: e.target.value }))} className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-orange-400"><option value="">Select helper...</option>{helpers.map((h: any) => <option key={h.id || displayName(h)} value={displayName(h)}>{displayName(h)}</option>)}</select></label>
+                  <label className="space-y-2"><span className="text-sm font-black text-slate-700">Vehicle Plate</span><select value={assignmentForm.vehiclePlate} onChange={(e) => setAssignmentForm((p) => ({ ...p, vehiclePlate: e.target.value }))} className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-bold outline-none focus:border-orange-400"><option value="">Select vehicle...</option>{fleet.map((f: any) => <option key={fleetId(f)} value={vehicleNo(f)}>{vehicleNo(f)} · {f.vehicle_type || f.type || "Vehicle"}</option>)}</select></label>
+                </div>
+                <label className="block space-y-2"><span className="text-sm font-black text-slate-700">Supervisor Note</span><textarea value={assignmentForm.note} onChange={(e) => setAssignmentForm((p) => ({ ...p, note: e.target.value }))} rows={4} placeholder="Special instruction, cash handling note, vehicle note..." className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-bold outline-none focus:border-orange-400" /></label>
+                <div className="grid gap-3 md:grid-cols-3"><button onClick={confirmAssignment} disabled={loading} className="rounded-2xl bg-orange-600 px-6 py-4 text-sm font-black uppercase tracking-widest text-white shadow-xl shadow-orange-600/20 transition hover:bg-orange-500 disabled:opacity-60">Confirm + Wayplan</button><button onClick={() => previewSheet(selectedPickup)} className="flex items-center justify-center gap-2 rounded-2xl bg-slate-900 px-6 py-4 text-sm font-black uppercase tracking-widest text-white transition hover:bg-slate-800"><FileText className="h-4 w-4" /> Preview Sheet</button><button onClick={() => setSelectedPickup(null)} className="rounded-2xl border border-slate-200 bg-white px-6 py-4 text-sm font-black uppercase tracking-widest text-slate-600 transition hover:bg-slate-50">Cancel</button></div>
+              </div>
+              <div className="space-y-4 lg:col-span-5"><div className="max-h-[520px] overflow-y-auto rounded-[2rem] border border-slate-200 bg-white"><div className="sticky top-0 bg-white p-4 text-xs font-black uppercase tracking-widest text-slate-400">Dedicated Parcel Preview</div>{selectedParcels.length ? selectedParcels.map((item: any, index: number) => <div key={item.tracking_no || item.way_id || index} className="border-t border-slate-100 p-4"><div className="flex items-center justify-between gap-3"><p className="font-mono text-xs font-black text-indigo-700">{item.tracking_no || item.way_id || `Parcel ${index + 1}`}</p><span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-black text-emerald-700">{mmk(item.cod_amount || item.actual_collect || 0)}</span></div><p className="mt-1 text-sm font-bold text-slate-700">{item.customer_name || item.recipient_name || "-"}</p><p className="mt-1 text-xs text-slate-500">{item.township || "-"} · {item.delivery_address || item.recipient_address || "-"}</p></div>) : <div className="p-8 text-center text-sm font-bold text-slate-400">No item-level parcel rows loaded yet. Assignment can still be confirmed by pickup ID.</div>}</div></div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

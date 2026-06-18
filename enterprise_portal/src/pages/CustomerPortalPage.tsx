@@ -1,151 +1,132 @@
-// @ts-nocheck
-import React, { useState, useEffect } from 'react'
-import { supabase } from '@/integrations/supabase/client'
-import { RefreshCw, Search, MapPin, Headphones, AlertTriangle, Package } from 'lucide-react'
-
-const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
-const FF = { body:"'Poppins',Inter,system-ui,sans-serif", sub:"'Helvetica Neue',Helvetica,Arial,sans-serif" }
-
-const statusBadge = (status: string) => {
-  const s = (status ?? '').toUpperCase()
-  let color = C.info
-  let bg = 'rgba(56,189,248,0.12)'
-  let border = 'rgba(56,189,248,0.24)'
-  if (s === 'DELIVERED') { color = C.success; bg = 'rgba(34,197,94,0.12)'; border = 'rgba(34,197,94,0.24)' }
-  if (s === 'FAILED' || s === 'RETURNED') { color = C.error; bg = 'rgba(255,79,134,0.12)'; border = 'rgba(255,79,134,0.24)' }
-  if (s === 'PENDING' || s === 'WAYPLANNED') { color = C.warning; bg = 'rgba(245,158,11,0.12)'; border = 'rgba(245,158,11,0.24)' }
-  return <span style={{ display:'inline-flex', padding:'4px 10px', borderRadius:999, background:bg, color, border:`1px solid ${border}`, fontFamily:FF.body, fontSize:12, fontWeight:600 }}>{status ?? '—'}</span>
-}
-
-const thStyle: React.CSSProperties = { padding:'10px 14px', background:C.panel2, color:C.muted, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', textAlign:'left', borderBottom:`1px solid ${C.border}`, fontFamily:FF.body }
-const tdStyle: React.CSSProperties = { padding:'11px 14px', fontSize:13.5, color:C.text2, borderBottom:`1px solid ${C.border}22`, fontFamily:FF.body }
+import React, { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { Search, MapPin, Package, Clock, ShieldCheck, RefreshCw, CheckCircle2 } from "lucide-react";
 
 export default function CustomerPortalPage() {
-  const [deliveries, setDeliveries] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [trackInput, setTrackInput] = useState('')
-  const [tracked, setTracked] = useState<any | null>(null)
+  const { t } = useLanguage();
+  const [activeTab, setActiveTab] = useState("track");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [shipment, setShipment] = useState<any>(null);
+  const [error, setError] = useState("");
 
-  const load = () => {
-    setLoading(true)
-    supabase
-      .from('customer_deliveries')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .then(({ data: d }) => { setDeliveries(d ?? []); setLoading(false) })
+  async function handleTrack(e: React.FormEvent) {
+    e.preventDefault();
+    if (!search.trim()) return;
+    setLoading(true);
+    setError("");
+    setShipment(null);
+
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from('be_portal_pickup_request_items')
+        .select('*')
+        .eq('waybill_no', search.trim().toUpperCase())
+        .single();
+
+      if (fetchErr || !data) throw new Error("Parcel not found.");
+      setShipment(data);
+    } catch (err: any) {
+      setError(t("Parcel not found for this tracking number.", "ဤခြေရာခံအမှတ်ဖြင့် ကုန်ပစ္စည်း မတွေ့ရှိပါ။"));
+    } finally {
+      setLoading(false);
+    }
   }
-
-  useEffect(() => { load() }, [])
-
-  const handleTrack = () => {
-    const found = deliveries.find(
-      d =>
-        (d.tracking_id ?? '').toLowerCase() === trackInput.trim().toLowerCase()
-    )
-    setTracked(found ?? null)
-  }
-
-  const active = deliveries.find(
-    d => !['DELIVERED', 'FAILED', 'RETURNED'].includes((d.status ?? '').toUpperCase())
-  )
 
   return (
-    <div style={{ background:C.bg, padding:24, minHeight:'100%', fontFamily:FF.body }}>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}} input:focus,select:focus{outline:none;border-color:#f6b84b!important;box-shadow:0 0 0 3px rgba(246,184,75,0.12)!important} tr:hover td{background:#0f2a42!important} ::-webkit-scrollbar{width:5px} ::-webkit-scrollbar-thumb{background:#1a3a5c;border-radius:4px}`}</style>
-
-      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:24, flexWrap:'wrap', gap:12 }}>
-        <div>
-          <h1 style={{ fontFamily:FF.body, fontSize:20, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', color:C.gold, margin:0 }}>Customer Portal</h1>
-          <p style={{ fontFamily:FF.body, fontSize:14, color:C.muted, marginTop:4, marginBottom:0 }}>Track deliveries, review address details, and access support actions.</p>
-        </div>
-        <button onClick={load} style={{ display:'flex', alignItems:'center', gap:6, padding:'8px 16px', background:'transparent', border:`1px solid ${C.border}`, borderRadius:8, color:C.text2, fontSize:13, fontFamily:FF.body, fontWeight:600, cursor:'pointer' }}>
-          <RefreshCw size={14} /> Refresh
-        </button>
-      </div>
-
-      <div style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, padding:20, marginBottom:20 }}>
-        <div style={{ display:'flex', alignItems:'center', gap:12, flexWrap:'wrap' }}>
-          <div style={{ position:'relative', flex:'1 1 260px' }}>
-            <Search size={14} style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', color:C.muted }} />
-            <input
-              value={trackInput}
-              onChange={e => setTrackInput(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleTrack()}
-              placeholder="Enter tracking ID..."
-              style={{ width:'100%', background:C.panel2, border:`1px solid ${C.border}`, color:C.text2, borderRadius:10, padding:'10px 12px 10px 32px', fontFamily:FF.body, fontSize:14 }}
-            />
+    <div className="min-h-screen bg-[#061524] p-6 md:p-8 text-[#eef8ff] font-['Inter','Pyidaungsu'] notranslate" translate="no">
+      <div className="mx-auto max-w-[1200px] space-y-6">
+        
+        {/* HEADER */}
+        <header className="rounded-[2rem] border border-[#1a3a5c] bg-[#0b2236] p-8 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-[#38bdf8]/30 bg-[#38bdf8]/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#38bdf8] mb-3">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span>{t('Customer Portal', 'ဖောက်သည် ဝန်ဆောင်မှုစနစ်')}</span>
+            </div>
+            <h1 className="text-3xl font-black tracking-tight text-white m-0"><span>{t('Welcome to Britium Express', 'Britium Express မှ ကြိုဆိုပါသည်')}</span></h1>
+            <p className="mt-2 max-w-3xl text-[14px] font-semibold text-[#4d7a9b] leading-relaxed">
+              <span>{t('Track your parcels, manage your addresses, and view your shipment history.', 'သင်၏ ကုန်ပစ္စည်းများကို ခြေရာခံပြီး မှတ်တမ်းများကို ကြည့်ရှုပါ။')}</span>
+            </p>
           </div>
-          <button onClick={handleTrack} style={{ padding:'10px 18px', borderRadius:10, background:C.gold, border:`1px solid ${C.gold}`, color:C.bg, fontFamily:FF.body, fontSize:14, fontWeight:700, cursor:'pointer' }}>Track</button>
-          {tracked !== undefined && trackInput && <span style={{ fontFamily:FF.body, fontSize:14, color:tracked ? C.success : C.error }}>{tracked ? `Status: ${tracked.status}` : 'Tracking ID not found.'}</span>}
-        </div>
-      </div>
+        </header>
 
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(240px,1fr))', gap:14, marginBottom:20 }}>
-        <div style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, padding:18 }}>
-          <h2 style={{ fontFamily:FF.sub, fontSize:18, fontWeight:600, color:C.text2, margin:'0 0 12px' }}>Active Delivery</h2>
-          {active ? (
-            <>
-              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:10 }}>
-                <Package size={16} color={C.info} />
-                <span style={{ fontFamily:FF.body, fontSize:14, color:C.text }}>{active.tracking_id ?? '—'}</span>
+        {/* TABS */}
+        <div className="flex flex-wrap gap-3 border-b border-[#1a3a5c] pb-4">
+          <button onClick={() => setActiveTab("track")} className={`px-6 py-3 rounded-2xl text-[13px] font-black transition-colors ${activeTab === "track" ? "bg-[#38bdf8] text-[#061524]" : "bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}`}>
+            <span>{t('Track Parcel', 'ကုန်ပစ္စည်း ခြေရာခံမည်')}</span>
+          </button>
+          <button onClick={() => setActiveTab("history")} className={`px-6 py-3 rounded-2xl text-[13px] font-black transition-colors ${activeTab === "history" ? "bg-[#38bdf8] text-[#061524]" : "bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}`}>
+            <span>{t('My Shipments', 'ကျွန်ုပ်၏ မှတ်တမ်းများ')}</span>
+          </button>
+        </div>
+
+        {/* TRACKING WORKSPACE */}
+        {activeTab === "track" && (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-8 shadow-xl text-center max-w-2xl mx-auto">
+              <Package className="mx-auto h-16 w-16 text-[#38bdf8] mb-4 opacity-80" />
+              <h2 className="text-2xl font-black text-white mb-6"><span>{t('Track Your Parcel', 'ကုန်ပစ္စည်း ခြေရာခံမည်')}</span></h2>
+              <form onSubmit={handleTrack} className="relative">
+                <Search className="absolute left-5 top-4 text-[#4d7a9b]" size={20} />
+                <input 
+                  value={search} 
+                  onChange={(e) => setSearch(e.target.value)} 
+                  placeholder={t('Enter AWB / Tracking Number...', 'ခြေရာခံအမှတ် ရိုက်ထည့်ပါ...')}
+                  className="w-full bg-[#061524] border-2 border-[#1a3a5c] text-white text-[16px] font-mono font-bold rounded-2xl py-4 pl-14 pr-32 outline-none focus:border-[#38bdf8] transition-colors"
+                />
+                <button type="submit" disabled={loading} className="absolute right-2 top-2 bottom-2 bg-[#38bdf8] text-[#061524] px-6 rounded-xl font-black uppercase tracking-wider hover:bg-[#0284c7] transition-colors disabled:opacity-50 cursor-pointer">
+                  {loading ? <RefreshCw className="animate-spin" size={18} /> : <span>{t('Track', 'ရှာမည်')}</span>}
+                </button>
+              </form>
+              {error && <div className="mt-4 text-[#ff4f86] font-bold text-[13px]"><span>{error}</span></div>}
+            </div>
+
+            {shipment && (
+              <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl max-w-2xl mx-auto animate-in zoom-in-95">
+                <div className="flex justify-between items-start border-b border-[#1a3a5c] pb-4 mb-4">
+                  <div>
+                    <div className="font-mono text-[18px] font-black text-[#f6b84b]"><span>{shipment.waybill_no}</span></div>
+                    <div className="text-[12px] text-[#4d7a9b] mt-1"><span>{t('Created', 'စတင်ချိန်')} {new Date(shipment.created_at).toLocaleDateString()}</span></div>
+                  </div>
+                  <span className="bg-[#22c55e]/20 border border-[#22c55e]/30 text-[#22c55e] px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-widest">
+                    <span>{String(shipment.item_status).replace(/_/g, ' ')}</span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 mb-6">
+                  <div className="bg-[#061524] border border-[#1a3a5c] p-4 rounded-2xl">
+                    <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Sender', 'ပေးပို့သူ')}</span></div>
+                    <div className="font-bold text-white text-[13px]"><span>{shipment.merchant_name || '-'}</span></div>
+                  </div>
+                  <div className="bg-[#061524] border border-[#1a3a5c] p-4 rounded-2xl">
+                    <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Receiver', 'လက်ခံသူ')}</span></div>
+                    <div className="font-bold text-white text-[13px]"><span>{shipment.recipient_name || '-'}</span></div>
+                    <div className="text-[#c8dff0] text-[12px] mt-1"><span>{shipment.delivery_address}, {shipment.delivery_township}</span></div>
+                  </div>
+                </div>
+
+                {Number(shipment.cod_amount) > 0 && (
+                  <div className="bg-[#f6b84b]/10 border border-[#f6b84b]/30 rounded-2xl p-4 flex items-center justify-between">
+                    <span className="text-[12px] font-black uppercase text-[#f6b84b]"><span>{t('COD Amount', 'ကောက်ခံငွေ')}</span></span>
+                    <span className="text-[18px] font-mono font-black text-[#f6b84b]"><span>{Number(shipment.cod_amount).toLocaleString()} Ks</span></span>
+                  </div>
+                )}
               </div>
-              <div style={{ marginBottom:10 }}>{statusBadge(active.status ?? '')}</div>
-              <p style={{ fontFamily:FF.body, fontSize:14, color:C.text2, margin:0 }}>{active.recipient_address ?? active.address ?? '—'}</p>
-            </>
-          ) : (
-            <p style={{ fontFamily:FF.body, fontSize:14, color:C.muted, margin:0 }}>No active deliveries</p>
-          )}
-        </div>
-
-        <div style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, padding:18 }}>
-          <h2 style={{ fontFamily:FF.sub, fontSize:18, fontWeight:600, color:C.text2, margin:'0 0 12px' }}>Delivery Address</h2>
-          <div style={{ display:'flex', alignItems:'flex-start', gap:8, marginBottom:14 }}>
-            <MapPin size={15} color={C.gold} style={{ marginTop:2 }} />
-            <p style={{ fontFamily:FF.body, fontSize:14, color:C.text2, margin:0 }}>{active?.recipient_address ?? active?.address ?? deliveries[0]?.recipient_address ?? deliveries[0]?.address ?? 'No address on record.'}</p>
+            )}
           </div>
-          <button style={{ padding:'8px 12px', borderRadius:8, background:'transparent', border:`1px solid ${C.border}`, color:C.gold, fontFamily:FF.body, fontSize:13, fontWeight:600, cursor:'pointer' }}>Update Address</button>
-        </div>
+        )}
 
-        <div style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, padding:18 }}>
-          <h2 style={{ fontFamily:FF.sub, fontSize:18, fontWeight:600, color:C.text2, margin:'0 0 12px' }}>Customer Support</h2>
-          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-            <button style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'10px 12px', borderRadius:10, background:`${C.info}22`, border:`1px solid ${C.info}44`, color:C.info, fontFamily:FF.body, fontSize:14, fontWeight:600, cursor:'pointer' }}><Headphones size={14} /> Open Support Ticket</button>
-            <button style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:8, padding:'10px 12px', borderRadius:10, background:`${C.error}22`, border:`1px solid ${C.error}44`, color:C.error, fontFamily:FF.body, fontSize:14, fontWeight:600, cursor:'pointer' }}><AlertTriangle size={14} /> Report an Issue</button>
+        {/* MY SHIPMENTS WORKSPACE */}
+        {activeTab === "history" && (
+          <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-16 text-center shadow-xl animate-in fade-in">
+            <Clock className="mx-auto h-16 w-16 text-[#4d7a9b] mb-4 opacity-50" />
+            <h2 className="text-xl font-bold text-white mb-2"><span>{t('History Verification Required', 'မှတ်တမ်းများကို ကြည့်ရှုရန် အကောင့်ဝင်ပါ')}</span></h2>
+            <p className="text-[#4d7a9b]"><span>{t('Please authenticate your phone number to view your complete delivery history.', 'မှတ်တမ်း အပြည့်အစုံကို ကြည့်ရှုရန် ဖုန်းနံပါတ်ဖြင့် အကောင့်ဝင်ပါ။')}</span></p>
           </div>
-        </div>
-      </div>
-
-      <div style={{ background:C.panel, border:`1px solid ${C.border}`, borderRadius:12, padding:20 }}>
-        <div style={{ marginBottom:16 }}>
-          <h2 style={{ fontFamily:FF.sub, fontSize:18, fontWeight:600, color:C.text2, margin:'0 0 4px' }}>Order History</h2>
-          <p style={{ fontFamily:FF.body, fontSize:14, color:C.muted, margin:0 }}>Recent customer delivery history from the live customer_deliveries table.</p>
-        </div>
-        <div style={{ overflowX:'auto' }}>
-          <table style={{ width:'100%', borderCollapse:'collapse', fontFamily:FF.body }}>
-            <thead>
-              <tr>
-                {['Date', 'Tracking ID', 'Merchant', 'Status'].map(h => <th key={h} style={thStyle}>{h}</th>)}
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr><td colSpan={4} style={{ ...tdStyle, textAlign:'center', padding:'28px 14px', color:C.muted }}>Loading...</td></tr>
-              ) : deliveries.length === 0 ? (
-                <tr><td colSpan={4} style={{ ...tdStyle, textAlign:'center', padding:'28px 14px', color:C.muted }}>No order history found.</td></tr>
-              ) : (
-                (deliveries ?? []).map((r, i) => (
-                  <tr key={r.id ?? i} style={{ background:i%2===0 ? C.panel : C.panel2 }}>
-                    <td style={tdStyle}>{r.created_at ? new Date(r.created_at).toLocaleDateString() : '—'}</td>
-                    <td style={{ ...tdStyle, color:C.text }}>{r.tracking_id ?? '—'}</td>
-                    <td style={tdStyle}>{r.merchant_name ?? r.merchant ?? '—'}</td>
-                    <td style={tdStyle}>{statusBadge(r.status ?? '')}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        )}
       </div>
     </div>
-  )
+  );
 }

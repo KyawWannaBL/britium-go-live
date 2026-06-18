@@ -1,0 +1,100 @@
+// @ts-nocheck
+import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Mail, Lock, LogIn, AlertCircle } from "lucide-react";
+import { loginWithBackendEmailRole } from "@/lib/backendEmailAuth";
+
+export default function LoginPage() {
+  const navigate = useNavigate();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+
+    try {
+      const profile = await loginWithBackendEmailRole(email, password);
+      navigate(profile.redirect_path || "/dashboard", { replace: true });
+    } catch (err: any) {
+      setError(err?.message || "Login failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white px-4">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-md rounded-3xl border border-slate-700 bg-slate-900/90 p-8 shadow-2xl"
+      >
+        <div className="mb-8 text-center">
+          <div className="text-xs font-black tracking-[0.3em] text-orange-400 uppercase">
+            Britium Express
+          </div>
+          <h1 className="mt-3 text-3xl font-black">Enterprise Login</h1>
+          <p className="mt-2 text-sm text-slate-300">
+            Sign in with your registered email. Your role and portal access are assigned by backend.
+          </p>
+        </div>
+
+        {error ? (
+          <div className="mb-5 flex gap-2 rounded-xl border border-red-500/60 bg-red-950/40 p-3 text-sm text-red-200">
+            <AlertCircle size={18} />
+            <span>{error}</span>
+          </div>
+        ) : null}
+
+        <label className="mb-2 block text-sm font-bold text-slate-200">
+          Email address
+        </label>
+        <div className="mb-5 flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">
+          <Mail size={18} className="text-orange-400" />
+          <input
+            type="email"
+            autoComplete="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full bg-transparent outline-none"
+            placeholder="name@britiumexpress.com"
+            required
+          />
+        </div>
+
+        <label className="mb-2 block text-sm font-bold text-slate-200">
+          Password
+        </label>
+        <div className="mb-6 flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3">
+          <Lock size={18} className="text-orange-400" />
+          <input
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-transparent outline-none"
+            placeholder="Your password"
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={busy}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-black text-slate-950 disabled:opacity-60"
+        >
+          <LogIn size={18} />
+          {busy ? "Signing in..." : "Sign in"}
+        </button>
+
+        <p className="mt-5 text-center text-xs text-slate-400">
+          No frontend role selection. Authorization is controlled by backend email access profile.
+        </p>
+      </form>
+    </main>
+  );
+}

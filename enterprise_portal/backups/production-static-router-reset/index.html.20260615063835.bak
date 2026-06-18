@@ -1,0 +1,200 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Britium Enterprise Portal UAT</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#061524;color:#eef8ff}
+    video{position:fixed;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+    .shade{position:fixed;inset:0;background:rgba(2,8,23,.72)}
+    .center{position:relative;z-index:2;min-height:100vh;display:grid;place-items:center;padding:20px}
+    .card{width:min(440px,100%);background:#fff;color:#111827;border-radius:22px;padding:28px;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+    .logo{width:72px;height:72px;object-fit:contain;border-radius:18px}
+    .brand{text-align:center;margin-bottom:24px}
+    h1{margin:12px 0 4px;font-size:24px;font-weight:900}
+    h2{margin:0 0 18px;font-size:28px;font-weight:900}
+    .sub{color:#f59e0b;font-weight:900;font-size:12px;letter-spacing:2px}
+    label{display:block;font-weight:900;color:#6b7280;font-size:12px;margin-bottom:6px}
+    input{width:100%;padding:14px;border-radius:12px;border:1px solid #d1d5db;font-size:15px;margin-bottom:16px;color:#111827;background:#fff}
+    button{border:0;border-radius:14px;background:#f59e0b;color:#111827;font-size:16px;font-weight:900;cursor:pointer;padding:16px}
+    .btn{width:100%}
+    .error{display:none;background:#fee2e2;color:#991b1b;padding:12px;border-radius:12px;margin-bottom:14px;font-weight:800}
+    .dash{position:relative;z-index:2;min-height:100vh;padding:24px}
+    .wrap{max-width:1180px;margin:0 auto}
+    .top{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:24px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+    .module{border:1px solid rgba(56,189,248,.28);background:rgba(8,20,36,.88);color:#eef8ff;border-radius:18px;padding:18px;min-height:90px;text-decoration:none;display:block}
+    .module b{color:#fbbf24;font-size:16px}
+    .module span{display:block;color:#93c5fd;margin-top:8px;font-size:13px}
+    .logout{width:auto;background:#f97316;color:#fff;padding:12px 16px}
+    .banner{margin-top:24px;padding:18px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:18px;color:#fbbf24;font-weight:800}
+  </style>
+</head>
+<body>
+  <video src="/BACKGROUND.mp4" autoplay muted loop playsinline></video>
+  <div class="shade"></div>
+  <main id="app"></main>
+
+  <script>
+    const EMAIL = "sai@britiumexpress.com";
+    const PASSWORD = "Sh@nstar28";
+
+    function setSession(email){
+      const access = {ok:true,email,role:"superadmin",portal:"enterprise",branch_code:"HQ",permissions:{all:true},source:"static_emergency_shell"};
+      localStorage.setItem("be_user_authenticated","true");
+      localStorage.setItem("be_session_ok","true");
+      localStorage.setItem("be_login_email",email);
+      localStorage.setItem("be_user_email",email);
+      localStorage.setItem("be_user_role","superadmin");
+      localStorage.setItem("be_user_portal","enterprise");
+      localStorage.setItem("be_branch_code","HQ");
+      localStorage.setItem("be_user_access_profile",JSON.stringify(access));
+    }
+
+    function hasSession(){
+      return localStorage.getItem("be_user_authenticated")==="true";
+    }
+
+    function renderLogin(){
+      document.getElementById("app").className = "center";
+      document.getElementById("app").innerHTML = `
+        <form class="card" id="loginForm">
+          <div class="brand">
+            <img class="logo" src="/logo.png" />
+            <h1>BRITIUM EXPRESS</h1>
+            <div class="sub">ENTERPRISE PORTAL</div>
+          </div>
+          <h2>Sign In</h2>
+          <div id="err" class="error"></div>
+          <label>EMAIL ADDRESS</label>
+          <input id="email" type="email" value="${EMAIL}" autocomplete="username" />
+          <label>PASSWORD</label>
+          <input id="password" type="password" autocomplete="current-password" />
+          <button class="btn" type="submit">Sign In to Portal</button>
+        </form>
+      `;
+      document.getElementById("loginForm").onsubmit = function(e){
+        e.preventDefault();
+        const email = document.getElementById("email").value.trim().toLowerCase();
+        const password = document.getElementById("password").value.trim();
+        const err = document.getElementById("err");
+        if(email !== EMAIL){ err.style.display="block"; err.textContent="Use sai@britiumexpress.com"; return; }
+        if(password !== PASSWORD){ err.style.display="block"; err.textContent="Wrong UAT password"; return; }
+        setSession(email);
+        location.hash = "/dashboard";
+        renderDashboard();
+      };
+    }
+
+    function renderDashboard(){
+      document.getElementById("app").className = "dash";
+      const modules = [
+        ["Dashboard","#/dashboard"],
+        ["Live Dispatch Wayplan Board","#/live-dispatch-wayplan"],
+        ["Create Delivery","#/create-delivery"],
+        ["CS Portal","#/cs"],
+        ["Way Management","#/way-management"],
+        ["Supervisor Hub","#/supervisor"],
+        ["Pickup Assignment","#/pickup-assignment"],
+        ["Data Entry","#/data-entry"],
+        ["Warehouse Ops","#/warehouse"],
+        ["Dispatch Center","#/dispatch"],
+        ["Branch Office","#/branch"],
+        ["Finance Portal","#/finance"],
+        ["COD Settlement","#/cod-settlement"],
+        ["Waybill & Invoice","#/waybill-invoice"],
+        ["Merchant Portal","#/merchant"],
+        ["Customer Portal","#/customer"],
+        ["Master Data","#/master-data"],
+        ["Exceptions","#/exceptions"],
+        ["Reporting","#/reporting"],
+        ["Tariff","#/tariff"],
+        ["Settings","#/settings"],
+        ["Profile","#/profile"]
+      ];
+      document.getElementById("app").innerHTML = `
+        <div class="wrap">
+          <header class="top">
+            <div>
+              <div class="sub">BRITIUM EXPRESS</div>
+              <h1 style="color:#eef8ff;font-size:34px">Enterprise Portal UAT</h1>
+              <p style="color:#a8c4da">Logged in as ${localStorage.getItem("be_user_email") || EMAIL} · superadmin · HQ</p>
+            </div>
+            <button class="logout" id="logout">Sign out</button>
+          </header>
+          <section class="grid">
+            ${modules.map(m => `<a class="module" href="${m[1]}"><b>${m[0]}</b><span>${m[1]}</span></a>`).join("")}
+          </section>
+          <div class="banner">Static emergency Enterprise shell is active. Login loop is stopped. Add full React pages in preview after this is stable.</div>
+        </div>
+      `;
+      document.getElementById("logout").onclick = function(){
+        localStorage.clear();
+        sessionStorage.clear();
+        location.hash = "/login";
+        renderLogin();
+      };
+    }
+
+    
+    function renderLiveDispatchWayplan(){
+      document.getElementById("app").className = "dash";
+      document.getElementById("app").innerHTML = `
+        <div class="wrap">
+          <header class="top">
+            <div>
+              <div class="sub">BRITIUM EXPRESS</div>
+              <h1 style="color:#eef8ff;font-size:34px">Live Dispatch Wayplan Board</h1>
+              <p style="color:#a8c4da">Static UAT board. Backend RPC wiring can be reconnected in preview after production is stable.</p>
+            </div>
+            <button class="logout" onclick="location.hash='/dashboard'">Back to Dashboard</button>
+          </header>
+
+          <section style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+            <div class="module" style="min-height:520px">
+              <b>Unassigned Pickups</b>
+              <span>Live pickup pool placeholder</span>
+              <div style="margin-top:18px;color:#a8c4da;line-height:1.6">
+                Use this column for pickup requests waiting for rider/driver assignment.
+              </div>
+            </div>
+
+            <div class="module" style="min-height:520px">
+              <b>Fleet Dispatch Grid</b>
+              <span>Rider / Driver / Helper assignment</span>
+              <div style="margin-top:18px;color:#a8c4da;line-height:1.6">
+                Use this column for rider, driver, helper, vehicle plate, and team assignment.
+              </div>
+            </div>
+
+            <div class="module" style="min-height:520px">
+              <b>Delivery Status</b>
+              <span>Assigned / completed / exception status</span>
+              <div style="margin-top:18px;color:#a8c4da;line-height:1.6">
+                Use this column for PICKUP_ASSIGNED, DELIVERED, FAILED_ATTEMPT, and RTO status groups.
+              </div>
+            </div>
+          </section>
+
+          <div class="banner">
+            Production-safe static board is active. Next step: connect this screen to be_get_live_dispatch_wayplan_board in preview only.
+          </div>
+        </div>
+      `;
+    }
+
+    function boot(){
+      if(location.hash.includes("/login")) return renderLogin();
+      if(location.hash.includes("/live-dispatch-wayplan")) { if(hasSession()) return renderLiveDispatchWayplan(); location.hash="/login"; return renderLogin(); }
+      if(hasSession()) return renderDashboard();
+      location.hash = "/login";
+      renderLogin();
+    }
+
+    boot();
+    window.addEventListener("hashchange", boot);
+  </script>
+</body>
+</html>

@@ -1,0 +1,161 @@
+// @ts-nocheck
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+const VIDEO_URL = "/BACKGROUND.mp4";
+const LOGO_URL = "/logo.png";
+
+export default function LoginPage() {
+  const [email, setEmail] = useState("sai@britiumexpress.com");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [status, setStatus] = useState("");
+  const [err, setErr] = useState("");
+
+  async function loginNow() {
+    console.log("LOGIN_BUTTON_CLICKED");
+    setErr("");
+    setStatus("Signing in...");
+
+    const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPassword = String(password || "").trim();
+
+    if (!cleanEmail) {
+      setErr("Email is required.");
+      setStatus("");
+      return;
+    }
+
+    if (!cleanPassword) {
+      setErr("Password is required.");
+      setStatus("");
+      return;
+    }
+
+    try {
+      const auth = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password: cleanPassword,
+      });
+
+      console.log("LOGIN_AUTH_RESULT", auth);
+
+      if (auth.error) throw auth.error;
+
+      const access = await supabase.rpc("be_resolve_user_access_by_email", {
+        p_email: cleanEmail,
+      });
+
+      console.log("LOGIN_ACCESS_RESULT", access);
+
+      if (access.error) throw access.error;
+      if (!access.data?.ok) throw new Error(access.data?.error || "Backend access profile not found.");
+
+      localStorage.setItem("be_user_authenticated", "true");
+      localStorage.setItem("be_session_ok", "true");
+      localStorage.setItem("be_login_email", cleanEmail);
+      localStorage.setItem("be_user_email", cleanEmail);
+      localStorage.setItem("be_user_role", access.data.role || "");
+      localStorage.setItem("be_user_portal", access.data.portal || "enterprise");
+      localStorage.setItem("be_branch_code", access.data.branch_code || "HQ");
+      localStorage.setItem("be_user_access_profile", JSON.stringify(access.data));
+
+      setStatus("Access granted. Opening dashboard...");
+      window.location.href = "/#/dashboard";
+    } catch (e: any) {
+      console.error("LOGIN_FAILED", e);
+      setErr(e?.message || "Login failed.");
+      setStatus("");
+    }
+  }
+
+  return (
+    <main style={{ minHeight: "100vh", position: "relative", overflow: "hidden", fontFamily: "Inter, system-ui, sans-serif" }}>
+      <video
+        src={VIDEO_URL}
+        autoPlay
+        muted
+        loop
+        playsInline
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", pointerEvents: "none" }}
+      />
+
+      <div style={{ position: "absolute", inset: 0, background: "rgba(2,8,23,.72)", pointerEvents: "none" }} />
+
+      <section style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "grid", placeItems: "center", padding: 20 }}>
+        <div style={{ width: "min(440px, 100%)", background: "#fff", borderRadius: 22, padding: 28, boxShadow: "0 30px 80px rgba(0,0,0,.45)" }}>
+          <div style={{ textAlign: "center", marginBottom: 24 }}>
+            <img src={LOGO_URL} alt="Britium Express" style={{ width: 72, height: 72, objectFit: "contain", borderRadius: 18 }} />
+            <h1 style={{ margin: "12px 0 4px", fontSize: 24, fontWeight: 900, color: "#111827" }}>BRITIUM EXPRESS</h1>
+            <div style={{ color: "#f59e0b", fontWeight: 900, fontSize: 12, letterSpacing: 2 }}>ENTERPRISE PORTAL</div>
+          </div>
+
+          <h2 style={{ margin: "0 0 18px", color: "#111827", fontSize: 28, fontWeight: 900 }}>Sign In</h2>
+
+          {err ? (
+            <div style={{ background: "#fee2e2", color: "#991b1b", padding: 12, borderRadius: 12, marginBottom: 14, fontWeight: 800 }}>
+              {err}
+            </div>
+          ) : null}
+
+          {status ? (
+            <div style={{ background: "#dcfce7", color: "#14532d", padding: 12, borderRadius: 12, marginBottom: 14, fontWeight: 800 }}>
+              {status}
+            </div>
+          ) : null}
+
+          <label style={{ display: "block", fontWeight: 900, color: "#6b7280", fontSize: 12, marginBottom: 6 }}>EMAIL ADDRESS</label>
+          <input
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            type="email"
+            autoComplete="username"
+            style={{ width: "100%", boxSizing: "border-box", padding: 14, borderRadius: 12, border: "1px solid #d1d5db", fontSize: 15, marginBottom: 16 }}
+          />
+
+          <label style={{ display: "block", fontWeight: 900, color: "#6b7280", fontSize: 12, marginBottom: 6 }}>PASSWORD</label>
+          <div style={{ position: "relative", marginBottom: 18 }}>
+            <input
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              type={showPw ? "text" : "password"}
+              autoComplete="current-password"
+              style={{ width: "100%", boxSizing: "border-box", padding: 14, paddingRight: 70, borderRadius: 12, border: "1px solid #d1d5db", fontSize: 15 }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPw((v) => !v)}
+              style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", fontWeight: 900, cursor: "pointer" }}
+            >
+              {showPw ? "Hide" : "Show"}
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={loginNow}
+            onMouseDown={() => console.log("LOGIN_BUTTON_MOUSE_DOWN")}
+            style={{
+              width: "100%",
+              padding: "16px 0",
+              borderRadius: 14,
+              border: 0,
+              background: "#f59e0b",
+              color: "#111827",
+              fontSize: 16,
+              fontWeight: 900,
+              cursor: "pointer",
+              pointerEvents: "auto",
+            }}
+          >
+            Sign In to Portal
+          </button>
+
+          <p style={{ marginTop: 16, background: "#f8fafc", color: "#475569", padding: 12, borderRadius: 12, fontWeight: 700, fontSize: 13 }}>
+            No frontend role selected. Backend email access profile controls role, portal, branch, and permissions.
+          </p>
+        </div>
+      </section>
+    </main>
+  );
+}

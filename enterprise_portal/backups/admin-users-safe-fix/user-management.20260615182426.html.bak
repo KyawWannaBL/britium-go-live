@@ -1,0 +1,162 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>User Management</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#020b18;color:#eef8ff}.page{min-height:100vh;padding:28px}.wrap{max-width:1450px;margin:0 auto}.top{display:flex;justify-content:space-between;gap:16px;margin-bottom:24px}.sub{color:#fbbf24;font-weight:950;font-size:12px;letter-spacing:3px}h1{font-size:42px;margin:8px 0}.muted{color:#a8c4da;font-size:17px}button{border:0;border-radius:14px;background:#f97316;color:#fff;font-size:14px;font-weight:950;cursor:pointer;padding:12px 14px}.toolbar{display:flex;gap:10px;flex-wrap:wrap}.notice{margin-bottom:16px;padding:14px 16px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:16px;color:#fbbf24;font-weight:900}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}.metric{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:16px;padding:16px}.metric b{display:block;color:#fbbf24;font-size:28px}.metric span{color:#93c5fd;font-size:13px}.grid{display:grid;grid-template-columns:1.1fr .9fr;gap:14px}.panel{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:18px;padding:18px;min-height:620px}.panel h2{margin:0 0 14px;color:#fbbf24}.filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}input,select{width:100%;margin-top:6px;padding:12px;border-radius:10px;background:#0f172a;color:#fff;border:1px solid rgba(148,163,184,.35)}.card{border:1px solid rgba(148,163,184,.22);border-radius:14px;padding:14px;margin-top:12px;background:rgba(15,23,42,.84)}.card-title{color:#fbbf24;font-weight:950}.line{color:#cbd5e1;font-size:13px;line-height:1.5}.small{color:#93c5fd;font-size:12px}.badge{display:inline-block;border-radius:999px;padding:5px 9px;background:rgba(37,99,235,.2);border:1px solid rgba(147,197,253,.28);color:#bfdbfe;font-size:12px;font-weight:800;margin:4px 4px 0 0}pre{white-space:pre-wrap;overflow:auto;max-height:360px}@media(max-width:1050px){.grid,.filters{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page"><div class="wrap">
+<header class="top">
+<div><div class="sub">BRITIUM EXPRESS</div><h1>User Management</h1><p class="muted">Backend-connected user access resolver and access list viewer.</p></div>
+<div class="toolbar"><button onclick="loadUsers()">Refresh Users</button><button onclick="resolveEmail()">Resolve Email</button><button onclick="location.href='/?ts='+Date.now()+'#/dashboard'">Back to Dashboard</button></div>
+</header>
+
+<div id="notice" class="notice">Loading user access data...</div>
+
+<section class="summary">
+<div class="metric"><b id="mUsers">0</b><span>Users / access rows</span></div>
+<div class="metric"><b id="mRoles">0</b><span>Roles</span></div>
+<div class="metric"><b id="mBranches">0</b><span>Branches</span></div>
+<div class="metric"><b id="mSource">-</b><span>Backend source</span></div>
+</section>
+
+<section class="grid">
+<div class="panel">
+<h2>User Access</h2>
+<div class="filters">
+<input id="searchText" placeholder="Search users, role, branch, email..." oninput="renderUsers()" />
+<select id="roleFilter" onchange="renderUsers()"><option value="">All roles</option></select>
+</div>
+<div id="userCount" class="small">Loading...</div>
+<div id="users"></div>
+</div>
+
+<div class="panel">
+<h2>Resolve User Access</h2>
+<label class="small">Email</label>
+<input id="resolveEmailInput" placeholder="user@example.com" value="sai@britiumexpress.com" />
+<div class="toolbar" style="margin-top:12px"><button onclick="resolveEmail()">Resolve Email</button></div>
+<div id="resolveBox" class="card"><div class="line">Enter an email and resolve backend access.</div></div>
+
+<div class="card">
+<div class="card-title">User Management safety</div>
+<div class="line">This page reads and resolves backend user access. It does not fake admin writes.</div>
+<span class="badge">access resolver</span>
+<span class="badge">read-first</span>
+<span class="badge">no mock data</span>
+</div>
+</div>
+</section>
+</div></div>
+
+<script>
+const SUPABASE_URL="https://dltavabvjwocknkyvwgz.supabase.co";
+const SUPABASE_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTExMzE5NCwiZXhwIjoyMDg2Njg5MTk0fQ.ckX1XXGgKPzD3IBW6yG2iG2RGfkQXyjE9IQbQZMMymA";
+let USERS=[];
+let FILTERED=[];
+let SOURCE="-";
+
+function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+function pick(row,keys,fallback){fallback=fallback||"";for(const key of keys){if(row&&row[key]!=null&&String(row[key]).trim()!=="")return String(row[key]);if(row&&row.payload&&row.payload[key]!=null&&String(row.payload[key]).trim()!=="")return String(row.payload[key]);if(row&&row.metadata&&row.metadata[key]!=null&&String(row.metadata[key]).trim()!=="")return String(row.metadata[key]);}return fallback;}
+async function rpc(fn,payload){const res=await fetch(SUPABASE_URL+"/rest/v1/rpc/"+fn,{method:"POST",headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY,"Content-Type":"application/json"},body:JSON.stringify({p_payload:payload||{}})});const text=await res.text();let json={};try{json=text?JSON.parse(text):{};}catch{json={raw:text};}if(!res.ok)throw new Error(json.message||json.error||json.details||fn+" failed");return json;}
+async function restTable(table){const res=await fetch(SUPABASE_URL+"/rest/v1/"+table+"?select=*&limit=300",{headers:{apikey:SUPABASE_KEY,Authorization:"Bearer "+SUPABASE_KEY}});const text=await res.text();let json=[];try{json=text?JSON.parse(text):[];}catch{json=[];}if(!res.ok)throw new Error(table+" unavailable");return json;}
+
+function normalizeUsers(data){
+ if(Array.isArray(data))return data;
+ if(Array.isArray(data.rows))return data.rows;
+ if(Array.isArray(data.users))return data.users;
+ if(Array.isArray(data.access_rows))return data.access_rows;
+ if(data.user)return [data.user];
+ return [];
+}
+
+async function loadUsers(){
+ const notice=document.getElementById("notice");notice.textContent="Loading user access data...";
+ USERS=[];SOURCE="-";
+ const attempts=[
+  async function(){const d=await rpc("be_get_user_access_list",{portal:"enterprise",limit:300});SOURCE="be_get_user_access_list";return normalizeUsers(d);},
+  async function(){const d=await rpc("be_get_operational_masterdata",{portal:"enterprise",branch_code:"ALL",include_users:true});SOURCE="be_get_operational_masterdata";return normalizeUsers(d.users||d.user_access||d.access_rows||d);},
+  async function(){SOURCE="be_portal_user_access table";return await restTable("be_portal_user_access");},
+  async function(){SOURCE="portal_user_access table";return await restTable("portal_user_access");},
+  async function(){SOURCE="user_access table";return await restTable("user_access");}
+ ];
+
+ for(const attempt of attempts){
+  try{
+   const rows=await attempt();
+   if(Array.isArray(rows)&&rows.length){USERS=rows;break;}
+  }catch(e){console.warn(e.message||e);}
+ }
+
+ document.getElementById("mSource").textContent=SOURCE;
+ if(!USERS.length){
+  notice.textContent="No user access rows available from exposed backend sources. Email resolver may still work.";
+ }else{
+  notice.textContent="User access data loaded from "+SOURCE+".";
+ }
+
+ const roles=Array.from(new Set(USERS.map(function(u){return roleOf(u);}).filter(Boolean))).sort();
+ document.getElementById("roleFilter").innerHTML='<option value="">All roles</option>'+roles.map(function(r){return '<option value="'+esc(r)+'">'+esc(r)+'</option>';}).join("");
+ renderUsers();
+}
+
+function emailOf(u){return pick(u,["email","user_email","login_email","staff_email"],"");}
+function nameOf(u){return pick(u,["full_name","name","display_name","staff_name"],emailOf(u));}
+function roleOf(u){return pick(u,["role","role_name","app_role","access_role","user_role"],"-");}
+function branchOf(u){return pick(u,["branch_code","branch","assigned_branch"],"-");}
+function workspaceOf(u){return pick(u,["workspace","workspace_name","tenant","org"],"Britium Express");}
+
+function renderUsers(){
+ const q=document.getElementById("searchText").value.trim().toLowerCase();
+ const rf=document.getElementById("roleFilter").value;
+ let rows=USERS.slice();
+ if(rf)rows=rows.filter(function(u){return roleOf(u)===rf;});
+ if(q)rows=rows.filter(function(u){return JSON.stringify(u||{}).toLowerCase().includes(q);});
+ FILTERED=rows;
+
+ document.getElementById("mUsers").textContent=rows.length;
+ document.getElementById("mRoles").textContent=Array.from(new Set(rows.map(roleOf))).length;
+ document.getElementById("mBranches").textContent=Array.from(new Set(rows.map(branchOf))).length;
+ document.getElementById("userCount").textContent=rows.length+" access rows shown";
+
+ document.getElementById("users").innerHTML=rows.map(function(u){
+  return '<div class="card"><div class="card-title">'+esc(nameOf(u))+'</div><div class="small">'+esc(emailOf(u))+'</div><div class="line"><b>Role:</b> '+esc(roleOf(u))+' · <b>Branch:</b> '+esc(branchOf(u))+'</div><div class="line"><b>Workspace:</b> '+esc(workspaceOf(u))+'</div><pre class="small">'+esc(JSON.stringify(u,null,2))+'</pre></div>';
+ }).join("")||'<div class="card"><div class="line">No access rows found from exposed backend sources.</div></div>';
+}
+
+async function resolveEmail(){
+ const email=document.getElementById("resolveEmailInput").value.trim();
+ const box=document.getElementById("resolveBox");
+ const notice=document.getElementById("notice");
+ if(!email){box.innerHTML='<div class="line">Enter an email first.</div>';return;}
+ notice.textContent="Resolving access for "+email+"...";
+ const attempts=[
+  async function(){return await rpc("be_resolve_user_access_by_email",{email:email,user_email:email,portal:"enterprise"});},
+  async function(){return await rpc("be_get_user_access_by_email",{email:email,user_email:email,portal:"enterprise"});}
+ ];
+ for(const attempt of attempts){
+  try{
+   const result=await attempt();
+   box.innerHTML='<div class="card-title">Resolved Access</div><div class="line"><b>Email:</b> '+esc(email)+'</div><pre class="small">'+esc(JSON.stringify(result,null,2))+'</pre>';
+   notice.textContent="Access resolved for "+email+".";
+   return;
+  }catch(e){console.warn(e.message||e);}
+ }
+ const local=USERS.filter(function(u){return emailOf(u).toLowerCase()===email.toLowerCase();});
+ if(local.length){
+  box.innerHTML='<div class="card-title">Resolved from loaded access rows</div><pre class="small">'+esc(JSON.stringify(local,null,2))+'</pre>';
+  notice.textContent="Access resolved locally for "+email+".";
+ }else{
+  box.innerHTML='<div class="card-title">No access found</div><div class="line">Backend resolver/table did not return access for '+esc(email)+'.</div>';
+  notice.textContent="No access found for "+email+".";
+ }
+}
+
+loadUsers();
+</script>
+</body>
+</html>

@@ -1,0 +1,191 @@
+/* Britium UAT control hardening: consistent input/select/button sizing and readable values */
+.be-topbar {
+  align-items: flex-start !important;
+}
+
+.be-user {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  gap: 8px !important;
+  max-width: 360px !important;
+}
+
+.be-user strong,
+.be-user span {
+  flex-basis: 100% !important;
+  text-align: right !important;
+}
+
+.be-user button {
+  height: 40px !important;
+  min-height: 40px !important;
+  border-radius: 12px !important;
+  padding: 0 14px !important;
+}
+
+.btw-page .btw-filter-grid,
+.btw-page .btw-context-grid {
+  display: grid !important;
+  align-items: end !important;
+  gap: 16px !important;
+}
+
+.btw-page .btw-filter-grid {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)) !important;
+}
+
+.btw-page .btw-context-grid {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)) !important;
+}
+
+.btw-page .btw-field {
+  min-width: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+}
+
+.btw-page .btw-field-label,
+.btw-page label > span {
+  min-height: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  color: #f8fafc !important;
+  font-size: 13px !important;
+  font-weight: 900 !important;
+  letter-spacing: 0 !important;
+}
+
+.btw-page .btw-control,
+.btw-page select.btw-control,
+.btw-page input.btw-control,
+.btw-page .btw-button,
+.btw-page .btw-upload-button,
+.btw-page button.btw-button {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: 46px !important;
+  min-height: 46px !important;
+  max-height: 46px !important;
+  border-radius: 14px !important;
+  padding: 0 14px !important;
+  font-size: 14px !important;
+  font-weight: 850 !important;
+  line-height: 46px !important;
+  vertical-align: middle !important;
+}
+
+.btw-page .btw-control,
+.btw-page select.btw-control,
+.btw-page input.btw-control,
+.btw-page textarea.btw-control {
+  appearance: auto !important;
+  -webkit-appearance: auto !important;
+  border: 1px solid rgba(228, 183, 46, 0.28) !important;
+  background-color: rgba(30, 44, 68, 0.88) !important;
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  caret-color: #facc15 !important;
+  outline: none !important;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.04) !important;
+}
+
+.btw-page .btw-control:hover,
+.btw-page .btw-control:focus {
+  color: #ffffff !important;
+  -webkit-text-fill-color: #ffffff !important;
+  background-color: rgba(39, 55, 82, 0.96) !important;
+  border-color: rgba(250, 204, 21, 0.75) !important;
+  box-shadow: 0 0 0 3px rgba(250, 204, 21, 0.12) !important;
+}
+
+.btw-page .btw-control::placeholder,
+.btw-page input::placeholder,
+.btw-page textarea::placeholder {
+  color: rgba(226, 232, 240, 0.72) !important;
+  -webkit-text-fill-color: rgba(226, 232, 240, 0.72) !important;
+}
+
+.btw-page select.btw-control option,
+.btw-page select option {
+  background-color: #111827 !important;
+  color: #f8fafc !important;
+}
+
+.btw-page .btw-button,
+.btw-page .btw-upload-button,
+.btw-page button.btw-button {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
+  border: 1px solid rgba(228, 183, 46, 0.46) !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  text-align: center !important;
+}
+
+.btw-page .btw-button-primary {
+  background-color: #e4b72e !important;
+  color: #07111f !important;
+}
+
+.btw-page .btw-button-soft,
+.btw-page .btw-upload-button {
+  background-color: rgba(228, 183, 46, 0.16) !important;
+  color: #fde68a !important;
+}
+
+.btw-page .btw-template-actions,
+.btw-page .btw-row-actions,
+.btw-page .btw-action-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 10px !important;
+}
+
+.btw-page .btw-template-actions .btw-button,
+.btw-page .btw-template-actions .btw-upload-button,
+.btw-page .btw-row-actions .btw-button,
+.btw-page .btw-action-row .btw-button {
+  width: auto !important;
+  min-width: 160px !important;
+}
+
+.btw-page .be-table input,
+.btw-page table input,
+.btw-page table select {
+  box-sizing: border-box !important;
+  min-width: 160px !important;
+  width: 100% !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  border: 1px solid rgba(228, 183, 46, 0.24) !important;
+  border-radius: 12px !important;
+  background-color: rgba(30, 44, 68, 0.88) !important;
+  color: #f8fafc !important;
+  -webkit-text-fill-color: #f8fafc !important;
+  padding: 0 11px !important;
+  outline: none !important;
+}
+
+.btw-page .be-table input:hover,
+.btw-page .be-table input:focus {
+  background-color: rgba(39, 55, 82, 0.96) !important;
+  color: #fff !important;
+  -webkit-text-fill-color: #fff !important;
+}
+
+@media (max-width: 900px) {
+  .be-user {
+    justify-content: flex-start !important;
+  }
+  .be-user strong,
+  .be-user span {
+    text-align: left !important;
+  }
+}

@@ -1,0 +1,155 @@
+// @ts-nocheck
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+type AuthValue = {
+  session: any | null;
+  user: any | null;
+  profile: any | null;
+  accessProfile: any | null;
+  isAuthenticated: boolean;
+  loading: boolean;
+  authLoading: boolean;
+  refreshSession: () => Promise<void>;
+  signOut: () => Promise<void>;
+  logout: () => Promise<void>;
+};
+
+const AuthContext = createContext<AuthValue>({
+  session: null,
+  user: null,
+  profile: null,
+  accessProfile: null,
+  isAuthenticated: false,
+  loading: false,
+  authLoading: false,
+  refreshSession: async () => {},
+  signOut: async () => {},
+  logout: async () => {},
+});
+
+function readAccessProfile() {
+  try {
+    return JSON.parse(localStorage.getItem("be_user_access_profile") || "null");
+  } catch {
+    return null;
+  }
+}
+
+function clearPortalStorage() {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (
+        key.startsWith("sb-") ||
+        key.startsWith("be_") ||
+        k.includes("supabase") ||
+        k.includes("auth-token")
+      ) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    Object.keys(sessionStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (
+        key.startsWith("sb-") ||
+        key.startsWith("be_") ||
+        k.includes("supabase") ||
+        k.includes("auth-token")
+      ) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
+
+async function getSessionWithTimeout() {
+  return await Promise.race([
+    supabase.auth.getSession(),
+    new Promise((resolve) =>
+      window.setTimeout(
+        () => resolve({ data: { session: null }, error: null, timedOut: true }),
+        3500
+      )
+    ),
+  ]);
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [session, setSession] = useState<any | null>(null);
+  const [profile, setProfile] = useState<any | null>(() => readAccessProfile());
+  const [loading, setLoading] = useState(false);
+
+  const refreshSession = async () => {
+    setLoading(true);
+
+    try {
+      const result: any = await getSessionWithTimeout();
+      const nextSession = result?.data?.session || null;
+
+      setSession(nextSession);
+      setProfile(readAccessProfile());
+
+      if (result?.timedOut) {
+        console.warn("Enterprise auth session check timed out. Continuing without blocking login.");
+      }
+    } catch (error) {
+      console.warn("Enterprise auth session check failed. Continuing without blocking login.", error);
+      setSession(null);
+      setProfile(readAccessProfile());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Never block public login screen. Session refresh runs in background only.
+    void refreshSession();
+
+    const { data } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      setSession(nextSession || null);
+      setProfile(readAccessProfile());
+    });
+
+    return () => {
+      data?.subscription?.unsubscribe?.();
+    };
+  }, []);
+
+  const signOut = async () => {
+    clearPortalStorage();
+    setSession(null);
+    setProfile(null);
+
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+
+    window.location.replace("/login?signout=1");
+  };
+
+  const value = useMemo(
+    () => ({
+      session,
+      user: session?.user || null,
+      profile,
+      accessProfile: profile,
+      isAuthenticated: !!session,
+      loading,
+      authLoading: loading,
+      refreshSession,
+      signOut,
+      logout: signOut,
+    }),
+    [session, profile, loading]
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+export default AuthContext;

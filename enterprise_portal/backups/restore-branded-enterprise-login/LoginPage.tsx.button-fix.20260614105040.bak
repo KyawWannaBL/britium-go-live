@@ -1,0 +1,343 @@
+// @ts-nocheck
+import { FormEvent, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+
+const VIDEO_URL =
+  "https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/background_a93e0a05bfce4d5fa60d226584905742.mp4";
+
+const LOGO_URL =
+  "https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/logo_869b883bce9e40f59d6394b5f754ef08.png";
+
+const YEAR = new Date().getFullYear();
+
+type L = "en" | "my";
+
+const T: Record<L, Record<string, string>> = {
+  en: {
+    title: "BRITIUM EXPRESS",
+    tagline: "Enterprise Management Portal",
+    portal: "ENTERPRISE PORTAL",
+    login: "Sign In",
+    email: "Email Address",
+    pw: "Password",
+    btnLogin: "Sign In to Portal",
+    forgot: "Forgot password?",
+    footer: "Authorised personnel only",
+    phEmail: "you@britiumexpress.com",
+    phPw: "••••••••",
+    processing: "Authenticating…",
+    success: "✅ Access granted — redirecting…",
+    errEmail: "Email is required",
+    errPw: "Password is required",
+    backendOnly: "No frontend role selection. Role, portal, branch, and permissions are assigned by backend email access profile.",
+  },
+  my: {
+    title: "BRITIUM EXPRESS",
+    tagline: "စီမံခန့်ခွဲမှု Enterprise Portal",
+    portal: "ENTERPRISE PORTAL",
+    login: "ဝင်ရောက်",
+    email: "အီးမေးလ်လိပ်စာ",
+    pw: "စကားဝှက်",
+    btnLogin: "Portal ဝင်ရောက်",
+    forgot: "မေ့သွားသလား?",
+    footer: "ခွင့်ပြုထားသောဝန်ထမ်းများသာ",
+    phEmail: "you@britiumexpress.com",
+    phPw: "••••••••",
+    processing: "အတည်ပြုနေသည်…",
+    success: "✅ ဝင်ခွင့်ရပြီ — ဆောင်ရွက်နေသည်…",
+    errEmail: "အီးမေးလ် လိုအပ်သည်",
+    errPw: "စကားဝှက် လိုအပ်သည်",
+    backendOnly: "Frontend role ရွေးချယ်ရန်မလိုပါ။ Role, portal, branch နှင့် permissions ကို backend email profile မှ သတ်မှတ်ပါသည်။",
+  },
+};
+
+function clearOldAuthStorage() {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("sb-") || key.startsWith("be_") || k.includes("supabase") || k.includes("auth-token")) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    Object.keys(sessionStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("sb-") || key.startsWith("be_") || k.includes("supabase") || k.includes("auth-token")) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
+
+export default function LoginPage() {
+  const [lang, setLang] = useState<L>("en");
+  const [email, setEmail] = useState(localStorage.getItem("be_login_email") || "");
+  const [pw, setPw] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [errs, setErrs] = useState<Record<string, string>>({});
+  const navigate = useNavigate();
+  const t = T[lang];
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (data.session && localStorage.getItem("be_user_authenticated") === "true") {
+        navigate("/dashboard", { replace: true });
+      }
+    });
+  }, [navigate]);
+
+  const inp: React.CSSProperties = {
+    width: "100%",
+    padding: "11px 14px",
+    border: "1.5px solid #e4e4e7",
+    borderRadius: 10,
+    background: "#fafafa",
+    color: "#18181b",
+    fontSize: 13.5,
+    fontWeight: 500,
+    outline: "none",
+    fontFamily: "Poppins,Inter,system-ui,sans-serif",
+    transition: "border-color 0.15s",
+  };
+
+  async function submit(e?: FormEvent) {
+    e?.preventDefault();
+
+    const e2: Record<string, string> = {};
+    if (!email.trim()) e2.email = t.errEmail;
+    if (!pw.trim()) e2.pw = t.errPw;
+    if (Object.keys(e2).length) {
+      setErrs(e2);
+      return;
+    }
+
+    setLoading(true);
+    setMsg("");
+    setErrs({});
+
+    try {
+      const normalizedEmail = email.trim().toLowerCase();
+
+      clearOldAuthStorage();
+
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email: normalizedEmail,
+        password: pw,
+      });
+
+      if (signError) throw signError;
+
+      const { data: accessData, error: accessError } = await supabase.rpc("be_resolve_user_access_by_email", {
+        p_email: normalizedEmail,
+      });
+
+      if (accessError) throw accessError;
+      if (!accessData?.ok) {
+        throw new Error(accessData?.error || "Backend access profile not found for this email.");
+      }
+
+      localStorage.setItem("be_user_authenticated", "true");
+      localStorage.setItem("be_login_email", normalizedEmail);
+      localStorage.setItem("be_user_email", normalizedEmail);
+      localStorage.setItem("be_user_role", accessData.role || "");
+      localStorage.setItem("be_user_portal", accessData.portal || "");
+      localStorage.setItem("be_branch_code", accessData.branch_code || "HQ");
+      localStorage.setItem("be_user_access_profile", JSON.stringify(accessData));
+      localStorage.setItem("be_session_ok", "true");
+
+      setMsg(t.success);
+
+      setTimeout(() => {
+        window.location.href = "/#/dashboard";
+      }, 350);
+    } catch (err: any) {
+      setErrs({ g: err?.message || "Authentication error" });
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "relative", minHeight: "100vh", width: "100%", overflow: "hidden", fontFamily: "Poppins,Inter,system-ui,sans-serif" }}>
+      <video
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+        src={VIDEO_URL}
+        autoPlay
+        muted
+        loop
+        playsInline
+      />
+
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(140deg,rgba(4,14,28,0.90) 0%,rgba(8,22,45,0.78) 50%,rgba(6,12,24,0.88) 100%)" }} />
+
+      <button
+        type="button"
+        onClick={() => setLang((l) => (l === "en" ? "my" : "en"))}
+        style={{
+          position: "absolute",
+          top: 18,
+          right: 18,
+          zIndex: 30,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "7px 13px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,0.15)",
+          background: "rgba(255,255,255,0.08)",
+          color: "#fff",
+          fontSize: 12,
+          fontWeight: 700,
+          cursor: "pointer",
+          backdropFilter: "blur(8px)",
+        }}
+      >
+        🌐 {lang === "en" ? "မြန်မာ" : "EN"}
+      </button>
+
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "24px 16px" }}>
+        <div style={{ width: "100%", maxWidth: 420 }}>
+          <div style={{ textAlign: "center", marginBottom: 26 }}>
+            <div style={{ width: 62, height: 62, borderRadius: 16, overflow: "hidden", background: "#fff", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 30px rgba(0,0,0,0.35)" }}>
+              <img src={LOGO_URL} alt="Britium Express" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+
+            <h1 style={{ fontSize: 20, fontWeight: 900, color: "#fff", letterSpacing: "0.09em", margin: 0 }}>
+              {t.title}
+            </h1>
+
+            <p style={{ fontSize: 9.5, fontWeight: 700, color: "#f59e0b", letterSpacing: "0.18em", marginTop: 5, textTransform: "uppercase" }}>
+              {t.tagline}
+            </p>
+          </div>
+
+          <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,0.50)", overflow: "hidden" }}>
+            <div style={{ padding: "22px 24px 20px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 900, letterSpacing: "0.16em", textTransform: "uppercase" }}>
+                    {t.portal}
+                  </div>
+                  <h2 style={{ margin: "4px 0 0", color: "#18181b", fontSize: 22, fontWeight: 900 }}>
+                    {t.login}
+                  </h2>
+                </div>
+                <div style={{ fontSize: 11, color: "#71717a", fontWeight: 800 }}>v2026</div>
+              </div>
+
+              {msg && (
+                <div style={{ padding: "10px 13px", marginBottom: 14, borderRadius: 10, fontSize: 12, fontWeight: 600, background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#15803d" }}>
+                  {msg}
+                </div>
+              )}
+
+              {errs.g && (
+                <div style={{ padding: "10px 13px", marginBottom: 14, borderRadius: 10, fontSize: 12, background: "#fef2f2", border: "1px solid #fecaca", color: "#dc2626" }}>
+                  {errs.g}
+                </div>
+              )}
+
+              <form onSubmit={submit} style={{ display: "grid", gap: 14 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 10.5, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 5 }}>
+                    {t.email}
+                  </label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={t.phEmail}
+                    style={inp}
+                    autoComplete="username"
+                  />
+                  {errs.email && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{errs.email}</p>}
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 800, color: "#71717a", textTransform: "uppercase", letterSpacing: "0.07em" }}>
+                      {t.pw}
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => alert("Password reset is disabled in UAT. Ask admin to reset from Supabase Auth.")}
+                      style={{ fontSize: 11, color: "#2563eb", background: "none", border: "none", cursor: "pointer", fontWeight: 600 }}
+                    >
+                      {t.forgot}
+                    </button>
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showPw ? "text" : "password"}
+                      value={pw}
+                      onChange={(e) => setPw(e.target.value)}
+                      placeholder={t.phPw}
+                      style={inp}
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPw((p) => !p)}
+                      style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 11, color: "#71717a", padding: "2px 4px" }}
+                    >
+                      {showPw ? "🙈" : "👁"}
+                    </button>
+                  </div>
+                  {errs.pw && <p style={{ fontSize: 11, color: "#dc2626", marginTop: 4 }}>{errs.pw}</p>}
+                </div>
+
+                <button
+                  type="submit"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    width: "100%",
+                    padding: "12px 0",
+                    borderRadius: 12,
+                    border: "none",
+                    background: loading ? "#d4a438" : "#f59e0b",
+                    color: "#1c1917",
+                    fontSize: 13.5,
+                    fontWeight: 800,
+                    cursor: loading ? "wait" : "pointer",
+                    marginTop: 2,
+                    boxShadow: "0 4px 18px rgba(245,158,11,0.32)",
+                    transition: "all 0.15s",
+                  }}
+                >
+                  {loading ? t.processing : t.btnLogin}
+                </button>
+              </form>
+
+              <div style={{ marginTop: 16, padding: "10px 12px", borderRadius: 10, background: "#f8fafc", color: "#475569", fontSize: 11.5, lineHeight: 1.55, fontWeight: 600 }}>
+                {t.backendOnly}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, padding: "10px 16px", borderRadius: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.08)", backdropFilter: "blur(8px)", textAlign: "center" }}>
+            <p style={{ fontSize: 10.5, color: "rgba(255,255,255,0.70)", margin: 0 }}>{t.footer}</p>
+          </div>
+
+          <p style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "rgba(255,255,255,0.45)" }}>
+            © {YEAR} Britium Express · Britium Ventures Co., Ltd · All rights reserved
+          </p>
+        </div>
+      </div>
+
+      <style>{`
+        * { box-sizing: border-box; }
+        input:focus {
+          border-color: #f59e0b !important;
+          box-shadow: 0 0 0 3px rgba(245,158,11,0.12) !important;
+        }
+        input::placeholder { color: #a1a1aa; }
+      `}</style>
+    </div>
+  );
+}

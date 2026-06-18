@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Britium Enterprise Module Index</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font-family:Inter,Arial,sans-serif;background:#020b18;color:#eef8ff}.page{min-height:100vh;padding:28px}.wrap{max-width:1500px;margin:0 auto}.top{display:flex;justify-content:space-between;gap:16px;margin-bottom:24px}.sub{color:#fbbf24;font-weight:950;font-size:12px;letter-spacing:3px}h1{font-size:42px;margin:8px 0}.muted{color:#a8c4da;font-size:17px}.toolbar{display:flex;gap:10px;flex-wrap:wrap}button,a.btn{border:0;border-radius:14px;background:#f97316;color:#fff;font-size:14px;font-weight:950;cursor:pointer;padding:12px 14px;text-decoration:none}.notice{margin-bottom:16px;padding:14px 16px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:16px;color:#fbbf24;font-weight:900}.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}.metric{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:16px;padding:16px}.metric b{display:block;color:#fbbf24;font-size:28px}.metric span{color:#93c5fd;font-size:13px}.filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px}input,select{width:100%;padding:12px;border-radius:10px;background:#0f172a;color:#fff;border:1px solid rgba(148,163,184,.35)}.group{margin-top:22px}.group h2{color:#fbbf24;margin:0 0 10px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.card{border:1px solid rgba(148,163,184,.22);border-radius:16px;padding:16px;background:rgba(15,23,42,.84)}.card-title{color:#fbbf24;font-weight:950;font-size:17px}.line{color:#cbd5e1;font-size:13px;line-height:1.5}.small{color:#93c5fd;font-size:12px}.badge{display:inline-block;border-radius:999px;padding:5px 9px;background:rgba(37,99,235,.2);border:1px solid rgba(147,197,253,.28);color:#bfdbfe;font-size:12px;font-weight:800;margin:6px 4px 0 0}.links{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.links a{border-radius:10px;padding:8px 10px;background:#2563eb;color:white;text-decoration:none;font-size:12px;font-weight:950}.links a.alt{background:#334155}.ok{color:#86efac;font-weight:950}@media(max-width:900px){.top,.filters{grid-template-columns:1fr;display:grid}}
+</style>
+</head>
+<body>
+<div class="page"><div class="wrap">
+<header class="top">
+<div>
+<div class="sub">BRITIUM EXPRESS</div>
+<h1>Enterprise Module Index</h1>
+<p class="muted">Final UAT navigation index for all real backend-connected enterprise modules.</p>
+</div>
+<div class="toolbar">
+<a class="btn" href="/?ts=1#/dashboard">Back to Dashboard</a>
+<a class="btn" href="/go-live-readiness.html?v=1">Run UAT Checks</a>
+</div>
+</header>
+
+<div class="notice">
+All module links below are direct static-file routes, so they bypass hash-route ambiguity and open the real backend pages.
+</div>
+
+<section class="summary">
+<div class="metric"><b id="mTotal">0</b><span>Total modules</span></div>
+<div class="metric"><b id="mGroups">0</b><span>Groups</span></div>
+<div class="metric"><b class="ok">LIVE</b><span>Static route mode</span></div>
+<div class="metric"><b>UAT</b><span>Environment</span></div>
+</section>
+
+<div class="filters">
+<input id="searchText" placeholder="Search modules..." oninput="render()" />
+<select id="groupFilter" onchange="render()"><option value="">All groups</option></select>
+</div>
+
+<div id="moduleRoot"></div>
+</div></div>
+
+<script>
+const MODULES = [
+ {group:"Core Operations",name:"Live Dispatch Wayplan",path:"/live-dispatch.html?v=1",aliases:["/live-dispatch-wayplan","/live-dispatch","/dispatch-wayplan"]},
+ {group:"Core Operations",name:"Pickup Assignment",path:"/pickup-assignment.html?v=1",aliases:["/pickup-assignment","/supervisor-pickup-assignment"]},
+ {group:"Core Operations",name:"Create Delivery",path:"/create-delivery.html?v=1",aliases:["/create-delivery","/delivery-create","/new-delivery"]},
+ {group:"Core Operations",name:"Data Entry / Waybill Studio",path:"/data-entry.html?v=1",aliases:["/data-entry","/waybill-studio","/data-entry-waybill-studio"]},
+ {group:"Core Operations",name:"Warehouse Operations",path:"/warehouse.html?v=1",aliases:["/warehouse","/warehouse-operation","/warehouse-operations"]},
+ {group:"Core Operations",name:"Dispatch Operations",path:"/dispatch.html?v=1",aliases:["/dispatch","/dispatch-operations"]},
+ {group:"Core Operations",name:"Way Management",path:"/way-management.html?v=1",aliases:["/way-management","/wayplan-management","/way-management-office"]},
+
+ {group:"Finance",name:"Finance",path:"/finance.html?v=1",aliases:["/finance","/finance-dashboard"]},
+ {group:"Finance",name:"COD Settlement",path:"/cod-settlement.html?v=1",aliases:["/cod-settlement","/cod","/cod-reconciliation"]},
+ {group:"Finance",name:"Rider Settlement",path:"/rider-settlement.html?v=1",aliases:["/rider-settlement","/rider-wallet","/rider-payments"]},
+
+ {group:"Reporting",name:"Reporting",path:"/reporting.html?v=1",aliases:["/reporting","/reports","/report-center"]},
+ {group:"Reporting",name:"Waybill & Invoice",path:"/waybill-invoice.html?v=1",aliases:["/waybill-invoice","/waybill","/invoice","/invoice-management"]},
+ {group:"Reporting",name:"Audit Log",path:"/audit-log.html?v=1",aliases:["/audit-log","/audit","/activity-log"]},
+ {group:"Reporting",name:"Go-Live Readiness / UAT",path:"/go-live-readiness.html?v=1",aliases:["/go-live-readiness","/uat-control-center","/uat","/readiness","/go-live"]},
+
+ {group:"People",name:"Supervisor Hub",path:"/supervisor-hub.html?v=1",aliases:["/supervisor-hub","/supervisor","/supervisor-portal"]},
+ {group:"People",name:"Rider Management",path:"/rider-management.html?v=1",aliases:["/rider-management","/riders","/rider-master"]},
+ {group:"People",name:"User Management",path:"/user-management.html?v=1",aliases:["/user-management","/users","/access-management"]},
+
+ {group:"Service",name:"CS Portal",path:"/cs.html?v=1",aliases:["/cs","/customer-service","/cs-portal"]},
+ {group:"Service",name:"Customer Portal",path:"/customer-portal.html?v=1",aliases:["/customer-portal","/customer","/customers"]},
+ {group:"Service",name:"Merchant Portal",path:"/merchant-portal.html?v=1",aliases:["/merchant-portal","/merchant","/merchants"]},
+ {group:"Service",name:"Exception Management",path:"/exception-management.html?v=1",aliases:["/exception-management","/exceptions","/exception"]},
+
+ {group:"Admin",name:"Branch Office",path:"/branch-office.html?v=1",aliases:["/branch-office","/branch","/branches"]},
+ {group:"Admin",name:"Admin Settings",path:"/admin-settings.html?v=1",aliases:["/admin-settings","/settings","/system-settings","/admin"]},
+ {group:"Routing",name:"Mapbox Routing / Wayplan Map",path:"/mapbox-routing.html?v=1",aliases:["/mapbox-routing","/wayplan-map","/wayplan-routing","/routing","/map"]}
+];
+
+function esc(v){return String(v??"").replace(/[&<>"']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c];});}
+
+function render(){
+ const q=document.getElementById("searchText").value.trim().toLowerCase();
+ const gf=document.getElementById("groupFilter").value;
+ let rows=MODULES.slice();
+ if(gf)rows=rows.filter(function(m){return m.group===gf;});
+ if(q)rows=rows.filter(function(m){return JSON.stringify(m).toLowerCase().includes(q);});
+
+ const groups=Array.from(new Set(MODULES.map(function(m){return m.group;}))).sort();
+ const old=document.getElementById("groupFilter").value;
+ document.getElementById("groupFilter").innerHTML='<option value="">All groups</option>'+groups.map(function(g){return '<option value="'+esc(g)+'">'+esc(g)+'</option>';}).join("");
+ document.getElementById("groupFilter").value=old;
+
+ document.getElementById("mTotal").textContent=MODULES.length;
+ document.getElementById("mGroups").textContent=groups.length;
+
+ const byGroup={};
+ rows.forEach(function(m){byGroup[m.group]=byGroup[m.group]||[];byGroup[m.group].push(m);});
+
+ document.getElementById("moduleRoot").innerHTML=Object.keys(byGroup).sort().map(function(group){
+  return '<section class="group"><h2>'+esc(group)+'</h2><div class="grid">'+byGroup[group].map(function(m){
+   return '<div class="card"><div class="card-title">'+esc(m.name)+'</div><div class="line">Direct route: <b>'+esc(m.path)+'</b></div><div class="small">Aliases: '+m.aliases.map(esc).join(", ")+'</div><div>'+m.aliases.map(function(a){return '<span class="badge">'+esc(a)+'</span>';}).join("")+'</div><div class="links"><a href="'+esc(m.path)+'">Open module</a><a class="alt" href="/?ts='+Date.now()+'#'+esc(m.aliases[0])+'">Open via dashboard route</a></div></div>';
+  }).join("")+'</div></section>';
+ }).join("") || '<div class="card"><div class="line">No modules found.</div></div>';
+}
+
+render();
+</script>
+</body>
+</html>

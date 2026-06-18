@@ -1,0 +1,139 @@
+import { useEffect } from 'react'
+
+const MANUAL_ROLE_KEYS = [
+  'selectedRole',
+  'loginRole',
+  'uatRole',
+  'uat_selected_role',
+  'be_selected_role',
+  'roleOverride',
+  'demoRole',
+  'mockRole',
+  'manualRole',
+  'selected_login_role',
+]
+
+const ROLE_TEXT = [
+  'SELECT YOUR ROLE',
+  'SUPER ADMIN',
+  'FULL ACCESS',
+  'CS AGENT',
+  'BRANCH MGR',
+  'WAREHOUSE',
+  'MARKETING',
+  'EXECUTIVE',
+  'DATA ENTRY',
+]
+
+const MOCK_TEXT = [
+  'LOGIN BYPASSED FOR UAT SMOKE TESTING',
+  'MOCK / DEMO RUNTIME DATA',
+  'MOCK WAREHOUSE RECORD',
+  'MOCK RECORD',
+  'DEMO RUNTIME DATA',
+  'SAMPLE RUNTIME DATA',
+]
+
+function textOf(el: Element): string {
+  return (el.textContent || '').replace(/\s+/g, ' ').trim().toUpperCase()
+}
+
+function clearManualRoleOverrides(): void {
+  for (const key of MANUAL_ROLE_KEYS) {
+    try {
+      localStorage.removeItem(key)
+      sessionStorage.removeItem(key)
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function hideRoleSelector(): void {
+  const isLogin =
+    window.location.hash.includes('/login') ||
+    window.location.pathname.includes('/login') ||
+    window.location.hash === '#/' ||
+    window.location.hash === ''
+
+  if (!isLogin) return
+
+  const blocks = Array.from(document.querySelectorAll('section, form, div'))
+
+  for (const el of blocks) {
+    const txt = textOf(el)
+    const roleHits = ROLE_TEXT.filter((token) => txt.includes(token)).length
+
+    if (txt.includes('SELECT YOUR ROLE') && roleHits >= 4) {
+      const node = el as HTMLElement
+      node.dataset.beHidden = 'login-role-selector'
+      node.setAttribute('aria-hidden', 'true')
+      node.style.display = 'none'
+      break
+    }
+  }
+}
+
+function hideMockDemoPanels(): void {
+  for (const el of Array.from(document.querySelectorAll('section, article, aside, div, p, span'))) {
+    const txt = textOf(el)
+
+    if (MOCK_TEXT.some((token) => txt.includes(token))) {
+      const target =
+        el.closest('section') ||
+        el.closest('article') ||
+        el.closest('[class*="card"]') ||
+        el
+
+      const node = target as HTMLElement
+      node.dataset.beHidden = txt.includes('LOGIN BYPASSED')
+        ? 'uat-bypass-note'
+        : 'mock-demo-panel'
+      node.setAttribute('aria-hidden', 'true')
+      node.style.display = 'none'
+    }
+  }
+}
+
+function applyCleanup(): void {
+  document.body.classList.add('be-go-live-clean-screen')
+  document.body.dataset.backendRoleOnly = 'true'
+  clearManualRoleOverrides()
+  hideRoleSelector()
+  hideMockDemoPanels()
+}
+
+export default function BritiumGoLiveUXGuard() {
+  useEffect(() => {
+    let queued = false
+
+    const schedule = () => {
+      if (queued) return
+      queued = true
+      requestAnimationFrame(() => {
+        queued = false
+        applyCleanup()
+      })
+    }
+
+    applyCleanup()
+
+    const observer = new MutationObserver(schedule)
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+
+    window.addEventListener('hashchange', schedule)
+    window.addEventListener('popstate', schedule)
+
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('hashchange', schedule)
+      window.removeEventListener('popstate', schedule)
+    }
+  }, [])
+
+  return null
+}

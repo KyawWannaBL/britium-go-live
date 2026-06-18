@@ -1,0 +1,290 @@
+// @ts-nocheck
+import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+const VIDEO_URL = "/BACKGROUND.mp4";
+const LOGO_URL = "/logo.png";
+const YEAR = new Date().getFullYear();
+
+function clearAuthStorage() {
+  try {
+    Object.keys(localStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("be_") || key.startsWith("sb-") || k.includes("supabase") || k.includes("auth-token")) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    Object.keys(sessionStorage).forEach((key) => {
+      const k = key.toLowerCase();
+      if (key.startsWith("be_") || key.startsWith("sb-") || k.includes("supabase") || k.includes("auth-token")) {
+        sessionStorage.removeItem(key);
+      }
+    });
+  } catch {}
+}
+
+async function withTimeout(promise: Promise<any>, label: string, ms = 15000) {
+  return await Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      setTimeout(() => reject(new Error(label + " timed out after " + Math.round(ms / 1000) + "s.")), ms);
+    }),
+  ]);
+}
+
+export default function LoginPage() {
+  console.log("enterprise-login-clean-button-20260614");
+
+  const [lang, setLang] = useState("en");
+  const [email, setEmail] = useState(localStorage.getItem("be_login_email") || "sai@britiumexpress.com");
+  const [password, setPassword] = useState("");
+  const [showPw, setShowPw] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+
+  const t =
+    lang === "en"
+      ? {
+          tagline: "Enterprise Management Portal",
+          portal: "ENTERPRISE PORTAL",
+          signIn: "Sign In",
+          email: "EMAIL ADDRESS",
+          password: "PASSWORD",
+          button: "Sign In to Portal",
+          processing: "Signing in...",
+          forgot: "Forgot password?",
+          backend: "No frontend role selected. Role, portal, branch, and permissions are assigned by backend email access profile.",
+          footer: "Authorised personnel only",
+        }
+      : {
+          tagline: "Enterprise Management Portal",
+          portal: "ENTERPRISE PORTAL",
+          signIn: "Sign In",
+          email: "EMAIL",
+          password: "PASSWORD",
+          button: "Sign In to Portal",
+          processing: "Signing in...",
+          forgot: "Forgot password?",
+          backend: "Backend email access profile controls role, portal, branch, and permissions.",
+          footer: "Authorised personnel only",
+        };
+
+  async function submit(e?: any) {
+    try {
+      e?.preventDefault?.();
+      e?.stopPropagation?.();
+    } catch {}
+
+    if (busy) return;
+
+    const normalizedEmail = String(email || "").trim().toLowerCase();
+    const normalizedPassword = String(password || "").trim();
+
+    setError("");
+    setNotice("");
+
+    if (!normalizedEmail) {
+      setError("Email is required.");
+      return;
+    }
+
+    if (!normalizedPassword) {
+      setError("Password is required.");
+      return;
+    }
+
+    setBusy(true);
+    setNotice("Checking login...");
+
+    try {
+      clearAuthStorage();
+
+      console.log("ENTERPRISE_LOGIN_AUTH_START", normalizedEmail);
+
+      const authResult: any = await withTimeout(
+        supabase.auth.signInWithPassword({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        }),
+        "Supabase auth"
+      );
+
+      console.log("ENTERPRISE_LOGIN_AUTH_RESULT", authResult);
+
+      if (authResult?.error) throw authResult.error;
+
+      console.log("ENTERPRISE_LOGIN_ACCESS_START");
+
+      const accessResult: any = await withTimeout(
+        supabase.rpc("be_resolve_user_access_by_email", {
+          p_email: normalizedEmail,
+        }),
+        "Backend access resolver"
+      );
+
+      console.log("ENTERPRISE_LOGIN_ACCESS_RESULT", accessResult);
+
+      if (accessResult?.error) throw accessResult.error;
+
+      const access = accessResult?.data;
+
+      if (!access?.ok) {
+        throw new Error(access?.error || "Backend access profile not found for this email.");
+      }
+
+      localStorage.setItem("be_user_authenticated", "true");
+      localStorage.setItem("be_session_ok", "true");
+      localStorage.setItem("be_login_email", normalizedEmail);
+      localStorage.setItem("be_user_email", normalizedEmail);
+      localStorage.setItem("be_user_role", access.role || "");
+      localStorage.setItem("be_user_portal", access.portal || "enterprise");
+      localStorage.setItem("be_branch_code", access.branch_code || "HQ");
+      localStorage.setItem("be_user_access_profile", JSON.stringify(access));
+
+      setNotice("Access granted. Opening dashboard...");
+      window.setTimeout(() => {
+        window.location.href = "/#/dashboard";
+      }, 300);
+    } catch (err: any) {
+      console.error("ENTERPRISE_LOGIN_FAILED_CLEAN", err);
+      setError(err?.message || "Login failed.");
+      setNotice("");
+      setBusy(false);
+    }
+  }
+
+  const inputStyle: any = {
+    width: "100%",
+    padding: "13px 14px",
+    border: "1.5px solid #e4e4e7",
+    borderRadius: 10,
+    background: "#fafafa",
+    color: "#18181b",
+    fontSize: 14,
+    fontWeight: 600,
+    outline: "none",
+  };
+
+  return (
+    <div style={{ position: "relative", minHeight: "100vh", width: "100%", overflow: "hidden", fontFamily: "Poppins, Inter, system-ui, sans-serif" }}>
+      <video
+        src={VIDEO_URL}
+        autoPlay
+        muted
+        loop
+        playsInline
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+      />
+
+      <div style={{ position: "absolute", inset: 0, background: "linear-gradient(140deg, rgba(4,14,28,0.78), rgba(8,22,45,0.66), rgba(6,12,24,0.80))" }} />
+
+      <button
+        type="button"
+        onClick={() => setLang((old) => (old === "en" ? "my" : "en"))}
+        style={{
+          position: "absolute",
+          top: 18,
+          right: 18,
+          zIndex: 30,
+          padding: "10px 16px",
+          borderRadius: 10,
+          border: "1px solid rgba(255,255,255,.22)",
+          background: "rgba(255,255,255,.14)",
+          color: "#fff",
+          cursor: "pointer",
+          fontWeight: 900,
+        }}
+      >
+        EN / MM
+      </button>
+
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div style={{ width: "100%", maxWidth: 430 }}>
+          <div style={{ textAlign: "center", marginBottom: 26 }}>
+            <div style={{ width: 64, height: 64, borderRadius: 16, overflow: "hidden", background: "#fff", margin: "0 auto 14px", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 6px 30px rgba(0,0,0,.35)" }}>
+              <img src={LOGO_URL} alt="Britium Express" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+            </div>
+
+            <h1 style={{ fontSize: 22, fontWeight: 900, color: "#fff", letterSpacing: ".08em", margin: 0 }}>
+              BRITIUM EXPRESS
+            </h1>
+
+            <p style={{ fontSize: 10, fontWeight: 900, color: "#f59e0b", letterSpacing: ".18em", marginTop: 6, textTransform: "uppercase" }}>
+              {t.tagline}
+            </p>
+          </div>
+
+          <div style={{ background: "#fff", borderRadius: 20, boxShadow: "0 24px 70px rgba(0,0,0,.5)", overflow: "hidden" }}>
+            <div style={{ padding: 26 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 18 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: "#f59e0b", fontWeight: 900, letterSpacing: ".16em" }}>{t.portal}</div>
+                  <h2 style={{ margin: "5px 0 0", color: "#18181b", fontSize: 24, fontWeight: 900 }}>{t.signIn}</h2>
+                </div>
+                <div style={{ color: "#71717a", fontWeight: 900, fontSize: 12 }}>v2026</div>
+              </div>
+
+              {error ? <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, color: "#b91c1c", background: "#fee2e2", fontWeight: 700, fontSize: 13 }}>{error}</div> : null}
+              {notice ? <div style={{ marginBottom: 14, padding: 12, borderRadius: 10, color: "#166534", background: "#dcfce7", fontWeight: 700, fontSize: 13 }}>{notice}</div> : null}
+
+              <form onSubmit={submit} style={{ display: "grid", gap: 15 }}>
+                <div>
+                  <label style={{ display: "block", color: "#71717a", fontWeight: 900, fontSize: 11, marginBottom: 6 }}>{t.email}</label>
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} type="email" autoComplete="username" />
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <label style={{ display: "block", color: "#71717a", fontWeight: 900, fontSize: 11, marginBottom: 6 }}>{t.password}</label>
+                    <button type="button" onClick={() => alert("Password reset is disabled in UAT. Ask admin to reset from Supabase Auth.")} style={{ border: 0, background: "transparent", color: "#2563eb", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+                      {t.forgot}
+                    </button>
+                  </div>
+
+                  <div style={{ position: "relative" }}>
+                    <input value={password} onChange={(e) => setPassword(e.target.value)} style={inputStyle} type={showPw ? "text" : "password"} autoComplete="current-password" />
+                    <button type="button" onClick={() => setShowPw((old) => !old)} style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", border: 0, background: "transparent", cursor: "pointer", fontWeight: 900 }}>
+                      {showPw ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  style={{
+                    width: "100%",
+                    padding: "14px 0",
+                    borderRadius: 12,
+                    border: "none",
+                    background: busy ? "#fbbf24" : "#f59e0b",
+                    color: "#1c1917",
+                    fontSize: 14,
+                    fontWeight: 900,
+                    cursor: busy ? "wait" : "pointer",
+                    boxShadow: "0 4px 18px rgba(245,158,11,.32)",
+                  }}
+                >
+                  {busy ? t.processing : t.button}
+                </button>
+              </form>
+
+              <div style={{ marginTop: 16, padding: "12px 14px", borderRadius: 10, background: "#f8fafc", color: "#475569", fontSize: 12, lineHeight: 1.55, fontWeight: 700 }}>
+                {t.backend}
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 14, padding: "10px 16px", borderRadius: 12, background: "rgba(255,255,255,.08)", color: "rgba(255,255,255,.75)", textAlign: "center", fontSize: 11 }}>
+            {t.footer}
+          </div>
+
+          <p style={{ textAlign: "center", marginTop: 10, fontSize: 10, color: "rgba(255,255,255,.45)" }}>
+            (c) {YEAR} Britium Express - Britium Ventures Co., Ltd - All rights reserved
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

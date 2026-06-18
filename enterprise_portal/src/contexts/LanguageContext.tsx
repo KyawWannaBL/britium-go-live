@@ -1,19 +1,42 @@
-// @ts-nocheck
-import { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 
-export type Lang = 'en' | 'my';
+type Language = 'en' | 'mm';
 
-interface LangCtx { lang: Lang; setLang: (l: Lang) => void; toggle: () => void; }
-
-const LangContext = createContext<LangCtx>({ lang: 'en', setLang: () => {}, toggle: () => {} });
-
-export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>('en');
-  const setLang = (l: Lang) => setLangState(l);
-  const toggle = () => setLangState(p => p === 'en' ? 'my' : 'en');
-  return <LangContext.Provider value={{ lang, setLang, toggle }}>{children}</LangContext.Provider>;
+interface LanguageContextType {
+  lang: Language;
+  toggleLang: () => void;
+  t: (en: string, mm: string) => string;
 }
 
-export function useLanguage() { return useContext(LangContext); }
+const LanguageContext = createContext<LanguageContextType>({
+  lang: 'mm',
+  toggleLang: () => {},
+  t: (en, mm) => mm
+});
 
-export { LangContext };
+export const LanguageProvider = ({ children }: { children: React.ReactNode }) => {
+  const [lang, setLang] = useState<Language>('mm');
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('be_sys_lang') as Language;
+      if (saved === 'en' || saved === 'mm') setLang(saved);
+    } catch(e) {}
+  }, []);
+
+  const toggleLang = () => {
+    const next = lang === 'en' ? 'mm' : 'en';
+    setLang(next);
+    try { localStorage.setItem('be_sys_lang', next); } catch (e) {}
+  };
+
+  const t = (en: string, mm: string) => (lang === 'en' ? en : mm);
+
+  return (
+    <LanguageContext.Provider value={{ lang, toggleLang, t }}>
+      {children}
+    </LanguageContext.Provider>
+  );
+};
+
+export const useLanguage = () => useContext(LanguageContext);

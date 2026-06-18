@@ -1,0 +1,321 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Way Management</title>
+  <style>
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,sans-serif;background:#020b18;color:#eef8ff}
+    .page{min-height:100vh;padding:28px}
+    .wrap{max-width:1440px;margin:0 auto}
+    .top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:24px}
+    .sub{color:#fbbf24;font-weight:950;font-size:12px;letter-spacing:3px}
+    h1{font-size:42px;margin:8px 0}
+    .muted{color:#a8c4da;font-size:17px}
+    button{border:0;border-radius:14px;background:#f97316;color:#fff;font-size:14px;font-weight:950;cursor:pointer;padding:12px 14px}
+    button:hover{filter:brightness(1.08)}
+    .toolbar{display:flex;gap:10px;flex-wrap:wrap}
+    .notice{margin-bottom:16px;padding:14px 16px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:16px;color:#fbbf24;font-weight:900}
+    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
+    .metric{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:16px;padding:16px}
+    .metric b{display:block;color:#fbbf24;font-size:30px}
+    .metric span{color:#93c5fd;font-size:13px}
+    .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:14px}
+    .panel{border:1px solid rgba(56,189,248,.25);background:rgba(8,20,36,.92);border-radius:18px;padding:18px;min-height:640px}
+    .panel h2{margin:0;color:#fbbf24;font-size:20px}
+    .count{color:#93c5fd;font-size:13px;margin:6px 0 14px}
+    .card{border:1px solid rgba(148,163,184,.22);border-radius:14px;padding:14px;margin-top:12px;background:rgba(15,23,42,.84)}
+    .card-title{color:#fbbf24;font-weight:950}
+    .status{color:#86efac;font-weight:900;font-size:12px}
+    .line{color:#cbd5e1;font-size:13px;line-height:1.5}
+    .small{color:#93c5fd;font-size:12px}
+    input,select,textarea{width:100%;margin-top:8px;padding:10px;border-radius:10px;background:#0f172a;color:#fff;border:1px solid rgba(148,163,184,.35)}
+    textarea{min-height:66px;resize:vertical}
+    .buttons{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-top:12px}
+    .badge{display:inline-block;border-radius:999px;padding:5px 9px;background:rgba(37,99,235,.2);border:1px solid rgba(147,197,253,.28);color:#bfdbfe;font-size:12px;font-weight:800;margin:4px 4px 0 0}
+    .green{background:#16a34a}
+    .blue{background:#2563eb}
+    .hold{background:#ca8a04}
+    .danger{background:#dc2626}
+    .filters{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+    @media(max-width:1100px){.grid,.filters{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="wrap">
+      <header class="top">
+        <div>
+          <div class="sub">BRITIUM EXPRESS</div>
+          <h1>Way Management</h1>
+          <p class="muted">Real backend waybill lifecycle control for pickup, warehouse, dispatch, delivery, and RTO movement.</p>
+        </div>
+        <div class="toolbar">
+          <button onclick="loadWays()">Refresh</button>
+          <button onclick="location.href='/?ts=' + Date.now() + '#/dashboard'">Back to Dashboard</button>
+        </div>
+      </header>
+
+      <div id="notice" class="notice">Loading way management records...</div>
+
+      <section class="summary">
+        <div class="metric"><b id="mTotal">0</b><span>Total ways</span></div>
+        <div class="metric"><b id="mPickup">0</b><span>Pickup stage</span></div>
+        <div class="metric"><b id="mWarehouse">0</b><span>Warehouse stage</span></div>
+        <div class="metric"><b id="mDelivery">0</b><span>Delivery stage</span></div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Waybill / Pickup Records</h2>
+
+          <div class="filters">
+            <input id="searchText" placeholder="Search pickup, waybill, merchant, township..." oninput="renderWays()" />
+            <select id="statusFilter" onchange="renderWays()">
+              <option value="">All statuses</option>
+              <option value="PICKUP">Pickup stage</option>
+              <option value="WAREHOUSE">Warehouse stage</option>
+              <option value="DISPATCH">Dispatch stage</option>
+              <option value="DELIVERY">Delivery stage</option>
+              <option value="EXCEPTION">Exception / hold / failed</option>
+            </select>
+          </div>
+
+          <div id="wayCount" class="count">Loading...</div>
+          <div id="wayList"></div>
+        </div>
+
+        <div class="panel">
+          <h2>Lifecycle Controls</h2>
+
+          <div class="card">
+            <div class="card-title">Pickup lifecycle</div>
+            <span class="badge">PICKUP_REQUESTED</span>
+            <span class="badge">PICKUP_ASSIGNED</span>
+            <span class="badge">ARRIVED_AT_PICKUP</span>
+            <span class="badge">PICKUP_COMPLETED</span>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Warehouse lifecycle</div>
+            <span class="badge">RECEIVED_AT_ORIGIN</span>
+            <span class="badge">SORTING</span>
+            <span class="badge">READY_FOR_DISPATCH</span>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Dispatch / delivery lifecycle</div>
+            <span class="badge">IN_TRANSIT_TO_HUB</span>
+            <span class="badge">RECEIVED_AT_DESTINATION</span>
+            <span class="badge">READY_FOR_DELIVERY</span>
+            <span class="badge">DELIVERY_ASSIGNED</span>
+            <span class="badge">OUT_FOR_DELIVERY</span>
+            <span class="badge">DELIVERED</span>
+          </div>
+
+          <div class="card">
+            <div class="card-title">Exception lifecycle</div>
+            <span class="badge">WAREHOUSE_HOLD</span>
+            <span class="badge">DELIVERY_FAILED</span>
+            <span class="badge">RTO_INITIATED</span>
+            <span class="badge">RETURNED_TO_SENDER</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<script>
+const SUPABASE_URL = "https://dltavabvjwocknkyvwgz.supabase.co";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MTExMzE5NCwiZXhwIjoyMDg2Njg5MTk0fQ.ckX1XXGgKPzD3IBW6yG2iG2RGfkQXyjE9IQbQZMMymA";
+let ROWS = [];
+
+function esc(v) {
+  return String(v ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+}
+
+function pick(row, keys, fallback="") {
+  for (const key of keys) {
+    if (row && row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") return String(row[key]);
+    if (row && row.payload && row.payload[key] !== undefined && row.payload[key] !== null && String(row.payload[key]).trim() !== "") return String(row.payload[key]);
+    if (row && row.metadata && row.metadata[key] !== undefined && row.metadata[key] !== null && String(row.metadata[key]).trim() !== "") return String(row.metadata[key]);
+  }
+  return fallback;
+}
+
+async function rpc(fn, payload) {
+  const res = await fetch(SUPABASE_URL + "/rest/v1/rpc/" + fn, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: "Bearer " + SUPABASE_KEY,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ p_payload: payload || {} })
+  });
+
+  const text = await res.text();
+  let json = {};
+  try { json = text ? JSON.parse(text) : {}; } catch { json = { raw: text }; }
+
+  if (!res.ok) throw new Error(json.message || json.error || json.details || fn + " failed");
+  return json;
+}
+
+function statusOf(r) {
+  return pick(r, ["status","workflow_status","process_status"], "");
+}
+
+function stageOf(r) {
+  const s = statusOf(r).toUpperCase();
+
+  if (/FAILED|HOLD|DAMAGED|LOST|EXCEPTION|RTO|RETURNED/.test(s)) return "EXCEPTION";
+  if (/DELIVERY|OUT_FOR_DELIVERY|DELIVERED|READY_FOR_DELIVERY/.test(s)) return "DELIVERY";
+  if (/IN_TRANSIT|DESTINATION|HUB|DISPATCH/.test(s)) return "DISPATCH";
+  if (/RECEIVED|SORTING|WAREHOUSE|ORIGIN/.test(s)) return "WAREHOUSE";
+  return "PICKUP";
+}
+
+async function loadWays() {
+  const notice = document.getElementById("notice");
+  notice.textContent = "Loading way management records...";
+
+  try {
+    const data = await rpc("be_get_live_dispatch_wayplan_board", {
+      branch_code: "ALL",
+      limit: 150
+    });
+
+    if (!data.ok) throw new Error(data.error || "RPC returned ok=false");
+
+    ROWS = Array.isArray(data.pickups) ? data.pickups : [];
+
+    document.getElementById("mTotal").textContent = ROWS.length;
+    document.getElementById("mPickup").textContent = ROWS.filter(r => stageOf(r) === "PICKUP").length;
+    document.getElementById("mWarehouse").textContent = ROWS.filter(r => stageOf(r) === "WAREHOUSE").length;
+    document.getElementById("mDelivery").textContent = ROWS.filter(r => stageOf(r) === "DELIVERY").length;
+
+    renderWays();
+    notice.textContent = "Way Management loaded successfully.";
+  } catch (err) {
+    console.error(err);
+    notice.textContent = "Failed to load Way Management: " + (err.message || err);
+  }
+}
+
+function renderWays() {
+  const q = document.getElementById("searchText").value.trim().toLowerCase();
+  const f = document.getElementById("statusFilter").value;
+
+  let rows = ROWS.slice();
+
+  if (f) rows = rows.filter(r => stageOf(r) === f);
+
+  if (q) {
+    rows = rows.filter(r => {
+      const blob = [
+        pick(r, ["pickup_id","canonical_pickup_id","id"], ""),
+        pick(r, ["waybill_no","way_id","pickup_way_id"], ""),
+        pick(r, ["merchant_name","merchant_code","sender_name"], ""),
+        pick(r, ["pickup_township","township"], ""),
+        pick(r, ["pickup_address"], ""),
+        statusOf(r)
+      ].join(" ").toLowerCase();
+      return blob.includes(q);
+    });
+  }
+
+  document.getElementById("wayCount").textContent = rows.length + " records shown";
+
+  document.getElementById("wayList").innerHTML = rows.map(r => {
+    const idx = ROWS.indexOf(r);
+    const pickupId = pick(r, ["pickup_id","canonical_pickup_id","id"], "");
+    const wayId = pick(r, ["waybill_no","way_id","pickup_way_id"], "");
+    const merchant = pick(r, ["merchant_name","merchant_code","sender_name"], "-");
+    const township = pick(r, ["pickup_township","township"], "-");
+    const address = pick(r, ["pickup_address"], "-");
+    const status = statusOf(r) || "-";
+    const branch = pick(r, ["branch_code"], "YGN");
+    const parcels = pick(r, ["parcel_count","number_of_parcels","total_parcels"], "0");
+    const rider = pick(r, ["assigned_rider_code","assigned_workforce_code","rider_code"], "-");
+    const stage = stageOf(r);
+
+    return `
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;gap:10px">
+          <div class="card-title">${esc(pickupId)}</div>
+          <div class="status">${esc(status)}</div>
+        </div>
+
+        <div class="small">Waybill: ${esc(wayId || "-")} · Branch: ${esc(branch)} · Stage: ${esc(stage)}</div>
+        <div class="line"><b>Merchant:</b> ${esc(merchant)}</div>
+        <div class="line"><b>Township:</b> ${esc(township)} · <b>Parcels:</b> ${esc(parcels)}</div>
+        <div class="line"><b>Rider:</b> ${esc(rider)}</div>
+        <div class="line"><b>Pickup:</b> ${esc(address)}</div>
+
+        <textarea id="note-${idx}" placeholder="Way management note optional"></textarea>
+
+        <div class="buttons">
+          <button class="green" onclick="applyWayEvent(${idx}, 'PICKUP_ASSIGNED', 'PICKUP')">Pickup Assigned</button>
+          <button class="green" onclick="applyWayEvent(${idx}, 'PICKUP_COMPLETED', 'PICKUP')">Pickup Completed</button>
+          <button class="blue" onclick="applyWayEvent(${idx}, 'RECEIVED_AT_ORIGIN', 'WAREHOUSE')">Origin Received</button>
+          <button class="blue" onclick="applyWayEvent(${idx}, 'READY_FOR_DISPATCH', 'WAREHOUSE')">Ready Dispatch</button>
+          <button class="blue" onclick="applyWayEvent(${idx}, 'IN_TRANSIT_TO_HUB', 'DISPATCH')">Transit Hub</button>
+          <button class="green" onclick="applyWayEvent(${idx}, 'READY_FOR_DELIVERY', 'DISPATCH')">Ready Delivery</button>
+          <button class="green" onclick="applyWayEvent(${idx}, 'DELIVERY_ASSIGNED', 'DELIVERY')">Delivery Assigned</button>
+          <button class="green" onclick="applyWayEvent(${idx}, 'DELIVERED', 'DELIVERY')">Delivered</button>
+          <button class="danger" onclick="applyWayEvent(${idx}, 'DELIVERY_FAILED', 'DELIVERY', 'CUSTOMER_NOT_AVAILABLE')">Delivery Failed</button>
+          <button class="hold" onclick="applyWayEvent(${idx}, 'RTO_INITIATED', 'DELIVERY')">RTO</button>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
+async function applyWayEvent(idx, nextStatus, processType, exceptionCode) {
+  const r = ROWS[idx];
+  if (!r) return alert("Record not found.");
+
+  const pickupId = pick(r, ["pickup_id","canonical_pickup_id","id"], "");
+  const wayId = pick(r, ["waybill_no","way_id","pickup_way_id"], "");
+  const branch = pick(r, ["branch_code"], "YGN");
+  const note = document.getElementById("note-" + idx).value || "";
+
+  const notice = document.getElementById("notice");
+  notice.textContent = "Applying " + nextStatus + " to " + pickupId + "...";
+
+  try {
+    const payload = {
+      process_type: processType || "WAY_MANAGEMENT",
+      pickup_id: pickupId,
+      way_id: wayId,
+      waybill_no: wayId,
+      branch_code: branch,
+      current_status: statusOf(r),
+      next_status: nextStatus,
+      status: nextStatus,
+      workflow_status: nextStatus,
+      exception_code: exceptionCode || null,
+      note: note,
+      way_management_note: note,
+      actor_email: localStorage.getItem("be_user_email") || "sai@britiumexpress.com",
+      source_page: "way-management.html"
+    };
+
+    const result = await rpc("be_logistics_apply_workflow_event_strict", payload);
+
+    if (!result.ok) throw new Error(result.error || result.message || "Workflow update failed.");
+
+    notice.textContent = "Way status updated: " + pickupId + " -> " + nextStatus;
+    await loadWays();
+  } catch (err) {
+    console.error(err);
+    notice.textContent = "Way update failed: " + (err.message || err);
+  }
+}
+
+loadWays();
+</script>
+</body>
+</html>

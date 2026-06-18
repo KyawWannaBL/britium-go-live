@@ -1,0 +1,173 @@
+// src/pages/DashboardPage.tsx
+// @section: dashboard-page
+import { useEffect, useState, useCallback } from 'react';
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { fetchDashboardKpi, fetchTrend7d, fetchModuleThroughput, fetchActivityFeed, fetchSlaSummary, DashboardKpi, TrendDay, ModuleThroughput, ActivityItem, SlaSummary } from '@/lib/dashboardApi';
+
+const N = '#0A1628'; const G = '#D4AF37';
+const C = { delivered:'#22c55e', failed:'#ef4444', active:'#3b82f6', warning:'#f97316', muted:'rgba(255,255,255,0.45)' };
+
+const fmt = (n:number) => n >= 1_000_000 ? (n/1_000_000).toFixed(1)+'M' : n >= 1000 ? (n/1000).toFixed(1)+'K' : String(n);
+const fmtMMK = (n:number) => new Intl.NumberFormat('en-US').format(n) + ' MMK';
+const timeAgo = (iso:string) => { const s = Math.floor((Date.now()-new Date(iso).getTime())/1000); if(s<60) return `${s}s ago`; if(s<3600) return `${Math.floor(s/60)}m ago`; if(s<86400) return `${Math.floor(s/3600)}h ago`; return `${Math.floor(s/86400)}d ago`; };
+
+function KpiCard({label,value,sub,color,icon}:{label:string;value:string|number;sub?:string;color:string;icon:string}) {
+  return (
+    <div style={{background:'rgba(255,255,255,0.04)',border:`1px solid rgba(255,255,255,0.08)`,borderTop:`3px solid ${color}`,borderRadius:12,padding:'18px 20px'}}>
+      <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between'}}>
+        <div>
+          <div style={{fontSize:10,letterSpacing:'0.1em',textTransform:'uppercase',color:C.muted,marginBottom:6}}>{label}</div>
+          <div style={{fontSize:28,fontWeight:800,color,lineHeight:1}}>{value}</div>
+          {sub&&<div style={{fontSize:11,color:'rgba(255,255,255,0.3)',marginTop:4}}>{sub}</div>}
+        </div>
+        <span style={{fontSize:22,opacity:0.6}}>{icon}</span>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({status}:{status:string}) {
+  const map:Record<string,string> = {DELIVERED:C.delivered,FAILED_ATTEMPT:C.failed,OUT_FOR_DELIVERY:C.active,IN_WAREHOUSE:'#a855f7',SUBMITTED:'#f59e0b',EXCEPTION:C.failed,ON_HOLD:C.warning};
+  const c = map[status]??C.muted;
+  return <span style={{fontSize:9,fontWeight:700,color:c,background:c+'22',border:`1px solid ${c}44`,borderRadius:4,padding:'2px 6px',letterSpacing:'0.06em'}}>{status.replace(/_/g,' ')}</span>;
+}
+
+export default function DashboardPage() {
+  const [kpi,setKpi]=useState<DashboardKpi|null>(null);
+  const [trend,setTrend]=useState<TrendDay[]>([]);
+  const [throughput,setThroughput]=useState<ModuleThroughput[]>([]);
+  const [feed,setFeed]=useState<ActivityItem[]>([]);
+  const [sla,setSla]=useState<SlaSummary|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState<string|null>(null);
+  const [lastSync,setLastSync]=useState<Date>(new Date());
+
+  const load = useCallback(async()=>{
+    try {
+      const [k,t,m,f,s] = await Promise.all([fetchDashboardKpi(),fetchTrend7d(),fetchModuleThroughput(),fetchActivityFeed(15),fetchSlaSummary()]);
+      setKpi(k); setTrend(t); setThroughput(m); setFeed(f); setSla(s);
+      setLastSync(new Date()); setError(null);
+    } catch(e:unknown){ setError(e instanceof Error?e.message:'Failed to load'); }
+    finally{ setLoading(false); }
+  },[]);
+
+  useEffect(()=>{ load(); const t=setInterval(load,30000); return()=>clearInterval(t); },[load]);
+
+  if(loading) return (
+    <div style={{display:'flex',alignItems:'center',justifyContent:'center',height:'60vh',flexDirection:'column',gap:12}}>
+      <div style={{width:36,height:36,border:`3px solid ${G}`,borderTopColor:'transparent',borderRadius:'50%',animation:'spin 0.8s linear infinite'}}/>
+      <div style={{fontSize:13,color:C.muted}}>Loading dashboard…</div>
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+
+  if(error) return (
+    <div style={{padding:32,textAlign:'center'}}>
+      <div style={{fontSize:32,marginBottom:8}}>⚠</div>
+      <div style={{color:C.failed,fontSize:14,marginBottom:16}}>{error}</div>
+      <button onClick={load} style={{background:G,color:N,border:'none',borderRadius:8,padding:'9px 20px',fontSize:13,fontWeight:700,cursor:'pointer'}}>Retry</button>
+    </div>
+  );
+
+  const deliveryRate = kpi && (kpi.delivered_today+kpi.failed_today) > 0 ? Math.round((kpi.delivered_today/(kpi.delivered_today+kpi.failed_today))*100) : null;
+  const slaRate = sla && sla.total_delivered_7d > 0 ? Math.round((sla.within_48h/sla.total_delivered_7d)*100) : null;
+
+  return (
+    <div style={{padding:'24px 28px 48px',minHeight:'100%'}}>
+      {/* @section: dash-header */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:28}}>
+        <div>
+          <h1 style={{fontSize:22,fontWeight:800,color:'#fff',margin:0,letterSpacing:'-0.01em'}}>Operations Dashboard</h1>
+          <div style={{fontSize:12,color:C.muted,marginTop:3}}>
+            Today · Last sync: {lastSync.toLocaleTimeString()} · Auto-refresh every 30s
+          </div>
+        </div>
+        <button onClick={load} style={{background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'8px 16px',color:C.muted,fontSize:12,cursor:'pointer'}}>
+          ↻ Refresh
+        </button>
+      </div>
+
+      {/* @section: kpi-grid */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:14,marginBottom:24}}>
+        <KpiCard label="Active Shipments" value={fmt(kpi?.active_shipments??0)} color={C.active} icon="📦" sub="in transit"/>
+        <KpiCard label="Delivered Today" value={fmt(kpi?.delivered_today??0)} color={C.delivered} icon="✅" sub={deliveryRate!=null?`${deliveryRate}% success rate`:undefined}/>
+        <KpiCard label="Failed Attempts" value={fmt(kpi?.failed_today??0)} color={C.failed} icon="❌" sub="requires CS action"/>
+        <KpiCard label="Pending COD" value={fmtMMK(kpi?.pending_cod??0)} color={G} icon="💰" sub="awaiting settlement"/>
+        <KpiCard label="Pickups Today" value={fmt(kpi?.total_pickups_today??0)} color="#a855f7" icon="🏍" sub="created"/>
+        <KpiCard label="Pending Assignment" value={fmt(kpi?.pending_pickups??0)} color="#f59e0b" icon="⏳" sub="awaiting supervisor"/>
+        <KpiCard label="Open Exceptions" value={fmt(kpi?.exceptions_open??0)} color={C.failed} icon="⚠" sub="on hold / exception"/>
+        <KpiCard label="Active Riders" value={fmt(kpi?.active_riders??0)} color={C.delivered} icon="👤" sub="on duty"/>
+      </div>
+
+      {/* @section: charts-row */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 320px',gap:20,marginBottom:24}}>
+        {/* 7-day trend */}
+        <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'18px 20px'}}>
+          <div style={{fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.muted,marginBottom:14}}>7-Day Delivery Trend</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <LineChart data={trend} margin={{top:0,right:0,left:-20,bottom:0}}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)"/>
+              <XAxis dataKey="day" tick={{fill:'rgba(255,255,255,0.4)',fontSize:10}}/>
+              <YAxis tick={{fill:'rgba(255,255,255,0.4)',fontSize:10}}/>
+              <Tooltip contentStyle={{background:'#0f1f3d',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,color:'#fff',fontSize:11}}/>
+              <Legend wrapperStyle={{fontSize:11,color:'rgba(255,255,255,0.5)'}}/>
+              <Line type="monotone" dataKey="delivered" stroke={C.delivered} strokeWidth={2} dot={false}/>
+              <Line type="monotone" dataKey="failed" stroke={C.failed} strokeWidth={2} dot={false}/>
+              <Line type="monotone" dataKey="active" stroke={C.active} strokeWidth={2} dot={false}/>
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* SLA + module throughput */}
+        <div style={{display:'flex',flexDirection:'column',gap:14}}>
+          {sla&&(
+            <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'16px 18px',flex:1}}>
+              <div style={{fontSize:11,letterSpacing:'0.08em',textTransform:'uppercase',color:C.muted,marginBottom:12}}>SLA — Last 7 Days</div>
+              {([['≤24h',sla.within_24h,C.delivered],['≤48h',sla.within_48h,C.active],['>48h',sla.over_48h,C.failed]] as [string,number,string][]).map(([l,v,c])=>(
+                <div key={l} style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+                  <span style={{fontSize:12,color:'rgba(255,255,255,0.6)'}}>{l}</span>
+                  <span style={{fontSize:14,fontWeight:700,color:c}}>{v}</span>
+                </div>
+              ))}
+              {slaRate!=null&&<div style={{fontSize:11,color:C.muted,marginTop:8,paddingTop:8,borderTop:'1px solid rgba(255,255,255,0.07)'}}>Within-48h rate: <strong style={{color:G}}>{slaRate}%</strong></div>}
+            </div>
+          )}
+          <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'16px 18px',flex:1}}>
+            <div style={{fontSize:11,letterSpacing:'0.08em',textTransform:'uppercase',color:C.muted,marginBottom:12}}>By Source (30d)</div>
+            {(throughput??[]).map(m=>(
+              <div key={m.source} style={{marginBottom:8}}>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:11,color:'rgba(255,255,255,0.6)',marginBottom:3}}>
+                  <span>{m.source}</span><span style={{color:G,fontWeight:700}}>{m.total}</span>
+                </div>
+                <div style={{height:4,background:'rgba(255,255,255,0.08)',borderRadius:2,overflow:'hidden'}}>
+                  <div style={{height:'100%',width:`${m.total>0?Math.round((m.delivered/m.total)*100):0}%`,background:C.delivered,borderRadius:2}}/>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* @section: activity-feed */}
+      <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:12,overflow:'hidden'}}>
+        <div style={{padding:'14px 20px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{fontSize:12,letterSpacing:'0.08em',textTransform:'uppercase',color:C.muted}}>Recent Activity</span>
+          <span style={{fontSize:11,color:'rgba(255,255,255,0.25)'}}>{feed.length} events</span>
+        </div>
+        {(feed??[]).map((item,i)=>(
+          <div key={item.id} style={{display:'flex',alignItems:'center',gap:14,padding:'10px 20px',borderBottom:i<feed.length-1?'1px solid rgba(255,255,255,0.04)':'none'}}>
+            <div style={{width:6,height:6,borderRadius:'50%',background:C.active,flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <span style={{fontSize:12,color:'rgba(255,255,255,0.75)',fontWeight:500}}>{item.merchant_name??'—'}</span>
+              <span style={{fontSize:12,color:'rgba(255,255,255,0.4)',margin:'0 6px'}}>·</span>
+              <span style={{fontSize:11,color:'rgba(255,255,255,0.5)'}}>{item.description||item.event_type}</span>
+            </div>
+            <StatusBadge status={item.current_status}/>
+            <span style={{fontSize:10,color:'rgba(255,255,255,0.25)',flexShrink:0}}>{timeAgo(item.created_at)}</span>
+          </div>
+        ))}
+        {feed.length===0&&<div style={{padding:'24px 20px',textAlign:'center',fontSize:13,color:'rgba(255,255,255,0.25)'}}>No recent activity</div>}
+      </div>
+    </div>
+  );
+}

@@ -1,372 +1,302 @@
-import React, { useEffect, useState } from "react";
+import { lazy, Suspense, useState, FormEvent, useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { LayoutDashboard, Smartphone, LogOut, Package, Database, HeadphonesIcon, Truck, Map, Settings, Briefcase, Users, FileText } from "lucide-react";
+import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
+import { AuthProvider, useAuth } from '@/contexts/auth';
+import { supabase } from '@/integrations/supabase/client'; 
+import AppErrorBoundary from '@/components/system/AppErrorBoundary';
+import EnvironmentBadge from '@/components/system/EnvironmentBadge';
 
-type TemplateItem = {
-  title: string;
-  file: string;
-  uploadRoute: string;
-};
+// ─── FONT & GLOBAL STYLES ───
+// Enforces font consistency across the entire application shell
+const GLOBAL_FONT = "font-['Inter','Poppins',sans-serif]";
 
-const templates: TemplateItem[] = [
-  {
-    title: "Data Entry Upload Template",
-    file: "/templates/Britium_Data_Entry_UAT_GoLive_Template.xlsx",
-    uploadRoute: "/data-entry/upload",
-  },
-  {
-    title: "Merchant / Customer Upload Template",
-    file: "/templates/Britium_Merchant_Customer_Upload_UAT_Template.xlsx",
-    uploadRoute: "/merchant/upload",
-  },
-  {
-    title: "Warehouse Scan Template",
-    file: "/templates/Britium_Warehouse_Scan_UAT_GoLive_Template.xlsx",
-    uploadRoute: "/warehouse/upload",
-  },
-];
+// ─── SAFE LAZY LOAD ───
+const safeLazy = (importFunc: any) => lazy(() => 
+  importFunc().catch((err: any) => {
+    console.error("Module load error", err);
+    return { default: () => <div className={`flex h-screen items-center justify-center bg-[#061524] text-[#ff4f86] text-[12px] font-bold tracking-widest uppercase ${GLOBAL_FONT}`}>စနစ် အချက်အလက်များ ချိတ်ဆက်နေပါသည်... (Syncing Module...)</div> };
+  })
+);
 
-const nav = [
-  ["/go-live-readiness", "Go-Live Readiness"],
-  ["/templates", "Template Center"],
-  ["/data-entry/upload", "Data Entry Upload"],
-  ["/merchant/upload", "Merchant Upload"],
-  ["/customer/upload", "Customer Upload"],
-  ["/warehouse/upload", "Warehouse Upload"],
-  ["/warehouse/scan", "Warehouse Scan"],
-];
+// ─── PAGES REGISTRY ───
+const DashboardPage = safeLazy(() => import('@/pages/DashboardPage'));
+const AccountsPage = safeLazy(() => import('@/pages/AccountsPage'));
+const AdminHRPage = safeLazy(() => import('@/pages/AdminHRPage'));
+const AnalyticsPage = safeLazy(() => import('@/pages/AnalyticsPage'));
+const AuditLogsPage = safeLazy(() => import('@/pages/AuditLogsPage'));
+const BizDevPage = safeLazy(() => import('@/pages/BizDevPage'));
+const BranchAdminPage = safeLazy(() => import('@/pages/BranchAdminPage'));
+const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
+const CODSettlementPage = safeLazy(() => import('@/pages/CODSettlementPage'));
+const CustomerPortalPage = safeLazy(() => import('@/pages/CustomerPortalPage'));
+const CustomerServiceCommandCenterPage = safeLazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
+const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
+const DataEntryPage = safeLazy(() => import('@/pages/DataEntryPage'));
+const DeliveryDispatchPage = safeLazy(() => import('@/pages/DeliveryDispatchPage'));
+const DeliveryWorkflowPage = safeLazy(() => import('@/pages/DeliveryWorkflowPage'));
+const DispatchCenterPage = safeLazy(() => import('@/pages/DispatchCenterPage'));
+const DocumentPrintStudioPage = safeLazy(() => import('@/pages/DocumentPrintStudioPage'));
+const DriverPage = safeLazy(() => import('@/pages/DriverPage'));
+const ExceptionsPage = safeLazy(() => import('@/pages/ExceptionsPage'));
+const ExecutiveOpsPage = safeLazy(() => import('@/pages/ExecutiveOpsPage'));
+const FinancePortalPage = safeLazy(() => import('@/pages/FinancePortalPage'));
+const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage'));
+const GoLiveTemplateCenterPage = safeLazy(() => import('@/pages/GoLiveTemplateCenterPage'));
+const InvoiceStudioPage = safeLazy(() => import('@/pages/InvoiceStudioPage'));
+const LiveDispatchWayplanBoard = safeLazy(() => import('@/pages/LiveDispatchWayplanBoard'));
+const MarketingPage = safeLazy(() => import('@/pages/MarketingPage'));
+const MarketingPortalPage = safeLazy(() => import('@/pages/MarketingPortalPage'));
+const MasterDataPage = safeLazy(() => import('@/pages/MasterDataPage'));
+const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
+const OpsCommandPage = safeLazy(() => import('@/pages/OpsCommandPage'));
+const OpsManagerPage = safeLazy(() => import('@/pages/OpsManagerPage'));
+const PickupFormPage = safeLazy(() => import('@/pages/PickupFormPage'));
+const ProfilePage = safeLazy(() => import('@/pages/ProfilePage'));
+const RiderPage = safeLazy(() => import('@/pages/RiderPage'));
+const RiderSettlementPage = safeLazy(() => import('@/pages/RiderSettlementPage'));
+const SettingsPage = safeLazy(() => import('@/pages/SettingsPage'));
+const SignupPage = safeLazy(() => import('@/pages/SignupPage'));
+const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage'));
+const SupervisorPortalPage = safeLazy(() => import('@/pages/SupervisorPortalPage'));
+const SupervisorWayplanReviewPage = safeLazy(() => import('@/pages/SupervisorWayplanReviewPage'));
+const TariffPage = safeLazy(() => import('@/pages/TariffPage'));
+const UATGoLiveCommandCenterPage = safeLazy(() => import('@/pages/UATGoLiveCommandCenterPage'));
+const WarehouseOperationPage = safeLazy(() => import('@/pages/WarehouseOperationPage'));
+const WarehousePage = safeLazy(() => import('@/pages/WarehousePage'));
+const WaybillStudioPage = safeLazy(() => import('@/pages/WaybillStudioPage'));
+const WayplanCommandCenterPage = safeLazy(() => import('@/pages/WayplanCommandCenterPage'));
+const WayplanZonePage = safeLazy(() => import('@/pages/WayplanZonePage'));
+const WorkforceCommissionPage = safeLazy(() => import('@/pages/WorkforceCommissionPage'));
+const DispatchPage = safeLazy(() => import('@/pages/DispatchPage'));
 
-function getRoute() {
-  const raw = window.location.hash.replace("#", "") || "/go-live-readiness";
+// ─── UI COMPONENTS ───
+const PageLoader = () => (
+  <div className={`flex h-screen w-full flex-col items-center justify-center bg-[#061524] gap-5 notranslate ${GLOBAL_FONT}`} translate="no">
+    <div className="w-14 h-14 border-4 border-[#1a3a5c] border-t-[#f6b84b] rounded-full animate-spin"></div>
+    <div className="text-[#4d7a9b] text-[12px] font-bold tracking-widest uppercase flex flex-col items-center gap-2">
+      <span>စနစ်သို့ ဝင်ရောက်နေပါသည်...</span>
+      <span className="text-[#1a3a5c]">LOADING MODULE</span>
+    </div>
+  </div>
+);
 
-  if (
-    raw === "/" ||
-    raw === "/login" ||
-    raw === "/dashboard" ||
-    raw === "login" ||
-    raw === "dashboard"
-  ) {
-    return "/go-live-readiness";
-  }
+// ─── SIDEBAR & APP SHELL ───
+export function Sidebar() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  return raw.startsWith("/") ? raw : `/${raw}`;
-}
-
-export default function App() {
-  const [route, setRoute] = useState(getRoute());
-
-  function go(nextRoute: string) {
-    window.location.hash = nextRoute;
-    setRoute(nextRoute);
-  }
-
-  useEffect(() => {
-    const initialRoute = getRoute();
-
-    if (window.location.hash === "#/login" || window.location.hash === "#/dashboard") {
-      window.location.hash = "/go-live-readiness";
-      setRoute("/go-live-readiness");
-    } else {
-      setRoute(initialRoute);
-    }
-
-    const handler = () => setRoute(getRoute());
-    window.addEventListener("hashchange", handler);
-    return () => window.removeEventListener("hashchange", handler);
-  }, []);
+  // Unified navigation links so all screens can be accessed
+  const navLinks = [
+    { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+    { name: "Data Entry", path: "/data-entry", icon: FileText },
+    { name: "CS Command", path: "/cs-command", icon: HeadphonesIcon },
+    { name: "Dispatch", path: "/dispatch", icon: Truck },
+    { name: "Warehouse", path: "/warehouse", icon: Package },
+    { name: "Wayplan Command", path: "/wayplan-command", icon: Map },
+    { name: "Master Data", path: "/master-data", icon: Database },
+    { name: "Finance", path: "/finance", icon: Briefcase },
+    { name: "Admin / HR", path: "/admin-hr", icon: Users },
+    { name: "Settings", path: "/settings", icon: Settings },
+    { name: "Mobile Sandbox", path: "/rider", icon: Smartphone }, // Re-routed to rider for sandbox testing
+  ];
 
   return (
-    <div style={styles.app}>
-      <aside style={styles.sidebar}>
-        <h2 style={styles.brand}>Britium UAT</h2>
-        <p style={styles.note}>Login bypassed for UAT smoke testing.</p>
+    <aside className={`w-64 bg-[#0a1628] border-r border-[#1a3a5c] flex flex-col h-screen shrink-0 ${GLOBAL_FONT}`}>
+      <div className="p-6 border-b border-[#1a3a5c]">
+        <h1 className="text-[20px] font-black text-[#f6b84b] tracking-wider uppercase mb-0">Britium Ops</h1>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+        {navLinks.map((link) => {
+          const isActive = location.pathname.startsWith(link.path);
+          return (
+            <Link 
+              key={link.path} 
+              to={link.path} 
+              className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-[13px] font-semibold tracking-wide ${isActive ? 'bg-[#1a3a5c] text-[#f6b84b] shadow-md' : 'text-[#c8dff0] hover:bg-[#0f243b] hover:text-white'}`}
+            >
+              <link.icon size={18}/> <span>{link.name}</span>
+            </Link>
+          );
+        })}
+      </div>
+      <div className="p-4 border-t border-[#1a3a5c]">
+        <button onClick={() => { supabase.auth.signOut(); navigate("/", { replace: true }); }} className="w-full flex items-center gap-3 p-3 text-[#ff4f86] font-bold text-[13px] tracking-wide hover:bg-[#ff4f86]/10 rounded-xl transition-colors cursor-pointer">
+          <LogOut size={18}/> <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
 
-        {nav.map(([path, label]) => (
-          <button
-            key={path}
-            type="button"
-            onClick={() => go(path)}
-            style={{
-              ...styles.nav,
-              background:
-                route === path
-                  ? "rgba(255,255,255,0.22)"
-                  : "rgba(255,255,255,0.08)",
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </aside>
-
-      <main style={styles.main}>
-        {route === "/templates" ? (
-          <TemplateCenter go={go} />
-        ) : route === "/data-entry/upload" ? (
-          <UploadPage title="Data Entry Upload" template={templates[0].file} />
-        ) : route === "/merchant/upload" ? (
-          <UploadPage title="Merchant Upload" template={templates[1].file} />
-        ) : route === "/customer/upload" ? (
-          <UploadPage title="Customer Upload" template={templates[1].file} />
-        ) : route === "/warehouse/upload" ? (
-          <UploadPage title="Warehouse Upload" template={templates[2].file} />
-        ) : route === "/warehouse/scan" ? (
-          <WarehouseScan />
-        ) : (
-          <Readiness />
-        )}
+function AppShell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={`flex h-screen w-full bg-[#061524] overflow-hidden ${GLOBAL_FONT}`}>
+      <Sidebar />
+      <main className="flex-1 overflow-auto relative">
+        {children}
       </main>
     </div>
   );
 }
 
-function Readiness() {
+// ─── LAYOUT & AUTH ───
+function AuthLayout() {
+  const auth = useAuth() as any;
+  if (auth?.loading) return <PageLoader />;
+  if (!auth?.session) return <Navigate to="/" replace />;
+  
   return (
-    <section>
-      <h1>Go-Live Readiness Center</h1>
-      <p style={styles.muted}>
-        Use this screen for UAT smoke testing before reconnecting live auth and backend cleanup RPCs.
-      </p>
-
-      <div style={styles.grid}>
-        <StatusCard title="Mock / Demo Runtime Data" value="Must be zero" />
-        <StatusCard title="Dispatch Routes" value="Zero until generated" />
-        <StatusCard title="Warehouse Manifests" value="Real records only" />
-        <StatusCard title="Template Uploads" value="Ready for UAT" />
-      </div>
-
-      <div style={styles.card}>
-        <h2>UAT Dry Run Flow</h2>
-        <ol>
-          <li>Download the needed template.</li>
-          <li>Upload Data Entry, Merchant/Customer, or Warehouse file.</li>
-          <li>Confirm row validation result.</li>
-          <li>Create one real pickup request.</li>
-          <li>
-            Verify one canonical Pickup ID flows through supervisor, warehouse, dispatch,
-            rider, tracking, and finance.
-          </li>
-        </ol>
-      </div>
-    </section>
+    <AppShell>
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
+    </AppShell>
   );
 }
 
-function TemplateCenter({ go }: { go: (route: string) => void }) {
+// ─── LOGIN SCREEN ───
+function LoginPageComponent() {
+  const auth = useAuth() as any;
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t, toggleLang, lang } = useLanguage();
+
+  useEffect(() => {
+    if (auth?.session) navigate('/dashboard', { replace: true });
+  }, [auth?.session, navigate]);
+
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) { 
+      alert(t('Authentication failed. Check credentials.', 'အချက်အလက်များ မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။')); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
   return (
-    <section>
-      <h1>Template Download Center</h1>
-      <p style={styles.muted}>Header-only UAT templates. No mock/sample/demo rows.</p>
+    <div className={`flex min-h-screen items-center justify-center bg-[#061524] p-4 relative overflow-hidden notranslate ${GLOBAL_FONT}`} translate="no">
+      <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(4,14,28,0.90),rgba(8,22,45,0.78),rgba(6,12,24,0.88))] z-0" />
+      <button onClick={toggleLang} type="button" className="absolute top-6 right-6 z-20 bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl text-[12px] font-bold tracking-wider cursor-pointer hover:border-[#f6b84b] transition-colors shadow-lg">
+        <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
+      </button>
 
-      <div style={styles.grid}>
-        {templates.map((item) => (
-          <div key={item.title} style={styles.card}>
-            <h2>{item.title}</h2>
-            <p>Download the approved upload format.</p>
-
-            <a href={item.file} download style={styles.button}>
-              Download XLSX
-            </a>
-
-            <button
-              type="button"
-              onClick={() => go(item.uploadRoute)}
-              style={styles.secondaryButton}
-            >
-              Open Upload Screen
-            </button>
+      <div className="w-full max-w-md p-10 bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-2xl z-10 relative">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto bg-[#f6b84b] text-[#061524] rounded-2xl flex items-center justify-center text-3xl font-black mb-4 shadow-lg shadow-[#f6b84b]/20">BE</div>
+          <h1 className="text-2xl font-black text-[#eef8ff] tracking-widest uppercase"><span>BRITIUM EXPRESS</span></h1>
+          <p className="text-[#f6b84b] text-[11px] font-bold tracking-[0.16em] uppercase mt-2">
+            <span>{t('Enterprise Management Portal', 'လုပ်ငန်းစီမံခန့်ခွဲမှု ဗဟိုစနစ်')}</span>
+          </p>
+        </div>
+        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Business Email', 'လုပ်ငန်းသုံး အီးမေးလ်လိပ်စာ')}</span></label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
           </div>
-        ))}
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Password', 'စကားဝှက်')}</span></label>
+            <input type="password" value={pw} onChange={e => setPw(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
+          </div>
+          <button type="submit" disabled={loading} className="mt-4 bg-[#f6b84b] text-[#061524] py-4 rounded-xl font-bold text-[14px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors disabled:opacity-50 cursor-pointer shadow-xl shadow-[#f6b84b]/10">
+            <span>{loading ? '...' : t('Secure Sign In', 'စနစ်သို့ ဝင်ရောက်မည်')}</span>
+          </button>
+        </form>
       </div>
-    </section>
-  );
-}
-
-function UploadPage({ title, template }: { title: string; template: string }) {
-  const [fileName, setFileName] = useState("");
-  const [message, setMessage] = useState("No file selected.");
-
-  return (
-    <section>
-      <h1>{title}</h1>
-      <p style={styles.muted}>Upload CSV/XLSX for UAT validation. This screen does not load mock data.</p>
-
-      <div style={styles.card}>
-        <a href={template} download style={styles.button}>
-          Download Template
-        </a>
-
-        <div style={{ marginTop: 24 }}>
-          <label style={styles.label}>
-            Select upload file
-            <input
-              style={styles.input}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (!file) {
-                  setFileName("");
-                  setMessage("No file selected.");
-                  return;
-                }
-
-                setFileName(file.name);
-                setMessage(`Selected ${file.name}. Ready for backend validation/import.`);
-              }}
-            />
-          </label>
-        </div>
-
-        <div style={styles.result}>
-          <strong>File:</strong> {fileName || "None"}
-          <br />
-          <strong>Status:</strong> {message}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function WarehouseScan() {
-  const [scan, setScan] = useState("");
-
-  return (
-    <section>
-      <h1>Warehouse Scan</h1>
-      <p style={styles.muted}>
-        Scan or enter Pickup ID, Deliver ID, Invoice No, Waybill No, or Bag Code.
-      </p>
-
-      <div style={styles.card}>
-        <label style={styles.label}>
-          Scan value
-          <input
-            style={styles.input}
-            value={scan}
-            onChange={(event) => setScan(event.target.value)}
-            placeholder="Example: W0525-BBK-015"
-            autoFocus
-          />
-        </label>
-
-        <div style={styles.result}>
-          <strong>Current Scan:</strong> {scan || "Waiting for scan..."}
-          <br />
-          <strong>Status:</strong> Ready for backend lookup / warehouse intake validation.
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function StatusCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div style={styles.card}>
-      <h2>{title}</h2>
-      <p style={styles.status}>{value}</p>
     </div>
   );
 }
 
-const styles: Record<string, React.CSSProperties> = {
-  app: {
-    minHeight: "100vh",
-    display: "grid",
-    gridTemplateColumns: "270px 1fr",
-    background: "#f8fafc",
-    color: "#0f172a",
-    fontFamily: "Arial, sans-serif",
-  },
-  sidebar: {
-    background: "#0f172a",
-    color: "white",
-    padding: 20,
-  },
-  brand: {
-    margin: "0 0 8px",
-  },
-  note: {
-    color: "#cbd5e1",
-    fontSize: 12,
-    marginBottom: 20,
-  },
-  nav: {
-    display: "block",
-    width: "100%",
-    color: "white",
-    border: 0,
-    textAlign: "left",
-    padding: "14px 16px",
-    borderRadius: 10,
-    marginBottom: 8,
-    fontWeight: 800,
-    cursor: "pointer",
-    pointerEvents: "auto",
-  },
-  main: {
-    padding: 32,
-    overflow: "auto",
-  },
-  muted: {
-    color: "#64748b",
-  },
-  grid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-    gap: 16,
-    marginTop: 20,
-  },
-  card: {
-    background: "white",
-    borderRadius: 18,
-    padding: 24,
-    boxShadow: "0 10px 30px rgba(15,23,42,0.08)",
-  },
-  status: {
-    color: "#065f46",
-    fontWeight: 800,
-  },
-  button: {
-    display: "inline-block",
-    background: "#0f172a",
-    color: "white",
-    textDecoration: "none",
-    padding: "12px 16px",
-    borderRadius: 10,
-    fontWeight: 800,
-    marginRight: 10,
-    marginBottom: 10,
-  },
-  secondaryButton: {
-    display: "inline-block",
-    background: "#e2e8f0",
-    color: "#0f172a",
-    border: 0,
-    textDecoration: "none",
-    padding: "12px 16px",
-    borderRadius: 10,
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-  label: {
-    display: "grid",
-    gap: 8,
-    fontWeight: 800,
-  },
-  input: {
-    height: 48,
-    border: "1px solid #cbd5e1",
-    borderRadius: 12,
-    padding: "0 14px",
-    fontSize: 16,
-    background: "white",
-    color: "#0f172a",
-  },
-  result: {
-    marginTop: 20,
-    padding: 16,
-    borderRadius: 12,
-    background: "#ecfdf5",
-    color: "#065f46",
-    lineHeight: 1.7,
-  },
-};
+// ─── ROUTING MODULE ───
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <AppErrorBoundary pathname={location.pathname}>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* Public Access */}
+          <Route path="/" element={<LoginPageComponent />} />
+          <Route path="/login" element={<LoginPageComponent />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+          {/* Protected Enterprise Routes */}
+          <Route element={<AuthLayout />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/branch-office" element={<BranchOfficePage />} />
+            <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
+            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+            <Route path="/data-entry" element={<DataEntryPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/admin-hr" element={<AdminHRPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/biz-dev" element={<BizDevPage />} />
+            <Route path="/branch-admin" element={<BranchAdminPage />} />
+            <Route path="/cod-settlement" element={<CODSettlementPage />} />
+            <Route path="/customer-portal" element={<CustomerPortalPage />} />
+            <Route path="/delivery-dispatch" element={<DeliveryDispatchPage />} />
+            <Route path="/delivery-workflow" element={<DeliveryWorkflowPage />} />
+            <Route path="/dispatch" element={<DispatchPage />} />
+            <Route path="/dispatch-center" element={<DispatchCenterPage />} />
+            <Route path="/live-dispatch" element={<LiveDispatchWayplanBoard />} />
+            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
+            <Route path="/driver" element={<DriverPage />} />
+            <Route path="/exceptions" element={<ExceptionsPage />} />
+            <Route path="/exec-ops" element={<ExecutiveOpsPage />} />
+            <Route path="/finance" element={<FinancePortalPage />} />
+            <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
+            <Route path="/marketing" element={<MarketingPage />} />
+            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
+            <Route path="/master-data" element={<MasterDataPage />} />
+            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
+            <Route path="/ops-command" element={<OpsCommandPage />} />
+            <Route path="/ops-manager" element={<OpsManagerPage />} />
+            <Route path="/pickup-form" element={<PickupFormPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/rider" element={<RiderPage />} />
+            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
+            <Route path="/supervisor" element={<SupervisorPortalPage />} />
+            <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
+            <Route path="/tariff" element={<TariffPage />} />
+            <Route path="/warehouse" element={<WarehousePage />} />
+            <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
+            <Route path="/waybill-studio" element={<WaybillStudioPage />} />
+            <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
+            <Route path="/wayplan-zone" element={<WayplanZonePage />} />
+            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
+            <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
+            <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
+          </Route>
+
+          {/* Catch-all fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
+  );
+}
+
+// ─── APP ROOT ───
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AuthProvider>
+        <HashRouter>
+          <EnvironmentBadge />
+          <AppRoutes />
+        </HashRouter>
+      </AuthProvider>
+    </LanguageProvider>
+  );
+}
