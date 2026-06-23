@@ -1,0 +1,177 @@
+body.be-data-entry-focus-mode {
+  overflow-x: hidden;
+}
+
+/* Hide app sidebar for full working space */
+body.be-data-entry-focus-mode aside,
+body.be-data-entry-focus-mode nav[class*="sidebar"],
+body.be-data-entry-focus-mode div[class*="sidebar"],
+body.be-data-entry-focus-mode div[class*="SideBar"],
+body.be-data-entry-focus-mode div[class*="SideNav"],
+body.be-data-entry-focus-mode div[class*="leftNav"],
+body.be-data-entry-focus-mode div[class*="LeftNav"] {
+  display: none !important;
+}
+
+/* Full width app shell */
+body.be-data-entry-focus-mode #root > div,
+body.be-data-entry-focus-mode #root > main,
+body.be-data-entry-focus-mode .app-shell,
+body.be-data-entry-focus-mode .layout,
+body.be-data-entry-focus-mode .dashboard-layout {
+  grid-template-columns: 1fr !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+body.be-data-entry-focus-mode main,
+body.be-data-entry-focus-mode [class*="main"],
+body.be-data-entry-focus-mode [class*="content"],
+body.be-data-entry-focus-mode [class*="page"] {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin-left: 0 !important;
+  padding-left: 10px !important;
+  padding-right: 10px !important;
+}
+
+/* Hide the highlighted top blocks after pickup is selected */
+body.be-data-entry-focus-mode [data-be-hide-during-data-entry="true"] {
+  display: none !important;
+}
+
+/* Full-width workspace */
+body.be-data-entry-focus-mode [data-be-data-entry-workspace="true"] {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  margin: 0 !important;
+  padding: 10px 12px 28px !important;
+  box-sizing: border-box !important;
+}
+
+/* Photo proof zone */
+body.be-data-entry-focus-mode [data-be-photo-zone="true"] {
+  width: calc(100vw - 24px) !important;
+  max-width: calc(100vw - 24px) !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+  margin-bottom: 12px !important;
+}
+
+/* Template zone must show all lines, no vertical scroll frame */
+body.be-data-entry-focus-mode [data-be-template-zone="true"] {
+  width: calc(100vw - 24px) !important;
+  max-width: calc(100vw - 24px) !important;
+  height: auto !important;
+  min-height: 900px !important;
+  max-height: none !important;
+  overflow-x: auto !important;
+  overflow-y: visible !important;
+}
+
+body.be-data-entry-focus-mode [data-be-template-zone="true"] * {
+  max-height: none !important;
+}
+
+body.be-data-entry-focus-mode [data-be-template-zone="true"] div,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] section,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] article,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] tbody,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] table {
+  overflow-y: visible !important;
+}
+
+/* Keep columns wide; horizontal scroll only for columns */
+body.be-data-entry-focus-mode [data-be-template-zone="true"] table,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] [role="table"],
+body.be-data-entry-focus-mode [data-be-template-zone="true"] .data-entry-table,
+body.be-data-entry-focus-mode [data-be-template-zone="true"] [class*="table"] {
+  min-width: 1900px !important;
+  width: max-content !important;
+}
+
+/* Input row sizing */
+body.be-data-entry-focus-mode .be-data-entry-row-expanded {
+  display: grid !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  min-height: 82px !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+/* Move confirm block to final end */
+body.be-data-entry-focus-mode [data-be-data-entry-footer="true"],
+body.be-data-entry-focus-mode .be-data-entry-footer-final {
+  width: calc(100vw - 24px) !important;
+  max-width: calc(100vw - 24px) !important;
+  margin-top: 18px !important;
+  position: static !important;
+  bottom: auto !important;
+  z-index: 1 !important;
+  border: 1px solid rgba(246, 184, 75, 0.35) !important;
+  border-radius: 16px !important;
+  padding: 14px !important;
+}
+
+/* Photo checked UX */
+[data-be-rider-photo-card="true"] {
+  position: relative;
+}
+
+[data-be-rider-photo-card="true"].be-photo-checked {
+  border-color: #22c55e !important;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.55), 0 0 20px rgba(34, 197, 94, 0.16) !important;
+}
+
+[data-be-rider-photo-card="true"].be-photo-checked::after {
+  content: "✓ Photo checked";
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: #16a34a;
+  color: white;
+  border-radius: 999px;
+  padding: 5px 9px;
+  font-size: 11px;
+  font-weight: 900;
+  z-index: 5;
+}
+
+.be-photo-check-toast {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 99999;
+  background: #16a34a;
+  color: white;
+  border-radius: 14px;
+  padding: 12px 16px;
+  font-weight: 900;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: 0.2s ease;
+}
+
+.be-photo-check-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.be-data-entry-wide-pill {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 99998;
+  background: rgba(34, 197, 94, 0.14);
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  color: #22c55e;
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+}

@@ -1,33 +1,36 @@
-import React from "react";
-import ReactDOM from "react-dom/client";
-import App from "./App";
+import "./dataEntryFocusBootstrap";
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App.tsx';
+import './index.css';
 
-// Global font & reset (no Tailwind dependency in this file)
-const style = document.createElement("style");
-style.textContent = `
-  *, *::before, *::after { box-sizing: border-box; }
-  html, body, #root {
-    margin: 0;
-    padding: 0;
-    height: 100%;
-  }
-  body {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-    background: #f0f4f8;
-    color: #1e293b;
-    -webkit-font-smoothing: antialiased;
-  }
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: #f1f5f9; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-  a { color: inherit; }
-  input, button, textarea, select { font-family: inherit; }
-`;
-document.head.appendChild(style);
+// ─── GOOGLE TRANSLATE REACT CRASH PREVENTION SHIELD ───
+// This monkey-patch intercepts native DOM mutations.
+// When Google Translate corrupts text nodes, React normally throws a fatal 'removeChild' error.
+// This safely bypasses the crash, making the app immune to translation extensions.
+if (typeof window !== 'undefined' && typeof Node === 'function' && Node.prototype) {
+  const originalRemoveChild = Node.prototype.removeChild;
+  Node.prototype.removeChild = function (child: any) {
+    if (child && child.parentNode !== this) {
+      console.warn('React DOM safely bypassed Google Translate mutation (removeChild).');
+      return child;
+    }
+    return originalRemoveChild.apply(this, arguments as any);
+  };
+  
+  const originalInsertBefore = Node.prototype.insertBefore;
+  Node.prototype.insertBefore = function (newNode: any, referenceNode: any) {
+    if (referenceNode && referenceNode.parentNode !== this) {
+      console.warn('React DOM safely bypassed Google Translate mutation (insertBefore).');
+      return newNode;
+    }
+    return originalInsertBefore.apply(this, arguments as any);
+  };
+}
+// ────────────────────────────────────────────────────────
 
-ReactDOM.createRoot(document.getElementById("root")!).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
