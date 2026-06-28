@@ -1,3 +1,4 @@
+import { useRealtimeSync } from '@/hooks/useRealtimeSync';
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Calculator, CheckCircle2, Database, RefreshCw, Search } from 'lucide-react';
 
@@ -269,6 +270,14 @@ export default function TariffMasterGoLivePage() {
   const [weightKg, setWeightKg] = useState(1.5);
   const [monthlyWays, setMonthlyWays] = useState(0);
   const [surcharge, setSurcharge] = useState(0);
+const loadTariffs = async () => {
+    // Your existing supabase fetch logic
+    const { data } = await supabase.from('be_tariffs').select('*');
+    setTariffs(data);
+  };
+
+  // ADD THIS LINE: Listen to the tariffs table and trigger loadTariffs on change
+  useRealtimeSync('be_tariffs', loadTariffs);
 
   async function load() {
     setLoading(true);

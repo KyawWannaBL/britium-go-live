@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import QRCode from 'react-qr-code';
 import Barcode from 'react-barcode';
+import { Printer } from 'lucide-react';
 
 // --- MOCK PAYLOAD DATA ---
 const mockData = {
@@ -8,6 +9,48 @@ const mockData = {
   p2: { merchant: "Beauty Cos", date: "0625", seq: 100, recipient: "Phyu Thwe", phone: "09-790210771", address: "Royal Rosy အိမ်ဆောက်ပစ္စည်းဆိုင်၊ (၆၂) လမ်း၊ ၁၂၀ x ၁၂၁ လမ်းကြား၊ မန္တလေးမြို့", itemPrice: "160,000", deliFee: "-", total: "180,000", sidebar: "(1) - မန္တလေး" },
   p3: { merchant: "Beauty Cos", date: "0625", seq: 112, recipient: "ချစ်ချစ်အိမ်", phone: "09-972219164", address: "(၁၁၄) လမ်း၊ ၅၅ x ၅၆ လမ်းကြား၊ ချမ်းမြသာစည်မြို့နယ်၊ မန္တလေးမြို့", itemPrice: "95,000", deliFee: "-", total: "107,000", sidebar: "(17) - မန္တလေး" },
   p4: { merchant: "Beauty Cos", date: "0625", seq: 117, recipient: "Khin Win Mar", phone: "09-797490446", address: "(၆၂) လမ်း၊ ၂၉ x ၃၀ လမ်းကြား၊ ချမ်းအေးသာစံမြို့နယ်၊ မန္တလေးမြို့", itemPrice: "199,000", deliFee: "0", total: "215,000", sidebar: "မန္တလေး" }
+};
+
+// --- TRANSLATION DICTIONARY ---
+const TRANSLATIONS = {
+  EN: {
+    title: "Waybill Print Studio",
+    subtitle: "Ensure printer is set to 4x6 inches (100x150mm) with None margins. Enable Background graphics to print the shaded COD boxes.",
+    btnPrint: "Print Waybills",
+    deliveryService: "DELIVERY SERVICE",
+    merchant: "Merchant",
+    recipient: "Recipient",
+    remarks: "Remarks",
+    itemPrice: "Item Price",
+    deliFee: "Deli Fee",
+    surcharge: "Surcharge",
+    prepaid: "Prepaid",
+    cbmWt: "CBM/wt. (Kg)",
+    weight: "Weight (kg)",
+    delivery: "Delivery",
+    normal: "Normal",
+    hotline: "HotLine",
+    warningText: "If charged more than the amount below, please contact the Hotline above."
+  },
+  MM: {
+    title: "ပင်မ Waybill စတူဒီယို",
+    subtitle: "ပရင်တာကို 4x6 လက်မ (100x150mm) တွင်ထားရှိရန်နှင့် Margin မထားရန် သေချာစေပါ။ နောက်ခံအရောင်များ (Background graphics) ကို ဖွင့်ထားပါ။",
+    btnPrint: "Waybill များ ပရင့်ထုတ်ရန်",
+    deliveryService: "ပို့ဆောင်ရေး ဝန်ဆောင်မှု",
+    merchant: "ကုန်သည်",
+    recipient: "လက်ခံမည့်သူ",
+    remarks: "မှတ်ချက်",
+    itemPrice: "ပစ္စည်းတန်ဖိုး",
+    deliFee: "ပို့ဆောင်ခ",
+    surcharge: "အပိုဆောင်းကြေး",
+    prepaid: "ကြိုရှင်းပြီးငွေ",
+    cbmWt: "ထုထည်/အလေးချိန် (Kg)",
+    weight: "အလေးချိန် (Kg)",
+    delivery: "ပို့ဆောင်မှု",
+    normal: "ပုံမှန်",
+    hotline: "Hotline",
+    warningText: "အောက်ဖော်ပြပါ ငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ Hotline သို့ ဆက်သွယ် တိုင်ကြားနိုင်ပါသည်။"
+  }
 };
 
 // --- ID GENERATION LOGIC ---
@@ -36,13 +79,15 @@ const PrintPage = ({ children }: { children: React.ReactNode }) => (
 
 // --- MAIN COMPONENT ---
 export default function WaybillPrintStudioPage() {
+  const [lang, setLang] = useState<'EN' | 'MM'>('EN');
+  const t = TRANSLATIONS[lang];
 
   const handlePrint = () => {
     window.print();
   };
 
   return (
-    <div className="min-h-screen bg-gray-200 text-black font-sans flex flex-col items-center py-8 print:py-0">
+    <div className="min-h-screen bg-gray-200 text-black font-['Poppins',sans-serif] flex flex-col items-center py-8 print:py-0">
       
       {/* GLOBAL PRINT STYLES - Protects the exact 4x6 thermal dimension mapping */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -55,18 +100,26 @@ export default function WaybillPrintStudioPage() {
       `}} />
 
       {/* HEADER / CONTROLS (Hidden during printing) */}
-      <div className="no-print w-full max-w-md mb-8 text-center bg-white p-6 rounded-xl shadow-md border border-gray-200">
-        <h2 className="text-2xl font-bold text-gray-800 mb-2">Native Waybill Studio</h2>
-        <p className="text-sm text-gray-600 mb-6">
-          Ensure printer is set to <strong>4x6 inches (100x150mm)</strong> with <strong>None</strong> margins. 
-          Enable <strong>Background graphics</strong> to print the shaded COD boxes.
+      <div className="no-print w-full max-w-md mb-8 text-center bg-white p-6 rounded-2xl shadow-lg border border-gray-200">
+        
+        {/* Language Toggle */}
+        <div className="flex justify-center mb-6">
+          <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+            <button onClick={() => setLang('EN')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${lang === 'EN' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>EN</button>
+            <button onClick={() => setLang('MM')} className={`px-4 py-1.5 rounded-md text-sm font-bold transition-all ${lang === 'MM' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>မြန်မာ</button>
+          </div>
+        </div>
+
+        <h2 className="text-2xl font-black text-gray-800 mb-2 uppercase tracking-wide">{t.title}</h2>
+        <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+          {t.subtitle}
         </p>
         <button 
           onClick={handlePrint} 
-          className="bg-blue-600 text-white px-6 py-3 rounded-lg font-bold shadow hover:bg-blue-700 transition w-full flex items-center justify-center gap-2"
+          className="bg-blue-600 text-white px-6 py-3.5 rounded-xl font-bold shadow-lg hover:bg-blue-700 transition-all w-full flex items-center justify-center gap-2 uppercase tracking-wider"
         >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
-          Print Waybills
+          <Printer size={18} />
+          {t.btnPrint}
         </button>
       </div>
 
@@ -81,21 +134,21 @@ export default function WaybillPrintStudioPage() {
                   <div className="w-[14px] h-[14px] rounded-full bg-[#2c3e50] text-white text-[9px] flex items-center justify-center font-bold print-exact">B</div>
                   <div>
                     <div className="font-bold text-[7px] leading-none mb-[2px]">BRITIUM EXPRESS</div>
-                    <div className="text-[6px] leading-none mb-[2px]">DELIVERY SERVICE</div>
+                    <div className="text-[6px] leading-none mb-[2px]">{t.deliveryService}</div>
                     <div className="font-bold text-[7px] leading-none">09-897447744</div>
                   </div>
                 </div>
                 <QRCode value={id} size={32} level="L" />
               </div>
               <div className="flex-1 flex flex-col gap-[2px]">
-                <div>Merchant : {mockData.p1.merchant}</div>
-                <div>Recipient : {mockData.p1.recipient}</div>
-                <div className="mt-1">Remarks :</div>
+                <div>{t.merchant} : {mockData.p1.merchant}</div>
+                <div>{t.recipient} : {mockData.p1.recipient}</div>
+                <div className="mt-1">{t.remarks} :</div>
               </div>
               <div className="flex justify-between items-end mb-1">
                 <div className="leading-[1.4]">
-                  <div>Item Price : {mockData.p1.itemPrice}</div>
-                  <div>Deli Fee : {mockData.p1.deliFee}</div>
+                  <div>{t.itemPrice} : {mockData.p1.itemPrice}</div>
+                  <div>{t.deliFee} : {mockData.p1.deliFee}</div>
                 </div>
                 <div className="border border-black rounded-[2px] text-right text-[11px] font-bold p-1 relative w-[75px] bg-[#d0d0d0] print-exact">
                   <span className="absolute top-[2px] left-[2px] text-[6px] font-normal">COD</span><br/>
@@ -128,7 +181,7 @@ export default function WaybillPrintStudioPage() {
                     <div className="font-bold text-xs leading-none mt-1">4D</div>
                     <div className="w-[14px] h-[14px] rounded-full bg-[#2c3e50] text-white text-[9px] flex items-center justify-center font-bold mt-[2px] print-exact">B</div>
                     <div className="leading-[1.1]">
-                      <div className="font-bold text-[9px] mb-[2px]">BRITIUM EXPRESS DELIVERY SERVICE</div>
+                      <div className="font-bold text-[9px] mb-[2px]">BRITIUM EXPRESS {t.deliveryService}</div>
                       <div className="text-[8px] mb-[3px]">09 - 897447744</div>
                       <div className="text-[8px]">OS : BC လူသုံးကုန်</div>
                     </div>
@@ -144,7 +197,7 @@ export default function WaybillPrintStudioPage() {
                   </div>
                 </div>
                 <div className="flex flex-1">
-                  <div className="w-[14px] text-[7px] [writing-mode:vertical-rl] rotate-180 flex items-center justify-center">Recipient :</div>
+                  <div className="w-[14px] text-[7px] [writing-mode:vertical-rl] rotate-180 flex items-center justify-center">{t.recipient} :</div>
                   <div className="flex-[1.5] border-r border-black pr-1 box-border">
                     <div className="font-bold text-[11px] leading-tight mb-[2px]">{p.recipient}</div>
                     <div className="font-bold text-[9px] leading-tight mb-[3px]">{p.phone}</div>
@@ -152,10 +205,10 @@ export default function WaybillPrintStudioPage() {
                   </div>
                   <div className="flex-1 pl-1 flex flex-col justify-between box-border">
                     <div>
-                        <div className="flex justify-between mb-[2px]"><span>Item Price :</span> <span>{p.itemPrice}</span></div>
-                        <div className="flex justify-between mb-[2px]"><span>Deli Fee :</span> <span>{p.deliFee}</span></div>
-                        <div className="flex justify-between mb-[2px]"><span>Surcharge :</span> <span>20,000</span></div>
-                        <div className="text-[7px] mt-[1px]">CBM/wt. (Kg) :</div>
+                        <div className="flex justify-between mb-[2px]"><span>{t.itemPrice} :</span> <span>{p.itemPrice}</span></div>
+                        <div className="flex justify-between mb-[2px]"><span>{t.deliFee} :</span> <span>{p.deliFee}</span></div>
+                        <div className="flex justify-between mb-[2px]"><span>{t.surcharge} :</span> <span>20,000</span></div>
+                        <div className="text-[7px] mt-[1px]">{t.cbmWt} :</div>
                     </div>
                     <div className="border border-black text-right text-[14px] font-bold p-1 bg-[#d0d0d0] print-exact mt-auto">
                       {p.total}
@@ -179,8 +232,8 @@ export default function WaybillPrintStudioPage() {
                   <div className="w-[45px] h-[45px] rounded-full bg-[#2c3e50] text-white text-[24px] flex items-center justify-center font-bold print-exact">B</div>
                   <div className="leading-none">
                     <div className="font-bold text-[20px] mb-1">BRITIUM EXPRESS</div>
-                    <div className="text-[15px] mb-1.5">DELIVERY SERVICE</div>
-                    <div className="font-bold text-[13px]">HotLine: 09 - 897 44 77 44</div>
+                    <div className="text-[15px] mb-1.5">{t.deliveryService}</div>
+                    <div className="font-bold text-[13px]">{t.hotline}: 09 - 897 44 77 44</div>
                   </div>
                 </div>
                 <div className="text-right flex flex-col items-end">
@@ -192,7 +245,7 @@ export default function WaybillPrintStudioPage() {
               <div className="border-b border-black pb-3 mb-3">
                 <table className="w-full text-[13px] leading-relaxed">
                   <tbody>
-                    <tr><td className="w-[90px] align-top">Merchant :</td><td>{mockData.p1.merchant} Os<br/><br/>09796239153<br/>ဒဂုံမြို့သစ်အရှေ့ပိုင်း</td></tr>
+                    <tr><td className="w-[90px] align-top">{t.merchant} :</td><td>{mockData.p1.merchant} Os<br/><br/>09796239153<br/>ဒဂုံမြို့သစ်အရှေ့ပိုင်း</td></tr>
                   </tbody>
                 </table>
               </div>
@@ -200,7 +253,7 @@ export default function WaybillPrintStudioPage() {
                 <table className="w-full text-[13px]">
                   <tbody>
                     <tr>
-                      <td className="w-[90px] align-top">Recipient :</td>
+                      <td className="w-[90px] align-top">{t.recipient} :</td>
                       <td>
                         <b className="text-[20px] block mb-2">{mockData.p1.recipient}</b>
                         <b className="text-[15px] block mb-2">{mockData.p1.phone}, {mockData.p1.phone}</b>
@@ -213,13 +266,13 @@ export default function WaybillPrintStudioPage() {
               <div className="flex border-b border-black pb-3 mb-3">
                 <div className="flex-1 border-r border-black">
                   <div>CBM :<br/><b className="text-[14px]">1</b></div>
-                  <div className="mt-3">Weight (kg) :<br/><b className="text-[14px]">5</b></div>
-                  <div className="mt-3">Delivery :<br/><b className="text-[14px]">Normal</b></div>
+                  <div className="mt-3">{t.weight} :<br/><b className="text-[14px]">5</b></div>
+                  <div className="mt-3">{t.delivery} :<br/><b className="text-[14px]">{t.normal}</b></div>
                 </div>
                 <div className="flex-[1.2] pl-3">
-                  <div>Item Price :<br/><span className="text-[14px]">{mockData.p1.itemPrice}</span></div>
-                  <div className="mt-3">Delivery Fees :<br/><span className="text-[14px]">{mockData.p1.deliFee}</span></div>
-                  <div className="mt-3">Prepaid to OS :<br/><span className="text-[14px]">0</span></div>
+                  <div>{t.itemPrice} :<br/><span className="text-[14px]">{mockData.p1.itemPrice}</span></div>
+                  <div className="mt-3">{t.deliFee} :<br/><span className="text-[14px]">{mockData.p1.deliFee}</span></div>
+                  <div className="mt-3">{t.prepaid} :<br/><span className="text-[14px]">0</span></div>
                 </div>
                 <div className="flex-[1.5] pl-3 flex items-center">
                   <div className="w-full border border-black rounded p-[15px_10px] text-right text-[24px] font-bold relative bg-[#d0d0d0] print-exact">
@@ -228,9 +281,9 @@ export default function WaybillPrintStudioPage() {
                   </div>
                 </div>
               </div>
-              <div className="mb-5">Remarks :</div>
+              <div className="mb-5">{t.remarks} :</div>
               <div className="text-center font-bold text-[12px] pt-3 border-t border-dashed border-black leading-relaxed">
-                အောက်ချာပါ ငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ<br/>Hotline သို့ ဆက်သွယ် တိုင်ကြားနိုင်ပါသည်။
+                {t.warningText}
               </div>
             </div>
           );
@@ -248,7 +301,7 @@ export default function WaybillPrintStudioPage() {
                   <div className="w-[30px] h-[30px] rounded-full bg-[#2c3e50] text-white text-[16px] flex items-center justify-center font-bold print-exact">B</div>
                   <div className="leading-none">
                     <div className="font-bold text-[14px] mb-[3px]">BRITIUM EXPRESS</div>
-                    <div className="text-[10px]">Hotline: 09-897447744</div>
+                    <div className="text-[10px]">{t.hotline}: 09-897447744</div>
                   </div>
                 </div>
                 <div className="flex gap-2.5 text-right items-center">
@@ -263,16 +316,16 @@ export default function WaybillPrintStudioPage() {
               </div>
               <div className="flex flex-1">
                 <div className="flex-[1.5] border-r border-black pr-2 box-border">
-                  <div className="mb-2"><span className="font-bold">Merchant:</span> {mockData.p1.merchant} Os<br/>09796239153</div>
-                  <div className="mb-1"><span className="font-bold">Recipient:</span> <span className="font-bold text-[14px]">{mockData.p1.recipient}</span></div>
+                  <div className="mb-2"><span className="font-bold">{t.merchant}:</span> {mockData.p1.merchant} Os<br/>09796239153</div>
+                  <div className="mb-1"><span className="font-bold">{t.recipient}:</span> <span className="font-bold text-[14px]">{mockData.p1.recipient}</span></div>
                   <div className="mb-1">{mockData.p1.phone}</div>
                   <div className="leading-[1.4]">{mockData.p1.address}</div>
                 </div>
                 <div className="flex-1 pl-2 flex flex-col justify-between box-border">
                   <div>
-                    <div className="flex justify-between mb-1"><span>Item Price:</span> <span>{mockData.p1.itemPrice}</span></div>
-                    <div className="flex justify-between mb-1"><span>Deli Fee:</span> <span>{mockData.p1.deliFee}</span></div>
-                    <div className="flex justify-between mb-1"><span>Prepaid:</span> <span>0</span></div>
+                    <div className="flex justify-between mb-1"><span>{t.itemPrice}:</span> <span>{mockData.p1.itemPrice}</span></div>
+                    <div className="flex justify-between mb-1"><span>{t.deliFee}:</span> <span>{mockData.p1.deliFee}</span></div>
+                    <div className="flex justify-between mb-1"><span>{t.prepaid}:</span> <span>0</span></div>
                   </div>
                   <div className="border border-black rounded-[3px] text-right text-[18px] font-bold p-[10px_5px_5px_5px] bg-[#d0d0d0] print-exact relative mt-auto">
                     <span className="absolute top-[2px] left-[4px] text-[8px] font-normal">COD</span><br/>
