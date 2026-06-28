@@ -7,7 +7,7 @@ import {
   RefreshCw, ExternalLink, CheckCircle2, AlertTriangle, Maximize2, Minimize2
 } from 'lucide-react';
 
-const C = { bg: '#061524', panel: '#0b2236', panel2: '#081b2e', panelHover: '#0f2a42', border: '#1a3a5c', gold: '#f6b84b', orange: '#ff8a4c', text: '#eef8ff', text2: '#c8dff0', muted: '#4d7a9b', success: '#22c55e', error: '#ff4f86', warning: '#f59e0b', info: '#38bdf8' };
+const C = { bg: '#061524', panel: '#0b2236', panel2: '#081b2e', panelHover: '#0f2a42', border: '#1a3a5c', gold: '#f6b84b', text: '#eef8ff', text2: '#c8dff0', muted: '#4d7a9b', success: '#22c55e', error: '#ff4f86', warning: '#f59e0b', info: '#38bdf8' };
 const FF = { body: "'Poppins', sans-serif" };
 
 const FALLBACK_TOWNSHIPS = ["Ahlone", "Bahan", "Botataung", "Cocokyun", "Dagon", "Dagon Myothit East", "Dagon Myothit North", "Dagon Myothit Seikkan", "Dagon Myothit South", "Dala", "Dawbon", "East Dagon", "Hlaing", "Hlaing Thar Yar", "Hlaingthaya", "Insein", "Kamayut", "Kyauktada", "Kyimyindaing", "Lanmadaw", "Latha", "Mayangon", "Mingaladon", "Mingala Taung Nyunt", "North Dagon", "North Okkalapa", "Pabedan", "Pazundaung", "Sanchaung", "Seikkan", "Shwe Pyi Thar", "Shwepyitha", "South Dagon", "South Okkalapa", "Tamwe", "Thaketa", "Thingangyun", "Yankin", "Mandalay", "Naypyidaw"];
@@ -111,6 +111,7 @@ export default function DataEntryPage() {
 
   function selectPickup(pickupId: string) { selectedPickupIdRef.current = pickupId; setSelectedPickupId(pickupId); }
   const selectedPickup = useMemo(() => pickupQueue.find((p) => p.pickup_id === selectedPickupId) || null, [pickupQueue, selectedPickupId]);
+  
   const townshipDisplayOptions = useMemo(() => {
     const seen = new Set<string>();
     return townshipOptions.filter((opt) => { const key = normalizeTownship(opt.township); if (!key || seen.has(key)) return false; seen.add(key); return true; });
@@ -169,12 +170,15 @@ export default function DataEntryPage() {
     const tier = String(row.tier || 'Standard');
     const itemPrice = money(row.item_price, 0);
     const weight = Math.max(0, money(row.weight, 0));
+    
+    // Fallback tariff logic matching your operational rules
     const isUpperMyanmar = branchCode === 'MDY' || branchCode === 'NPT' || /mandalay/.test(regionState) || /naypyitaw|nay pyi taw/.test(`${regionState} ${destination}`.toLowerCase());
     const baseFee = isUpperMyanmar ? 6000 : 4000;
     const includedKg = tier.trim().toLowerCase() === 'royal' ? 5 : 3;
     const chargeableExtraKg = Math.max(0, Math.ceil(weight) - includedKg);
     const surcharge = chargeableExtraKg * 500;
     const deliveryFee = baseFee + surcharge;
+    
     return { ...row, town, destination, base_fee: roundMoney(baseFee), surcharge: roundMoney(surcharge), deli_fee: roundMoney(deliveryFee), cod: roundMoney(itemPrice), actual_collect: roundMoney(itemPrice + deliveryFee) };
   }
 
@@ -202,7 +206,8 @@ export default function DataEntryPage() {
   async function loadPickupQueue() {
     setLoading(true); setMessage('');
     try {
-      const { data, error } = await sb.from('be_v_data_entry_pickup_verification_queue').select('*').order('created_at', { ascending: false });
+      // FIX: Removed .order('created_at') because the column does not exist on the view
+      const { data, error } = await sb.from('be_v_data_entry_pickup_verification_queue').select('*').limit(200);
       if (error) throw error;
       const queue = data || [];
       setPickupQueue(queue);
@@ -328,13 +333,20 @@ export default function DataEntryPage() {
     } catch (e: any) { setMessage(e.message); } finally { setLoading(false); }
   };
 
+  const handleAddRow = () => {
+    const newId = rows.length + 1;
+    setRows([...rows, calculateLocalAmounts({
+      id: newId, status: 'MANUAL_EXTRA', date: new Date().toISOString().slice(0, 10), way_id: `MANUAL-${newId}`, merchant: selectedPickup ? `${selectedPickup.merchant_code || ''} - ${selectedPickup.merchant_name || ''}` : '', recipient_name: '', recipient_phone: '', recipient_phone_2: '', town: selectedPickup?.township || 'North Dagon', tier: 'Standard', address: '', item_price: 0, weight: 1, base_fee: 0, surcharge: 0, deli_fee: 0, cod: 0, actual_collect: 0, destination: selectedPickup?.city || 'Yangon', pickup_by: 'DATA_ENTRY', remarks: '', saved: false,
+    })]);
+  };
+
   const inputStyle = { width: '100%', background: C.panel, color: C.text, border: `1px solid ${C.border}`, padding: '8px', borderRadius: 8, outline: 'none', fontFamily: FF.body, fontSize: 13 };
   const btnStyle = { display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', borderRadius: 10, fontSize: 13, fontWeight: 700, fontFamily: FF.body, border: `1px solid ${C.border}`, background: C.panel2, color: C.text, cursor: 'pointer' };
 
   return (
     <div style={{ background: C.bg, minHeight: '100vh', padding: 24, color: C.text, fontFamily: FF.body }}>
+      <style>{"@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800;900&display=swap'); * { font-family: 'Poppins', sans-serif; } @keyframes spin{to{transform:rotate(360deg)}} input:focus,textarea:focus{border-color:#f6b84b!important} ::-webkit-scrollbar{width:6px;height:6px} ::-webkit-scrollbar-thumb{background:#1a3a5c;border-radius:4px}"}</style>
       <input ref={uploadInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }} />
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}} input:focus,textarea:focus{border-color:${C.gold}!important} ::-webkit-scrollbar{width:6px;height:6px} ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px}`}</style>
 
       {!isFullScreen && (
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16, borderBottom: `1px solid ${C.border}`, paddingBottom: 20, marginBottom: 20 }}>
@@ -378,26 +390,14 @@ export default function DataEntryPage() {
           <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 16, padding: 16, position: 'sticky', top: 24, height: 600, display: 'flex', flexDirection: 'column' }}>
             <h3 style={{ fontSize: 12, color: C.text, fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 8, borderBottom: `1px solid ${C.border}`, paddingBottom: 12, margin: '0 0 12px' }}><Camera size={14} color={C.info}/> {t.photoTitle}</h3>
             <div style={{ fontSize: 11, color: C.muted, marginBottom: 12 }}>
-              {selectedPickup ? <><div style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>{selectedPickup.pickup_id}</div><div style={{ marginTop: 4 }}>{selectedPickup.merchant_code} - {selectedPickup.merchant_name}</div><div style={{ marginTop: 4 }}>Photos: <span style={{ color: C.gold }}>{parcelProofs.filter((p) => p.proof_photo_path).length}</span> / {parcelProofs.length}</div></> : t.selectWbPhoto}
+              {selectedPickup ? <><div style={{ color: C.text, fontWeight: 700, fontSize: 13 }}>{selectedPickup.pickup_id}</div><div style={{ marginTop: 4 }}>{selectedPickup.merchant_code}</div></> : t.selectWbPhoto}
             </div>
             <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: 10, paddingRight: 4 }}>
               {parcelProofs.length === 0 ? (
                 <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: 24, textAlign: 'center', color: C.muted, fontSize: 12 }}><ImageIcon size={24} style={{ margin: '0 auto 8px' }}/> {t.noPhotos}</div>
               ) : parcelProofs.map((proof) => (
-                <div key={proof.delivery_way_id} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, overflow: 'hidden' }}>
-                  <div style={{ padding: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: C.panel2 }}>
-                    <div>
-                      <div style={{ color: C.gold, fontSize: 12, fontWeight: 700 }}>{proof.delivery_way_id}</div>
-                      <div style={{ color: C.muted, fontSize: 10, marginTop: 2 }}>#{String(proof.parcel_sequence).padStart(3, '0')} • {Number(proof.parcel_weight_kg || 0).toFixed(2)} KG</div>
-                    </div>
-                    {proof.proof_photo_path ? <CheckCircle2 size={14} color={C.success} /> : <AlertTriangle size={14} color={C.error} />}
-                  </div>
-                  {proof.photo_url ? (
-                    <a href={proof.photo_url} target="_blank" rel="noreferrer" style={{ display: 'block', textDecoration: 'none' }}>
-                      <img src={proof.photo_url} alt="proof" style={{ width: '100%', height: 120, objectFit: 'cover' }} />
-                      <div style={{ padding: 8, fontSize: 10, color: C.info, display: 'flex', alignItems: 'center', gap: 6, background: C.panelHover }}><ExternalLink size={12}/> {t.openPhoto}</div>
-                    </a>
-                  ) : <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.muted, fontSize: 11 }}>No rider photo</div>}
+                <div key={proof.delivery_way_id} style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: 10 }}>
+                  <div style={{ color: C.gold, fontSize: 12, fontWeight: 700 }}>{proof.delivery_way_id}</div>
                 </div>
               ))}
             </div>
@@ -412,27 +412,15 @@ export default function DataEntryPage() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 11, color: C.info, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>{t.step1}</div>
                 <select value={selectedPickupId} onChange={(e) => selectPickup(e.target.value)} style={{ ...inputStyle, background: C.bg }}>
-                  {pickupQueue.length === 0 ? <option value="">{t.noVerified}</option> : pickupQueue.map((p) => <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} ({p.merchant_code} - {p.verified_parcels || 0}/{p.expected_parcels || 0} Parcels)</option>)}
+                  {pickupQueue.length === 0 ? <option value="">{t.noVerified}</option> : pickupQueue.map((p) => <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} ({p.merchant_code})</option>)}
                 </select>
               </div>
-              <div style={{ width: 100 }}>
-                <div style={{ fontSize: 11, color: C.info, fontWeight: 800, textTransform: 'uppercase', marginBottom: 8 }}>{t.lblParcels}</div>
-                <input type="number" readOnly value={rows.length || selectedPickup?.expected_parcels || 0} style={{ ...inputStyle, background: C.bg, textAlign: 'center' }} />
-              </div>
             </div>
-            
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button onClick={() => { loadPickupQueue(); if (selectedPickupId) loadParcelProofs(selectedPickupId); }} style={btnStyle}><Layers size={14}/> {t.btnLoad}</button>
-              <button onClick={() => uploadInputRef.current?.click()} disabled={loading} style={{ ...btnStyle, background: C.success, color: '#000', borderColor: C.success }}><UploadCloud size={14}/> {t.btnBulk}</button>
-              <button onClick={() => { setIsFullScreen(true); setMessage('Register mode enabled.'); }} disabled={loading || !selectedPickupId} style={{ ...btnStyle, background: C.gold, color: '#000', borderColor: C.gold }}><Plus size={14}/> {t.btnBlank}</button>
               <button onClick={() => setIsFullScreen(!isFullScreen)} style={{ ...btnStyle, background: '#fff', color: '#000', borderColor: '#fff' }}>{isFullScreen ? <Minimize2 size={14}/> : <Maximize2 size={14}/>} {isFullScreen ? t.btnExit : t.btnFull}</button>
             </div>
           </div>
 
-          <div style={{ background: C.panelHover, borderBottom: `1px solid ${C.border}`, padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: C.gold, fontWeight: 800, textTransform: 'uppercase' }}>{t.topScroll}</span>
-            <span style={{ fontSize: 10, color: C.muted }}>{t.topScrollSub}</span>
-          </div>
           <div ref={topScrollRef} onScroll={() => syncTemplateScroll("top")} style={{ height: 20, overflowX: 'auto', overflowY: 'hidden', background: C.bg, borderBottom: `1px solid ${C.border}` }}><div style={{ width: tableMinWidth, height: 1 }}></div></div>
 
           <div ref={tableScrollRef} onScroll={() => syncTemplateScroll("table")} style={{ overflowX: 'auto', paddingBottom: 24 }}>
@@ -441,23 +429,19 @@ export default function DataEntryPage() {
                 <tr>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 160 }}>{t.thRecvName}</th>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 120 }}>{t.thPhone1}</th>
-                  <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 120 }}>{t.thPhone2}</th>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 210 }}>{t.thTown}</th>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 400 }}>{t.thAddr}</th>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 100 }}>{t.thPrice}</th>
                   <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 80 }}>{t.thWgt}</th>
-                  <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 280 }}>{t.thRem}</th>
-                  <th style={{ padding: 12, background: C.gold, color: '#000', border: `1px solid ${C.border}`, minWidth: 80, textAlign: 'center' }}>{t.thSave}</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
-                  <tr><td colSpan={9} style={{ padding: 40, textAlign: 'center', color: C.muted, fontSize: 14 }}>{t.emptyTable}</td></tr>
+                  <tr><td colSpan={6} style={{ padding: 40, textAlign: 'center', color: C.muted, fontSize: 14 }}>{t.emptyTable}</td></tr>
                 ) : rows.map((row, i) => (
                   <tr key={`${row.way_id}-${row.id}`} style={{ borderBottom: `1px solid ${C.border}66` }}>
                     <td style={{ padding: 8, verticalAlign: 'top' }}><input value={row.recipient_name} onChange={(e) => handleUpdate(i, 'recipient_name', e.target.value)} style={inputStyle} /></td>
                     <td style={{ padding: 8, verticalAlign: 'top' }}><input value={row.recipient_phone} onChange={(e) => handleUpdate(i, 'recipient_phone', e.target.value)} style={inputStyle} /></td>
-                    <td style={{ padding: 8, verticalAlign: 'top' }}><input value={row.recipient_phone_2} onChange={(e) => handleUpdate(i, 'recipient_phone_2', e.target.value)} style={inputStyle} /></td>
                     <td style={{ padding: 8, verticalAlign: 'top', position: 'relative' }}>
                       <input value={row.town} onFocus={() => setActiveTownshipRow(i)} onChange={(e) => handleTownshipInput(i, e.target.value)} onBlur={() => handleTownshipBlur(i)} style={{ ...inputStyle, borderColor: findExactTownshipOption(row.town) ? C.border : C.error }} />
                       {activeTownshipRow === i && (
@@ -474,31 +458,17 @@ export default function DataEntryPage() {
                     <td style={{ padding: 8, verticalAlign: 'top' }}><textarea value={row.address} onChange={(e) => handleUpdate(i, 'address', e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} /></td>
                     <td style={{ padding: 8, verticalAlign: 'top' }}><input type="number" value={row.item_price} onChange={(e) => handleUpdate(i, 'item_price', e.target.value)} style={{ ...inputStyle, color: C.success, fontWeight: 800 }} /></td>
                     <td style={{ padding: 8, verticalAlign: 'top' }}><input type="number" value={row.weight} onChange={(e) => handleUpdate(i, 'weight', e.target.value)} style={{ ...inputStyle, color: C.gold, textAlign: 'center', fontWeight: 800 }} /></td>
-                    <td style={{ padding: 8, verticalAlign: 'top' }}><textarea value={row.remarks} onChange={(e) => handleUpdate(i, 'remarks', e.target.value)} style={{ ...inputStyle, minHeight: 60, resize: 'vertical' }} /></td>
-                    <td style={{ padding: 8, verticalAlign: 'top', textAlign: 'center' }}>
-                      <button onClick={() => handleSaveRow(i)} disabled={loading} style={{ background: row.saved ? 'rgba(34,197,94,0.1)' : C.gold, color: row.saved ? C.success : '#000', border: `1px solid ${row.saved ? C.success : C.gold}`, padding: '6px 14px', borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: 'pointer', fontFamily: FF.body }}>{row.saved ? 'Saved' : 'Save'}</button>
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div style={{ background: C.panelHover, borderTop: `1px solid ${C.border}`, padding: '8px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 10, color: C.gold, fontWeight: 800, textTransform: 'uppercase' }}>{t.botScroll}</span>
-            <span style={{ fontSize: 10, color: C.muted }}>{t.botScrollSub}</span>
-          </div>
           <div ref={bottomScrollRef} onScroll={() => syncTemplateScroll("bottom")} style={{ height: 20, overflowX: 'auto', overflowY: 'hidden', background: C.bg }}><div style={{ width: tableMinWidth, height: 1 }}></div></div>
 
           {rows.length > 0 && (
-            <div style={{ padding: 20, background: C.bg, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+            <div style={{ padding: 20, background: C.bg, borderTop: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <button onClick={handleAddRow} style={{ background: 'transparent', border: 'none', color: C.info, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontFamily: FF.body }}><Plus size={14}/> {t.btnAddRow}</button>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                <span style={{ color: C.muted, fontSize: 12, fontWeight: 600 }}>{rows.filter(r => r.photo_url || r.proof_photo_path).length}/{rows.length} {t.checked}</span>
-                <button onClick={handleSaveAndGenerate} disabled={loading || !selectedPickupId} style={{ ...btnSty, background: loading || !selectedPickupId ? C.panel2 : C.gold, color: loading || !selectedPickupId ? C.muted : '#000', borderColor: loading || !selectedPickupId ? C.border : C.gold, padding: '12px 24px', fontSize: 14 }}>
-                  <Send size={16}/> {loading ? t.processing : t.btnGenWp}
-                </button>
-              </div>
             </div>
           )}
         </div>

@@ -1,277 +1,241 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/contexts/LanguageContext';
 import QRCode from 'react-qr-code';
 import Barcode from 'react-barcode';
+import { Printer, RefreshCw, Layers } from 'lucide-react';
 
-// --- MOCK PAYLOAD DATA ---
-const p1 = { merchant: "Baby Genius", date: "0627", seq: 15, recipient: "Ma Htet Htet", phone: "09794665120", address: "အမှတ် ၁၁၅/ဒုတိယထပ်, မဂ်လာသီရိလမ်း, မြို့သစ်ရပ်ကွက်, ဒေါပုံ", itemPrice: "76,000", deliFee: "3,000", total: "79,000" };
-const p2 = { merchant: "Beauty Cos", date: "0625", seq: 100, recipient: "Phyu Thwe", phone: "09-790210771", address: "Royal Rosy အိမ်ဆောက်ပစ္စည်းဆိုင်၊ (၆၂) လမ်း၊ ၁၂၀ x ၁၂၁ လမ်းကြား၊ မန္တလေးမြို့", itemPrice: "160,000", deliFee: "-", total: "180,000", sidebar: "(1) - မန္တလေး" };
-const p3 = { merchant: "Beauty Cos", date: "0625", seq: 112, recipient: "ချစ်ချစ်အိမ်", phone: "09-972219164", address: "(၁၁၄) လမ်း၊ ၅၅ x ၅၆ လမ်းကြား၊ ချမ်းမြသာစည်မြို့နယ်၊ မန္တလေးမြို့", itemPrice: "95,000", deliFee: "-", total: "107,000", sidebar: "(17) - မန္တလေး" };
-const p4 = { merchant: "Beauty Cos", date: "0625", seq: 117, recipient: "Khin Win Mar", phone: "09-797490446", address: "(၆၂) လမ်း၊ ၂၉ x ၃၀ လမ်းကြား၊ ချမ်းအေးသာစံမြို့နယ်၊ မန္တလေးမြို့", itemPrice: "199,000", deliFee: "0", total: "215,000", sidebar: "မန္တလေး" };
+const FF = { body: "'Poppins', sans-serif" };
 
-// --- ID GENERATION LOGIC ---
-function generateID(dateStr: string, mName: string, seq: number) {
-    let mCode = "XXX";
-    if (mName.toLowerCase().includes("baby genius")) mCode = "BBG";
-    else if (mName.toLowerCase().includes("beauty cos") || mName.toLowerCase().includes("bca")) mCode = "BCA";
-    else {
-        let alpha = mName.replace(/[^a-zA-Z]/g, '');
-        if (alpha.length >= 3) mCode = alpha.substring(0, 3).toUpperCase();
-        else mCode = alpha.toUpperCase().padEnd(3, 'X');
+export default function WaybillStudioPage() {
+  const { lang } = useLanguage();
+  const [format, setFormat] = useState<'4x6' | '2x3' | '4x2'>('4x6');
+  const [pickups, setPickups] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const { data } = await supabase.from('be_portal_pickup_requests').select('*').limit(12).order('created_at', { ascending: false });
+      setPickups(data || []);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
     }
-    const s = seq.toString().padStart(3, '0');
-    return `D${dateStr}-${mCode}-${s}`;
-}
-
-// --- REUSABLE PAGE CONTAINER ---
-const PrintPage = ({ children }: { children: React.ReactNode }) => (
-  <div className="w-[4in] h-[6in] bg-white mb-6 shadow-xl print:shadow-none print:mb-0 flex flex-wrap overflow-hidden box-border border print:border-none" style={{ pageBreakAfter: 'always' }}>
-    {children}
-  </div>
-);
-
-// --- COMPONENT ---
-export default function WaybillPrintStudio() {
-
-  const handlePrint = () => {
-    window.print();
   };
 
+  useEffect(() => { void loadData(); }, []);
+
+  const handlePrint = () => { window.print(); };
+
+  // Generate chunks based on format
+  const getChunks = () => {
+    if (format === '4x6') return pickups.map(p => [p]);
+    if (format === '2x3') {
+      const chunks = [];
+      for (let i = 0; i < pickups.length; i += 4) chunks.push(pickups.slice(i, i + 4));
+      return chunks;
+    }
+    if (format === '4x2') {
+      const chunks = [];
+      for (let i = 0; i < pickups.length; i += 3) chunks.push(pickups.slice(i, i + 3));
+      return chunks;
+    }
+    return [];
+  };
+
+  const chunks = getChunks();
+
   return (
-    <div className="min-h-screen bg-gray-200 text-black font-sans flex flex-col items-center">
-      {/* GLOBAL PRINT STYLES - Protects the 4x6 dimension mapping */}
+    <div style={{ background: '#e0e0e0', minHeight: '100vh', padding: 24, fontFamily: FF.body, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      
+      {/* ─── STRICT THERMAL PRINT CSS ─── */}
       <style dangerouslySetInnerHTML={{__html: `
         @page { size: 4in 6in; margin: 0; }
         @media print {
-            body { background: white; margin: 0; padding: 0; }
-            .no-print { display: none !important; }
-            .print-exact { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body { background: white !important; margin: 0; padding: 0; }
+            #portal-sidebar, header, .no-print { display: none !important; }
+            .print-page { margin: 0 !important; box-shadow: none !important; border: none !important; page-break-after: always; }
+            .bg-grey { background-color: #d0d0d0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
         }
+        .print-page { width: 4in; height: 6in; background: white; margin-bottom: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); display: flex; flex-wrap: wrap; overflow: hidden; box-sizing: border-box; }
+        svg { width: 100% !important; height: 100% !important; }
       `}} />
 
-      {/* HEADER / CONTROLS (Hidden during printing) */}
-      <div className="no-print w-full max-w-[4in] mt-8 mb-6 text-center bg-white p-6 rounded-lg shadow-md border border-gray-300">
-        <h2 className="text-xl font-bold text-gray-800 mb-2">Native Waybill Studio</h2>
-        <p className="text-sm text-gray-600 mb-4">Ensure printer is set to <strong>4x6 inches</strong> with <strong>None</strong> margins. Enable <strong>Background graphics</strong>.</p>
-        <button onClick={handlePrint} className="bg-blue-600 text-white px-6 py-3 rounded font-bold shadow hover:bg-blue-700 transition w-full">
-          🖨️ Print Waybills
-        </button>
+      {/* Control Panel */}
+      <div className="no-print" style={{ width: '100%', maxWidth: 800, background: '#0b2236', border: '1px solid #1a3a5c', borderRadius: 16, padding: 20, marginBottom: 24, color: '#fff' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: '#f6b84b' }}>Unified Waybill Studio</h1>
+            <p style={{ margin: '4px 0 0', fontSize: 13, color: '#4d7a9b' }}>Select layout and print exactly to 4x6 thermal printers.</p>
+          </div>
+          <button onClick={loadData} style={{ background: '#1a3a5c', border: 'none', color: '#fff', padding: '8px 16px', borderRadius: 8, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}><RefreshCw size={14}/> Sync Data</button>
+        </div>
+
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          {(['4x6', '4x2', '2x3'] as const).map(f => (
+            <button key={f} onClick={() => setFormat(f)} style={{ background: format === f ? '#f6b84b' : '#061524', color: format === f ? '#000' : '#fff', border: `1px solid ${format === f ? '#f6b84b' : '#1a3a5c'}`, padding: '8px 16px', borderRadius: 8, fontWeight: 800, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Layers size={14}/> 1 Sheet = {f === '4x6' ? '1 Label' : f === '4x2' ? '3 Labels' : '4 Labels'}
+            </button>
+          ))}
+          <button onClick={handlePrint} style={{ marginLeft: 'auto', background: '#22c55e', color: '#000', border: 'none', padding: '10px 24px', borderRadius: 8, fontWeight: 900, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8 }}><Printer size={16}/> Print Now</button>
+        </div>
       </div>
 
-      {/* --- PAGE 1: Format 1 (Four 2x3 Formats) --- */}
-      <PrintPage>
-        {[1, 2, 3, 4].map(i => {
-          const id = generateID(p1.date, p1.merchant, i);
-          return (
-            <div key={i} className="w-1/2 h-1/2 p-1 border border-black flex flex-col text-[8px] leading-tight box-border">
-              <div className="flex justify-between border-b border-black pb-1 mb-1 items-start">
-                <div className="flex items-center gap-1">
-                  <div className="w-[14px] h-[14px] rounded-full bg-[#2c3e50] text-white text-[9px] flex items-center justify-center font-bold">B</div>
-                  <div>
-                    <div className="font-bold text-[7px] leading-none mb-[2px]">BRITIUM EXPRESS</div>
-                    <div className="text-[6px] leading-none mb-[2px]">DELIVERY SERVICE</div>
-                    <div className="font-bold text-[7px] leading-none">09-897447744</div>
-                  </div>
-                </div>
-                <QRCode value={id} size={32} />
-              </div>
-              <div className="flex-1 flex flex-col gap-[2px]">
-                <div>Merchant : {p1.merchant}</div>
-                <div>Recipient : {p1.recipient}</div>
-                <div className="mt-1">Remarks :</div>
-              </div>
-              <div className="flex justify-between items-end mb-1">
-                <div className="leading-[1.4]">
-                  <div>Item Price : {p1.itemPrice}</div>
-                  <div>Deli Fee : {p1.deliFee}</div>
-                </div>
-                <div className="border border-black rounded-[2px] text-right text-[11px] font-bold p-1 relative w-[75px] bg-[#d0d0d0] print-exact">
-                  <span className="absolute top-[2px] left-[2px] text-[6px] font-normal">COD</span><br/>
-                  <div className="mt-[2px]">{p1.total}</div>
-                </div>
-              </div>
-              <div className="text-center border-t border-black pt-[2px] flex flex-col items-center">
-                <div className="h-[18px] w-full overflow-hidden flex justify-center">
-                    <Barcode value={id} format="CODE128" displayValue={false} height={18} width={1} margin={0} background="transparent" />
-                </div>
-                <div className="text-[6px] mt-[1px]">2026-06-27 14:26:41</div>
-              </div>
-            </div>
-          );
-        })}
-      </PrintPage>
-
-      {/* --- PAGE 2: Format 2 (Three 4x2 Formats) --- */}
-      <PrintPage>
-        {[p2, p3, p4].map((p, idx) => {
-          const id = generateID(p.date, p.merchant, p.seq);
-          return (
-            <div key={idx} className="w-full h-1/3 flex border border-black text-[9px] leading-tight box-border">
-              <div className="w-[20px] text-center font-bold border-r border-black text-[10px] py-1 flex items-center justify-center [writing-mode:vertical-rl] rotate-180">
-                {p.sidebar}
-              </div>
-              <div className="flex-1 flex flex-col p-1 box-border">
-                <div className="flex justify-between border-b border-black pb-1 mb-1 items-start">
-                  <div className="flex gap-1">
-                    <div className="font-bold text-xs leading-none mt-1">4D</div>
-                    <div className="w-[14px] h-[14px] rounded-full bg-[#2c3e50] text-white text-[9px] flex items-center justify-center font-bold mt-[2px]">B</div>
-                    <div className="leading-[1.1]">
-                      <div className="font-bold text-[9px] mb-[2px]">BRITIUM EXPRESS DELIVERY SERVICE</div>
-                      <div className="text-[8px] mb-[3px]">09 - 897447744</div>
-                      <div className="text-[8px]">OS : BC လူသုံးကုန်</div>
+      {loading ? <div style={{ padding: 40, color: '#000', fontWeight: 800 }}>Loading waybills...</div> : chunks.map((chunk, chunkIdx) => (
+        <div key={chunkIdx} className="print-page">
+          
+          {/* FORMAT 1: 4x6 (1 Label per sheet) */}
+          {format === '4x6' && chunk.map((p, i) => {
+            const id = p.pickup_id || `D-${Date.now()}`;
+            return (
+              <div key={i} style={{ width: '100%', height: '100%', padding: 12, border: '1px solid #000', fontSize: 12, display: 'flex', flexDirection: 'column', boxSizing: 'border-box', color: '#000', fontFamily: 'Arial, sans-serif' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #000', paddingBottom: 12, marginBottom: 12 }}>
+                  <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <div style={{ width: 45, height: 45, borderRadius: '50%', background: '#2c3e50', color: 'white', fontSize: 24, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>B</div>
+                    <div style={{ lineHeight: 1 }}>
+                      <div style={{ fontWeight: 'bold', fontSize: 20, marginBottom: 4 }}>BRITIUM EXPRESS</div>
+                      <div style={{ fontSize: 15, marginBottom: 6 }}>DELIVERY SERVICE</div>
+                      <div style={{ fontWeight: 'bold', fontSize: 13 }}>HotLine: 09 - 897 44 77 44</div>
                     </div>
                   </div>
-                  <div className="flex gap-1 text-right items-center">
-                    <div className="flex flex-col items-end">
-                      <div className="h-[18px] w-[90px] overflow-hidden flex justify-end">
-                          <Barcode value={id} format="CODE128" displayValue={false} height={18} width={1} margin={0} background="transparent" />
-                      </div>
-                      <div className="font-bold text-[8px] mt-[1px]">{id}</div>
-                    </div>
-                    <div className="w-8 h-8"><QRCode value={id} size={32} /></div>
+                  <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                    <div style={{ fontSize: 12 }}>{new Date().toISOString().slice(0,10)}</div>
+                    <div style={{ margin: '6px 0', width: 80, height: 80 }}><QRCode value={id} size={80} /></div>
+                    <div style={{ fontSize: 12, fontWeight: 'bold' }}>{id}</div>
                   </div>
                 </div>
-                <div className="flex flex-1">
-                  <div className="w-[14px] text-[7px] [writing-mode:vertical-rl] rotate-180 flex items-center justify-center">Recipient :</div>
-                  <div className="flex-[1.5] border-r border-black pr-1 box-border">
-                    <div className="font-bold text-[11px] leading-tight mb-[2px]">{p.recipient}</div>
-                    <div className="font-bold text-[9px] leading-tight mb-[3px]">{p.phone}</div>
-                    <div className="text-[8px] leading-[1.3]">{p.address}</div>
-                  </div>
-                  <div className="flex-1 pl-1 flex flex-col justify-between box-border">
-                    <div>
-                        <div className="flex justify-between mb-[2px]"><span>Item Price :</span> <span>{p.itemPrice}</span></div>
-                        <div className="flex justify-between mb-[2px]"><span>Deli Fee :</span> <span>{p.deliFee}</span></div>
-                        <div className="flex justify-between mb-[2px]"><span>Surcharge :</span> <span>20,000</span></div>
-                        <div className="text-[7px] mt-[1px]">CBM/wt. (Kg) :</div>
-                    </div>
-                    <div className="border border-black text-right text-[14px] font-bold p-1 bg-[#d0d0d0] print-exact mt-auto">
-                      {p.total}
-                    </div>
-                  </div>
+                <div style={{ borderBottom: '1px solid #000', paddingBottom: 12, marginBottom: 12 }}>
+                  <table style={{ width: '100%', fontSize: 13, lineHeight: 1.5 }}>
+                    <tbody><tr><td style={{ width: 90, verticalAlign: 'top', fontWeight: 'bold' }}>Merchant :</td><td>{p.merchant_name}<br/>{p.merchant_code}<br/>Yangon</td></tr></tbody>
+                  </table>
                 </div>
-              </div>
-            </div>
-          );
-        })}
-      </PrintPage>
-
-      {/* --- PAGE 3: Format 3 (One 4x6 Format) --- */}
-      <PrintPage>
-        {(() => {
-          const id3 = generateID("0627", "Baby Genius", 15);
-          return (
-            <div className="w-full h-full p-3 border border-black text-xs flex flex-col box-border">
-              <div className="flex justify-between border-b border-black pb-3 mb-3">
-                <div className="flex gap-2.5 items-center">
-                  <div className="w-[45px] h-[45px] rounded-full bg-[#2c3e50] text-white text-[24px] flex items-center justify-center font-bold">B</div>
-                  <div className="leading-none">
-                    <div className="font-bold text-[20px] mb-1">BRITIUM EXPRESS</div>
-                    <div className="text-[15px] mb-1.5">DELIVERY SERVICE</div>
-                    <div className="font-bold text-[13px]">HotLine: 09 - 897 44 77 44</div>
-                  </div>
-                </div>
-                <div className="text-right flex flex-col items-end">
-                  <div className="text-[12px]">2026-06-27 14:28:13</div>
-                  <div className="my-1.5 w-[80px] h-[80px]"><QRCode value={id3} size={80} /></div>
-                  <div className="text-[12px] font-bold">{id3}</div>
-                </div>
-              </div>
-              <div className="border-b border-black pb-3 mb-3">
-                <table className="w-full text-[13px] leading-relaxed">
-                  <tbody>
-                    <tr><td className="w-[90px] align-top">Merchant :</td><td>{p1.merchant} Os<br/><br/>09796239153<br/>ဒဂုံမြို့သစ်အရှေ့ပိုင်း</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="border-b border-black pb-3 mb-3 flex-1">
-                <table className="w-full text-[13px]">
-                  <tbody>
-                    <tr>
-                      <td className="w-[90px] align-top">Recipient :</td>
+                <div style={{ borderBottom: '1px solid #000', paddingBottom: 12, marginBottom: 12, flex: 1 }}>
+                  <table style={{ width: '100%', fontSize: 13 }}>
+                    <tbody><tr>
+                      <td style={{ width: 90, verticalAlign: 'top', fontWeight: 'bold' }}>Recipient :</td>
                       <td>
-                        <b className="text-[20px] block mb-2">{p1.recipient}</b>
-                        <b className="text-[15px] block mb-2">{p1.phone}, {p1.phone}</b>
-                        <span className="leading-relaxed block">{p1.address}</span>
+                        <b style={{ fontSize: 20, display: 'block', marginBottom: 8 }}>{p.recipient_name || p.contact_person || 'Customer'}</b>
+                        <b style={{ fontSize: 15, display: 'block', marginBottom: 8 }}>{p.phone_primary || p.phone || '09-XXXXXXX'}</b>
+                        <span style={{ lineHeight: 1.5, display: 'block' }}>{p.pickup_address || p.address || p.township}</span>
                       </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="flex border-b border-black pb-3 mb-3">
-                <div className="flex-1 border-r border-black">
-                  <div>CBM :<br/><b className="text-[14px]">1</b></div>
-                  <div className="mt-3">Weight (kg) :<br/><b className="text-[14px]">5</b></div>
-                  <div className="mt-3">Delivery :<br/><b className="text-[14px]">Normal</b></div>
+                    </tr></tbody>
+                  </table>
                 </div>
-                <div className="flex-[1.2] pl-3">
-                  <div>Item Price :<br/><span className="text-[14px]">{p1.itemPrice}</span></div>
-                  <div className="mt-3">Delivery Fees :<br/><span className="text-[14px]">{p1.deliFee}</span></div>
-                  <div className="mt-3">Prepaid to OS :<br/><span className="text-[14px]">0</span></div>
-                </div>
-                <div className="flex-[1.5] pl-3 flex items-center">
-                  <div className="w-full border border-black rounded p-[15px_10px] text-right text-[24px] font-bold relative bg-[#d0d0d0] print-exact">
-                    <span className="absolute top-[5px] left-[5px] text-[10px] font-normal">COD</span><br/>
-                    {p1.total}
+                <div style={{ display: 'flex', borderBottom: '1px solid #000', paddingBottom: 12, marginBottom: 12 }}>
+                  <div style={{ flex: 1, borderRight: '1px solid #000' }}>
+                    <div>CBM :<br/><b style={{ fontSize: 14 }}>1</b></div>
+                    <div style={{ marginTop: 12 }}>Weight (kg) :<br/><b style={{ fontSize: 14 }}>{p.expected_parcels || 1}</b></div>
                   </div>
-                </div>
-              </div>
-              <div className="mb-5">Remarks :</div>
-              <div className="text-center font-bold text-[12px] pt-3 border-t border-dashed border-black leading-relaxed">
-                အောက်ချာပါ ငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ<br/>Hotline သို့ ဆက်သွယ် တိုင်ကြားနိုင်ပါသည်။
-              </div>
-            </div>
-          );
-        })()}
-      </PrintPage>
-
-      {/* --- PAGE 4: Format 4 (Two 4x3 Formats) --- */}
-      <PrintPage>
-        {[1, 2].map((i) => {
-          const id = generateID("0627", "Baby Genius", i + 20);
-          return (
-            <div key={i} className="w-full h-1/2 p-2 border border-black text-[10px] flex flex-col leading-snug box-border">
-              <div className="flex justify-between border-b border-black pb-2 mb-2 items-start">
-                <div className="flex gap-2 items-center">
-                  <div className="w-[30px] h-[30px] rounded-full bg-[#2c3e50] text-white text-[16px] flex items-center justify-center font-bold">B</div>
-                  <div className="leading-none">
-                    <div className="font-bold text-[14px] mb-[3px]">BRITIUM EXPRESS</div>
-                    <div className="text-[10px]">Hotline: 09-897447744</div>
+                  <div style={{ flex: 1.2, paddingLeft: 12 }}>
+                    <div>Item Price :<br/><span style={{ fontSize: 14 }}>{Number(p.cod_amount || 0).toLocaleString()}</span></div>
+                    <div style={{ marginTop: 12 }}>Deli Fee :<br/><span style={{ fontSize: 14 }}>{Number(p.delivery_fee || 4000).toLocaleString()}</span></div>
                   </div>
-                </div>
-                <div className="flex gap-2.5 text-right items-center">
-                  <div className="flex flex-col items-end">
-                    <div className="h-[24px] w-[120px] overflow-hidden flex justify-end">
-                      <Barcode value={id} format="CODE128" displayValue={false} height={24} width={1.2} margin={0} background="transparent" />
+                  <div style={{ flex: 1.5, paddingLeft: 12, display: 'flex', alignItems: 'center' }}>
+                    <div className="bg-grey" style={{ width: '100%', border: '1px solid #000', borderRadius: 4, padding: '15px 10px', textAlign: 'right', fontSize: 24, fontWeight: 'bold', position: 'relative' }}>
+                      <span style={{ position: 'absolute', top: 5, left: 5, fontSize: 10, fontWeight: 'normal' }}>COD</span><br/>
+                      {Number(p.cod_amount || 0).toLocaleString()}
                     </div>
-                    <div className="font-bold text-[10px] mt-[2px]">{id}</div>
                   </div>
-                  <div className="w-10 h-10"><QRCode value={id} size={40} /></div>
+                </div>
+                <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: 12, paddingTop: 12, borderTop: '1px dashed #000', lineHeight: 1.5 }}>
+                  အောက်ချာပါ ငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ<br/>Hotline သို့ ဆက်သွယ် တိုင်ကြားနိုင်ပါသည်။
                 </div>
               </div>
-              <div className="flex flex-1">
-                <div className="flex-[1.5] border-r border-black pr-2 box-border">
-                  <div className="mb-2"><span className="font-bold">Merchant:</span> {p1.merchant} Os<br/>09796239153</div>
-                  <div className="mb-1"><span className="font-bold">Recipient:</span> <span className="font-bold text-[14px]">{p1.recipient}</span></div>
-                  <div className="mb-1">{p1.phone}</div>
-                  <div className="leading-[1.4]">{p1.address}</div>
-                </div>
-                <div className="flex-1 pl-2 flex flex-col justify-between box-border">
-                  <div>
-                    <div className="flex justify-between mb-1"><span>Item Price:</span> <span>{p1.itemPrice}</span></div>
-                    <div className="flex justify-between mb-1"><span>Deli Fee:</span> <span>{p1.deliFee}</span></div>
-                    <div className="flex justify-between mb-1"><span>Prepaid:</span> <span>0</span></div>
-                  </div>
-                  <div className="border border-black rounded-[3px] text-right text-[18px] font-bold p-[10px_5px_5px_5px] bg-[#d0d0d0] print-exact relative mt-auto">
-                    <span className="absolute top-[2px] left-[4px] text-[8px] font-normal">COD</span><br/>
-                    {p1.total}
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </PrintPage>
+            );
+          })}
 
+          {/* FORMAT 2: 4x2 (3 Labels per sheet) */}
+          {format === '4x2' && chunk.map((p, i) => {
+            const id = p.pickup_id || `D-${Date.now()}`;
+            return (
+              <div key={i} style={{ width: '100%', height: '33.333%', display: 'flex', border: '1px solid #000', fontSize: 9, boxSizing: 'border-box', color: '#000', fontFamily: 'Arial, sans-serif' }}>
+                <div style={{ width: 20, textAlign: 'center', fontWeight: 'bold', borderRight: '1px solid #000', fontSize: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}>
+                  {p.township || 'YGN'}
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 4, boxSizing: 'border-box' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #000', paddingBottom: 4, marginBottom: 4, alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <div style={{ fontWeight: 'bold', fontSize: 12, marginTop: 4 }}>4D</div>
+                      <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#2c3e50', color: 'white', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', marginTop: 2 }}>B</div>
+                      <div style={{ lineHeight: 1.1 }}>
+                        <div style={{ fontWeight: 'bold', fontSize: 9, marginBottom: 2 }}>BRITIUM EXPRESS</div>
+                        <div style={{ fontSize: 8 }}>09 - 897447744</div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 4, textAlign: 'right', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+                        <div style={{ height: 18, width: 90, overflow: 'hidden', display: 'flex', justifyContent: 'flex-end' }}><Barcode value={id} format="CODE128" displayValue={false} height={18} width={1} margin={0} background="transparent" /></div>
+                        <div style={{ fontWeight: 'bold', fontSize: 8, marginTop: 1 }}>{id}</div>
+                      </div>
+                      <div style={{ width: 32, height: 32 }}><QRCode value={id} size={32} /></div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flex: 1 }}>
+                    <div style={{ flex: 1.5, borderRight: '1px solid #000', paddingRight: 4, boxSizing: 'border-box' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: 11, marginBottom: 2 }}>{p.recipient_name || 'Customer'}</div>
+                      <div style={{ fontWeight: 'bold', fontSize: 9, marginBottom: 3 }}>{p.phone_primary || '09-XXXXXXX'}</div>
+                      <div style={{ fontSize: 8, lineHeight: 1.3 }}>{p.pickup_address || p.township}</div>
+                    </div>
+                    <div style={{ flex: 1, paddingLeft: 4, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', boxSizing: 'border-box' }}>
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span>Item:</span> <span>{Number(p.cod_amount || 0).toLocaleString()}</span></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 2 }}><span>Deli:</span> <span>{Number(p.delivery_fee || 4000).toLocaleString()}</span></div>
+                      </div>
+                      <div className="bg-grey" style={{ border: '1px solid #000', textAlign: 'right', fontSize: 14, fontWeight: 'bold', padding: 4, marginTop: 'auto', position: 'relative' }}>
+                        <span style={{ position: 'absolute', top: 2, left: 2, fontSize: 6, fontWeight: 'normal' }}>COD</span>
+                        {Number(p.cod_amount || 0).toLocaleString()}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* FORMAT 3: 2x3 (4 Labels per sheet) */}
+          {format === '2x3' && chunk.map((p, i) => {
+            const id = p.pickup_id || `D-${Date.now()}`;
+            return (
+              <div key={i} style={{ width: '50%', height: '50%', padding: 4, border: '1px solid #000', display: 'flex', flexDirection: 'column', fontSize: 8, boxSizing: 'border-box', color: '#000', fontFamily: 'Arial, sans-serif' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #000', paddingBottom: 4, marginBottom: 4, alignItems: 'flex-start' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                    <div style={{ width: 14, height: 14, borderRadius: '50%', background: '#2c3e50', color: 'white', fontSize: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>B</div>
+                    <div>
+                      <div style={{ fontWeight: 'bold', fontSize: 7, marginBottom: 2 }}>BRITIUM EXPRESS</div>
+                      <div style={{ fontWeight: 'bold', fontSize: 7 }}>09-897447744</div>
+                    </div>
+                  </div>
+                  <QRCode value={id} size={32} />
+                </div>
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div><b>To:</b> {p.recipient_name || 'Customer'}</div>
+                  <div><b>Ph:</b> {p.phone_primary || '09-XXXXXXX'}</div>
+                  <div style={{ fontSize: 7, lineHeight: 1.2 }}>{p.pickup_address || p.township}</div>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 4 }}>
+                  <div style={{ lineHeight: 1.4 }}>
+                    <div>Item: {Number(p.cod_amount || 0).toLocaleString()}</div>
+                    <div>Deli: {Number(p.delivery_fee || 4000).toLocaleString()}</div>
+                  </div>
+                  <div className="bg-grey" style={{ border: '1px solid #000', borderRadius: 2, textAlign: 'right', fontSize: 11, fontWeight: 'bold', padding: 4, position: 'relative', width: 75 }}>
+                    <span style={{ position: 'absolute', top: 2, left: 2, fontSize: 6, fontWeight: 'normal' }}>COD</span><br/>
+                    <div style={{ marginTop: 2 }}>{Number(p.cod_amount || 0).toLocaleString()}</div>
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center', borderTop: '1px solid #000', paddingTop: 2, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div style={{ height: 18, width: '100%', overflow: 'hidden', display: 'flex', justifyContent: 'center' }}>
+                    <Barcode value={id} format="CODE128" displayValue={false} height={18} width={1} margin={0} background="transparent" />
+                  </div>
+                  <div style={{ fontSize: 6, marginTop: 1 }}>{id}</div>
+                </div>
+              </div>
+            );
+          })}
+
+        </div>
+      ))}
     </div>
   );
 }

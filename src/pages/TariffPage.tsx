@@ -125,24 +125,22 @@ export default function TariffPage() {
     setEditingId(null); setForm(emptyForm); setSaving(false);
   };
 
-  // 1. Update the Search Filter:
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase().trim();
     return rows.filter(r => !q || [r.township, r.zone, r.zoneCode, r.customerTier].map(x => String(x || '')).join(' ').toLowerCase().includes(q));
   }, [rows, search]);
 
-// 2. Update the Highway Calculation:
   const calcResult = useMemo(() => {
     const activeRow = rows.find(r => r.township === calcTownship && r.customerTier === calcTier) || rows.find(r => r.customerTier === calcTier) || FALLBACK_ROWS[0];
     const cw = Math.ceil(Math.max(0, calcWeight));
     const extraKg = Math.max(0, cw - activeRow.includedKg);
     const wSurcharge = extraKg * activeRow.extraPerKg;
-    // FIX IS HERE: String(activeRow.township || '').toLowerCase()
-    const isHighway = ['ဂိတ်ချ', 'အဝေးပြေး', 'ကားဂိတ်', 'ကားဝင်း', 'drop off'].some(x => String(activeRow.township || '').toLowerCase().includes(x));
+    const isHighway = ['ဂိတ်ချ', 'အဝေးပြေး', 'ကားဂိတ်', 'ကားဝင်း', 'drop off'].some(x => activeRow.township.toLowerCase().includes(x));
     const refundApplied = calcMonthlyWays >= activeRow.commitmentMinWays ? activeRow.commitmentRefundPerWay : 0;
     const total = activeRow.baseFee + wSurcharge + Math.max(0, calcSurcharge) + (isHighway ? activeRow.highwayDropoffFee : 0) - refundApplied;
     return { ...activeRow, cw, extraKg, wSurcharge, refundApplied, total: Math.max(0, total), isHighway };
   }, [rows, calcTownship, calcTier, calcWeight, calcSurcharge, calcMonthlyWays]);
+
   const inpSty = { width: '100%', height: 42, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '0 14px', color: C.text, fontSize: 13, outline: 'none', fontFamily: FF.body };
   const btnSty = (primary = false) => ({ height: 42, background: primary ? C.gold : C.panel2, color: primary ? '#000' : C.text, border: `1px solid ${primary ? C.gold : C.border}`, borderRadius: 10, padding: '0 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: FF.body });
 

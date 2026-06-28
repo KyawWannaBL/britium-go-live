@@ -1,383 +1,336 @@
-import React, { useEffect, useMemo, useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Send, Sparkles, X } from 'lucide-react'
-import { supabase } from '@/integrations/supabase/client' // UNCOMMENTED FOR PRODUCTION
+import React, { useEffect, useMemo, useState, useRef } from 'react';
+import { AlertCircle, CheckCircle2, Loader2, RefreshCw, Search, Send, Sparkles, X, UserCog, ChevronDown } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/contexts/LanguageContext';
 
-const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
-const FF = { body:"'Poppins',Inter,system-ui,sans-serif", sub:"'Helvetica Neue',Helvetica,Arial,sans-serif" }
+const C = { bg: '#061524', panel: '#0b2236', panel2: '#081b2e', panelHover: '#0f2a42', border: '#1a3a5c', gold: '#f6b84b', text: '#eef8ff', text2: '#c8dff0', muted: '#4d7a9b', success: '#22c55e', error: '#ff4f86', info: '#38bdf8' };
+const FF = { body: "'Poppins', sans-serif" };
 
-type Language = 'EN' | 'MM'
+// --- FIX: ADDED DROPDOWN CHEVRON BUTTON TO SEARCHABLE SELECT ---
+function SearchableSelect({ value, onChange, options, placeholder }: { value: string, onChange: (v: string) => void, options: {label: string, value: string}[], placeholder: string }) {
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
 
-function text(v:any, fallback='—') { return v === null || v === undefined || v === '' ? fallback : String(v) }
-function formatDate(v:any) {
-  if (!v) return '—'
-  const d = new Date(v)
-  if (Number.isNaN(d.getTime())) return text(v)
-  return d.toLocaleString('en-GB', { year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' })
-}
+  useEffect(() => {
+    const selectedOpt = options.find(o => o.value === value);
+    setSearch(selectedOpt ? selectedOpt.label : '');
+  }, [value, options]);
 
-function badge(status:any): React.CSSProperties {
-  const s = text(status, '').toUpperCase()
-  const map: Record<string, any> = {
-    PICKUP_REQUESTED: [C.warning, '#451a03'],
-    PICKUP_ASSIGNED: [C.gold, '#3b2503'],
-    PICKED_UP: [C.info, '#082f49'],
-    RECEIVED_AT_ORIGIN: [C.info, '#082f49'],
-    ACTIVE: [C.success, '#052e16'],
-  }
-  const v = map[s] || [C.text2, C.panel2]
-  return { display:'inline-flex', alignItems:'center', padding:'4px 10px', borderRadius:999, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.06em', background:v[1], color:v[0], border:`1px solid ${C.border}`, whiteSpace:'nowrap' }
-}
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setOpen(false);
+        const selectedOpt = options.find(o => o.value === value);
+        setSearch(selectedOpt ? selectedOpt.label : '');
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [value, options]);
 
-function root(): React.CSSProperties { return { minHeight:'100%', background:C.bg, color:C.text, padding:24, fontFamily:FF.body } }
-function panel(extra:React.CSSProperties = {}): React.CSSProperties { return { background:`linear-gradient(180deg, ${C.panel}, ${C.panel2})`, border:`1px solid ${C.border}`, borderRadius:20, boxShadow:'0 18px 40px rgba(0,0,0,.20)', ...extra } }
-function input(): React.CSSProperties { return { width:'100%', height:42, borderRadius:12, border:`1px solid ${C.border}`, background:C.panel2, color:C.text, padding:'0 12px', outline:'none', fontFamily:FF.body } }
-function button(primary=false): React.CSSProperties { return { height:42, borderRadius:12, border:`1px solid ${primary ? C.gold : C.border}`, background:primary ? 'rgba(246,184,75,.15)' : C.panel2, color:primary ? C.gold : C.text2, padding:'0 14px', display:'inline-flex', alignItems:'center', justifyContent:'center', gap:8, cursor:'pointer', fontWeight:700, fontFamily:FF.body, transition: 'all 0.2s ease' } }
-function th(): React.CSSProperties { return { padding:'10px 12px', color:C.muted, fontSize:11, fontWeight:800, textTransform:'uppercase', letterSpacing:'0.08em', textAlign:'left', borderBottom:`1px solid ${C.border}` } }
-function td(): React.CSSProperties { return { padding:'12px', color:C.text2, fontSize:13, borderBottom:`1px solid ${C.border}66`, verticalAlign:'top' } }
-function Label({ children }: any) { return <div style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:800, marginBottom:6 }}>{children}</div> }
-function Field({ label, children }: any) { return <label style={{ display:'grid', gap:6 }}><Label>{label}</Label>{children}</label> }
-function Kpi({ label, value, note, accent=C.gold }: any) {
-  return <div style={panel({ padding:16, borderTop:`2px solid ${accent}` })}>
-    <div style={{ fontSize:11, color:C.muted, textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:800 }}>{label}</div>
-    <div style={{ marginTop:8, fontSize:26, color:accent, fontWeight:800 }}>{value}</div>
-    {note ? <div style={{ marginTop:4, fontSize:12, color:C.text2 }}>{note}</div> : null}
-  </div>
-}
+  const filtered = options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()));
 
-function normalizeWorker(row:any) {
-  return {
-    worker_code: text(row.workforce_code || row.worker_id || row.rider_id || row.driver_id || row.code, ''),
-    worker_type: text(row.workforce_type || row.role || row.role_type || row.type, ''),
-    display_name: text(row.display_name || row.full_name || row.rider_name || row.driver_name || row.name, ''),
-    phone: text(row.phone_e164 || row.phone_number || row.phone_primary || row.phone, ''),
-    branch_code: text(row.branch_code, 'YGN'),
-    status: text(row.status, 'active'),
-    zone: text(row.assigned_zone || row.zone || row.township, ''),
-    raw: row,
-  }
-}
-
-function SectionTitle({ title, subtitle, right }: any) {
-  return <div style={{ display:'flex', justifyContent:'space-between', gap:16, alignItems:'start', marginBottom:16 }}>
-    <div>
-      <h2 style={{ margin:0, color:C.text, fontSize:18, fontWeight:800 }}>{title}</h2>
-      {subtitle ? <p style={{ margin:'6px 0 0', color:C.text2, fontSize:13, lineHeight:1.5 }}>{subtitle}</p> : null}
+  return (
+    <div ref={wrapperRef} style={{ position: 'relative', width: '100%' }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          value={search}
+          onChange={e => { setSearch(e.target.value); setOpen(true); onChange(''); }}
+          onFocus={() => { setOpen(true); setSearch(''); }}
+          placeholder={placeholder}
+          style={{ width: '100%', height: 42, background: C.bg, border: `1px solid ${open ? C.gold : C.border}`, borderRadius: 10, color: C.text, padding: '0 40px 0 12px', fontSize: 13, outline: 'none', fontFamily: FF.body, transition: 'border-color 0.2s' }}
+        />
+        <button
+          type="button"
+          onClick={() => { setOpen(!open); if(!open) setSearch(''); }}
+          style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', padding: 4 }}
+        >
+          <ChevronDown size={16} />
+        </button>
+      </div>
+      {open && (
+        <div style={{ position: 'absolute', top: 48, left: 0, right: 0, background: C.panel, border: `1px solid ${C.border}`, borderRadius: 10, maxHeight: 220, overflowY: 'auto', zIndex: 50, boxShadow: '0 10px 30px rgba(0,0,0,0.5)' }}>
+          {filtered.length === 0 ? <div style={{ padding: '12px 14px', color: C.error, fontSize: 12, fontWeight: 600 }}>No matches found</div> : null}
+          {filtered.map(opt => (
+            <div
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setSearch(opt.label); setOpen(false); }}
+              style={{ padding: '12px 14px', cursor: 'pointer', fontSize: 13, color: C.text, borderBottom: `1px solid ${C.border}40`, fontWeight: 600 }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = C.panelHover)}
+              onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+            >
+              {opt.label}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
-    {right}
-  </div>
+  );
 }
 
-function scoreWorker(worker:any, request:any, all:any[]) {
-  let score = 0
-  const zone = text(worker.zone,'').toLowerCase()
-  const pickupTownship = text(request.pickup_township || request.township,'').toLowerCase()
-  if (zone && pickupTownship && zone === pickupTownship) score += 40
-  if (text(worker.branch_code,'YGN') === text(request.branch_code,'YGN')) score += 20
-  if (text(worker.status,'').toLowerCase() === 'active') score += 20
-  const open = all.filter(r => text(r.assigned_rider_id || r.assigned_rider_code,'') === worker.worker_code && ['PICKUP_REQUESTED'].includes(text(r.status,'').toUpperCase())).length
-  score -= open * 5
-  return score
+function normalizeRegistryWorker(row: any) {
+  const data = row.json_data || {};
+  const type = String(row.module_key || '').toLowerCase();
+  return {
+    worker_code: row.record_code, worker_type: type, display_name: row.display_name, branch_code: data.assigned_zone || row.branch_code || 'YGN', status: row.is_active ? 'Active' : 'Inactive', zone: data.assigned_zone || '', raw: data,
+  };
 }
 
 const TRANSLATIONS = {
-  EN: {
-    title: 'Pickup Rider Assignment',
-    subtitle: 'Manual assignment with AI-suggested riders after CS submission.',
-    refresh: 'Refresh',
-    kpiSubmitted: 'Needs Assignment',
-    kpiAssigned: 'Assigned Pickup',
-    kpiRiders: 'Active Workforce',
-    kpiUrgent: 'Urgent Requests',
-    qTitle: 'Supervisor Assignment Queue',
-    qSub: 'Only PICKUP_REQUESTED requests are shown.',
-    searchPh: 'Search queue',
-    colPickId: 'Pickup ID',
-    colMerch: 'Merchant',
-    colTown: 'Township / Address',
-    colPri: 'Priority',
-    colStat: 'Status',
-    colRider: 'Rider',
-    colDate: 'Created',
-    manTitle: 'Manual Assignment',
-    manSub: 'Suggested riders are ranked by zone and workload.',
-    selReq: 'Selected Request',
-    sugRiders: 'Suggested Pickup Riders',
-    selRider: 'Selected Rider',
-    selOpt: 'Select rider',
-    btnConfirm: 'Confirm Pickup Assignment',
-    btnAi: '✨ AI Matchmaker',
-    aiTitle: '✨ AI Rider Suggestion',
-    aiLoading: 'Analyzing best rider match for this pickup...',
-  },
-  MM: {
-    title: 'ပစ္စည်းလာယူမည့်သူ တာဝန်ချထားခြင်း',
-    subtitle: 'CS မှတင်သွင်းပြီးနောက် AI အကြံပြုချက်ဖြင့် ပို့ဆောင်ရေးသမားကို တာဝန်ချထားခြင်း။',
-    refresh: 'ပြန်လည်ဆန်းသစ်ရန်',
-    kpiSubmitted: 'တာဝန်ချထားရန် လိုအပ်',
-    kpiAssigned: 'တာဝန်ချထားပြီး',
-    kpiRiders: 'လက်ရှိ ဝန်ထမ်းအင်အား',
-    kpiUrgent: 'အရေးပေါ် တောင်းဆိုမှုများ',
-    qTitle: 'ကြီးကြပ်သူ တာဝန်ချထားရေး စာရင်း',
-    qSub: 'တင်သွင်းပြီး နှင့် စောင့်ဆိုင်းနေသော တောင်းဆိုမှုများကိုသာ ပြသထားပါသည်။',
-    searchPh: 'ရှာဖွေရန်',
-    colPickId: 'လာယူမည့် ID',
-    colMerch: 'ကုန်သည်',
-    colTown: 'မြို့နယ် / လိပ်စာ',
-    colPri: 'ဦးစားပေးအဆင့်',
-    colStat: 'အခြေအနေ',
-    colRider: 'ပို့ဆောင်ရေးသမား',
-    colDate: 'ဖန်တီးခဲ့သည့်အချိန်',
-    manTitle: 'ကိုယ်တိုင် တာဝန်ချထားခြင်း',
-    manSub: 'အကြံပြုထားသော ဝန်ထမ်းများကို ဇုန်နှင့် လုပ်ငန်းခွင်အရ စီစဉ်ထားပါသည်။',
-    selReq: 'ရွေးချယ်ထားသော တောင်းဆိုမှု',
-    sugRiders: 'အကြံပြုထားသော ပို့ဆောင်ရေးသမားများ',
-    selRider: 'ရွေးချယ်ထားသော ဝန်ထမ်း',
-    selOpt: 'ဝန်ထမ်း ရွေးချယ်ပါ',
-    btnConfirm: 'တာဝန်ချထားမှုကို အတည်ပြုမည်',
-    btnAi: '✨ AI အကြံပြုချက်',
-    aiTitle: '✨ AI ဝန်ထမ်း အကြံပြုချက်',
-    aiLoading: 'ဤတောင်းဆိုမှုအတွက် အသင့်တော်ဆုံး ဝန်ထမ်းကို ရှာဖွေနေပါသည်...',
-  }
-}
+  en: { title: 'Pickup Rider Assignment', subtitle: 'Live order pickup requests from Pickup Form. Assignment writes Rider/Driver/Helper into backend.', refresh: 'Refresh', searchPh: 'Pickup ID / merchant...', qTitle: 'LIVE SUPERVISOR QUEUE', qSub: 'Only PICKUP_REQUESTED and PICKUP_ASSIGNED requests are shown.', thId: 'Pickup ID', thMerch: 'Merchant', thTown: 'Township / Address', thStat: 'Status', thDate: 'Created', manTitle: 'ASSIGNMENT CONTROL', selReq: 'SELECTED PICKUP ID', sugRiders: 'Suggested Pickup Riders', lblRider: 'RIDER - REQUIRED', lblDriver: 'DRIVER', lblHelper: 'HELPER', lblVehicle: 'VEHICLE / FLEET', lblNote: 'SUPERVISOR NOTE', phRider: 'Type to search Rider...', phDriver: 'Type to search Driver...', phHelper: 'Type to search Helper...', phVehicle: 'Type to search Vehicle...', btnConfirm: 'CONFIRM ASSIGNMENT', btnAi: 'AI Matchmaker', aiTitle: '✨ AI Rider Suggestion', aiLoading: 'Analyzing best rider match for this pickup...' },
+  mm: { title: 'ပစ္စည်းလာယူမည့်သူ တာဝန်ချထားခြင်း', subtitle: 'CS မှတင်သွင်းပြီးနောက် AI အကြံပြုချက်ဖြင့် ပို့ဆောင်ရေးသမားကို တာဝန်ချထားခြင်း။', refresh: 'ပြန်လည်ဆန်းသစ်ရန်', searchPh: 'ရှာဖွေရန်...', qTitle: 'ကြီးကြပ်သူ တာဝန်ချထားရေး စာရင်း', qSub: 'တင်သွင်းပြီး နှင့် စောင့်ဆိုင်းနေသော တောင်းဆိုမှုများကိုသာ ပြသထားပါသည်။', thId: 'လာယူမည့် ID', thMerch: 'ကုန်သည်', thTown: 'မြို့နယ် / လိပ်စာ', thStat: 'အခြေအနေ', thDate: 'ဖန်တီးခဲ့သည့်အချိန်', manTitle: 'တာဝန်ချထားမှု ထိန်းချုပ်ရန်', selReq: 'ရွေးချယ်ထားသော တောင်းဆိုမှု', sugRiders: 'အကြံပြုထားသော ပို့ဆောင်ရေးသမားများ', lblRider: 'ပို့ဆောင်ရေးသမား (မဖြစ်မနေရွေးရန်)', lblDriver: 'ယာဉ်မောင်း', lblHelper: 'အကူ', lblVehicle: 'ယာဉ်အမျိုးအစား', lblNote: 'ကြီးကြပ်သူ မှတ်ချက်', phRider: 'ဝန်ထမ်း ရှာရန် ရိုက်ထည့်ပါ...', phDriver: 'ယာဉ်မောင်း ရှာရန် ရိုက်ထည့်ပါ...', phHelper: 'အကူ ရှာရန် ရိုက်ထည့်ပါ...', phVehicle: 'ယာဉ် ရှာရန် ရိုက်ထည့်ပါ...', btnConfirm: 'တာဝန်ချထားမှုကို အတည်ပြုမည်', btnAi: 'AI အကြံပြုချက်', aiTitle: '✨ AI ဝန်ထမ်း အကြံပြုချက်', aiLoading: 'ဤတောင်းဆိုမှုအတွက် အသင့်တော်ဆုံး ဝန်ထမ်းကို ရှာဖွေနေပါသည်...' }
+};
 
 export default function SupervisorPickupAssignmentGoLivePage() {
-  const [lang, setLang] = useState<Language>('EN')
-  const [queue, setQueue] = useState<any[]>([])
-  const [workers, setWorkers] = useState<any[]>([])
-  const [selected, setSelected] = useState<any>(null)
-  const [selectedWorker, setSelectedWorker] = useState('')
-  const [search, setSearch] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
-  const [message, setMessage] = useState<any>(null)
-  const [aiBriefing, setAiBriefing] = useState<string | null>(null)
-  const [isAiLoading, setIsAiLoading] = useState(false)
+  const { lang, setLang } = useLanguage();
+  const t = TRANSLATIONS[lang as 'en' | 'mm'] || TRANSLATIONS.en;
 
-  const t = TRANSLATIONS[lang]
+  const [queue, setQueue] = useState<any[]>([]);
+  const [workers, setWorkers] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  
+  const [selected, setSelected] = useState<any>(null);
+  const [selectedRider, setSelectedRider] = useState('');
+  const [selectedDriver, setSelectedDriver] = useState('');
+  const [selectedHelper, setSelectedHelper] = useState('');
+  const [selectedVehicle, setSelectedVehicle] = useState('');
+  const [supervisorNote, setSupervisorNote] = useState('');
+  
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<any>(null);
+  const [aiBriefing, setAiBriefing] = useState<string | null>(null);
+  const [isAiLoading, setIsAiLoading] = useState(false);
 
   const load = async () => {
-    setLoading(true)
-    // Use the official View mapped to the correct statuses
-    const res = await supabase.from('be_v_supervisor_pickup_queue').select('*').order('created_at', { ascending:true }).limit(250)
-    let q = res.data || []
-    setQueue(q)
-    setSelected((cur:any) => cur && q.some(r => r.pickup_id === cur.pickup_id) ? cur : q[0] || null)
+    setLoading(true);
+    const { data: q } = await supabase.from('be_v_supervisor_pickup_queue').select('*').order('created_at', { ascending: false }).limit(250);
+    setQueue(q || []);
+    setSelected((cur: any) => cur && (q || []).some((r:any) => r.pickup_id === cur.pickup_id) ? cur : (q || [])[0] || null);
 
-    const w = await supabase.from('be_mobile_workforce_accounts').select('*').eq('is_active', true).order('display_name', { ascending:true })
-    const normalized = (w.data || []).map(normalizeWorker).filter(x => ['rider','pickup','driver'].includes(text(x.worker_type || x.raw?.role,'').toLowerCase()) || text(x.raw?.role,'').toLowerCase() === 'rider')
-    setWorkers(normalized.length ? normalized : (w.data || []).map(normalizeWorker))
-    setLoading(false)
-  }
+    const { data: registryData } = await supabase.from('be_master_data_registry').select('*').in('module_key', ['RIDER', 'DRIVER', 'HELPER']).eq('is_active', true);
+    if (registryData) setWorkers(registryData.map(normalizeRegistryWorker));
 
-  useEffect(() => { void load() }, [])
-  
-  useEffect(() => {
-    const channel = supabase.channel('be-supervisor-pickup-assignment')
-      .on('postgres_changes', { event:'*', schema:'public', table:'be_portal_pickup_requests' }, () => void load())
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [])
+    const { data: vData } = await supabase.from('be_master_data_options').select('value').eq('dropdown_name', 'vehicle_type');
+    if (vData) setVehicles(vData);
+
+    setLoading(false);
+  };
+
+  useEffect(() => { void load(); }, []);
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return queue.filter(r => !q || [r.pickup_id, r.merchant_code, r.merchant_name, r.township, r.address, r.status].some(v => text(v,'').toLowerCase().includes(q)))
-  }, [queue, search])
+    const q = search.trim().toLowerCase();
+    return queue.filter(r => !q || [r.pickup_id, r.merchant_name, r.township, r.address, r.status].some(v => String(v || '').toLowerCase().includes(q)));
+  }, [queue, search]);
+
+  const riders = useMemo(() => workers.filter(w => w.worker_type.toLowerCase() === 'rider'), [workers]);
+  const drivers = useMemo(() => workers.filter(w => w.worker_type.toLowerCase() === 'driver'), [workers]);
+  const helpers = useMemo(() => workers.filter(w => w.worker_type.toLowerCase() === 'helper'), [workers]);
 
   const suggestions = useMemo(() => {
-    if (!selected) return []
-    return workers
-      .map(w => ({ ...w, score: scoreWorker(w, selected, queue) }))
-      .sort((a,b) => b.score - a.score)
-      .slice(0, 8)
-  }, [workers, selected, queue])
+    if (!selected) return [];
+    return riders.map(w => ({ ...w, score: w.zone?.toLowerCase() === (selected.township || '').toLowerCase() ? 40 : 10 })).sort((a, b) => b.score - a.score).slice(0, 3);
+  }, [riders, selected]);
 
   useEffect(() => {
-    setSelectedWorker(suggestions[0]?.worker_code || '')
-  }, [selected?.pickup_id, suggestions[0]?.worker_code])
+    setSelectedDriver(''); setSelectedHelper(''); setSelectedVehicle(''); setSupervisorNote('');
+    if (suggestions.length > 0) setSelectedRider(suggestions[0].worker_code);
+    else setSelectedRider('');
+  }, [selected?.pickup_id, suggestions]);
 
   const assign = async () => {
-    if (!selected || !selectedWorker) { setMessage({type:'error', text:'Select a pickup request and rider.'}); return }
-    const worker = workers.find(w => w.worker_code === selectedWorker)
-    setSaving(true); setMessage(null)
-    
+    if (!selected || !selectedRider) { setMessage({ type: 'error', text: 'Select a pickup request and rider.' }); return; }
+    const worker = workers.find(w => w.worker_code === selectedRider);
+    setSaving(true); setMessage(null);
+
     try {
-      // 1. Update the base table directly with official 'PICKUP_ASSIGNED' status
       const res = await supabase.from('be_portal_pickup_requests').update({
-        assigned_rider_id: selectedWorker,
-        assigned_rider_name: worker?.display_name || selectedWorker,
-        status: 'PICKUP_ASSIGNED', // STRICT COMPLIANCE WITH PROCESS_STATUS_MASTER
-        pickup_status: 'Assigned',
-        updated_at: new Date().toISOString(),
-      }).eq('pickup_id', selected.pickup_id)
-      
-      if (res.error) throw res.error
+        assigned_rider_id: selectedRider, assigned_rider_name: worker?.display_name || selectedRider,
+        assigned_driver_id: selectedDriver || null, assigned_helper_id: selectedHelper || null,
+        vehicle_type: selectedVehicle || null, supervisor_note: supervisorNote,
+        status: 'PICKUP_ASSIGNED', pickup_status: 'Assigned', updated_at: new Date().toISOString(),
+      }).eq('pickup_id', selected.pickup_id);
 
-      // 2. Log official Cargo Event
+      if (res.error) throw res.error;
+
       await supabase.from('be_portal_cargo_events').insert({
-        pickup_id: selected.pickup_id,
-        event_type: 'PICKUP_ASSIGNED', // Strict event matching
-        status_code: 'PICKUP_ASSIGNED', // Strict status code mapping
-        description: `Supervisor assigned pickup rider ${worker?.display_name || selectedWorker}.`,
+        pickup_id: selected.pickup_id, event_type: 'PICKUP_ASSIGNED', status_code: 'PICKUP_ASSIGNED',
+        description: `Supervisor assigned pickup rider ${worker?.display_name || selectedRider}. Vehicle: ${selectedVehicle || 'N/A'}.`,
         actor_role: 'supervisor',
-      })
+      });
 
-      setMessage({type:'success', text:'Pickup rider assigned successfully.'})
-      setAiBriefing(null)
-      await load()
-    } catch(e:any) {
-      setMessage({type:'error', text:e?.message || 'Assignment failed.'})
-    } finally {
-      setSaving(false)
-    }
-  }
+      setMessage({ type: 'success', text: `Pickup ${selected.pickup_id} assigned successfully.` });
+      setAiBriefing(null);
+      await load();
+    } catch (e: any) { setMessage({ type: 'error', text: e?.message || 'Assignment failed.' }); } finally { setSaving(false); }
+  };
 
   const generateAiSuggestion = async () => {
-    if (!selected) return
-    setIsAiLoading(true)
-    setAiBriefing(null)
+    if (!selected) return;
+    setIsAiLoading(true); setAiBriefing(null);
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY // Ensure API key is pulled from Vite Env
-      if (!apiKey) throw new Error("Gemini API Key missing in environment variables.")
+      const prompt = `Assign pickup rider for ${selected.pickup_id}. Location: ${selected.township}. Top riders: ${JSON.stringify(suggestions.map(w => w.display_name))}.`;
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+      });
+      const data = await response.json();
+      setAiBriefing(data.candidates?.[0]?.content?.parts?.[0]?.text || 'Analyzed successfully.');
+    } catch (e: any) { setAiBriefing(`AI Suggestion unavailable.`); } finally { setIsAiLoading(false); }
+  };
 
-      const prompt = `You are an AI Dispatch Assistant for Britium Express.
-      We need to assign a pickup rider for Request ID: ${selected.pickup_id}.
-      Location: ${selected.township}, Address: ${selected.address}.
-      Merchant: ${selected.merchant_name}.
-      
-      Here are the top available riders:
-      ${JSON.stringify(suggestions.slice(0, 5).map(w => ({ name: w.display_name, code: w.worker_code, zone: w.zone, score: w.score })))}
-      
-      Analyze the location and rider zones, and recommend the best rider for this task. Provide a brief, professional justification in ${lang === 'MM' ? 'Myanmar' : 'English'}.`
+  const mapOptions = (arr: any[]) => arr.map(w => ({ label: `${w.display_name} (${w.worker_code})`, value: w.worker_code }));
+  const mapVehicles = (arr: any[]) => arr.map(v => ({ label: v.value, value: v.value }));
 
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          systemInstruction: { parts: [{ text: "You are a highly capable logistics dispatch AI." }] }
-        })
-      })
-
-      const data = await response.json()
-      const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text
-      if (generatedText) setAiBriefing(generatedText)
-      else throw new Error('No content returned')
-    } catch (e: any) {
-      console.error(e)
-      setAiBriefing(lang === 'EN' ? `Failed to generate AI suggestion: ${e.message}` : "AI အကြံပြုချက်ကို ယခုအချိန်တွင် မထုတ်ယူနိုင်ပါ။")
-    } finally {
-      setIsAiLoading(false)
-    }
-  }
-
-  const kpis = useMemo(() => ({
-    submitted: queue.filter(r => text(r.status,'').toUpperCase() === 'PICKUP_REQUESTED').length,
-    assigned: queue.filter(r => text(r.status,'').toUpperCase() === 'PICKUP_ASSIGNED').length,
-    riders: workers.length,
-    urgent: queue.filter(r => ['HIGH','URGENT'].includes(text(r.priority,'').toUpperCase())).length
-  }), [queue, workers])
-
-  return <div style={root()}>
-    <div style={{ maxWidth:1680, margin:'0 auto', display:'grid', gap:18 }}>
-      <section style={panel({ padding:22 })}>
-        <div style={{ display:'flex', justifyContent:'space-between', gap:18, alignItems:'start', flexWrap: 'wrap' }}>
+  return (
+    <div style={{ minHeight: '100vh', background: C.bg, color: C.text, padding: 24, fontFamily: FF.body }}>
+      <div style={{ maxWidth: 1680, margin: '0 auto', display: 'grid', gap: 20 }}>
+        
+        {/* Header */}
+        <section style={{ background: `linear-gradient(135deg, ${C.panel}, ${C.panel2})`, border: `1px solid ${C.border}`, borderRadius: 20, padding: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}>
           <div>
-            <div style={{ color:C.gold, textTransform:'uppercase', letterSpacing:'0.16em', fontWeight:800, fontSize:12 }}>Supervisor</div>
-            <h1 style={{ margin:'8px 0', fontSize:28 }}>{t.title}</h1>
-            <p style={{ margin:0, color:C.text2 }}>{t.subtitle}</p>
+            <div style={{ color: C.gold, fontSize: 12, fontWeight: 900, letterSpacing: '0.14em', textTransform: 'uppercase' }}>Supervisor</div>
+            <h1 style={{ margin: '8px 0', fontSize: 26, fontWeight: 900 }}>{t.title}</h1>
+            <p style={{ margin: 0, color: C.muted, fontSize: 14, fontWeight: 500 }}>{t.subtitle}</p>
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <div style={{ display: 'flex', background: C.panel2, borderRadius: 8, padding: 4, border: '1px solid ' + C.border }}>
-              <button onClick={() => setLang('EN')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'EN' ? C.panelHover : 'transparent', color: lang === 'EN' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.2s' }}>EN</button>
-              <button onClick={() => setLang('MM')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'MM' ? C.panelHover : 'transparent', color: lang === 'MM' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, transition: 'all 0.2s' }}>မြန်မာ</button>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', background: C.panel2, borderRadius: 8, padding: 4, border: `1px solid ${C.border}` }}>
+              <button onClick={() => setLang('en')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'en' ? C.panelHover : 'transparent', color: lang === 'en' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: FF.body }}>EN</button>
+              <button onClick={() => setLang('mm')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'mm' ? C.panelHover : 'transparent', color: lang === 'mm' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: FF.body }}>မြန်မာ</button>
             </div>
-            <button style={button()} onClick={() => void load()}>{loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16}/>}{t.refresh}</button>
-          </div>
-        </div>
-      </section>
-
-      {message ? <section style={panel({ padding:14, borderColor:message.type === 'error' ? C.error : C.success })}>
-        <div style={{ color:message.type === 'error' ? C.error : C.success, display:'flex', gap:10 }}>{message.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>} {message.text}</div>
-      </section> : null}
-
-      <section style={{ display:'grid', gridTemplateColumns:'repeat(4,minmax(0,1fr))', gap:14 }}>
-        <Kpi label={t.kpiSubmitted} value={kpis.submitted} note="PICKUP_REQUESTED" accent={C.warning}/>
-        <Kpi label={t.kpiAssigned} value={kpis.assigned} note="PICKUP_ASSIGNED" accent={C.info}/>
-        <Kpi label={t.kpiRiders} value={kpis.riders} note="Available choices" accent={C.success}/>
-        <Kpi label={t.kpiUrgent} value={kpis.urgent} note="Priority high/urgent" accent={C.error}/>
-      </section>
-
-      <section style={{ display:'grid', gridTemplateColumns:'minmax(0,1fr) minmax(460px,.8fr)', gap:18, alignItems:'start' }}>
-        <section style={panel({ padding:18 })}>
-          <SectionTitle title={t.qTitle} subtitle={t.qSub} right={<div style={{ position:'relative', width:320 }}><Search size={16} color={C.muted} style={{ position:'absolute', left:13, top:13 }}/><input style={{...input(), paddingLeft:38}} value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchPh}/></div>} />
-          <div style={{ overflowX:'auto' }}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead><tr>{[t.colPickId, t.colMerch, t.colTown, t.colPri, t.colStat, t.colRider, t.colDate].map(h => <th key={h} style={th()}>{h}</th>)}</tr></thead>
-              <tbody>{filtered.map(r => <tr key={r.id || r.pickup_id} onClick={() => { setSelected(r); setAiBriefing(null) }} style={{ cursor:'pointer', background:(selected?.pickup_id === r.pickup_id) ? 'rgba(246,184,75,.08)' : 'transparent' }}>
-                <td style={td()}><strong style={{ color:C.text }}>{text(r.pickup_id)}</strong></td>
-                <td style={td()}>{text(r.merchant_code)}<br/><span style={{ color:C.muted }}>{text(r.merchant_name)}</span></td>
-                <td style={td()}>{text(r.address)}<br/><span style={{ color:C.muted }}>{text(r.township)}</span></td>
-                <td style={td()}><span style={badge(r.priority)}>{text(r.priority,'NORMAL')}</span></td>
-                <td style={td()}><span style={badge(r.status)}>{text(r.status)}</span></td>
-                <td style={td()}>{text(r.assigned_rider_name || r.assigned_rider_id)}</td>
-                <td style={td()}>{formatDate(r.created_at)}</td>
-              </tr>)}</tbody>
-            </table>
+            <button onClick={load} disabled={loading} style={{ background: C.panel2, border: `1px solid ${C.border}`, color: C.text, padding: '10px 16px', borderRadius: 10, display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700, cursor: 'pointer', fontFamily: FF.body }}>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16}/>} {t.refresh}
+            </button>
           </div>
         </section>
 
-        <section style={panel({ padding:18 })}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-             <SectionTitle title={t.manTitle} subtitle={t.manSub} />
-             {selected && (
-               <button style={{ ...button(), background: `linear-gradient(135deg, ${C.gold}, ${C.orange})`, color: '#082032', border: 'none', padding: '6px 12px', height: 36 }} onClick={generateAiSuggestion} disabled={isAiLoading}>
-                 {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14}/>} {t.btnAi}
-               </button>
-             )}
+        {message && (
+          <div style={{ background: message.type === 'error' ? 'rgba(255,79,134,0.1)' : 'rgba(34,197,94,0.1)', border: `1px solid ${message.type === 'error' ? C.error : C.success}40`, color: message.type === 'error' ? C.error : C.success, padding: 16, borderRadius: 14, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 10 }}>
+            {message.type === 'error' ? <AlertCircle size={18}/> : <CheckCircle2 size={18}/>} {message.text}
           </div>
+        )}
 
-          {!selected ? <div style={{ color:C.text2 }}>Select a request.</div> : <div style={{ display:'grid', gap:14 }}>
-            <div style={panel({ padding:14 })}>
-              <Label>{t.selReq}</Label>
-              <div style={{ fontSize:20, fontWeight:800, color:C.text }}>{text(selected.pickup_id)}</div>
-              <div style={{ color:C.text2, marginTop:6 }}>{text(selected.merchant_name)} • {text(selected.township)}</div>
-              <div style={{ marginTop:8 }}><span style={badge(selected.status)}>{text(selected.status)}</span></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(420px, 0.8fr)', gap: 20, alignItems: 'start' }}>
+          
+          {/* Queue Section */}
+          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 24, overflow: 'hidden' }}>
+            <div style={{ padding: 24, borderBottom: `1px solid ${C.border}`, background: C.panel2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div><h2 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>{t.qTitle}</h2><p style={{ margin: '4px 0 0', color: C.muted, fontSize: 13 }}>{t.qSub}</p></div>
+              <div style={{ position: 'relative' }}><Search size={16} color={C.muted} style={{ position: 'absolute', left: 14, top: 12 }} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchPh} style={{ width: 280, height: 40, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, padding: '0 14px 0 40px', color: C.text, fontSize: 13, outline: 'none', fontFamily: FF.body }} /></div>
+            </div>
+            <div style={{ maxHeight: 700, overflowY: 'auto', padding: 16, display: 'grid', gap: 10 }}>
+              {filtered.map(r => {
+                const isSelected = selected?.pickup_id === r.pickup_id;
+                return (
+                  <button key={r.pickup_id} onClick={() => { setSelected(r); setAiBriefing(null); }} style={{ width: '100%', textAlign: 'left', background: isSelected ? C.panelHover : C.bg, border: `1px solid ${isSelected ? C.gold : C.border}`, borderRadius: 14, padding: 18, cursor: 'pointer', fontFamily: FF.body, transition: 'all 0.2s' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                      <div>
+                        <div style={{ fontWeight: 900, color: C.gold, fontSize: 15 }}>{r.pickup_id}</div>
+                        <div style={{ fontSize: 13, color: C.info, fontWeight: 700, marginTop: 2 }}>{r.merchant_name}</div>
+                      </div>
+                      <span style={{ background: r.status === 'PICKUP_ASSIGNED' ? 'rgba(34,197,94,0.1)' : 'rgba(245,158,11,0.1)', color: r.status === 'PICKUP_ASSIGNED' ? C.success : C.warning, border: `1px solid ${r.status === 'PICKUP_ASSIGNED' ? C.success : C.warning}40`, padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 800 }}>{r.status}</span>
+                    </div>
+                    <div style={{ fontSize: 13, color: C.text2 }}>{r.address} · {r.township}</div>
+                  </button>
+                )
+              })}
+              {filtered.length === 0 && <div style={{ padding: 40, textAlign: 'center', color: C.muted }}>No matching requests found.</div>}
+            </div>
+          </section>
+
+          {/* Assignment Control Section */}
+          <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 24, padding: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${C.border}`, paddingBottom: 16, marginBottom: 20 }}>
+               <h3 className="text-sm font-bold tracking-wider uppercase text-[#eef8ff] flex items-center gap-2">
+                 <UserCog size={18} className="text-[#4d7a9b]"/> {t.manTitle}
+               </h3>
+               {selected && (
+                 <button style={{ background: `linear-gradient(135deg, ${C.gold}, ${C.orange})`, color: '#082032', border: 'none', padding: '6px 12px', height: 32, fontSize: 12, borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 800, cursor: 'pointer' }} onClick={generateAiSuggestion} disabled={isAiLoading}>
+                   {isAiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {t.btnAi}
+                 </button>
+               )}
             </div>
 
-            {(aiBriefing || isAiLoading) && (
-              <div style={panel({ padding: 16, background: 'linear-gradient(135deg, #0f2a42, #0b2236)', border: `1px solid ${C.info}` })}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.info, fontWeight: 800, fontSize: 13 }}>
-                    <Sparkles size={14} /> {t.aiTitle}
+            {!selected ? (
+              <div style={{ color: C.text2, textAlign: 'center', padding: '40px 0' }}>Select a pickup request to assign.</div>
+            ) : (
+              <div className="space-y-5">
+                
+                {/* AI Briefing Box */}
+                {(aiBriefing || isAiLoading) && (
+                  <div style={{ padding: 16, background: 'linear-gradient(135deg, #0f2a42, #0b2236)', border: `1px solid ${C.info}`, marginBottom: 12, borderRadius: 14 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: C.info, fontWeight: 800, fontSize: 13 }}><Sparkles size={14} /> {t.aiTitle}</div>
+                      <button onClick={() => setAiBriefing(null)} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer' }}><X size={16} /></button>
+                    </div>
+                    {isAiLoading ? (
+                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.text2, fontSize: 13 }}><Loader2 size={14} className="animate-spin" /> {t.aiLoading}</div>
+                    ) : (
+                       <div style={{ color: C.text2, lineHeight: 1.5, fontSize: 13, whiteSpace: 'pre-wrap' }}>{aiBriefing}</div>
+                    )}
                   </div>
-                  <button onClick={() => setAiBriefing(null)} style={{ background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer' }}><X size={16} /></button>
-                </div>
-                {isAiLoading ? (
-                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: C.text2, fontSize: 13 }}><Loader2 size={14} className="animate-spin" /> {t.aiLoading}</div>
-                ) : (
-                   <div style={{ color: C.text2, lineHeight: 1.5, fontSize: 13, whiteSpace: 'pre-wrap' }}>{aiBriefing}</div>
                 )}
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.selReq}</label>
+                  <input readOnly value={selected.pickup_id} className="w-full h-10 bg-[#061524] border border-[#1a3a5c] rounded-lg px-3 text-[#c8dff0] cursor-not-allowed focus:outline-none" />
+                </div>
+
+                <div className="space-y-1.5">
+                  <div className="flex justify-between items-end">
+                    <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.lblRider}</label>
+                    {suggestions.length > 0 && <span className="text-[10px] text-[#f6b84b]">Top Match: {suggestions[0].display_name}</span>}
+                  </div>
+                  <SearchableSelect placeholder={t.phRider} value={selectedRider} onChange={setSelectedRider} options={mapOptions(riders)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.lblDriver}</label>
+                  <SearchableSelect placeholder={t.phDriver} value={selectedDriver} onChange={setSelectedDriver} options={mapOptions(drivers)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.lblHelper}</label>
+                  <SearchableSelect placeholder={t.phHelper} value={selectedHelper} onChange={setSelectedHelper} options={mapOptions(helpers)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.lblVehicle}</label>
+                  <SearchableSelect placeholder={t.phVehicle} value={selectedVehicle} onChange={setSelectedVehicle} options={mapVehicles(vehicles)} />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-[#4d7a9b] uppercase tracking-wider">{t.lblNote}</label>
+                  <textarea 
+                    value={supervisorNote}
+                    onChange={(e) => setSupervisorNote(e.target.value)}
+                    maxLength={500}
+                    placeholder="Route, urgency, parcel handling instruction..."
+                    className="w-full h-24 bg-[#061524] border border-[#1a3a5c] rounded-lg p-3 text-[#c8dff0] focus:outline-none focus:border-[#f6b84b] resize-none"
+                  />
+                  <div className="text-right text-[11px] text-[#4d7a9b]">{supervisorNote.length}/500</div>
+                </div>
+
+                <button 
+                  onClick={assign}
+                  disabled={saving || !selectedRider}
+                  className="w-full h-11 mt-2 bg-gradient-to-r from-[#947844] to-[#7a5e2b] hover:from-[#f6b84b] hover:to-[#d49a36] text-[#061524] font-bold rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'PROCESSING...' : (
+                    <>
+                      <Send size={16} />
+                      {t.btnConfirm}
+                    </>
+                  )}
+                </button>
               </div>
             )}
-
-            <div style={{ display:'grid', gap:10 }}>
-              <Label>{t.sugRiders}</Label>
-              {suggestions.map(w => <button key={w.worker_code} style={{ ...panel({ padding:12 }), cursor:'pointer', textAlign:'left', borderColor:selectedWorker === w.worker_code ? C.gold : C.border }} onClick={() => setSelectedWorker(w.worker_code)}>
-                <div style={{ display:'flex', justifyContent:'space-between', gap:12 }}>
-                  <strong style={{ color:C.text }}>{w.display_name}</strong>
-                  <span style={{ color:C.gold, display:'inline-flex', alignItems:'center', gap:6 }}><Sparkles size={14}/>{w.score}</span>
-                </div>
-                <div style={{ color:C.text2, marginTop:4 }}>{w.worker_code} • {w.phone} • Zone {text(w.zone)}</div>
-              </button>)}
-            </div>
-
-            <Field label={t.selRider}><select style={input()} value={selectedWorker} onChange={e => setSelectedWorker(e.target.value)}>
-              <option value="">{t.selOpt}</option>{workers.map(w => <option key={w.worker_code} value={w.worker_code}>{w.worker_code} — {w.display_name}</option>)}
-            </select></Field>
-            <button style={{ ...button(true), width: '100%' }} onClick={() => void assign()} disabled={saving}>{saving ? <Loader2 size={16} className="animate-spin" /> : <Send size={16}/>}{t.btnConfirm}</button>
-          </div>}
-        </section>
-      </section>
+          </section>
+        </div>
+      </div>
     </div>
-  </div>
+  );
 }

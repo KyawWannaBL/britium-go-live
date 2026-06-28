@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useState, FormEvent, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
 import { 
   LayoutDashboard, Smartphone, LogOut, Package, Database, HeadphonesIcon, Truck, Map as MapIcon, Settings, Briefcase, Users, FileText,
@@ -32,82 +32,58 @@ const safeLazy = (importFunc: any) => lazy(() =>
   })
 );
 
-// ─── CORE PAGES REGISTRY ───
-// Authentication
-const LoginPage = safeLazy(() => import('@/pages/LoginPage').catch(() => import('@/pages/auth/LoginPage')));
-const SignupPage = safeLazy(() => import('@/pages/SignupPage').catch(() => import('@/pages/auth/SignupPage')));
-const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage').catch(() => import('@/pages/auth/ForgotPasswordPage')));
-
-// Dashboards & Primary Portals
+// ─── ALL PAGES REGISTRY (Updated for Go-Live) ───
 const DashboardPage = safeLazy(() => import('@/pages/DashboardPage'));
-const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
+const AccountsPage = safeLazy(() => import('@/pages/AccountsPage'));
+const AdminHRPage = safeLazy(() => import('@/pages/AdminHRPage'));
+const AnalyticsPage = safeLazy(() => import('@/pages/AnalyticsPage'));
+const AuditLogsPage = safeLazy(() => import('@/pages/AuditLogsPage'));
+const BizDevPage = safeLazy(() => import('@/pages/BizDevPage'));
+const BranchAdminPage = safeLazy(() => import('@/pages/BranchAdminPage'));
+const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
 const CustomerPortalPage = safeLazy(() => import('@/pages/CustomerPortalPage'));
 const CustomerServiceCommandCenterPage = safeLazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
 const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
-const BusinessDevelopmentManagerPortal = safeLazy(() => import('@/pages/BusinessDevelopmentManagerPortal').catch(() => import('@/pages/BizDevPage')));
-
-// Operations & Logistics
 const DataEntryPage = safeLazy(() => import('@/pages/DataEntryPage'));
 const DeliveryDispatchPage = safeLazy(() => import('@/pages/DeliveryDispatchPage'));
+const DeliveryWorkflowPage = safeLazy(() => import('@/pages/DeliveryWorkflowPage'));
 const DispatchCommandCenterPage = safeLazy(() => import('@/pages/DispatchCommandCenterPage'));
 const DispatchCenterPage = safeLazy(() => import('@/pages/DispatchCenterPage'));
-const LiveDispatchWayplanBoard = safeLazy(() => import('@/pages/LiveDispatchWayplanBoard'));
-const DispatchPage = safeLazy(() => import('@/pages/DispatchPage'));
-const DeliveryWorkflowPage = safeLazy(() => import('@/pages/DeliveryWorkflowPage'));
-
-// Finance & Accounts
+const DocumentPrintStudioPage = safeLazy(() => import('@/pages/DocumentPrintStudioPage'));
+const DriverPage = safeLazy(() => import('@/pages/DriverPage'));
+const ExceptionsPage = safeLazy(() => import('@/pages/ExceptionsPage'));
+const ExecutiveOpsPage = safeLazy(() => import('@/pages/ExecutiveOpsPage'));
 const FinancePortalPage = safeLazy(() => import('@/pages/FinancePortalPage')); 
-const FinanceSettlementGoLivePage = safeLazy(() => import('@/pages/FinanceSettlementGoLivePage'));
 const CODSettlementPage = safeLazy(() => import('@/pages/CODSettlementPage'));
-const RiderSettlementPage = safeLazy(() => import('@/pages/RiderSettlementPage'));
-const WorkforceCommissionPage = safeLazy(() => import('@/pages/WorkforceCommissionPage'));
-
-// Master Data & Configuration
+const FinanceSettlementGoLivePage = safeLazy(() => import('@/pages/FinanceSettlementGoLivePage'));
+const FinanceGoLiveReportsPage = safeLazy(() => import('@/pages/FinanceGoLiveReportsPage'));
+const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage'));
+const InvoiceStudioPage = safeLazy(() => import('@/pages/InvoiceStudioPage'));
+const MarketingPage = safeLazy(() => import('@/pages/MarketingPage'));
+const MarketingPortalPage = safeLazy(() => import('@/pages/MarketingPortalPage'));
 const MasterDataPortal = safeLazy(() => import('@/pages/MasterDataPortal')); 
-const TariffPage = safeLazy(() => import('@/pages/TariffPage')); 
-
-// Supervisors & Managers
-const SupervisorPortalPage = safeLazy(() => import('@/pages/SupervisorPortalPage'));
-const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage'));
-const SupervisorWayplanReviewPage = safeLazy(() => import('@/pages/SupervisorWayplanReviewPage'));
+const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
 const OpsCommandPage = safeLazy(() => import('@/pages/OpsCommandPage'));
 const OpsManagerPage = safeLazy(() => import('@/pages/OpsManagerPage'));
-const ExecutiveOpsPage = safeLazy(() => import('@/pages/ExecutiveOpsPage'));
-const BranchAdminPage = safeLazy(() => import('@/pages/BranchAdminPage'));
-const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
-
-// Warehouse & Wayplans
-const WarehousePage = safeLazy(() => import('@/pages/WarehousePage'));
+const PickupFormPage = safeLazy(() => import('@/pages/PickupFormPage'));
+const ProfilePage = safeLazy(() => import('@/pages/ProfilePage'));
+const RiderPage = safeLazy(() => import('@/pages/RiderPage'));
+const RiderSettlementPage = safeLazy(() => import('@/pages/RiderSettlementPage'));
+const SettingsPage = safeLazy(() => import('@/pages/SettingsPage'));
+const SignupPage = safeLazy(() => import('@/pages/SignupPage'));
+const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage'));
+const SupervisorPortalPage = safeLazy(() => import('@/pages/SupervisorPortalPage'));
+const TariffPage = safeLazy(() => import('@/pages/TariffPage')); 
 const WarehouseOperationPage = safeLazy(() => import('@/pages/WarehouseOperationPage'));
+const WarehousePage = safeLazy(() => import('@/pages/WarehousePage'));
+const WaybillStudioPage = safeLazy(() => import('@/pages/WaybillStudioPage'));
 const WayplanCommandCenterPage = safeLazy(() => import('@/pages/WayplanCommandCenterPage'));
-const WayplanTemplateGeneratorPage = safeLazy(() => import('@/pages/WayplanTemplateGeneratorPage').catch(() => import('@/pages/WayplanTemplateGenerator')));
+const WayplanTemplateGeneratorPage = safeLazy(() => import('@/pages/WayplanTemplateGenerator'));
 const WayplanZonePage = safeLazy(() => import('@/pages/WayplanZonePage'));
 const WayplanMapboxHQPanelMaster = safeLazy(() => import('@/pages/WayplanMapboxHQPanel.master'));
 const WayplanDetailPage = safeLazy(() => import('@/pages/WayplanDetailPage'));
-
-// Utilities & Forms
-const PickupFormPage = safeLazy(() => import('@/pages/PickupFormPage'));
-const DocumentPrintStudioPage = safeLazy(() => import('@/pages/DocumentPrintStudioPage'));
-const InvoiceStudioPage = safeLazy(() => import('@/pages/InvoiceStudioPage'));
-const WaybillStudioPage = safeLazy(() => import('@/pages/WaybillStudioPage'));
-
-// HR, Marketing & Admin
-const AdminHRPage = safeLazy(() => import('@/pages/AdminHRPage'));
-const AccountsPage = safeLazy(() => import('@/pages/AccountsPage'));
-const AnalyticsPage = safeLazy(() => import('@/pages/AnalyticsPage'));
-const AuditLogsPage = safeLazy(() => import('@/pages/AuditLogsPage'));
-const MarketingPage = safeLazy(() => import('@/pages/MarketingPage'));
-const MarketingPortalPage = safeLazy(() => import('@/pages/MarketingPortalPage'));
-const ProfilePage = safeLazy(() => import('@/pages/ProfilePage'));
-const SettingsPage = safeLazy(() => import('@/pages/SettingsPage'));
-const GoLiveTemplateCenterPage = safeLazy(() => import('@/pages/GoLiveTemplateCenterPage'));
-const UATGoLiveCommandCenterPage = safeLazy(() => import('@/pages/UATGoLiveCommandCenterPage'));
-const ReportingPage = safeLazy(() => import('@/pages/ReportingPage'));
-
-// Mobile App
-const RiderDriverApp = safeLazy(() => import('@/pages/RiderDriverApp'));
-const RiderPage = safeLazy(() => import('@/pages/RiderPage'));
-const DriverPage = safeLazy(() => import('@/pages/DriverPage'));
+const WorkforceCommissionPage = safeLazy(() => import('@/pages/WorkforceCommissionPage'));
+const RiderDriverApp = safeLazy(() => import('@/pages/RiderDriverApp')); // Field PWA
 
 // ─── UI COMPONENTS ───
 const PageLoader = () => (
@@ -130,8 +106,7 @@ export function Sidebar() {
       title: "Overview",
       links: [
         { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-        { name: "Go-Live Readiness", path: "/go-live-readiness", icon: Activity },
-        { name: "Workflow Analytics", path: "/workflow-command", icon: LineChart },
+        { name: "Workflow Analytics", path: "/workflow-command", icon: Activity },
       ]
     },
     {
@@ -148,32 +123,30 @@ export function Sidebar() {
         { name: "Data Entry", path: "/hub/data-entry", icon: FileText },
         { name: "Waybill Studio", path: "/waybill-studio", icon: QrCode },
         { name: "Pickup Form", path: "/pickup-form", icon: Edit3 },
-        { name: "Doc Print", path: "/doc-print", icon: Printer },
       ]
     },
     {
-      title: "Warehouse",
+      title: "Warehouse & Hub",
       links: [
-        { name: "Warehouse", path: "/warehouse", icon: Package },
         { name: "Warehouse Ops", path: "/warehouse-operations", icon: PackageSearch },
+        { name: "Delivery Hub", path: "/hub/dispatch", icon: Package },
       ]
     },
     {
       title: "Dispatch & Routing",
       links: [
-        { name: "Dispatch", path: "/dispatch", icon: Truck },
-        { name: "Dispatch Center", path: "/dispatch-center", icon: Truck },
-        { name: "Live Dispatch", path: "/live-dispatch", icon: Truck },
-        { name: "Delivery Dispatch", path: "/hub/dispatch", icon: Send },
+        { name: "Dispatch Command", path: "/dispatch-command", icon: Truck },
         { name: "Wayplan Command", path: "/wayplan", icon: MapIcon },
+        { name: "Zone Operations", path: "/wayplan/zones", icon: NavIcon },
         { name: "HQ Mapbox", path: "/wayplan/mapbox", icon: Globe },
+        { name: "Template Gen", path: "/wayplan/templates", icon: FileSpreadsheet },
       ]
     },
     {
       title: "Management",
       links: [
         { name: "Supervisor", path: "/supervisor", icon: ShieldCheck },
-        { name: "Supervisor Pickup", path: "/supervisor-pickup", icon: UserCheck },
+        { name: "Pickup Assignment", path: "/supervisor-pickup", icon: UserCheck },
         { name: "Ops Command", path: "/ops-command", icon: Command },
         { name: "Ops Manager", path: "/ops-manager", icon: Briefcase },
         { name: "Executive Ops", path: "/exec-ops", icon: TrendingUp },
@@ -183,10 +156,10 @@ export function Sidebar() {
       title: "Finance & Accounts",
       links: [
         { name: "Finance Portal", path: "/finance", icon: DollarSign },
-        { name: "Invoice Studio", path: "/invoice-studio", icon: Receipt },
         { name: "COD Settlement", path: "/finance/cod", icon: Coins },
         { name: "Reconciliation Desk", path: "/finance/settlement", icon: Banknote },
-        { name: "Workforce Commission", path: "/workforce-commission", icon: Wallet },
+        { name: "Go-Live Reports", path: "/finance/reports", icon: Receipt },
+        { name: "Rider Settlement", path: "/rider-settlement", icon: Wallet },
       ]
     },
     {
@@ -195,34 +168,20 @@ export function Sidebar() {
         { name: "Merchant Portal", path: "/merchant-portal", icon: Store },
         { name: "Customer Portal", path: "/customer-portal", icon: User },
         { name: "Branch Office", path: "/branch-office", icon: Building2 },
-        { name: "Branch Admin", path: "/branch-admin", icon: Building },
       ]
     },
     {
       title: "Growth & Master Data",
       links: [
-        { name: "Master Data", path: "/master-data", icon: Database },
+        { name: "Master Data Registry", path: "/master-data/merchants", icon: Database },
+        { name: "Tariff Matrix", path: "/tariff-master", icon: Calculator },
         { name: "Biz Dev", path: "/biz-dev", icon: PieChart },
-        { name: "Marketing", path: "/marketing", icon: Megaphone },
-        { name: "Tariff", path: "/tariff-master", icon: Calculator },
       ]
     },
     {
       title: "Field Operations",
       links: [
-        { name: "Rider Management", path: "/rider", icon: Bike },
         { name: "Mobile Field App", path: "/field-app", icon: Smartphone },
-        { name: "Driver Management", path: "/driver", icon: Car },
-      ]
-    },
-    {
-      title: "System & HR",
-      links: [
-        { name: "Admin / HR", path: "/admin-hr", icon: Users },
-        { name: "Accounts", path: "/accounts", icon: Users },
-        { name: "Profile", path: "/profile", icon: User },
-        { name: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
-        { name: "Settings", path: "/settings", icon: Settings },
       ]
     }
   ];
@@ -289,6 +248,66 @@ function AppShell({ children }: { children: React.ReactNode }) {
   );
 }
 
+// ─── LOGIN COMPONENT ───
+function LoginPageComponent() {
+  const auth = useAuth() as any;
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t, toggleLang, lang } = useLanguage();
+
+  useEffect(() => {
+    if (auth?.session) navigate('/dashboard', { replace: true });
+  }, [auth?.session, navigate]);
+
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) { 
+      alert(t('Authentication failed. Check credentials.', 'အချက်အလက်များ မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။')); 
+    } finally { 
+      setLoading(false); 
+    }
+  };
+
+  return (
+    <div className={`flex min-h-screen items-center justify-center bg-[#061524] p-4 relative overflow-hidden notranslate ${GLOBAL_FONT}`} translate="no">
+      <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(4,14,28,0.90),rgba(8,22,45,0.78),rgba(6,12,24,0.88))] z-0" />
+      <button onClick={toggleLang} type="button" className="absolute top-6 right-6 z-20 bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl text-[12px] font-bold tracking-wider cursor-pointer hover:border-[#f6b84b] transition-colors shadow-lg">
+        <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
+      </button>
+
+      <div className="w-full max-w-md p-10 bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-2xl z-10 relative">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto bg-[#f6b84b] text-[#061524] rounded-2xl flex items-center justify-center text-3xl font-black mb-4 shadow-lg shadow-[#f6b84b]/20">BE</div>
+          <h1 className="text-2xl font-black text-[#eef8ff] tracking-widest uppercase"><span>BRITIUM EXPRESS</span></h1>
+          <p className="text-[#f6b84b] text-[11px] font-bold tracking-[0.16em] uppercase mt-2">
+            <span>{t('Enterprise Management Portal', 'လုပ်ငန်းစီမံခန့်ခွဲမှု ဗဟိုစနစ်')}</span>
+          </p>
+        </div>
+        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Business Email', 'လုပ်ငန်းသုံး အီးမေးလ်လိပ်စာ')}</span></label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Password', 'စကားဝှက်')}</span></label>
+            <input type="password" value={pw} onChange={e => setPw(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
+          </div>
+          <button type="submit" disabled={loading} className="mt-4 bg-[#f6b84b] text-[#061524] py-4 rounded-xl font-bold text-[14px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors disabled:opacity-50 cursor-pointer shadow-xl shadow-[#f6b84b]/10">
+            <span>{loading ? '...' : t('Secure Sign In', 'စနစ်သို့ ဝင်ရောက်မည်')}</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── PRODUCTION SECURE LAYOUT & AUTH ───
 function AuthLayout() {
   const auth = useAuth() as any;
@@ -312,94 +331,78 @@ function AppRoutes() {
       <Suspense fallback={<PageLoader />}>
         <Routes>
           {/* 🔒 Public Access & Login */}
-          <Route path="/" element={<LoginPage />} />
-          <Route path="/login" element={<LoginPage />} />
+          <Route path="/" element={<LoginPageComponent />} />
+          <Route path="/login" element={<LoginPageComponent />} />
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
           {/* 📱 DEDICATED MOBILE FIELD WORKFORCE APP */}
+          {/* Out of AppShell, so Riders get a full-screen mobile app experience */}
           <Route path="/field-app" element={<RiderDriverApp />} />
           <Route path="/rider-app" element={<Navigate to="/field-app" replace />} />
 
           {/* 🛡️ Protected Enterprise Routes */}
           <Route element={<AuthLayout />}>
             
-            {/* Core Dashboards */}
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/branch-office" element={<BranchOfficePage />} />
-            <Route path="/branch-admin" element={<BranchAdminPage />} />
-            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
-            <Route path="/customer-portal" element={<CustomerPortalPage />} />
-            
-            {/* CS */}
             <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
             <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
-            <Route path="/exceptions" element={<ExceptionsPage />} />
-            
-            {/* Hub, Sorting & Dispatch */}
             <Route path="/hub/data-entry" element={<DataEntryPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/admin-hr" element={<AdminHRPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/biz-dev" element={<BizDevPage />} />
+            <Route path="/branch-admin" element={<BranchAdminPage />} />
+            
+            <Route path="/finance" element={<FinancePortalPage />} />
+            <Route path="/finance/cod" element={<CODSettlementPage />} />
+            <Route path="/finance/settlement" element={<FinanceSettlementGoLivePage />} />
+            <Route path="/finance/reports" element={<FinanceGoLiveReportsPage />} />
+            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
+            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
+            <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
+            
+            <Route path="/customer-portal" element={<CustomerPortalPage />} />
             <Route path="/hub/dispatch" element={<DeliveryDispatchPage />} />
-            <Route path="/dispatch" element={<DispatchPage />} />
+            <Route path="/workflow-command" element={<DeliveryWorkflowPage />} />
             <Route path="/dispatch-command" element={<DispatchCommandCenterPage />} />
-            <Route path="/dispatch-center" element={<DispatchCenterPage />} />
-            <Route path="/live-dispatch" element={<LiveDispatchWayplanBoard />} />
+            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
+            <Route path="/exceptions" element={<ExceptionsPage />} />
+            <Route path="/exec-ops" element={<ExecutiveOpsPage />} />
+            
+            <Route path="/marketing" element={<MarketingPage />} />
+            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
+            
+            <Route path="/master-data" element={<Navigate to="/master-data/merchants" replace />} />
+            <Route path="/master-data/:tab" element={<MasterDataPortal />} />
+            <Route path="/tariff-master" element={<TariffPage />} />
 
-            {/* Wayplan & Routing Operations */}
+            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
+            <Route path="/ops-command" element={<OpsCommandPage />} />
+            <Route path="/ops-manager" element={<OpsManagerPage />} />
+            <Route path="/pickup-form" element={<PickupFormPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
+            <Route path="/supervisor" element={<SupervisorPortalPage />} />
+            
+            <Route path="/warehouse" element={<WarehousePage />} />
+            <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
+            <Route path="/waybill-studio" element={<WaybillStudioPage />} />
+            
             <Route path="/wayplan" element={<WayplanCommandCenterPage />} />
             <Route path="/wayplan/zones" element={<WayplanZonePage />} />
             <Route path="/wayplan/mapbox" element={<WayplanMapboxHQPanelMaster />} />
             <Route path="/wayplan/templates" element={<WayplanTemplateGeneratorPage />} />
             <Route path="/wayplan/:wayplanId" element={<WayplanDetailPage />} />
             
-            {/* Forms & Docs */}
-            <Route path="/pickup-form" element={<PickupFormPage />} />
-            <Route path="/waybill-studio" element={<WaybillStudioPage />} />
-            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
-            <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
-
-            {/* Finance & Tariffs */}
-            <Route path="/finance" element={<FinancePortalPage />} />
-            <Route path="/finance/settlement" element={<FinanceSettlementGoLivePage />} />
-            <Route path="/finance/cod" element={<CODSettlementPage />} />
-            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
-            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
-
-            {/* Warehouse */}
-            <Route path="/warehouse" element={<WarehousePage />} />
-            <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
-
-            {/* Master Data & Configuration */}
-            <Route path="/master-data" element={<Navigate to="/master-data/merchants" replace />} />
-            <Route path="/master-data/:tab" element={<MasterDataPortal />} />
-            <Route path="/tariff-master" element={<TariffPage />} />
-            <Route path="/biz-dev" element={<BusinessDevelopmentManagerPortal />} />
-            <Route path="/marketing" element={<MarketingPage />} />
-            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
-
-            {/* Supervisor & Ops */}
-            <Route path="/supervisor" element={<SupervisorPortalPage />} />
-            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
-            <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
-            <Route path="/ops-command" element={<OpsCommandPage />} />
-            <Route path="/ops-manager" element={<OpsManagerPage />} />
-            <Route path="/exec-ops" element={<ExecutiveOpsPage />} />
-            
-            <Route path="/rider" element={<RiderPage />} />
-            <Route path="/driver" element={<DriverPage />} />
-
-            {/* Workflow Analytics */}
-            <Route path="/delivery-workflow" element={<DeliveryWorkflowPage />} />
-            <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
             <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
-            <Route path="/reporting" element={<ReportingPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/audit-logs" element={<AuditLogsPage />} />
-            <Route path="/admin-hr" element={<AdminHRPage />} />
-            <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
 
-            {/* Fallback */}
+            {/* Catch-all fallback */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
