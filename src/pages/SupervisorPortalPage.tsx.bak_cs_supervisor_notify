@@ -1,0 +1,470 @@
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertCircle,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Languages,
+  ListChecks,
+  Map,
+  MapPin,
+  Navigation,
+  Package,
+  PackageSearch,
+  Printer,
+  RefreshCw,
+  ShieldCheck,
+  Truck,
+} from "lucide-react";
+import {
+  assignSupervisorPickup,
+  fetchGoLivePortalSnapshot,
+  generateSupervisorWayplans,
+  type Lang,
+  type PortalSnapshot,
+} from "@/lib/goLivePortalApi";
+
+const translations = {
+  en: {
+    title: "Supervisor Command Center",
+    subtitle: "Fleet Assignment • Route Optimization • Real-time Monitoring",
+    lang: "မြန်မာဘာသာ",
+    sync: "Sync Database",
+    reports: "Reports",
+    pickups: "Pickup Assignment",
+    studio: "Wayplan Studio",
+    dispatch: "Fleet Dispatch",
+    monitor: "Live Tracking",
+    pending: "Pending Wayplan",
+    active: "Active Rows",
+    exceptions: "Exceptions",
+    fleet: "Fleet Ready",
+    request: "Merchant Request",
+    awaiting: "Parcels Awaiting",
+    submitted: "Submitted",
+    assign: "Assign Fleet For Pick",
+    engine: "Wayplan Engine v3",
+    inventory: "Registered Inventory",
+    runEngine: "Run Engine v3",
+    dest: "Destination Zone",
+    manifest: "Manifest Content",
+    generate: "Generate Wayplan",
+    goDispatch: "Go to Dispatch",
+    roster: "Fleet Roster",
+    print: "Print Manifest",
+    close: "Close Print View",
+  },
+  my: {
+    title: "လုပ်ငန်းကြီးကြပ်ရေး ကွပ်ကဲမှုဌာန",
+    subtitle: "ယာဉ်စုဖွဲ့မှု • လမ်းကြောင်းအကောင်းဆုံးညှိနှိုင်းမှု • တိုက်ရိုက်စောင့်ကြည့်မှု",
+    lang: "English Language",
+    sync: "ဒေတာချိတ်ဆက်ရန်",
+    reports: "အစီရင်ခံစာများ",
+    pickups: "အကြိုပို့ တာဝန်ပေးချက်",
+    studio: "လမ်းကြောင်းရေးဆွဲမှုဌာန",
+    dispatch: "ယာဉ်ထွက်ခွာမှု ထိန်းချုပ်ရေး",
+    monitor: "တိုက်ရိုက်ခြေရာခံမှု",
+    pending: "လမ်းကြောင်းစောင့်ဆိုင်းဆဲ",
+    active: "အသုံးပြုနေသောစာရင်း",
+    exceptions: "ထူးခြားဖြစ်စဉ်များ",
+    fleet: "အဆင်သင့်ယာဉ်စု",
+    request: "ကုန်သည်၏တောင်းဆိုမှု",
+    awaiting: "စောင့်ဆိုင်းဆဲပစ္စည်း",
+    submitted: "တင်ပြခဲ့သည့်အချိန်",
+    assign: "အကြိုပို့ရန် ယာဉ်တာဝန်ပေးရန်",
+    engine: "လမ်းကြောင်းရေးဆွဲရေးစနစ် v3",
+    inventory: "စာရင်းသွင်းပြီး ကုန်ပစ္စည်းများ",
+    runEngine: "စနစ်စတင်အသုံးပြုရန်",
+    dest: "ရောက်ရှိမည့်ဇုန်",
+    manifest: "ပါဝင်သော အချက်အလက်",
+    generate: "လမ်းကြောင်းထုတ်ပေးရန်",
+    goDispatch: "ယာဉ်စေလွှတ်ခြင်းသို့သွားရန်",
+    roster: "ယာဉ်နှင့်ဝန်ထမ်းစာရင်း",
+    print: "မန်နီဖက်ထုတ်ရန်",
+    close: "ပိတ်ရန်",
+  },
+} as const;
+
+type Tab = "pickups" | "studio" | "dispatch" | "monitor" | "manifest";
+
+function mmk(value: unknown) {
+  return `${Number(value || 0).toLocaleString()} MMK`;
+}
+
+function vehicleNo(row: any) {
+  return row.vehicle_no || row.vehicleNo || row.registration_no || row.plate_no || row.fleet_no || row.id || row.fleet_id || "-";
+}
+
+function fleetId(row: any) {
+  return row.fleet_id || row.id || row.code || row.vehicle_id || vehicleNo(row);
+}
+
+export default function SupervisorPortalPage() {
+  const [lang, setLang] = useState<Lang>("en");
+  const [activeTab, setActiveTab] = useState<Tab>("pickups");
+  const [snapshot, setSnapshot] = useState<PortalSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [selectedWayplan, setSelectedWayplan] = useState<any | null>(null);
+
+  const t = translations[lang];
+
+  const pickups = snapshot?.pickups || [];
+  const wayplans = snapshot?.wayplans || [];
+  const fleet = snapshot?.fleet || [];
+  const summary = snapshot?.summary || {};
+
+  const pendingPickups = pickups.filter((p) => p.assignment_status !== "assigned").length;
+
+  const stats = useMemo(
+    () => [
+      { label: t.pending, value: wayplans.length || 0, icon: Clock, color: "text-indigo-600", bg: "bg-indigo-50" },
+      { label: t.active, value: summary.active_staged_rows || 0, icon: Navigation, color: "text-orange-600", bg: "bg-orange-50" },
+      { label: t.exceptions, value: 0, icon: AlertCircle, color: "text-red-600", bg: "bg-red-50" },
+      { label: t.fleet, value: fleet.length || 0, icon: Truck, color: "text-emerald-600", bg: "bg-emerald-50" },
+    ],
+    [t, summary, wayplans.length, fleet.length]
+  );
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    try {
+      setSnapshot(await fetchGoLivePortalSnapshot("supervisor", lang));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to load supervisor portal.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function assign(pickupId: string, vehicle: any) {
+    setLoading(true);
+    setError("");
+    try {
+      await assignSupervisorPickup({
+        pickupId,
+        fleetId: fleetId(vehicle),
+        vehicleNo: vehicleNo(vehicle),
+        actor: "supervisor",
+      });
+      setMessage(`${pickupId} assigned to ${fleetId(vehicle)}.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to assign fleet.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runEngine() {
+    setLoading(true);
+    setError("");
+    try {
+      await generateSupervisorWayplans({ groupBy: "township", actor: "supervisor" });
+      setMessage("Wayplan engine completed.");
+      await load();
+      setActiveTab("dispatch");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to generate wayplans.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lang]);
+
+  function ManifestPreview({ wayplan }: { wayplan: any }) {
+    const items = snapshot?.inventory?.slice(0, 30) || [];
+
+    return (
+      <div className="mx-auto max-w-[210mm] border border-slate-200 bg-white p-8 text-[11px] text-black shadow-2xl">
+        <div className="mb-6 text-center">
+          <h1 className="mb-1 text-2xl font-bold uppercase tracking-widest underline">Britium Express Manifest</h1>
+          <p className="font-bold italic text-slate-500">Trip Delivery Manifest - Backend Generated</p>
+        </div>
+
+        <table className="mb-4 w-full border-collapse border border-black">
+          <tbody className="font-bold">
+            <tr>
+              <td className="w-1/4 border border-black bg-slate-50 p-2">MANIFEST NO:</td>
+              <td className="w-1/4 border border-black p-2">{wayplan.wayplan_code || wayplan.wayplanNo || wayplan.id}</td>
+              <td className="w-1/4 border border-black bg-slate-50 p-2">UPLOAD CODE:</td>
+              <td className="w-1/4 border border-black p-2">{summary.upload_code}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <table className="w-full border-collapse border border-black text-[10px]">
+          <thead>
+            <tr className="bg-[#D7E4BC]">
+              <th className="border border-black p-1">No</th>
+              <th className="border border-black p-1">Way ID</th>
+              <th className="border border-black p-1">Recipient</th>
+              <th className="border border-black p-1">Township</th>
+              <th className="border border-black p-1">KG</th>
+              <th className="border border-black p-1">Total COD</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.map((item, index) => (
+              <tr key={item.tracking_no || index}>
+                <td className="border border-black p-1 text-center">{index + 1}</td>
+                <td className="border border-black p-1 font-mono">{item.tracking_no}</td>
+                <td className="border border-black p-1">{item.customer_name || "-"}</td>
+                <td className="border border-black p-1">{item.township || "-"}</td>
+                <td className="border border-black p-1 text-center">{Number(item.weight_kg || 0).toFixed(2)}</td>
+                <td className="border border-black p-1 text-right font-bold text-red-600">{Number(item.cod_amount || item.actual_collect || 0).toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        <button onClick={() => setActiveTab("dispatch")} className="no-print mt-8 w-full rounded-2xl bg-slate-900 py-4 font-black uppercase tracking-widest text-white">
+          {t.close}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`flex min-h-screen bg-slate-50 text-slate-900 ${lang === "my" ? "font-pyidaungsu" : "font-sans"}`}>
+      <aside className="sticky top-0 z-50 flex h-screen w-72 flex-col border-r border-slate-800 bg-slate-900 text-slate-400 shadow-2xl">
+        <div className="border-b border-slate-800 p-8">
+          <div className="flex items-center gap-4">
+            <div className="rounded-2xl bg-orange-600 p-2.5 shadow-lg shadow-orange-600/30">
+              <ShieldCheck className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <span className="block text-xl font-black uppercase leading-none tracking-tighter text-white">
+                {lang === "en" ? "Supervisor" : "ကြီးကြပ်ရေးမှူး"}
+              </span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-orange-400">
+                {lang === "en" ? "Command Center" : "ကွပ်ကဲမှုဗဟို"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <nav className="flex-1 space-y-1 p-6">
+          {[
+            { id: "pickups", label: t.pickups, icon: PackageSearch, color: "text-orange-400", badge: pendingPickups },
+            { id: "studio", label: t.studio, icon: Map, color: "text-indigo-400" },
+            { id: "dispatch", label: t.dispatch, icon: Truck, color: "text-emerald-400" },
+            { id: "monitor", label: t.monitor, icon: Navigation, color: "text-blue-400" },
+          ].map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as Tab)}
+              className={`flex w-full items-center justify-between rounded-2xl px-4 py-4 text-sm font-bold transition-all ${
+                activeTab === item.id ? "border border-white/5 bg-white/10 text-white shadow-xl" : "text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+              }`}
+            >
+              <div className="flex items-center gap-4">
+                <item.icon className={`h-5 w-5 ${item.color}`} />
+                {item.label}
+              </div>
+              {Boolean(item.badge) && <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] text-white">{item.badge}</span>}
+            </button>
+          ))}
+        </nav>
+      </aside>
+
+      <main className="min-w-0 flex-1 space-y-8 overflow-y-auto p-6 lg:p-12">
+        <header className="flex flex-col justify-between gap-6 border-b border-slate-200 pb-8 md:flex-row md:items-center">
+          <div>
+            <h1 className="text-4xl font-black uppercase tracking-tight text-slate-900">{t.title}</h1>
+            <p className="mt-1 text-sm font-medium uppercase tracking-widest text-slate-500">{t.subtitle}</p>
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            <button onClick={() => setLang((x) => (x === "en" ? "my" : "en"))} className="flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-[10px] font-bold uppercase tracking-widest text-indigo-600">
+              <Languages className="h-3.5 w-3.5" /> {t.lang}
+            </button>
+            <button className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[10px] font-bold uppercase tracking-widest">{t.reports}</button>
+            <button onClick={load} className="flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-[10px] font-black uppercase tracking-widest text-white">
+              <RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> {t.sync}
+            </button>
+          </div>
+        </header>
+
+        {message && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-700">{message}</div>}
+        {error && <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">{error}</div>}
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
+          {stats.map((stat) => (
+            <div key={stat.label} className={`flex items-center justify-between rounded-[2rem] border border-slate-200 p-6 shadow-sm ${stat.bg}`}>
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{stat.label}</p>
+                <p className={`mt-1 text-3xl font-black ${stat.color}`}>{stat.value}</p>
+              </div>
+              <stat.icon className={`h-8 w-8 opacity-20 ${stat.color}`} />
+            </div>
+          ))}
+        </div>
+
+        {activeTab === "pickups" && (
+          <div className="grid gap-6 lg:grid-cols-3">
+            {pickups.map((req) => (
+              <div key={req.pickup_id} className={`relative overflow-hidden rounded-[2.5rem] border-2 bg-white p-8 shadow-xl transition-all hover:scale-[1.02] ${req.assignment_status !== "assigned" ? "border-orange-200" : "border-slate-100"}`}>
+                {req.assignment_status !== "assigned" && <div className="absolute right-0 top-0 rounded-bl-3xl bg-red-600 px-6 py-2 text-[10px] font-black uppercase tracking-widest text-white">New</div>}
+
+                <div className="mb-6 flex items-center gap-4">
+                  <div className={`rounded-3xl p-4 ${req.assignment_status !== "assigned" ? "bg-orange-50 text-orange-600" : "bg-slate-50 text-slate-400"}`}>
+                    <PackageSearch className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{t.request}</p>
+                    <h4 className="text-lg font-black leading-tight text-slate-900">{req.merchant_name || "-"}</h4>
+                    <p className="font-mono text-xs font-black text-indigo-700">{req.pickup_id}</p>
+                  </div>
+                </div>
+
+                <div className="mb-8 space-y-4">
+                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
+                    <MapPin className="h-4 w-4 text-indigo-500" /> {req.township || "-"}
+                  </div>
+                  <div className="flex items-center gap-3 text-sm font-bold text-slate-600">
+                    <ListChecks className="h-4 w-4 text-emerald-500" /> {req.parcel_count} {t.awaiting}
+                  </div>
+                  <div className="text-xs font-bold text-slate-400">COD: {mmk(req.total_cod)}</div>
+                </div>
+
+                <div className="border-t border-slate-100 pt-6">
+                  {req.assignment_status !== "assigned" ? (
+                    <div className="space-y-3">
+                      <label className="ml-2 text-[9px] font-black uppercase tracking-widest text-slate-400">{t.assign}</label>
+                      <div className="grid grid-cols-2 gap-2">
+                        {fleet.slice(0, 6).map((f) => (
+                          <button key={fleetId(f)} onClick={() => assign(req.pickup_id, f)} className="rounded-2xl border border-slate-200 px-3 py-3 text-[10px] font-black uppercase transition-all hover:bg-orange-600 hover:text-white">
+                            {fleetId(f)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-emerald-700">
+                      <p className="text-xs font-black uppercase tracking-tighter">Assigned: {req.assigned_fleet_id}</p>
+                      <CheckCircle2 className="h-5 w-5" />
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "studio" && (
+          <div className="overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-center justify-between bg-slate-900 p-8 text-white">
+              <div>
+                <h2 className="text-xl font-black uppercase tracking-tight">{t.engine}</h2>
+                <p className="text-[10px] uppercase tracking-widest text-slate-400">{t.inventory}</p>
+              </div>
+              <button onClick={runEngine} className="rounded-xl bg-indigo-600 px-6 py-3 text-[10px] font-black uppercase tracking-widest shadow-xl shadow-indigo-600/20">
+                {loading ? "Running..." : t.runEngine}
+              </button>
+            </div>
+
+            <div className="divide-y divide-slate-100">
+              {(wayplans.length ? wayplans : [{ wayplan_code: "Not generated yet", group_key: "Run engine from active Data Entry rows", total_parcels: summary.active_staged_rows }]).map((wp: any, index: number) => (
+                <div key={wp.wayplan_code || index} className="flex flex-col justify-between gap-4 p-6 hover:bg-slate-50 md:flex-row md:items-center">
+                  <div className="font-mono text-lg font-black text-indigo-600">{wp.wayplan_code || wp.wayplanNo || wp.id}</div>
+                  <div className="flex-1">
+                    <div className="font-black text-slate-800">{wp.group_key || wp.routeName || wp.township || "-"}</div>
+                    <span className="mt-2 block w-fit rounded-md border border-slate-200 bg-slate-100 px-2 py-0.5 text-[9px] font-black uppercase tracking-widest">{wp.status || "registered"}</span>
+                  </div>
+                  <div className="text-sm font-black text-orange-600">{wp.total_weight || wp.weight || 0} KG</div>
+                  <button onClick={() => setActiveTab("dispatch")} className="flex items-center gap-2 rounded-2xl bg-emerald-600 px-8 py-3 text-[10px] font-black uppercase tracking-widest text-white">
+                    {t.goDispatch} <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "dispatch" && (
+          <div className="grid gap-8 lg:grid-cols-12">
+            <div className="space-y-6 lg:col-span-8">
+              <div className="overflow-hidden rounded-[3rem] border border-slate-800 bg-slate-900 shadow-2xl">
+                <div className="border-b border-slate-800 bg-slate-950 p-8">
+                  <h2 className="text-xl font-black uppercase tracking-tight text-white">{t.dispatch}</h2>
+                </div>
+                <div className="space-y-4 p-6">
+                  {wayplans.map((wp: any, index: number) => (
+                    <div key={wp.wayplan_code || index} className="flex items-center justify-between rounded-[2.5rem] border border-white/5 bg-slate-800/50 p-8">
+                      <div className="flex items-center gap-6">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-white/10 bg-slate-950">
+                          <Package className="h-8 w-8 text-emerald-400" />
+                        </div>
+                        <div>
+                          <h4 className="text-xl font-black tracking-tighter text-white">{wp.wayplan_code || wp.wayplanNo || wp.id}</h4>
+                          <p className="mt-1 text-xs font-bold uppercase text-slate-500">{wp.group_key || wp.routeName || "-"}</p>
+                        </div>
+                      </div>
+                      <button onClick={() => { setSelectedWayplan(wp); setActiveTab("manifest"); }} className="rounded-[2rem] bg-emerald-600 p-5 text-white shadow-2xl transition-all hover:bg-emerald-500 active:scale-95">
+                        <Printer className="h-6 w-6" />
+                      </button>
+                    </div>
+                  ))}
+                  {!wayplans.length && <div className="rounded-3xl border border-white/5 p-10 text-center font-bold text-slate-500">No wayplans yet. Run Wayplan Engine.</div>}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col overflow-hidden rounded-[2.5rem] border border-slate-200 bg-white shadow-xl lg:col-span-4">
+              <div className="border-b border-slate-100 bg-slate-50 p-8">
+                <h2 className="text-sm font-black uppercase tracking-widest text-slate-800">{t.roster}</h2>
+              </div>
+              <div className="flex-1 space-y-3 overflow-y-auto p-4">
+                {fleet.map((v) => (
+                  <div key={fleetId(v)} className="flex items-center justify-between rounded-3xl border border-slate-100 bg-slate-50 p-5">
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-[10px] font-black text-indigo-600">
+                        {String(fleetId(v)).slice(-3)}
+                      </div>
+                      <div>
+                        <p className="text-sm font-black tracking-tighter">{vehicleNo(v)}</p>
+                        <p className="text-[9px] font-bold uppercase text-slate-400">{v.vehicle_type || v.type || "Vehicle"} • {v.capacity_kg || v.capacity || 0} KG</p>
+                      </div>
+                    </div>
+                    <span className="rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase text-emerald-500">Ready</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "monitor" && (
+          <div className="grid gap-6 md:grid-cols-3">
+            {(snapshot?.processes || []).map((p: any) => (
+              <div key={p.process_key} className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm">
+                <p className="text-xs font-black uppercase text-slate-400">{p.process_key}</p>
+                <h3 className="mt-2 text-lg font-black">{p.process_name}</h3>
+                <p className="mt-2 text-sm text-slate-500">{p.reason}</p>
+                <span className="mt-4 inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-black uppercase text-emerald-700">{p.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {activeTab === "manifest" && selectedWayplan && (
+          <div className="py-4">
+            <div className="no-print mb-8 flex justify-center">
+              <button onClick={() => window.print()} className="flex items-center gap-3 rounded-[2.5rem] bg-slate-900 px-12 py-5 text-xs font-black uppercase tracking-widest text-white shadow-2xl transition-all hover:scale-105">
+                <Printer className="h-5 w-5" /> Print
+              </button>
+            </div>
+            <ManifestPreview wayplan={selectedWayplan} />
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}

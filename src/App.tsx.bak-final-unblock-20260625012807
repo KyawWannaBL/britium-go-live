@@ -1,0 +1,624 @@
+import WaybillPrintStudioPage from "@/pages/printing/WaybillPrintStudioPage";
+import InvoicePrintStudioPage from "@/pages/printing/InvoicePrintStudioPage";
+import BranchOfficeProcessPage from "@/pages/branch/BranchOfficeProcessPage";
+import BranchOfficeSettlementPage from "@/pages/branch/BranchOfficeSettlementPage";
+import { lazy, Suspense, useState, FormEvent, useEffect, type ReactNode } from "react";
+import {
+  HashRouter,
+  Routes,
+  Route,
+  Navigate,
+  Outlet,
+  useNavigate,
+  useLocation,
+  Link,
+} from "react-router-dom";
+import {
+  LayoutDashboard,
+  Smartphone,
+  LogOut,
+  Package,
+  Database,
+  HeadphonesIcon,
+  Truck,
+  Map as MapIcon,
+  Settings,
+  BriefcaseBusiness,
+  Users,
+  FileText,
+  Activity,
+  AlertTriangle,
+  QrCode,
+  Edit3,
+  PackageSearch,
+  ShieldCheck,
+  UserCheck,
+  CheckSquare,
+  DollarSign,
+  Coins,
+  Receipt,
+  Wallet,
+  Banknote,
+  Store,
+  Building2,
+  Building,
+  PieChart,
+  Megaphone,
+  Calculator,
+  Bike,
+  Car,
+  User,
+  LineChart,
+  ClipboardList,
+  FileSpreadsheet,
+  Printer,
+  Globe,
+  Navigation as NavIcon,
+  MapPin,
+  ListTodo,
+  Landmark,
+  CreditCard,
+  type LucideIcon,
+} from "lucide-react";
+import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
+import { AuthProvider, useAuth } from "@/contexts/auth";
+import { supabase } from "@/integrations/supabase/client";
+import AppErrorBoundary from "@/components/system/AppErrorBoundary";
+import EnvironmentBadge from "@/components/system/EnvironmentBadge";
+
+import BritiumLoginPage from "@/pages/auth/BritiumLoginPage";
+const GLOBAL_FONT = "font-['Inter','Poppins',sans-serif] antialiased";
+
+const safeLazy = (importFunc: any) =>
+  lazy(() =>
+    importFunc().catch((err: any) => {
+      console.error("Module load error", err);
+
+      const isChunkError =
+        err.message &&
+        err.message.includes("Failed to fetch dynamically imported module");
+
+      const hasReloaded = sessionStorage.getItem("vite_chunk_reload");
+
+      if (isChunkError && !hasReloaded) {
+        sessionStorage.setItem("vite_chunk_reload", "true");
+        window.location.reload();
+        return { default: () => null };
+      }
+
+      sessionStorage.removeItem("vite_chunk_reload");
+
+      return {
+        default: () => (
+          <div
+            className={`flex h-screen w-full items-center justify-center bg-[#061524] text-[#ff4f86] text-[12px] font-bold tracking-widest uppercase ${GLOBAL_FONT}`}
+          >
+            Failed to load module. Please refresh your browser.
+          </div>
+        ),
+      };
+    }),
+  );
+
+// ─── CORE PAGE REGISTRY ───
+const DashboardPage = safeLazy(() => import("@/pages/DashboardPage"));
+const AccountsPage = safeLazy(() => import("@/pages/AccountsPage"));
+const AdminHRPage = safeLazy(() => import("@/pages/AdminHRPage"));
+const AnalyticsPage = safeLazy(() => import("@/pages/AnalyticsPage"));
+const AuditLogsPage = safeLazy(() => import("@/pages/AuditLogsPage"));
+const BizDevPage = safeLazy(() => import("@/pages/BizDevPage"));
+const BranchAdminPage = safeLazy(() => import("@/pages/BranchAdminPage"));
+const BranchOfficePage = safeLazy(() => import("@/pages/BranchOfficePage"));
+const BranchOfficePortalPage = safeLazy(() => import("@/pages/BranchOfficePortalPage"));
+const CODSettlementPage = safeLazy(() => import("@/pages/CODSettlementPage"));
+const CustomerPortalPage = safeLazy(() => import("@/pages/CustomerPortalPage"));
+const CustomerServiceCommandCenterPage = safeLazy(() => import("@/pages/CustomerServiceCommandCenterPage"));
+const CustomerServicePortalPage = safeLazy(() => import("@/pages/CustomerServicePortalPage"));
+const DataEntryPage = safeLazy(() => import("@/pages/DataEntryPage"));
+const DocumentPrintStudioPage = safeLazy(() => import("@/pages/DocumentPrintStudioPage"));
+const DriverPage = safeLazy(() => import("@/pages/DriverPage"));
+const ExceptionsPage = safeLazy(() => import("@/pages/ExceptionsPage"));
+
+// ─── NEW: MISSING OPERATIONS & FINANCIAL PAGES ───
+const PickupRequestsPage = safeLazy(() => import("@/pages/PickupRequestsPage"));
+const MerchantSettlementPage = safeLazy(() => import("@/pages/MerchantSettlementPage"));
+const ExpenseManagementPage = safeLazy(() => import("@/pages/ExpenseManagementPage"));
+
+const FinancePortalPage = safeLazy(() => import("@/pages/FinancePortalPage"));
+const FinanceReportCenterPage = safeLazy(() => import("@/pages/FinanceReportCenterPage"));
+const ForgotPasswordPage = safeLazy(() => import("@/pages/ForgotPasswordPage"));
+const GoLiveTemplateCenterPage = safeLazy(() => import("@/pages/GoLiveTemplateCenterPage"));
+const GoLiveControlPanel = safeLazy(() => import("@/pages/GoLiveControlPanel"));
+const InvoiceStudioPage = safeLazy(() => import("@/pages/InvoiceStudioPage"));
+const MarketingPage = safeLazy(() => import("@/pages/MarketingPage"));
+const MarketingPortalPage = safeLazy(() => import("@/pages/MarketingPortalPage"));
+const MasterDataPage = safeLazy(() => import("@/pages/MasterDataPage"));
+const MerchantPortalPage = safeLazy(() => import("@/pages/MerchantPortalPage"));
+const MerchantPortalProfessionalPage = safeLazy(() => import("@/pages/merchant/MerchantPortalProfessionalPage"));
+const PickupFormPage = safeLazy(() => import("@/pages/PickupFormPage"));
+const ProfilePage = safeLazy(() => import("@/pages/ProfilePage"));
+const RiderPage = safeLazy(() => import("@/pages/RiderPage"));
+const RiderAppPage = safeLazy(() => import("@/pages/RiderAppPage"));
+const RiderDeliveryPage = safeLazy(() => import("@/pages/RiderDeliveryPage"));
+const RiderDeliveryGuardPage = safeLazy(() => import("@/pages/RiderDeliveryGuardPage"));
+const RiderLoginPage = safeLazy(() => import("@/pages/RiderLoginPage"));
+const RiderSettlementPage = safeLazy(() => import("@/pages/RiderSettlementPage"));
+const MobileWalletsPage = safeLazy(() => import("@/pages/MobileWalletsPage"));
+const SettingsPage = safeLazy(() => import("@/pages/SettingsPage"));
+const SignupPage = safeLazy(() => import("@/pages/SignupPage"));
+const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import("@/pages/SupervisorPickupAssignmentGoLivePage"));
+const SupervisorPortalPage = safeLazy(() => import("@/pages/SupervisorPortalPage"));
+const SupervisorWayplanReviewPage = safeLazy(() => import("@/pages/SupervisorWayplanReviewPage"));
+const SupervisorGpsMonitorPage = safeLazy(() => import("@/pages/SupervisorGpsMonitorPage"));
+const TariffPage = safeLazy(() => import("@/pages/TariffPage"));
+const UATGoLiveCommandCenterPage = safeLazy(() => import("@/pages/UATGoLiveCommandCenterPage"));
+const WarehouseOperationPage = safeLazy(() => import("@/pages/WarehouseOperationPage"));
+const WarehousePage = safeLazy(() => import("@/pages/WarehousePage"));
+const WaybillStudioPage = safeLazy(() => import("@/pages/WaybillStudioPage"));
+const WayplanCommandCenterPage = safeLazy(() => import("@/pages/WayplanCommandCenterPage"));
+const WorkforceCommissionPage = safeLazy(() => import("@/pages/WorkforceCommissionPage"));
+const DispatchCommandCenterPage = safeLazy(() => import("@/pages/DispatchCommandCenterPage"));
+const UnifiedOperationsWorkflowPage = safeLazy(() => import("@/pages/UnifiedOperationsWorkflowPage"));
+
+// ─── LIVE GPS & MAPBOX ───
+const BirdEyeTrackAndTracePage = safeLazy(() => import("@/pages/BirdEyeTrackAndTracePage"));
+const LiveDispatchWayplanBoard = safeLazy(() => import("@/pages/LiveDispatchWayplanBoard"));
+
+// ─── AUXILIARY PAGES ───
+const DataEntryExcelRegisterPage = safeLazy(() => import("@/pages/DataEntryExcelRegisterPage"));
+const DataEntryPhotoCheckPage = safeLazy(() => import("@/pages/DataEntryPhotoCheckPage"));
+const DataEntrySynchronizedPage = safeLazy(() => import("@/pages/DataEntrySynchronizedPage"));
+const DataEntryUATUploadPage = safeLazy(() => import("@/pages/DataEntryUATUploadPage"));
+const DataEntryWaybillStudio = safeLazy(() => import("@/pages/DataEntryWaybillStudio"));
+const ProofGalleryPortalPage = safeLazy(() => import("@/pages/ProofGalleryPortalPage"));
+const ReportingPage = safeLazy(() => import("@/pages/ReportingPage"));
+const WarehouseOperations = safeLazy(() => import("@/pages/WarehouseOperations"));
+const WarehouseRegistrationTemplatePage = safeLazy(() => import("@/pages/WarehouseRegistrationTemplatePage"));
+const WarehouseUATUploadPage = safeLazy(() => import("@/pages/WarehouseUATUploadPage"));
+const WaybillInvoicePage = safeLazy(() => import("@/pages/WaybillInvoicePage"));
+const WayplanDetailPage = safeLazy(() => import("@/pages/WayplanDetailPage"));
+const WayplanTemplateGeneratorPage = safeLazy(() => import("@/pages/WayplanTemplateGeneratorPage"));
+
+// ─── LOADER ───
+const PageLoader = () => (
+  <div
+    className={`flex h-screen w-full flex-col items-center justify-center bg-[#061524] gap-5 notranslate ${GLOBAL_FONT}`}
+    translate="no"
+  >
+    <div className="w-14 h-14 border-4 border-[#1a3a5c] border-t-[#f6b84b] rounded-full animate-spin" />
+    <div className="text-[#4d7a9b] text-[12px] font-bold tracking-widest uppercase flex flex-col items-center gap-2">
+      <span>စနစ်သို့ ဝင်ရောက်နေပါသည်...</span>
+      <span className="text-[#1a3a5c]">LOADING MODULE</span>
+    </div>
+  </div>
+);
+
+type NavLinkItem = {
+  name: string;
+  path: string;
+  icon: LucideIcon;
+};
+
+type NavGroup = {
+  title: string;
+  links: NavLinkItem[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: "Ops Workflow Center",
+    links: [
+      { name: "Dashboard Overview", path: "/dashboard", icon: LayoutDashboard },
+      { name: "Pickup Requests", path: "/pickup-requests", icon: ListTodo }, // Re-added critical missing entry point
+      { name: "Unified Ops Workflow", path: "/ops-workflow", icon: Activity },
+      { name: "Exception Processing", path: "/exceptions", icon: AlertTriangle },
+    ]
+  },
+  {
+    title: "Live GPS & Fleet Maps",
+    links: [
+      { name: "Bird's Eye Track & Trace", path: "/bird-eye-track", icon: MapPin },
+      { name: "Supervisor GPS Map", path: "/supervisor-map", icon: NavIcon },
+      { name: "Live Dispatch Board", path: "/live-dispatch-board", icon: Truck },
+    ]
+  },
+  {
+    title: "Print & Document Studio",
+    links: [
+      { name: "Waybill Print Studio", path: "/waybill-print-studio", icon: Printer },
+      { name: "Invoice Print Studio", path: "/invoice-print-studio", icon: Receipt },
+      { name: "Document Print Room", path: "/doc-print", icon: Printer },
+      { name: "Data Entry Registration", path: "/data-entry", icon: FileText },
+    ]
+  },
+  {
+    title: "Branch & Network Nodes",
+    links: [
+      { name: "Branch Operations", path: "/branch-office", icon: Building2 },
+      { name: "Branch Process Setup", path: "/branch-office-process", icon: Building },
+      { name: "Merchant Accounts", path: "/merchant-portal", icon: Store },
+    ]
+  },
+  {
+    title: "Mobile App Sandboxes",
+    links: [
+      { name: "Rider Workflow Portal", path: "/rider-app", icon: Smartphone },
+      { name: "Rider Delivery Route", path: "/rider-delivery", icon: Bike },
+    ]
+  },
+  {
+    title: "Warehouse & Wayplan",
+    links: [
+      { name: "Wayplan Command Center", path: "/wayplan-command", icon: MapIcon },
+      { name: "Central Warehouse Hub", path: "/warehouse", icon: Package },
+      { name: "Supervisor Pickup Queue", path: "/supervisor-pickup", icon: UserCheck },
+    ]
+  },
+  {
+    title: "Commercial & Customer Portals",
+    links: [
+      { name: "Merchant Dashboard", path: "/merchant-dashboard", icon: Store },
+      { name: "Merchant Accounts", path: "/merchant-portal", icon: Store },
+      { name: "Customer Portal", path: "/customer-portal", icon: Users },
+      { name: "Customer Service", path: "/cs-portal", icon: HeadphonesIcon },
+      { name: "Marketing", path: "/marketing", icon: Megaphone },
+      { name: "Business Development", path: "/biz-dev", icon: BriefcaseBusiness },
+    ]
+  },
+  {
+    title: "Admin, Master Data & Rules",
+    links: [
+      { name: "Master Data", path: "/master-data", icon: Database },
+      { name: "Tariff Rules", path: "/tariff", icon: Calculator },
+      { name: "Admin / HR", path: "/admin-hr", icon: UserCheck },
+      { name: "Accounts", path: "/accounts", icon: ShieldCheck },
+    ]
+  },
+  {
+    title: "Finance & Settlement",
+    links: [
+      { name: "Finance Portal", path: "/finance-portal", icon: DollarSign }, // Recovered from imports
+      { name: "Finance Reports", path: "/finance-reports", icon: FileSpreadsheet },
+      { name: "Merchant Settlement", path: "/merchant-settlement", icon: Landmark }, // New Financial Flow
+      { name: "COD Settlement Status", path: "/cod-settlement", icon: Coins },
+      { name: "Rider Commission Ledger", path: "/workforce-commission", icon: Wallet },
+      { name: "Rider Settlement Remit", path: "/rider-settlement", icon: Banknote },
+      { name: "Rider / Driver / Helper Wallets", path: "/workforce-wallets", icon: Wallet },
+      { name: "Branch Settlement", path: "/branch-office-settlement", icon: DollarSign },
+      { name: "Expense Management", path: "/expenses", icon: CreditCard }, // New Financial Flow
+    ]
+  }
+];
+
+export function Sidebar() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  async function handleSignOut() {
+    await supabase.auth.signOut();
+    navigate("/", { replace: true });
+  }
+
+  return (
+    <aside
+      className={`w-64 bg-[#0a1628] border-r border-[#1a3a5c] flex flex-col h-screen shrink-0 ${GLOBAL_FONT}`}
+    >
+      <div className="p-6 border-b border-[#1a3a5c] shrink-0">
+        <h1 className="!text-[20px] !font-black tracking-wider !text-[#f6b84b] !mb-0 uppercase">
+          Britium Ops
+        </h1>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-24">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#4d7a9b] mb-2 px-3">
+              {group.title}
+            </div>
+
+            <div className="space-y-1">
+              {group.links.map((link) => {
+                const Icon = link.icon;
+
+                const isActive =
+                  location.pathname === link.path ||
+                  location.pathname.startsWith(`${link.path}/`);
+
+                return (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-[13px] font-semibold tracking-wide ${
+                      isActive
+                        ? "bg-[#1a3a5c] text-[#f6b84b] shadow-md"
+                        : "text-[#c8dff0] hover:bg-[#0f243b] hover:text-white"
+                    }`}
+                  >
+                    <Icon size={16} strokeWidth={isActive ? 2.5 : 2} />
+                    <span>{link.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="p-4 border-t border-[#1a3a5c] shrink-0 bg-[#0a1628]">
+        <button
+          type="button"
+          onClick={handleSignOut}
+          className="w-full flex items-center gap-3 p-3 text-[#ff4f86] font-bold text-[13px] tracking-wide hover:bg-[#ff4f86]/10 rounded-xl transition-colors cursor-pointer"
+        >
+          <LogOut size={18} />
+          <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+function AppShell({ children }: { children: ReactNode }) {
+  const { toggleLang, lang } = useLanguage();
+
+  return (
+    <div className={`flex h-screen w-full bg-[#061524] overflow-hidden ${GLOBAL_FONT}`}>
+      <Sidebar />
+
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
+        <header className="h-14 bg-[#0a1628] border-b border-[#1a3a5c] flex items-center justify-end px-6 shrink-0 z-50 shadow-md w-full">
+          <button
+            type="button"
+            onClick={toggleLang}
+            className="flex items-center gap-2 bg-[#1a3a5c] text-[#f6b84b] px-4 py-1.5 rounded-lg text-[12px] font-bold tracking-wider hover:bg-[#0f243b] transition-colors shadow-sm cursor-pointer border border-[#1a3a5c] hover:border-[#f6b84b]"
+          >
+            <Globe size={14} />
+            <span>{lang === "en" ? "မြန်မာဘာသာ" : "English"}</span>
+          </button>
+        </header>
+
+        <main className="flex-1 overflow-auto relative custom-scrollbar">
+          <div className="min-w-[1200px] h-full p-4 md:p-6">{children}</div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+function LoginPageComponent() {
+  const auth = useAuth() as any;
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t, toggleLang, lang } = useLanguage();
+
+  useEffect(() => {
+    if (auth?.session) navigate("/dashboard", { replace: true });
+  }, [auth?.session, navigate]);
+
+  const handleLogin = async (event: FormEvent) => {
+    event.preventDefault();
+    setLoading(true);
+
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password: pw,
+      });
+
+      if (error) throw error;
+
+      navigate("/dashboard", { replace: true });
+    } catch {
+      alert(
+        t(
+          "Authentication failed. Check credentials.",
+          "အချက်အလက်များ မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။",
+        ),
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      className={`flex min-h-screen items-center justify-center bg-[#061524] p-4 relative overflow-hidden notranslate ${GLOBAL_FONT}`}
+      translate="no"
+    >
+      <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(4,14,28,0.90),rgba(8,22,45,0.78),rgba(6,12,24,0.88))] z-0" />
+
+      <button
+        type="button"
+        onClick={toggleLang}
+        className="absolute top-6 right-6 z-20 bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl text-[12px] font-bold tracking-wider cursor-pointer hover:border-[#f6b84b] transition-colors shadow-lg"
+      >
+        <span>{lang === "en" ? "မြန်မာဘာသာ" : "English"}</span>
+      </button>
+
+      <div className="w-full max-w-md p-10 bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-2xl z-10 relative">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto bg-[#f6b84b] text-[#061524] rounded-2xl flex items-center justify-center text-3xl font-black mb-4 shadow-lg shadow-[#f6b84b]/20">
+            BE
+          </div>
+          <h1 className="text-2xl font-black text-[#eef8ff] tracking-widest uppercase">
+            <span>BRITIUM EXPRESS</span>
+          </h1>
+          <p className="text-[#f6b84b] text-[11px] font-bold tracking-[0.16em] uppercase mt-2">
+            <span>{t("Enterprise Management Portal", "လုပ်ငန်းစီမံခန့်ခွဲမှု ဗဟိုစနစ်")}</span>
+          </p>
+        </div>
+
+        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]">
+              <span>{t("Business Email", "လုပ်ငန်းသုံး အီးမေးလ်လိပ်စာ")}</span>
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              required
+              className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]">
+              <span>{t("Password", "စကားဝှက်")}</span>
+            </label>
+            <input
+              type="password"
+              value={pw}
+              onChange={(event) => setPw(event.target.value)}
+              required
+              className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="mt-4 bg-[#f6b84b] text-[#061524] py-4 rounded-xl font-bold text-[14px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors disabled:opacity-50 cursor-pointer shadow-xl shadow-[#f6b84b]/10"
+          >
+            <span>{loading ? "..." : t("Secure Sign In", "စနစ်သို့ ဝင်ရောက်မည်")}</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AuthLayout() {
+  const auth = useAuth() as any;
+
+  if (auth?.loading) return <PageLoader />;
+  if (!auth?.session) return <Navigate to="/" replace />;
+
+  return (
+    <AppShell>
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
+    </AppShell>
+  );
+}
+
+function AppRoutes() {
+  const location = useLocation();
+
+  return (
+    <AppErrorBoundary pathname={location.pathname}>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+            <Route path="/login" element={<BritiumLoginPage />} />
+            <Route path="/signup" element={<BritiumLoginPage initialMode="signup" />} />
+            <Route path="/forgot-password" element={<BritiumLoginPage initialMode="forgot" />} />
+          {/* Public Routes */}
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login-legacy" element={<LoginPageComponent />} />
+
+          {/* Secure Routes */}
+          <Route element={<AuthLayout />}>
+            {/* Core Workflow & Ops Dashboard */}
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/pickup-requests" element={<PickupRequestsPage />} />
+            <Route path="/ops-workflow" element={<UnifiedOperationsWorkflowPage />} />
+            <Route path="/exceptions" element={<ExceptionsPage />} />
+            
+            {/* Live Fleet Tracking & Wayplan Management */}
+            <Route path="/bird-eye-track" element={<BirdEyeTrackAndTracePage />} />
+            <Route path="/supervisor-map" element={<SupervisorGpsMonitorPage />} />
+            <Route path="/live-dispatch-board" element={<LiveDispatchWayplanBoard />} />
+            <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
+            
+            {/* Branch Office Network */}
+            <Route path="/branch-office" element={<BranchOfficePage />} />
+            <Route path="/branch-office-portal" element={<BranchOfficePortalPage />} />
+            <Route path="/branch-office-process" element={<BranchOfficeProcessPage />} />
+            <Route path="/branch-office-settlement" element={<BranchOfficeSettlementPage />} />
+
+            {/* Print Studios */}
+            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
+            <Route path="/waybill-studio" element={<Navigate to="/waybill-print-studio" replace />} />
+            <Route path="/waybill-print-studio" element={<WaybillPrintStudioPage />} />
+            <Route path="/invoice-studio" element={<Navigate to="/invoice-print-studio" replace />} />
+            <Route path="/invoice-print-studio" element={<InvoicePrintStudioPage />} />
+
+            {/* Rider Application Sandbox */}
+            <Route path="/rider-app" element={<RiderAppPage />} />
+            <Route path="/rider-delivery" element={<RiderDeliveryGuardPage />} />
+            <Route path="/rider-login" element={<RiderLoginPage />} />
+            
+            {/* Standard Fleet & Personnel */}
+            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
+            <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
+            <Route path="/driver" element={<DriverPage />} />
+            <Route path="/rider" element={<RiderPage />} />
+            
+            {/* Customer, Merchant & Logistics Support */}
+            <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
+            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+            <Route path="/pickup-form" element={<PickupFormPage />} />
+            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
+            <Route path="/merchant-dashboard" element={<MerchantPortalProfessionalPage />} />
+            <Route path="/customer-portal" element={<CustomerPortalPage />} />
+            <Route path="/warehouse" element={<WarehousePage />} />
+            <Route path="/data-entry" element={<DataEntryPage />} />
+            
+            {/* Finance & Management Tools */}
+            <Route path="/finance-portal" element={<FinancePortalPage />} />
+            <Route path="/finance-reports" element={<FinanceReportCenterPage />} />
+            <Route path="/merchant-settlement" element={<MerchantSettlementPage />} />
+            <Route path="/expenses" element={<ExpenseManagementPage />} />
+            <Route path="/cod-settlement" element={<CODSettlementPage />} />
+            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
+            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
+            <Route path="/workforce-wallets" element={<MobileWalletsPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/marketing" element={<MarketingPage />} />
+            <Route path="/biz-dev" element={<BizDevPage />} />
+            <Route path="/tariff" element={<TariffPage />} />
+            <Route path="/master-data" element={<MasterDataPage />} />
+            <Route path="/go-live-control" element={<GoLiveControlPanel />} />
+
+            {/* System Admin */}
+            <Route path="/admin-hr" element={<AdminHRPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/settings" element={<SettingsPage />} />
+
+            {/* Redirects and Catch-All Routing */}
+            <Route path="/delivery-dispatch" element={<Navigate to="/ops-workflow" replace />} />
+            <Route path="/delivery-workflow" element={<Navigate to="/ops-workflow" replace />} />
+            <Route path="/dispatch" element={<Navigate to="/ops-workflow" replace />} />
+            <Route path="/dispatch-command" element={<Navigate to="/ops-workflow" replace />} />
+            <Route path="/live-dispatch" element={<Navigate to="/ops-workflow" replace />} />
+            <Route path="/way-management" element={<Navigate to="/wayplan-command" replace />} />
+            <Route path="/waybill-print" element={<Navigate to="/waybill-print-studio" replace />} />
+            <Route path="/invoice-print" element={<Navigate to="/invoice-print-studio" replace />} />
+            <Route path="/warehouse-operations" element={<Navigate to="/warehouse" replace />} />
+          </Route>
+
+          {/* Unmatched Page Fallback */}
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
+  );
+}
+
+export default function App() {
+  return (
+    <LanguageProvider>
+      <AuthProvider>
+        <HashRouter>
+          <EnvironmentBadge />
+          <AppRoutes />
+        </HashRouter>
+      </AuthProvider>
+    </LanguageProvider>
+  );
+}

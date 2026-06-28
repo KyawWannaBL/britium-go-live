@@ -1,0 +1,600 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, CheckSquare, Printer, RefreshCw, Search, Square } from "lucide-react";
+
+import { supabase } from "@/integrations/supabase/client";
+
+type SizeKey = "4x6" | "4x3" | "4x2" | "A5" | "A4";
+
+type WaybillRow = {
+  waybill_no: string;
+  pickup_id?: string;
+  invoice_no?: string;
+  merchant?: string;
+  merchant_name?: string;
+  merchant_code?: string;
+  recipient?: string;
+  recipient_name?: string;
+  customer_name?: string;
+  consignee_name?: string;
+  receiver_name?: string;
+  phone?: string;
+  contact_no?: string;
+  recipient_phone?: string;
+  customer_phone?: string;
+  receiver_phone?: string;
+  township?: string;
+  township_mm?: string;
+  destination_township?: string;
+  receiver_township?: string;
+  address?: string;
+  recipient_address?: string;
+  delivery_address?: string;
+  customer_address?: string;
+  consignee_address?: string;
+  receiver_address?: string;
+  remark?: string;
+  remarks?: string;
+  item_price?: any;
+  delivery_fee?: any;
+  delivery_fees?: any;
+  total_delivery_fee?: any;
+  prepaid_amount?: any;
+  cod?: any;
+  actual_collect?: any;
+  qr_payload?: string;
+};
+
+const HOTLINE = "09897447744";
+const FOOTER_NOTE = "ဘောင်ချာပါငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ Hotline သို့ဆက်သွယ်တိုင်ကြားနိုင်ပါသည်။";
+
+const MASTER_W_MM = 104;
+const MASTER_H_MM = 156;
+
+const SIZE_PRESETS: Record<SizeKey, { label: string; width: number; height: number; note: string; perPage: number }> = {
+  "4x6": { label: "4 x 6", width: 104, height: 156, note: "Main sticker", perPage: 1 },
+  "4x3": { label: "4 x 3", width: 104, height: 78, note: "Half sticker", perPage: 2 },
+  "4x2": { label: "4 x 2", width: 104, height: 52, note: "3 labels / page", perPage: 3 },
+  A5: { label: "A5", width: 148, height: 105, note: "2 labels / page", perPage: 2 },
+  A4: { label: "A4", width: 105, height: 148.5, note: "4 labels / page", perPage: 4 },
+};
+
+function n(value: any) {
+  const parsed = Number(String(value ?? "").replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function money(value: any) {
+  return n(value).toLocaleString("en-US");
+}
+
+function text(...values: any[]) {
+  for (const value of values) {
+    const s = String(value ?? "").trim();
+    if (
+      s &&
+      s !== "-" &&
+      s.toLowerCase() !== "null" &&
+      s.toLowerCase() !== "undefined" &&
+      s.toLowerCase() !== "multiline text"
+    ) {
+      return s;
+    }
+  }
+  return "";
+}
+
+function safeKey(value: string) {
+  return value.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+function makeQrUrl(payload: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(payload)}`;
+}
+
+function normalized(row: WaybillRow) {
+  const waybill = text(row.waybill_no, row.invoice_no, "YGN119874YGN");
+  const merchant = text(row.merchant, row.merchant_name, row.merchant_code);
+  const recipient = text(row.recipient, row.recipient_name, row.customer_name, row.consignee_name, row.receiver_name);
+  const phone = text(row.phone, row.contact_no, row.recipient_phone, row.customer_phone, row.receiver_phone);
+  const township = text(row.township, row.township_mm, row.destination_township, row.receiver_township);
+  const address = text(row.address, row.recipient_address, row.delivery_address, row.customer_address, row.consignee_address, row.receiver_address);
+  const remarks = text(row.remarks, row.remark);
+  const itemPrice = n(row.item_price);
+  const deliveryFee = n(row.total_delivery_fee, row.delivery_fee, row.delivery_fees);
+  const prepaid = n(row.prepaid_amount);
+  const cod = n(row.cod, row.actual_collect) || Math.max(0, itemPrice + deliveryFee - prepaid);
+
+  const qrPayload =
+    row.qr_payload ||
+    JSON.stringify({
+      waybill_no: waybill,
+      pickup_id: row.pickup_id || "",
+      merchant,
+      recipient,
+      phone,
+      township,
+      address,
+      amount: cod,
+    });
+
+  return {
+    waybill,
+    merchant,
+    recipient,
+    phone,
+    township,
+    address,
+    remarks,
+    itemPrice,
+    deliveryFee,
+    prepaid,
+    cod,
+    qrPayload,
+  };
+}
+
+function Logo() {
+  return (
+    <div className="be-logo">
+      <img src="/logo.png" alt="BRITIUM EXPRESS" />
+    </div>
+  );
+}
+
+function MasterWaybill({ row }: { row: WaybillRow }) {
+  const r = normalized(row);
+  const qr = makeQrUrl(r.qrPayload);
+
+  return (
+    <div className="be-master-waybill">
+      <section className="be-head">
+        <div className="be-head-left">
+          <Logo />
+          <div className="be-brand">
+            <div className="be-title">BRITIUM EXPRESS</div>
+            <div className="be-subtitle">DELIVERY SERVICE</div>
+            <div className="be-hotline-label">HotLine:</div>
+            <div className="be-hotline-number">{HOTLINE}</div>
+          </div>
+        </div>
+
+        <div className="be-qr-block">
+          <div className="be-waybill-no-top">{r.waybill}</div>
+          <img className="be-qr" src={qr} alt={r.waybill} />
+          <div className="be-waybill-no-bottom">{r.waybill}</div>
+        </div>
+      </section>
+
+      <section className="be-merchant-row">
+        <span className="be-label">Merchant :</span>
+        <span>{r.merchant}</span>
+      </section>
+
+      <section className="be-recipient">
+        <div className="be-recipient-line">
+          <span className="be-label">Recipient :</span>
+          <span className="be-recipient-name">{r.recipient || "-"}</span>
+          {r.township ? <span className="be-township"> {r.township}</span> : null}
+        </div>
+
+        {r.phone ? <div className="be-phone">{r.phone}</div> : null}
+
+        <div className="be-address">{r.address || "-"}</div>
+      </section>
+
+      <section className="be-remarks">
+        <span className="be-label">Remarks :</span>
+        <span>{r.remarks}</span>
+      </section>
+
+      <section className="be-money-section">
+        <div className="be-money-left">
+          <div><span>Item Price :</span><b>{money(r.itemPrice)}</b></div>
+          <div><span>Delivery Fees :</span><b>{money(r.deliveryFee)}</b></div>
+          <div><span>Prepaid Amount :</span><b>{money(r.prepaid)}</b></div>
+        </div>
+
+        <div className="be-cod-box">
+          <div className="be-cod-head">
+            <b>COD</b>
+            <b>MMK</b>
+          </div>
+          <div className="be-cod-amount">{money(r.cod)}</div>
+        </div>
+      </section>
+
+      <section className="be-footer">
+        <b>{FOOTER_NOTE}</b>
+        <br />
+        <b>Hotline: {HOTLINE}</b>
+      </section>
+    </div>
+  );
+}
+
+function WaybillSticker({ row, sizeKey }: { row: WaybillRow; sizeKey: SizeKey }) {
+  const preset = SIZE_PRESETS[sizeKey];
+  const sx = preset.width / MASTER_W_MM;
+  const sy = preset.height / MASTER_H_MM;
+
+  return (
+    <div
+      className="be-frame"
+      style={{
+        width: `${preset.width}mm`,
+        height: `${preset.height}mm`,
+      }}
+    >
+      <div
+        className="be-scaled-master"
+        style={{
+          transform: `scale(${sx}, ${sy})`,
+        }}
+      >
+        <MasterWaybill row={row} />
+      </div>
+    </div>
+  );
+}
+
+function mapRow(row: any, index: number): WaybillRow {
+  return {
+    waybill_no:
+      text(row.waybill_no, row.delivery_way_id, row.delivery_way_no, row.invoice_no, row.parcel_no) ||
+      `YGN${String(index + 1).padStart(6, "0")}YGN`,
+    pickup_id: row.pickup_id,
+    invoice_no: row.invoice_no,
+    merchant: text(row.merchant, row.merchant_name, row.merchant_code, row.sender_name),
+    merchant_name: row.merchant_name,
+    merchant_code: row.merchant_code,
+    recipient: text(row.recipient, row.recipient_name, row.customer_name, row.consignee_name, row.receiver_name),
+    recipient_name: row.recipient_name,
+    customer_name: row.customer_name,
+    consignee_name: row.consignee_name,
+    receiver_name: row.receiver_name,
+    phone: text(row.phone, row.contact_no, row.recipient_phone, row.customer_phone, row.receiver_phone),
+    contact_no: row.contact_no,
+    recipient_phone: row.recipient_phone,
+    customer_phone: row.customer_phone,
+    receiver_phone: row.receiver_phone,
+    township: text(row.township, row.township_mm, row.destination_township, row.receiver_township),
+    township_mm: row.township_mm,
+    destination_township: row.destination_township,
+    receiver_township: row.receiver_township,
+    address: text(row.address, row.recipient_address, row.delivery_address, row.customer_address, row.consignee_address, row.receiver_address),
+    recipient_address: row.recipient_address,
+    delivery_address: row.delivery_address,
+    customer_address: row.customer_address,
+    consignee_address: row.consignee_address,
+    receiver_address: row.receiver_address,
+    remark: row.remark,
+    remarks: row.remarks,
+    item_price: row.item_price,
+    delivery_fee: row.delivery_fee,
+    delivery_fees: row.delivery_fees,
+    total_delivery_fee: row.total_delivery_fee,
+    prepaid_amount: row.prepaid_amount,
+    cod: row.cod,
+    actual_collect: row.actual_collect,
+    qr_payload: row.qr_payload,
+  };
+}
+
+async function loadRows(): Promise<WaybillRow[]> {
+  const rpcNames = [
+    "be_data_entry_waybill_print_rows",
+    "be_waybill_print_rows",
+    "be_data_entry_load_registration_lines_v5",
+  ];
+
+  for (const rpc of rpcNames) {
+    try {
+      const { data, error } = await (supabase as any).rpc(rpc, {});
+      const rows = Array.isArray(data) ? data : Array.isArray(data?.rows) ? data.rows : [];
+      if (!error && rows.length) return rows.map(mapRow);
+    } catch {}
+  }
+
+  const tables = [
+    "be_data_entry_registration_lines",
+    "be_portal_waybills",
+    "be_waybills",
+    "be_portal_pickup_requests",
+  ];
+
+  for (const table of tables) {
+    try {
+      const { data, error } = await supabase.from(table).select("*").limit(500);
+      if (!error && Array.isArray(data) && data.length) {
+        return data.map(mapRow);
+      }
+    } catch {}
+  }
+
+  return [
+    {
+      waybill_no: "YGN119874YGN",
+      merchant: "",
+      recipient: "N Okkalapa",
+      phone: "09792970776, 09792970776",
+      township: "မြောက်ဥက္ကလာပ",
+      address: "လိပ်စာအချက်အလက် မရရှိသေးပါ",
+      remarks: "",
+      item_price: 0,
+      delivery_fee: 0,
+      prepaid_amount: 0,
+      cod: 0,
+    },
+  ];
+}
+
+function chunkRows<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+export default function BritiumExactWaybillPrintStudioV15() {
+  const [rows, setRows] = useState<WaybillRow[]>([]);
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [sizeKey, setSizeKey] = useState<SizeKey>("4x6");
+  const [activeWaybill, setActiveWaybill] = useState("");
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const data = await loadRows();
+      setRows(data);
+      setActiveWaybill((current) => current || normalized(data[0] || ({} as WaybillRow)).waybill);
+      const first: Record<string, boolean> = {};
+      if (data[0]) first[normalized(data[0]).waybill] = true;
+      setSelected((current) => (Object.keys(current).length ? current : first));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((row) => {
+      const r = normalized(row);
+      const hay = `${r.waybill} ${r.merchant} ${r.recipient} ${r.phone} ${r.township} ${r.address}`.toLowerCase();
+      return !q || hay.includes(q);
+    });
+  }, [rows, query]);
+
+  const activeRow = rows.find((row) => normalized(row).waybill === activeWaybill) || rows[0];
+  const selectedRows = rows.filter((row) => selected[normalized(row).waybill]);
+
+  function toggle(row: WaybillRow) {
+    const id = normalized(row).waybill;
+    setSelected((current) => ({ ...current, [id]: !current[id] }));
+    setActiveWaybill(id);
+  }
+
+  function selectAllVisible() {
+    const next = { ...selected };
+    filtered.forEach((row) => {
+      next[normalized(row).waybill] = true;
+    });
+    setSelected(next);
+  }
+
+  function clearAll() {
+    setSelected({});
+  }
+
+  function previewHtml(row: WaybillRow) {
+    const r = normalized(row);
+    return document.querySelector(`[data-waybill-preview="${safeKey(r.waybill)}"]`)?.innerHTML || "";
+  }
+
+  function printRows(rowsToPrint: WaybillRow[]) {
+    const preset = SIZE_PRESETS[sizeKey];
+    const rowsForPrint = rowsToPrint.length ? rowsToPrint : filtered;
+    const groups = chunkRows(rowsForPrint, preset.perPage);
+
+    const html = groups
+      .map((group) => {
+        const groupHtml = group
+          .map(
+            (row) =>
+              `<div class="be-print-item" style="width:${preset.width}mm;height:${preset.height}mm">${previewHtml(row)}</div>`,
+          )
+          .join("");
+        return `<div class="print-page" data-size="${sizeKey}">${groupHtml}</div>`;
+      })
+      .join("");
+
+    const style = document.getElementById("be-waybill-v19-styles")?.innerHTML || "";
+    const win = window.open("", "_blank", "width=900,height=700");
+    if (!win) return;
+
+    win.document.write(`
+      <html>
+        <head>
+          <title>Britium Waybill Print</title>
+          <style>${style}</style>
+          <style>
+            body{margin:0;background:white;}
+            .print-page{page-break-after:always;display:flex;justify-content:flex-start;align-items:flex-start;gap:0;flex-wrap:wrap;padding:0;}
+            .print-page[data-size="4x3"],
+            .print-page[data-size="4x2"]{width:104mm;flex-direction:column;flex-wrap:nowrap;}
+            .print-page[data-size="A5"]{width:148mm;min-height:210mm;}
+            .print-page[data-size="A4"]{width:210mm;min-height:297mm;}
+            .be-print-item{overflow:hidden;margin:0;}
+            .be-print-item .be-frame{box-shadow:none!important;}
+            @page{size:auto;margin:0;}
+          </style>
+        </head>
+        <body>${html}</body>
+      </html>
+    `);
+    win.document.close();
+    setTimeout(() => {
+      win.focus();
+      win.print();
+    }, 250);
+  }
+
+  return (
+    <main className="min-h-screen bg-[#061525] p-4 text-slate-100 md:p-6">
+      <style id="be-waybill-v19-styles">{`
+        .be-frame{
+          position:relative;
+          overflow:hidden;
+          background:white;
+          border:1px solid #9b9b9b;
+          box-shadow:0 18px 60px rgba(0,0,0,.25);
+          color:#111;
+        }
+        .be-scaled-master{
+          position:absolute;
+          left:0;
+          top:0;
+          width:${MASTER_W_MM}mm;
+          height:${MASTER_H_MM}mm;
+          transform-origin:left top;
+        }
+        .be-master-waybill{
+          width:${MASTER_W_MM}mm;
+          height:${MASTER_H_MM}mm;
+          background:white;
+          color:#111;
+          font-family:Arial, Helvetica, sans-serif;
+          overflow:hidden;
+          line-height:1.2;
+          display:flex;
+          flex-direction:column;
+        }
+        .be-master-waybill *{box-sizing:border-box;}
+        .be-head{height:29mm;display:flex;justify-content:space-between;border-bottom:1px solid #888;padding:2mm 2.3mm 1.5mm 2.3mm;flex:0 0 auto;}
+        .be-head-left{display:flex;gap:2.5mm;align-items:flex-start;min-width:0;}
+        .be-logo{width:17.5mm;height:17.5mm;border-radius:50%;display:flex;align-items:center;justify-content:center;flex:0 0 auto;overflow:hidden;}
+        .be-logo img{width:100%;height:100%;object-fit:contain;display:block;}
+        .be-brand{min-width:0;}
+        .be-title{font-weight:900;font-size:11.5pt;letter-spacing:.1px;white-space:nowrap;}
+        .be-subtitle{font-weight:900;font-size:10.5pt;margin-top:1.2mm;white-space:nowrap;}
+        .be-hotline-label{font-weight:700;font-size:8.5pt;margin-top:1.7mm;}
+        .be-hotline-number{font-weight:900;font-size:12pt;color:#e00000;letter-spacing:1.2px;margin-top:.6mm;}
+        .be-qr-block{width:25mm;text-align:center;margin-left:1mm;flex:0 0 auto;}
+        .be-waybill-no-top,.be-waybill-no-bottom{font-size:6.5pt;font-weight:700;line-height:1.05;word-break:break-all;}
+        .be-qr{width:21.5mm;height:21.5mm;object-fit:contain;display:block;margin:.5mm auto;}
+        .be-merchant-row{height:14mm;border-bottom:1px solid #888;padding:4.5mm 3mm;font-size:8.5pt;flex:0 0 auto;}
+        .be-label{font-weight:900;margin-right:2mm;}
+        .be-recipient{height:57mm;border-bottom:1px solid #888;padding:4mm 3mm;font-size:8.5pt;overflow:hidden;flex:0 0 auto;}
+        .be-recipient-line{white-space:normal;}
+        .be-recipient-name{font-weight:500;margin-left:1mm;}
+        .be-township{font-weight:500;margin-left:2mm;}
+        .be-phone{text-align:center;font-size:10pt;margin-top:6mm;white-space:normal;word-break:break-word;}
+        .be-address{text-align:center;font-size:9pt;margin:5mm auto 0 auto;max-width:88mm;white-space:pre-line;word-break:break-word;line-height:1.35;}
+        .be-remarks{height:13mm;border-bottom:1px solid #888;padding:4mm 3mm;font-size:8.5pt;overflow:hidden;flex:0 0 auto;}
+        .be-money-section{height:31mm;border-bottom:1px solid #888;display:flex;align-items:center;justify-content:space-between;padding:2.5mm 1.5mm 2.5mm 8mm;flex:0 0 auto;}
+        .be-money-left{font-size:8.5pt;line-height:1.9;width:52%;}
+        .be-money-left div{display:flex;justify-content:space-between;gap:2mm;}
+        .be-money-left b{font-weight:500;min-width:28mm;text-align:left;}
+        .be-cod-box{width:44mm;height:23mm;border:1px solid #777;border-radius:5mm;background:linear-gradient(#f2f2f2,#dcdcdc);box-shadow:inset 0 2px 3px rgba(255,255,255,.8), 0 1px 2px rgba(0,0,0,.3);padding:3mm 4mm;}
+        .be-cod-head{display:flex;justify-content:space-between;font-size:9pt;}
+        .be-cod-amount{font-size:18pt;margin-top:3mm;text-align:left;letter-spacing:.5px;}
+        .be-footer{height:12mm;padding:2mm 3mm;font-size:8.4pt;line-height:1.15;overflow:hidden;flex:0 0 auto;}
+        @media print{
+          body{background:white!important;}
+          .no-print{display:none!important;}
+          .be-frame{box-shadow:none!important;}
+        }
+      `}</style>
+
+      <div className="mx-auto max-w-7xl space-y-4">
+        <section className="no-print rounded-3xl border border-sky-900 bg-[#0b2940] p-5 shadow">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.35em] text-amber-400">PRINT AND DOCUMENT STUDIO</p>
+              <h1 className="mt-2 text-xl font-black">Exact Waybill Studio v19</h1>
+              <p className="mt-1 text-sm text-sky-200">One master waybill design scaled into every size, no overlapping layout, individual/selected/all printing.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => history.back()} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black"><ArrowLeft className="mr-1 inline h-4 w-4" />Back</button>
+              <button onClick={refresh} className="rounded-xl bg-slate-950 px-4 py-2 text-sm font-black"><RefreshCw className={`mr-1 inline h-4 w-4 ${loading ? "animate-spin" : ""}`} />Refresh</button>
+              <button onClick={() => activeRow && printRows([activeRow])} className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-black text-slate-950"><Printer className="mr-1 inline h-4 w-4" />Print Individual</button>
+              <button onClick={() => printRows(selectedRows.length ? selectedRows : filtered)} className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-black text-slate-950"><Printer className="mr-1 inline h-4 w-4" />Print Selected / Batch</button>
+              <button onClick={() => printRows(filtered)} className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-black text-slate-950"><Printer className="mr-1 inline h-4 w-4" />Print All</button>
+            </div>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-[320px_1fr]">
+          <aside className="no-print rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-sky-300" />
+              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search waybill, recipient, phone..." className="h-11 w-full rounded-xl border border-sky-900 bg-slate-950 pl-10 pr-3 text-sm text-white outline-none" />
+            </div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {(Object.keys(SIZE_PRESETS) as SizeKey[]).map((key) => (
+                <button key={key} onClick={() => setSizeKey(key)} className={`rounded-xl border px-3 py-3 text-sm font-black ${sizeKey === key ? "border-amber-400 bg-amber-400/15 text-amber-300" : "border-sky-900 bg-slate-950 text-sky-200"}`}>
+                  {SIZE_PRESETS[key].label}
+                  <span className="block text-[11px] font-semibold opacity-80">{SIZE_PRESETS[key].note}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-3 flex gap-2">
+              <button onClick={selectAllVisible} className="flex-1 rounded-xl border border-sky-700 px-3 py-2 text-xs font-black text-sky-100">Select Visible</button>
+              <button onClick={clearAll} className="flex-1 rounded-xl border border-sky-700 px-3 py-2 text-xs font-black text-sky-100">Clear</button>
+            </div>
+
+            <div className="mt-4 max-h-[60vh] space-y-2 overflow-auto pr-1">
+              {filtered.map((row) => {
+                const r = normalized(row);
+                const checked = !!selected[r.waybill];
+                return (
+                  <button
+                    type="button"
+                    key={r.waybill}
+                    onClick={() => toggle(row)}
+                    className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left ${activeWaybill === r.waybill ? "border-sky-400 bg-sky-500/15" : "border-sky-900 bg-slate-950/80"}`}
+                  >
+                    {checked ? <CheckSquare className="h-5 w-5 text-amber-300" /> : <Square className="h-5 w-5 text-sky-300" />}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-amber-300">{r.waybill}</p>
+                      <p className="truncate text-xs text-sky-200">{r.recipient || "Recipient -"} · {r.phone}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
+
+          <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
+            <div className="no-print mb-3 flex justify-between border-b border-sky-900 pb-3">
+              <div>
+                <h2 className="font-black">Live Preview</h2>
+                <p className="text-xs text-sky-200">
+                  Size: {SIZE_PRESETS[sizeKey].label}. Selected: {selectedRows.length}. Per page: {SIZE_PRESETS[sizeKey].perPage}.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex min-h-[650px] items-start justify-center overflow-auto rounded-2xl bg-[linear-gradient(45deg,#082036_25%,transparent_25%),linear-gradient(-45deg,#082036_25%,transparent_25%),linear-gradient(45deg,transparent_75%,#082036_75%),linear-gradient(-45deg,transparent_75%,#082036_75%)] bg-[length:24px_24px] bg-[position:0_0,0_12px,12px_-12px,-12px_0] p-8">
+              {activeRow ? (
+                <div data-waybill-preview={safeKey(normalized(activeRow).waybill)}>
+                  <WaybillSticker row={activeRow} sizeKey={sizeKey} />
+                </div>
+              ) : (
+                <div className="text-sky-200">No waybill rows found.</div>
+              )}
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+  );
+}

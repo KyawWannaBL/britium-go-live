@@ -1,0 +1,155 @@
+// @ts-nocheck
+import React from "react";
+import { HashRouter, Navigate, Route, Routes, useNavigate } from "react-router-dom";
+import LoginPage from "./pages/LoginPage";
+import LiveDispatchWayplanBoard from "./pages/LiveDispatchWayplanBoard";
+
+function hasSession() {
+  try {
+    return (
+      localStorage.getItem("be_user_authenticated") === "true" ||
+      localStorage.getItem("be_session_ok") === "true" ||
+      !!localStorage.getItem("be_user_access_profile")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function logout() {
+  localStorage.clear();
+  sessionStorage.clear();
+  window.location.href = "/#/login";
+}
+
+function Dashboard() {
+  const navigate = useNavigate();
+
+  const cards = [
+    ["Dashboard", "/dashboard"],
+    ["Create Delivery", "/create-delivery"],
+    ["CS Portal", "/cs"],
+    ["Way Management", "/way-management"],
+    ["Supervisor Hub", "/supervisor"],
+    ["Pickup Assignment", "/pickup-assignment"],
+    ["Data Entry", "/data-entry"],
+    ["Warehouse Ops", "/warehouse"],
+    ["Dispatch Center", "/dispatch"],
+    ["Branch Office", "/branch"],
+    ["Finance Portal", "/finance"],
+    ["COD Settlement", "/cod-settlement"],
+    ["Waybill & Invoice", "/waybill-invoice"],
+    ["Merchant Portal", "/merchant"],
+    ["Customer Portal", "/customer"],
+    ["Master Data", "/master-data"],
+    ["Exceptions", "/exceptions"],
+    ["Reporting", "/reporting"],
+    ["Tariff", "/tariff"],
+    ["Settings", "/settings"],
+    ["Profile", "/profile"]
+  ];
+
+  return (
+    <main style={{ minHeight: "100vh", background: "#061524", color: "#eef8ff", fontFamily: "Inter, system-ui, sans-serif", padding: 24 }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, marginBottom: 24 }}>
+          <div>
+            <div style={{ color: "#f59e0b", fontWeight: 900, letterSpacing: 2, fontSize: 12 }}>BRITIUM EXPRESS</div>
+            <h1 style={{ margin: "6px 0", fontSize: 34 }}>Enterprise Portal UAT</h1>
+            <p style={{ color: "#a8c4da", margin: 0 }}>
+              Logged in as {localStorage.getItem("be_user_email") || "sai@britiumexpress.com"} · {localStorage.getItem("be_user_role") || "superadmin"} · {localStorage.getItem("be_branch_code") || "HQ"}
+            </p>
+          </div>
+
+          <button onClick={logout} style={{ border: 0, borderRadius: 12, padding: "12px 16px", background: "#f97316", color: "#fff", fontWeight: 900, cursor: "pointer" }}>
+            Sign out
+          </button>
+        </header>
+
+        <section style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(220px,1fr))", gap: 14 }}>
+          {cards.map(([label, path]) => (
+            <button
+              key={path}
+              onClick={() => navigate(path)}
+              style={{
+                textAlign: "left",
+                border: "1px solid rgba(56,189,248,.28)",
+                background: "rgba(8,20,36,.86)",
+                color: "#eef8ff",
+                borderRadius: 18,
+                padding: 18,
+                minHeight: 90,
+                cursor: "pointer",
+                boxShadow: "0 18px 55px rgba(0,0,0,.22)"
+              }}
+            >
+              <div style={{ color: "#fbbf24", fontWeight: 900, fontSize: 16 }}>{label}</div>
+              <div style={{ color: "#93c5fd", marginTop: 8, fontSize: 13 }}>{path}</div>
+            </button>
+          ))}
+        </section>
+
+        <section style={{ marginTop: 24, padding: 18, border: "1px solid rgba(251,191,36,.35)", background: "rgba(251,191,36,.08)", borderRadius: 18, color: "#fbbf24", fontWeight: 800 }}>
+          Emergency shell is active. The login/dashboard loop is stopped. Reconnect full operational pages after this shell is confirmed stable.
+        </section>
+      </div>
+    </main>
+  );
+}
+
+function Placeholder({ title }: { title: string }) {
+  return (
+    <main style={{ minHeight: "100vh", background: "#061524", color: "#eef8ff", fontFamily: "Inter, system-ui, sans-serif", padding: 24 }}>
+      <button onClick={() => (location.href = "/#/dashboard")} style={{ border: 0, borderRadius: 12, padding: "10px 14px", fontWeight: 900, cursor: "pointer" }}>Back to Dashboard</button>
+      <h1 style={{ color: "#fbbf24", marginTop: 24 }}>{title}</h1>
+      <p style={{ color: "#a8c4da" }}>Screen placeholder is active in emergency UAT shell. Full page wiring can be restored one screen at a time.</p>
+    </main>
+  );
+}
+
+function Private({ children }: { children: any }) {
+  if (!hasSession()) return <Navigate to="/login" replace />;
+  return children;
+}
+
+export default function App() {
+  const routes = [
+    ["/create-delivery", "Create Delivery"],
+    ["/cs", "CS Portal"],
+    ["/way-management", "Way Management"],
+    ["/supervisor", "Supervisor Hub"],
+    ["/pickup-assignment", "Pickup Assignment"],
+    ["/data-entry", "Data Entry"],
+    ["/warehouse", "Warehouse Operations"],
+    ["/dispatch", "Dispatch Center"],
+    ["/branch", "Branch Office"],
+    ["/finance", "Finance Portal"],
+    ["/cod-settlement", "COD Settlement"],
+    ["/waybill-invoice", "Waybill & Invoice"],
+    ["/merchant", "Merchant Portal"],
+    ["/customer", "Customer Portal"],
+    ["/master-data", "Master Data"],
+    ["/exceptions", "Exceptions"],
+    ["/reporting", "Reporting"],
+    ["/tariff", "Tariff"],
+    ["/settings", "Settings"],
+    ["/profile", "Profile"]
+  ];
+
+  return (
+    <HashRouter>
+      <Routes>
+        <Route path="/" element={hasSession() ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/dashboard" element={<Private><Dashboard /></Private>} />
+
+        {routes.map(([path, title]) => (
+          <Route key={path} path={path} element={<Private><Placeholder title={title} /></Private>} />
+        ))}
+
+        <Route path="/live-dispatch-wayplan" element={<LiveDispatchWayplanBoard />} />
+          <Route path="*" element={hasSession() ? <Navigate to="/dashboard" replace /> : <Navigate to="/login" replace />} />
+      </Routes>
+    </HashRouter>
+  );
+}

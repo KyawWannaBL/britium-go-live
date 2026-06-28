@@ -1,0 +1,13 @@
+node_modules/
+dist/
+build/
+*.apk
+*.mp4
+*.zip
+.*.bak
+.env
+.env*
+backups/
+.env.admin
+.env.production
+.env.uat

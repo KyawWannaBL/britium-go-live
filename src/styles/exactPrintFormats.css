@@ -1,0 +1,467 @@
+.be-exact-print-page {
+  min-height: 100%;
+  color: #eef8ff;
+}
+
+.be-print-toolbar {
+  border: 1px solid #1a3a5c;
+  background: #0b2236;
+  border-radius: 18px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+
+.be-print-toolbar h1 {
+  color: #f6b84b;
+  letter-spacing: .16em;
+  font-size: 15px;
+  text-transform: uppercase;
+  margin: 0 0 6px;
+}
+
+.be-print-toolbar p {
+  color: #9fc3dc;
+  margin: 0;
+}
+
+.be-print-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.be-print-controls input,
+.be-print-controls select {
+  background: #061524;
+  border: 1px solid #1a3a5c;
+  border-radius: 10px;
+  color: #eef8ff;
+  padding: 10px 12px;
+  min-width: 180px;
+  outline: none;
+}
+
+.be-print-btn {
+  background: #1a3a5c;
+  color: #eef8ff;
+  border: 1px solid #2b5b85;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.be-print-btn.primary {
+  background: #f6b84b;
+  color: #061524;
+  border-color: #f6b84b;
+}
+
+.be-print-btn.green {
+  background: #11c784;
+  color: #061524;
+  border-color: #11c784;
+}
+
+.be-print-btn:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.be-print-table-wrap {
+  border: 1px solid #1a3a5c;
+  border-radius: 16px;
+  overflow: auto;
+  background: #071a2b;
+}
+
+.be-print-table {
+  width: 100%;
+  min-width: 1200px;
+  border-collapse: collapse;
+}
+
+.be-print-table th {
+  background: #0b2236;
+  color: #9fc3dc;
+  text-align: left;
+  font-size: 12px;
+  padding: 12px;
+  border-bottom: 1px solid #1a3a5c;
+}
+
+.be-print-table td {
+  color: #eef8ff;
+  padding: 12px;
+  border-bottom: 1px solid #102b44;
+  font-size: 13px;
+}
+
+.be-line-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.be-print-canvas {
+  display: none;
+}
+
+/* Waybill label layout matching supplied sticker reference */
+.be-waybill-label {
+  width: 100mm;
+  height: 150mm;
+  box-sizing: border-box;
+  background: white;
+  color: #111;
+  border: 1px solid #111;
+  font-family: Arial, "Myanmar Text", sans-serif;
+  page-break-after: always;
+  overflow: hidden;
+}
+
+.wb-top {
+  display: grid;
+  grid-template-columns: 18mm 1fr 34mm;
+  gap: 3mm;
+  align-items: start;
+  padding: 4mm;
+  border-bottom: 1px solid #777;
+}
+
+.wb-logo {
+  width: 16mm;
+  height: 16mm;
+  object-fit: contain;
+}
+
+.wb-brand-title {
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.05;
+}
+
+.wb-brand-sub {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.05;
+}
+
+.wb-hotline {
+  font-size: 10px;
+  margin-top: 1mm;
+}
+
+.wb-qr-box {
+  text-align: center;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.wb-qr {
+  width: 27mm;
+  height: 27mm;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto 1mm;
+}
+
+.wb-merchant {
+  min-height: 18mm;
+  padding: 2.5mm 4mm;
+  border-bottom: 1px solid #777;
+  font-size: 11px;
+}
+
+.wb-recipient {
+  min-height: 53mm;
+  padding: 3mm 4mm;
+  border-bottom: 1px solid #777;
+}
+
+.wb-label {
+  font-size: 11px;
+  margin-right: 3mm;
+}
+
+.wb-recipient-name {
+  display: inline-block;
+  font-size: 17px;
+  font-weight: 800;
+  margin-bottom: 4mm;
+}
+
+.wb-phone {
+  font-size: 15px;
+  margin: 0 0 4mm 18mm;
+}
+
+.wb-address {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin-left: 18mm;
+}
+
+.wb-remarks {
+  min-height: 10mm;
+  padding: 2.5mm 4mm;
+  border-bottom: 1px solid #777;
+  font-size: 11px;
+}
+
+.wb-bottom {
+  display: grid;
+  grid-template-columns: 53mm 1fr;
+  gap: 2mm;
+  padding: 3mm 4mm 2mm;
+  border-bottom: 1px solid #777;
+}
+
+.wb-money-lines {
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.wb-money-lines .name {
+  display: inline-block;
+  width: 28mm;
+  text-align: right;
+  margin-right: 3mm;
+  color: #333;
+}
+
+.wb-cod-box {
+  border: 1px solid #555;
+  border-radius: 5mm;
+  padding: 3mm;
+  background: linear-gradient(#f8f8f8, #ddd);
+}
+
+.wb-cod-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.wb-cod-amount {
+  font-size: 24px;
+  letter-spacing: .04em;
+  margin-top: 2mm;
+}
+
+.wb-footer-mm {
+  padding: 2mm 3mm;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 900;
+}
+
+/* Settlement invoice matching supplied A4 reference */
+.be-invoice-sheet {
+  width: 210mm;
+  min-height: 297mm;
+  background: #fff;
+  color: #333;
+  margin: 0 auto 20px;
+  padding: 16mm;
+  box-sizing: border-box;
+  font-family: "Segoe UI", Arial, sans-serif;
+  page-break-after: always;
+}
+
+.inv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 3px solid #003366;
+  padding-bottom: 18px;
+  margin-bottom: 28px;
+}
+
+.inv-logo-box {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.inv-logo-box img {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+.inv-company-details h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #003366;
+}
+
+.inv-company-details p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.inv-meta {
+  text-align: right;
+}
+
+.inv-meta h2 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  color: #333;
+  letter-spacing: 2px;
+}
+
+.inv-meta p {
+  margin: 4px 0;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.inv-parties {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.party-box {
+  width: 45%;
+}
+
+.party-box h3 {
+  font-size: 16px;
+  color: #003366;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.party-box p {
+  margin: 5px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 30px;
+  font-size: 13px;
+}
+
+.invoice-table th {
+  background-color: #003366;
+  color: white;
+  text-align: left;
+  padding: 12px;
+  font-weight: bold;
+}
+
+.invoice-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.text-right { text-align: right; }
+.text-center { text-align: center; }
+
+.invoice-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.inv-summary {
+  width: 50%;
+  float: right;
+  margin-bottom: 50px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.summary-row.total {
+  font-weight: bold;
+  font-size: 18px;
+  color: #003366;
+  border-bottom: 2px solid #003366;
+  border-top: 2px solid #003366;
+  padding: 12px 0;
+  background: #f4f8fc;
+}
+
+.clear { clear: both; }
+
+.inv-footer {
+  margin-top: 50px;
+  text-align: center;
+  font-size: 12px;
+  color: #777;
+  border-top: 1px solid #ddd;
+  padding-top: 20px;
+}
+
+.signatures {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 60px;
+  margin-bottom: 20px;
+}
+
+.sig-line {
+  width: 250px;
+  border-top: 1px solid #000;
+  text-align: center;
+  padding-top: 8px;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+@media print {
+  body * {
+    visibility: hidden !important;
+  }
+
+  body.be-print-waybill .be-waybill-canvas,
+  body.be-print-waybill .be-waybill-canvas *,
+  body.be-print-invoice .be-invoice-canvas,
+  body.be-print-invoice .be-invoice-canvas * {
+    visibility: visible !important;
+  }
+
+  body.be-print-waybill .be-waybill-canvas,
+  body.be-print-invoice .be-invoice-canvas {
+    display: block !important;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    background: white;
+  }
+
+  body.be-print-waybill,
+  body.be-print-invoice {
+    background: white !important;
+  }
+
+  .be-waybill-label {
+    margin: 0;
+  }
+
+  .be-invoice-sheet {
+    margin: 0;
+    box-shadow: none;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}

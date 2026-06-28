@@ -1,0 +1,515 @@
+// @ts-nocheck
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  Copy,
+  Download,
+  FileText,
+  Loader2,
+  Printer,
+  QrCode,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
+import "../styles/waybillStickerExact.css";
+
+type PaperSize = "A4" | "A5" | "4x6" | "4x3" | "2x3";
+
+type WaybillRow = {
+  id: string;
+  waybill_no: string;
+  tracking_no: string;
+  pickup_id?: string;
+  invoice_no?: string;
+  merchant_code?: string;
+  merchant_name?: string;
+  merchant_phone?: string;
+  sender_name?: string;
+  sender_phone?: string;
+  sender_address?: string;
+  recipient_name?: string;
+  recipient_phone?: string;
+  recipient_phone_2?: string;
+  recipient_address?: string;
+  delivery_address?: string;
+  delivery_township?: string;
+  delivery_city?: string;
+  item_price?: number;
+  delivery_fee?: number;
+  prepaid_amount?: number;
+  cod_amount?: number;
+  parcel_count?: number;
+  weight_kg?: number;
+  remarks?: string;
+  status?: string;
+  created_at?: string;
+};
+
+const DEMO_ROWS: WaybillRow[] = [
+  {
+    id: "demo-1",
+    waybill_no: "YGN119874YGN",
+    tracking_no: "YGN119874YGN",
+    pickup_id: "P0625-BBG-001",
+    invoice_no: "I0625-BBG-001",
+    merchant_code: "BBG",
+    merchant_name: "Baby Genius",
+    merchant_phone: "09 111 222 333",
+    sender_name: "Baby Genius",
+    sender_phone: "09 111 222 333",
+    sender_address: "Hlaing Township, Yangon",
+    recipient_name: "N Okkalapa",
+    recipient_phone: "09792970776",
+    recipient_phone_2: "09792970776",
+    recipient_address: "မြောက်ဥက္ကလာပ",
+    delivery_address: "မြောက်ဥက္ကလာပ\nMultiline Text",
+    delivery_township: "N Okkalapa",
+    delivery_city: "Yangon",
+    item_price: 0,
+    delivery_fee: 0,
+    prepaid_amount: 0,
+    cod_amount: 0,
+    parcel_count: 1,
+    weight_kg: 1,
+    remarks: "",
+    status: "Printed",
+    created_at: new Date().toISOString(),
+  },
+];
+
+const SIZE_OPTIONS: { key: PaperSize; label: string; desc: string }[] = [
+  { key: "4x6", label: "4 × 6", desc: "Sticker exact" },
+  { key: "4x3", label: "4 × 3", desc: "Half sticker" },
+  { key: "2x3", label: "2 × 3", desc: "Small sticker" },
+  { key: "A5", label: "A5", desc: "2 labels/page" },
+  { key: "A4", label: "A4", desc: "4 labels/page" },
+];
+
+function sizeConfig(size: PaperSize) {
+  switch (size) {
+    case "A4":
+      return { page: "A4", labelW: "105mm", labelH: "148.5mm", perPage: 4, previewClass: "a4" };
+    case "A5":
+      return { page: "A5", labelW: "148mm", labelH: "105mm", perPage: 2, previewClass: "a5" };
+    case "4x3":
+      return { page: "4in 3in", labelW: "4in", labelH: "3in", perPage: 1, previewClass: "four-three" };
+    case "2x3":
+      return { page: "2in 3in", labelW: "2in", labelH: "3in", perPage: 1, previewClass: "two-three" };
+    case "4x6":
+    default:
+      return { page: "4in 6in", labelW: "4in", labelH: "6in", perPage: 1, previewClass: "four-six" };
+  }
+}
+
+function readFirst(row: any, names: string[], fallback: any = "") {
+  for (const name of names) {
+    if (row?.[name] !== undefined && row?.[name] !== null && String(row[name]).trim() !== "") return row[name];
+  }
+  return fallback;
+}
+
+function money(n?: number | null) {
+  const value = Number(n || 0);
+  if (!value) return "000,000,000";
+  return value.toLocaleString("en-US").padStart(11, "0");
+}
+
+function cleanText(v: any, fallback = "") {
+  const text = String(v ?? "").trim();
+  return text || fallback;
+}
+
+function normalizeWaybill(row: any, index: number): WaybillRow {
+  const tracking = String(
+    readFirst(row, [
+      "waybill_no",
+      "tracking_no",
+      "deliveryway_id",
+      "delivery_way_id",
+      "way_id",
+      "pickup_id",
+      "pickup_request_id",
+      "id",
+    ], `YGN${String(index + 119874).padStart(6, "0")}YGN`)
+  );
+
+  const township = readFirst(row, ["delivery_township", "township", "recipient_township", "town"], "");
+  const city = readFirst(row, ["delivery_city", "city"], "Yangon");
+  const cod = Number(readFirst(row, ["cod_amount", "cod", "actual_collect"], 0));
+  const deliveryFee = Number(readFirst(row, ["delivery_fee", "total_deli_fee", "deli_fee"], 0));
+  const itemPrice = Number(readFirst(row, ["item_price", "item_value", "price"], 0));
+
+  return {
+    id: String(readFirst(row, ["id"], tracking)),
+    waybill_no: tracking,
+    tracking_no: tracking,
+    pickup_id: readFirst(row, ["pickup_id", "pickup_request_id"], ""),
+    invoice_no: readFirst(row, ["invoice_no", "invoice_id"], ""),
+    merchant_code: readFirst(row, ["merchant_code", "customer_code"], ""),
+    merchant_name: readFirst(row, ["merchant_name", "sender_name", "customer_name", "merchant"], ""),
+    merchant_phone: readFirst(row, ["merchant_phone", "sender_phone", "contact_phone"], ""),
+    sender_name: readFirst(row, ["sender_name", "merchant_name", "customer_name"], ""),
+    sender_phone: readFirst(row, ["sender_phone", "merchant_phone", "contact_phone"], ""),
+    sender_address: readFirst(row, ["sender_address", "pickup_address", "merchant_address"], ""),
+    recipient_name: readFirst(row, ["recipient_name", "receiver_name", "consignee_name"], township || "Recipient"),
+    recipient_phone: readFirst(row, ["recipient_phone", "receiver_phone", "contact_no_1", "phone"], ""),
+    recipient_phone_2: readFirst(row, ["recipient_phone_2", "contact_no_2", "phone_2"], ""),
+    recipient_address: readFirst(row, ["recipient_address", "receiver_address", "address"], ""),
+    delivery_address: readFirst(row, ["delivery_address", "recipient_address", "receiver_address", "address"], ""),
+    delivery_township: township,
+    delivery_city: city,
+    item_price: itemPrice,
+    delivery_fee: deliveryFee,
+    prepaid_amount: Number(readFirst(row, ["prepaid_amount", "prepaid"], 0)),
+    cod_amount: cod || Math.max(itemPrice + deliveryFee, 0),
+    parcel_count: Number(readFirst(row, ["parcel_count", "quantity", "pcs"], 1)),
+    weight_kg: Number(readFirst(row, ["weight_kg", "weight"], 0)),
+    remarks: readFirst(row, ["remarks", "remark", "special_instruction"], ""),
+    status: readFirst(row, ["status"], "Printed"),
+    created_at: readFirst(row, ["created_at", "pickup_date"], ""),
+  };
+}
+
+function qrPayload(row: WaybillRow) {
+  return JSON.stringify({
+    waybill_no: row.waybill_no,
+    pickup_id: row.pickup_id,
+    invoice_no: row.invoice_no,
+    merchant: row.merchant_name || row.merchant_code,
+    recipient: row.recipient_name,
+    phone: [row.recipient_phone, row.recipient_phone_2].filter(Boolean).join(", "),
+    township: row.delivery_township,
+    address: row.delivery_address || row.recipient_address,
+    cod_amount: Number(row.cod_amount || 0),
+    delivery_fee: Number(row.delivery_fee || 0),
+    item_price: Number(row.item_price || 0),
+  });
+}
+
+function qrUrl(row: WaybillRow) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(qrPayload(row))}`;
+}
+
+function fallbackQrUrl(row: WaybillRow) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(row.waybill_no)}`;
+}
+
+function phones(row: WaybillRow) {
+  return [row.recipient_phone, row.recipient_phone_2].filter(Boolean).join(", ");
+}
+
+function merchantLine(row: WaybillRow) {
+  const parts = [row.merchant_name || row.merchant_code, row.merchant_phone].filter(Boolean);
+  return parts.join(" / ");
+}
+
+function addressLines(row: WaybillRow) {
+  const base = cleanText(row.delivery_address || row.recipient_address || row.delivery_township || "");
+  return base.split(/\n+/).filter(Boolean);
+}
+
+function WaybillSticker({ row, paper }: { row: WaybillRow; paper: PaperSize }) {
+  return (
+    <article className={`be-sticker be-sticker-${paper}`}>
+      <section className="be-sticker-top">
+        <div className="be-sticker-brand">
+          <div className="be-logo-wrap">
+            <img src="/logo.png" alt="Britium Express" onError={(event) => {
+              event.currentTarget.src = "/images/logo.png";
+            }} />
+          </div>
+          <div>
+            <h1>BRITIUM EXPRESS</h1>
+            <h2>DELIVERY SERVICE</h2>
+            <p>HotLine:</p>
+          </div>
+        </div>
+
+        <div className="be-qr-box">
+          <b>{row.waybill_no}</b>
+          <img src={qrUrl(row)} alt={row.waybill_no} onError={(event) => {
+            event.currentTarget.src = fallbackQrUrl(row);
+          }} />
+          <strong>{row.waybill_no}</strong>
+        </div>
+      </section>
+
+      <section className="be-merchant-section">
+        <span>Merchant :</span>
+        <b>{merchantLine(row)}</b>
+      </section>
+
+      <section className="be-recipient-section">
+        <div className="be-recipient-line">
+          <span>Recipient :</span>
+          <b>{cleanText(row.recipient_name, cleanText(row.delivery_township, "Recipient"))}</b>
+        </div>
+        <p className="be-phone-line">{phones(row)}</p>
+        <div className="be-address-lines">
+          {addressLines(row).map((line, index) => (
+            <p key={index}>{line}</p>
+          ))}
+          {addressLines(row).length === 0 && <p>{cleanText(row.delivery_township, "Delivery Address")}</p>}
+        </div>
+      </section>
+
+      <section className="be-remarks-section">
+        <span>Remarks :</span>
+        <b>{cleanText(row.remarks, "")}</b>
+      </section>
+
+      <section className="be-money-section">
+        <div className="be-money-lines">
+          <p><span>Item Price :</span><b>{money(row.item_price)}</b></p>
+          <p><span>Delivery Fees :</span><b>{money(row.delivery_fee)}</b></p>
+          <p><span>Prepaid Amount :</span><b>{money(row.prepaid_amount)}</b></p>
+        </div>
+        <div className="be-cod-box">
+          <div><span>COD</span><span>MMK</span></div>
+          <strong>{money(row.cod_amount)}</strong>
+        </div>
+      </section>
+
+      <footer className="be-sticker-footer">
+        <p>အောက်ပါစာပါ ငွေများအားလုံး မှန်ကန်စွာပေးပို့ပါက အထောက်အထား</p>
+        <p><b>Hotline</b> သို့ ဆက်သွယ်၍ စုံစမ်းနိုင်ပါသည်။</p>
+      </footer>
+    </article>
+  );
+}
+
+async function trySelect(table: string, limit = 200) {
+  try {
+    const { data, error } = await (supabase as any)
+      .from(table)
+      .select("*")
+      .limit(limit);
+    if (error) return [];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+export default function WaybillStudioPage() {
+  const navigate = useNavigate();
+  const [rows, setRows] = useState<WaybillRow[]>(DEMO_ROWS);
+  const [paper, setPaper] = useState<PaperSize>("4x6");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<string>("demo-1");
+  const [loading, setLoading] = useState(false);
+  const [printAllMode, setPrintAllMode] = useState(false);
+
+  const config = sizeConfig(paper);
+
+  const loadRows = useCallback(async () => {
+    setLoading(true);
+    try {
+      const candidates = [
+        "be_v_waybill_print_queue",
+        "be_waybill_print_queue",
+        "parcel_rows",
+        "be_data_entry_rows",
+        "be_pickup_requests",
+      ];
+
+      let loaded: any[] = [];
+      for (const table of candidates) {
+        loaded = await trySelect(table);
+        if (loaded.length) break;
+      }
+
+      const normalized = loaded.length ? loaded.map(normalizeWaybill) : DEMO_ROWS;
+      setRows(normalized);
+      setSelected((old) => normalized.find((r) => r.id === old)?.id || normalized[0]?.id || "");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadRows();
+  }, [loadRows]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) =>
+      [
+        row.waybill_no,
+        row.pickup_id,
+        row.invoice_no,
+        row.merchant_name,
+        row.merchant_code,
+        row.recipient_name,
+        row.recipient_phone,
+        row.recipient_phone_2,
+        row.delivery_township,
+        row.delivery_address,
+      ].join(" ").toLowerCase().includes(q)
+    );
+  }, [rows, search]);
+
+  const selectedRow = filtered.find((row) => row.id === selected) || filtered[0] || DEMO_ROWS[0];
+
+  const printRows = printAllMode ? filtered : [selectedRow];
+
+  const pages = useMemo(() => {
+    const grouped: WaybillRow[][] = [];
+    for (let i = 0; i < printRows.length; i += config.perPage) {
+      grouped.push(printRows.slice(i, i + config.perPage));
+    }
+    return grouped;
+  }, [printRows, config.perPage]);
+
+  function printCurrent() {
+    setPrintAllMode(false);
+    setTimeout(() => window.print(), 80);
+  }
+
+  function printAll() {
+    setPrintAllMode(true);
+    setTimeout(() => {
+      window.print();
+      setPrintAllMode(false);
+    }, 80);
+  }
+
+  function copyQrPayload() {
+    navigator.clipboard?.writeText(qrPayload(selectedRow)).catch(() => undefined);
+  }
+
+  function downloadCsv() {
+    const headers = ["Waybill No", "Merchant", "Recipient", "Phones", "Township", "Address", "Item Price", "Delivery Fee", "Prepaid", "COD"];
+    const body = filtered.map((r) => [
+      r.waybill_no,
+      r.merchant_name,
+      r.recipient_name,
+      phones(r),
+      r.delivery_township,
+      r.delivery_address,
+      r.item_price,
+      r.delivery_fee,
+      r.prepaid_amount,
+      r.cod_amount,
+    ].map((v) => `"${String(v ?? "").replaceAll('"', '""')}"`).join(","));
+
+    const blob = new Blob(["\ufeff" + [headers.join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "waybill_studio_rows.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <main className="be-ws-page">
+      <style>{`
+        @media print {
+          @page { size: ${config.page}; margin: 0; }
+          html, body, #root { margin: 0 !important; padding: 0 !important; background: #fff !important; }
+          .be-ws-screen { display: none !important; }
+          .be-ws-print { display: block !important; }
+          .be-print-page {
+            width: ${paper === "A4" ? "210mm" : paper === "A5" ? "148mm" : config.labelW};
+            height: ${paper === "A4" ? "297mm" : paper === "A5" ? "210mm" : config.labelH};
+            display: flex;
+            flex-wrap: wrap;
+            align-content: flex-start;
+            page-break-after: always;
+            break-after: page;
+            background: #fff;
+          }
+          .be-print-page .be-sticker {
+            width: ${config.labelW} !important;
+            height: ${config.labelH} !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border-radius: 0 !important;
+          }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+
+      <section className="be-ws-screen">
+        <header className="be-ws-header">
+          <div>
+            <p>PRINT & DOCUMENT STUDIO</p>
+            <h1>Exact Waybill Studio</h1>
+            <span>Sticker format · dynamic data · QR contains waybill number and all visible waybill information</span>
+          </div>
+          <div className="be-ws-actions">
+            <button onClick={() => navigate(-1)}><ArrowLeft size={16} /> Back</button>
+            <button onClick={loadRows}>{loading ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} Refresh</button>
+            <button onClick={downloadCsv}><Download size={16} /> Export</button>
+            <button className="gold" onClick={printCurrent}><Printer size={16} /> Print Selected</button>
+            <button className="gold" onClick={printAll}><Printer size={16} /> Print All</button>
+          </div>
+        </header>
+
+        <section className="be-ws-workbench">
+          <aside className="be-ws-left">
+            <div className="be-search">
+              <Search size={16} />
+              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search waybill, recipient, phone..." />
+            </div>
+
+            <div className="be-paper-size">
+              {SIZE_OPTIONS.map((item) => (
+                <button key={item.key} className={paper === item.key ? "active" : ""} onClick={() => setPaper(item.key)}>
+                  <b>{item.label}</b>
+                  <span>{item.desc}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="be-row-list">
+              {filtered.map((row) => (
+                <button key={row.id} onClick={() => setSelected(row.id)} className={selectedRow.id === row.id ? "active" : ""}>
+                  <FileText size={15} />
+                  <span>
+                    <b>{row.waybill_no}</b>
+                    <small>{row.recipient_name || row.delivery_township} · {phones(row) || "No phone"}</small>
+                  </span>
+                </button>
+              ))}
+              {!filtered.length && <p className="empty">No waybills found.</p>}
+            </div>
+          </aside>
+
+          <section className="be-ws-preview">
+            <div className="be-preview-top">
+              <div>
+                <h2>Live Preview</h2>
+                <p>Selected size: {paper}. QR data updates per waybill row.</p>
+              </div>
+              <button onClick={copyQrPayload}><QrCode size={15} /> Copy QR Data</button>
+            </div>
+
+            <div className={`be-preview-canvas be-preview-${config.previewClass}`}>
+              <WaybillSticker row={selectedRow} paper={paper} />
+            </div>
+
+            <div className="be-data-box">
+              <h3>QR Payload for {selectedRow.waybill_no}</h3>
+              <pre>{qrPayload(selectedRow)}</pre>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <section className="be-ws-print" aria-hidden="true">
+        {pages.map((page, pageIndex) => (
+          <div className="be-print-page" key={pageIndex}>
+            {page.map((row) => (
+              <WaybillSticker key={row.id} row={row} paper={paper} />
+            ))}
+          </div>
+        ))}
+      </section>
+    </main>
+  );
+}

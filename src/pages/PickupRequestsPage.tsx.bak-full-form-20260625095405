@@ -1,0 +1,94 @@
+import { Download, Plus, RefreshCcw, Search } from "lucide-react";
+import { useMemo, useState } from "react";
+
+const rows = [
+  {
+    pickup_id: "P0625-APS-001",
+    merchant: "Aung Pyae Sone",
+    township: "Thaketa",
+    phone: "09752660008",
+    parcels: 10,
+    status: "Pending Assignment",
+    date: new Date().toISOString().slice(0, 10),
+  },
+];
+
+function csvEscape(value: unknown) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+export default function PickupRequestsPage() {
+  const [search, setSearch] = useState("");
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) =>
+      Object.values(row).join(" ").toLowerCase().includes(q)
+    );
+  }, [search]);
+
+  function exportCsv() {
+    const headers = ["Pickup ID", "Merchant", "Township", "Phone", "Parcels", "Status", "Date"];
+    const body = filtered.map((row) =>
+      [row.pickup_id, row.merchant, row.township, row.phone, row.parcels, row.status, row.date]
+        .map(csvEscape)
+        .join(",")
+    );
+    const blob = new Blob([[headers.map(csvEscape).join(","), ...body].join("\n")], {
+      type: "text/csv;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pickup-requests.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <main className="min-h-screen bg-slate-950 p-6 text-slate-100">
+      <section className="rounded-3xl border border-sky-900/60 bg-slate-900/80 p-6 shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-xs font-black uppercase tracking-[0.28em] text-amber-300">Britium Express</p>
+            <h1 className="mt-2 text-3xl font-black">Pickup Requests</h1>
+            <p className="mt-2 max-w-3xl text-slate-300">
+              Build-safe pickup request queue for merchant/customer pickup intake. Backend RPC wiring can be added after deployment is stable.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="inline-flex items-center gap-2 rounded-xl border border-sky-700 bg-sky-950 px-4 py-2 font-bold"><Plus size={16} /> New</button>
+            <button className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 font-bold"><RefreshCcw size={16} /> Refresh</button>
+            <button onClick={exportCsv} className="inline-flex items-center gap-2 rounded-xl border border-amber-400 bg-amber-400 px-4 py-2 font-black text-slate-950"><Download size={16} /> Export</button>
+          </div>
+        </div>
+
+        <div className="mt-6 flex items-center gap-3 rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3">
+          <Search size={18} className="text-sky-300" />
+          <input className="w-full bg-transparent outline-none placeholder:text-slate-500" placeholder="Search pickup, merchant, township..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        </div>
+
+        <div className="mt-6 overflow-auto rounded-2xl border border-slate-800">
+          <table className="w-full min-w-[850px] border-collapse text-sm">
+            <thead className="bg-amber-400 text-slate-950">
+              <tr>{["Pickup ID", "Merchant", "Township", "Phone", "Parcels", "Status", "Date"].map((h) => <th key={h} className="px-4 py-3 text-left font-black uppercase tracking-wider">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {filtered.map((row) => (
+                <tr key={row.pickup_id} className="border-t border-slate-800">
+                  <td className="px-4 py-3 font-black text-amber-300">{row.pickup_id}</td>
+                  <td className="px-4 py-3">{row.merchant}</td>
+                  <td className="px-4 py-3">{row.township}</td>
+                  <td className="px-4 py-3">{row.phone}</td>
+                  <td className="px-4 py-3">{row.parcels}</td>
+                  <td className="px-4 py-3">{row.status}</td>
+                  <td className="px-4 py-3">{row.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  );
+}

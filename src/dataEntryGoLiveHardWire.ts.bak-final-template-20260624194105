@@ -1,0 +1,369 @@
+/*
+  Britium Data Entry Go-Live Hard Wire
+  - REGISTER NOW becomes a real action even if the current component state is broken.
+  - Hides sidebar automatically.
+  - Creates full-screen Data Entry Template rows according to selected pickup parcel count.
+  - Loads rider proof rows/photos from be_v_data_entry_parcel_proofs directly.
+  - Keeps only horizontal rider proof strip.
+*/
+
+import { supabase } from "@/integrations/supabase/client";
+import "./styles/dataEntryGoLiveHardWire.css";
+
+type ProofRow = {
+  pickup_id?: string;
+  delivery_way_id?: string;
+  waybill_no?: string;
+  parcel_sequence?: number;
+  proof_photo_url?: string;
+  proof_photo_path?: string;
+  verification_status?: string;
+  proof_check_status?: string;
+  has_rider_photo?: boolean;
+  is_pickup_verified?: boolean;
+  [key: string]: any;
+};
+
+const STORAGE_KEY = "be_dataentry_golive_active";
+
+function isDataEntryRoute() {
+  return window.location.hash.includes("/data-entry") || window.location.pathname.includes("/data-entry");
+}
+
+function normalizePickup(raw: string) {
+  const text = (raw || "").trim();
+  const m = text.match(/P\d{4}-[A-Z0-9]+-\d+/i);
+  return m ? m[0].toUpperCase() : "";
+}
+
+function readSelectedPickup() {
+  const selects = Array.from(document.querySelectorAll("select")) as HTMLSelectElement[];
+  for (const select of selects) {
+    const value = normalizePickup(select.value || select.selectedOptions?.[0]?.textContent || "");
+    if (value) return value;
+  }
+
+  const candidates = Array.from(document.querySelectorAll("button,input,div,span,p")).slice(0, 1200);
+  for (const el of candidates) {
+    const value = normalizePickup((el as HTMLElement).innerText || (el as HTMLInputElement).value || "");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function readParcelCount() {
+  const pickupSelect = Array.from(document.querySelectorAll("select")).find((s) => normalizePickup((s as HTMLSelectElement).value || (s as HTMLSelectElement).selectedOptions?.[0]?.textContent || ""));
+  const text = pickupSelect?.selectedOptions?.[0]?.textContent || document.body.innerText || "";
+  const m = text.match(/(\d+)\s*\/\s*(\d+)\s*Parcels/i);
+  if (m) return Number(m[2] || m[1]) || 0;
+
+  const inputCandidates = Array.from(document.querySelectorAll("input")) as HTMLInputElement[];
+  for (const input of inputCandidates) {
+    const n = Number(input.value);
+    if (Number.isFinite(n) && n > 0 && n <= 300) return n;
+  }
+
+  return 10;
+}
+
+function publicPhotoUrl(row: ProofRow) {
+  if (row.proof_photo_url && String(row.proof_photo_url).startsWith("http")) return row.proof_photo_url;
+  const path = row.proof_photo_path || "";
+  if (!path) return "";
+  try {
+    const { data } = supabase.storage.from("pickup-parcel-proofs").getPublicUrl(path);
+    return data?.publicUrl || "";
+  } catch {
+    return "";
+  }
+}
+
+async function loadProofRows(pickupId: string, expectedCount: number): Promise<ProofRow[]> {
+  if (!pickupId) return [];
+  const { data, error } = await (supabase as any)
+    .from("be_v_data_entry_parcel_proofs")
+    .select("*")
+    .eq("pickup_id", pickupId)
+    .order("parcel_sequence", { ascending: true });
+
+  if (error) {
+    console.warn("be_v_data_entry_parcel_proofs load failed", error);
+    return Array.from({ length: expectedCount }).map((_, idx) => ({
+      pickup_id: pickupId,
+      delivery_way_id: "",
+      parcel_sequence: idx + 1,
+      verification_status: "PENDING",
+      proof_check_status: "RIDER_PROOF_PENDING",
+      has_rider_photo: false,
+    }));
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length >= expectedCount) return rows;
+
+  const bySeq = new Map<number, ProofRow>();
+  rows.forEach((r: ProofRow) => bySeq.set(Number(r.parcel_sequence || 0), r));
+
+  return Array.from({ length: expectedCount }).map((_, idx) => {
+    const seq = idx + 1;
+    return bySeq.get(seq) || {
+      pickup_id: pickupId,
+      delivery_way_id: "",
+      parcel_sequence: seq,
+      verification_status: "PENDING",
+      proof_check_status: "RIDER_PROOF_PENDING",
+      has_rider_photo: false,
+    };
+  });
+}
+
+function createInput(name: string, value = "", asTextArea = false) {
+  const el = document.createElement(asTextArea ? "textarea" : "input") as HTMLInputElement | HTMLTextAreaElement;
+  el.name = name;
+  el.value = value || "";
+  return el;
+}
+
+function rowHtmlContainer(row: ProofRow) {
+  const tr = document.createElement("tr");
+  const seq = Number(row.parcel_sequence || 0);
+  const hasPhoto = Boolean(row.has_rider_photo || row.proof_photo_url || row.proof_photo_path);
+  const status = hasPhoto ? "PHOTO_READY" : (row.proof_check_status || row.verification_status || "RIDER_PROOF_PENDING");
+
+  const cells: Array<HTMLElement> = [];
+
+  function td(child: HTMLElement | string) {
+    const c = document.createElement("td");
+    if (typeof child === "string") c.textContent = child;
+    else c.appendChild(child);
+    cells.push(c);
+  }
+
+  td(String(seq || ""));
+  td(row.delivery_way_id || row.waybill_no || "");
+  td(status);
+
+  td(createInput("recipient_name"));
+  td(createInput("contact_no_1"));
+  td(createInput("contact_no_2"));
+  td(createInput("township"));
+  td(createInput("recipient_address", "", true));
+  td(createInput("cod_amount"));
+  td(createInput("delivery_fee"));
+  td(createInput("item_price"));
+  td(createInput("prepaid_amount"));
+  td(createInput("remark", "", true));
+
+  cells.forEach((c) => tr.appendChild(c));
+  return tr;
+}
+
+function renderProofStrip(container: HTMLElement, rows: ProofRow[]) {
+  const strip = document.createElement("section");
+  strip.className = "be-de-proof-strip";
+  strip.setAttribute("data-be-horizontal-proof-strip", "true");
+
+  rows.forEach((row) => {
+    const card = document.createElement("article");
+    card.className = "be-de-proof-card";
+
+    const url = publicPhotoUrl(row);
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = row.delivery_way_id || `Parcel ${row.parcel_sequence || ""}`;
+      card.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.style.height = "112px";
+      ph.style.display = "grid";
+      ph.style.placeItems = "center";
+      ph.style.color = "#9fc3dc";
+      ph.style.background = "#0b2236";
+      ph.textContent = "Rider proof pending";
+      card.appendChild(ph);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "be-de-proof-meta";
+    meta.innerHTML = `
+      <div><strong>${row.delivery_way_id || row.waybill_no || "Delivery Way"}</strong></div>
+      <div>Parcel: ${row.parcel_sequence || "-"}</div>
+      <div class="be-de-proof-status">${row.verification_status || row.proof_check_status || "PENDING"}</div>
+    `;
+    card.appendChild(meta);
+    strip.appendChild(card);
+  });
+
+  container.appendChild(strip);
+}
+
+function renderFullScreen(pickupId: string, expectedCount: number, proofRows: ProofRow[]) {
+  let mount = document.getElementById("be-dataentry-golive-mount");
+  if (!mount) {
+    mount = document.createElement("div");
+    mount.id = "be-dataentry-golive-mount";
+    document.body.appendChild(mount);
+  }
+
+  mount.innerHTML = "";
+
+  const shell = document.createElement("div");
+  shell.className = "be-de-shell";
+
+  const toolbar = document.createElement("section");
+  toolbar.className = "be-de-toolbar";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.innerHTML = `
+    <div class="be-de-title">Data Entry Registration Full Screen</div>
+    <div class="be-de-subtitle">Pickup: <strong>${pickupId || "-"}</strong> · Lines: <strong>${expectedCount}</strong> · Rider proof strip is horizontal only.</div>
+  `;
+
+  const actions = document.createElement("div");
+  actions.className = "be-de-actions";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.textContent = "Refresh Rider Proofs";
+  refreshBtn.onclick = async () => activateDataEntry(true);
+
+  const exportBtn = document.createElement("button");
+  exportBtn.textContent = "Export CSV";
+  exportBtn.onclick = exportCurrentTableCsv;
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "green";
+  saveBtn.textContent = "Save Registration Draft";
+  saveBtn.onclick = () => alert("Draft captured on screen. Backend save RPC can be wired after final table schema is confirmed.");
+
+  const exitBtn = document.createElement("button");
+  exitBtn.className = "primary";
+  exitBtn.textContent = "Exit Full Screen";
+  exitBtn.onclick = deactivateDataEntry;
+
+  actions.append(refreshBtn, exportBtn, saveBtn, exitBtn);
+  toolbar.append(titleWrap, actions);
+  shell.appendChild(toolbar);
+
+  renderProofStrip(shell, proofRows);
+
+  const wrap = document.createElement("section");
+  wrap.className = "be-de-table-wrap";
+
+  const table = document.createElement("table");
+  table.className = "be-de-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>SR</th>
+        <th>DELIVERY WAY ID</th>
+        <th>RIDER PROOF</th>
+        <th>RECIPIENT NAME</th>
+        <th>CONTACT NO. (1)</th>
+        <th>CONTACT NO. (2)</th>
+        <th>TOWNSHIP</th>
+        <th>RECIPIENT ADDRESS</th>
+        <th>COD AMOUNT</th>
+        <th>DELIVERY FEE</th>
+        <th>ITEM PRICE</th>
+        <th>PREPAID</th>
+        <th>REMARK</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+  const tbody = table.querySelector("tbody")!;
+  proofRows.forEach((row) => tbody.appendChild(rowHtmlContainer(row)));
+
+  wrap.appendChild(table);
+  shell.appendChild(wrap);
+  mount.appendChild(shell);
+}
+
+function exportCurrentTableCsv() {
+  const rows = Array.from(document.querySelectorAll("#be-dataentry-golive-mount table tr"));
+  const csv = rows.map((tr) => {
+    const cells = Array.from(tr.querySelectorAll("th,td")).map((cell) => {
+      const input = cell.querySelector("input,textarea,select") as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+      const raw = input ? input.value : (cell.textContent || "");
+      return `"${raw.replace(/"/g, '""')}"`;
+    });
+    return cells.join(",");
+  }).join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "data-entry-registration.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function activateDataEntry(forceReload = false) {
+  if (!isDataEntryRoute()) return;
+
+  const pickupId = readSelectedPickup();
+  const expectedCount = readParcelCount();
+
+  if (!pickupId) {
+    alert("Please select a pickup before REGISTER NOW.");
+    return;
+  }
+
+  sessionStorage.setItem(STORAGE_KEY, "1");
+  document.documentElement.classList.add("be-dataentry-golive-active");
+  document.body.classList.add("be-de-hidden-page");
+
+  const rows = await loadProofRows(pickupId, expectedCount || 10);
+  renderFullScreen(pickupId, expectedCount || rows.length || 10, rows);
+}
+
+function deactivateDataEntry() {
+  sessionStorage.removeItem(STORAGE_KEY);
+  document.documentElement.classList.remove("be-dataentry-golive-active");
+  document.body.classList.remove("be-de-hidden-page");
+  const mount = document.getElementById("be-dataentry-golive-mount");
+  if (mount) mount.innerHTML = "";
+}
+
+function bindRegisterButtons() {
+  if (!isDataEntryRoute()) return;
+
+  const buttons = Array.from(document.querySelectorAll("button"));
+  buttons.forEach((btn) => {
+    const text = (btn.textContent || "").toLowerCase();
+    const isRegister = text.includes("register now") || text.includes("full screen data entry") || text.includes("exit full screen");
+    if (!isRegister || (btn as any).dataset.beGoLiveBound === "true") return;
+
+    (btn as any).dataset.beGoLiveBound = "true";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void activateDataEntry(true);
+    }, true);
+  });
+}
+
+function routeTick() {
+  if (!isDataEntryRoute()) {
+    deactivateDataEntry();
+    return;
+  }
+  bindRegisterButtons();
+  if (sessionStorage.getItem(STORAGE_KEY) === "1") {
+    void activateDataEntry(false);
+  }
+}
+
+window.addEventListener("hashchange", routeTick);
+window.addEventListener("popstate", routeTick);
+window.setInterval(bindRegisterButtons, 800);
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", routeTick);
+} else {
+  routeTick();
+}

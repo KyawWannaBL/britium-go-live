@@ -1,0 +1,14 @@
+// @ts-nocheck
+import PortalLiveSnapshotPage from "@/components/PortalLiveSnapshotPage";
+
+export default function SupervisorPortalPage() {
+  return (
+    <PortalLiveSnapshotPage
+      title="Supervisor"
+      subtitle="Pickup assignment queue from live CS pickup requests."
+      rpcName="be_supervisor_portal_snapshot"
+      rpcArgs={}
+      rowsKey="queue"
+    />
+  );
+}

@@ -1,0 +1,411 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { useLanguage } from "@/contexts/LanguageContext";
+import {
+  Calculator,
+  CheckCircle2,
+  PackageCheck,
+  Plus,
+  QrCode,
+  RefreshCw,
+  Search,
+} from "lucide-react";
+
+type WaybillRow = {
+  id?: string;
+  pickup_id?: string;
+  parcel_sequence?: number;
+  delivery_way_id?: string;
+  waybill_no?: string;
+  item_status?: string;
+  pickup_date?: string;
+  merchant_code?: string;
+  merchant_name?: string;
+  recipient_name?: string;
+  recipient_phone?: string;
+  recipient_phone_2?: string;
+  delivery_township?: string;
+  recipient_address?: string;
+  customer_tier?: string;
+  item_price?: number;
+  weight_kg?: number;
+  base_fee?: number;
+  extra_kg_charges?: number;
+  delivery_charges?: number;
+  cod_amount?: number;
+  total_collected_amount?: number;
+  destination_city?: string;
+  warehouse_status?: string;
+  wayplan_status?: string;
+  dispatch_status?: string;
+  finance_status?: string;
+  remarks?: string;
+  created_at?: string;
+  updated_at?: string;
+  parcel_count?: number;
+  total_weight_kg?: number;
+  waybill_status?: string;
+  waybill_created_at?: string;
+};
+
+function n(value: unknown): number {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function fmt(value: unknown) {
+  return n(value).toLocaleString();
+}
+
+export default function WaybillStudioPage() {
+  const { t } = useLanguage();
+  const [loading, setLoading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [waybills, setWaybills] = useState<WaybillRow[]>([]);
+  const [search, setSearch] = useState("");
+  const [message, setMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
+
+  const loadData = async () => {
+    setLoading(true);
+    setErrorMessage("");
+
+    try {
+      const { data, error } = await supabase
+        .from("be_v_waybill_studio_queue")
+        .select("*")
+        .order("updated_at", { ascending: false })
+        .limit(1000);
+
+      if (error) throw error;
+
+      setWaybills((data || []) as WaybillRow[]);
+      if (!data || data.length === 0) {
+        setMessage(t("No waybill rows found yet. Click Sync Waybills after Data Entry creates the waybill.", "Waybill မတွေ့သေးပါ။ Data Entry ပြီးပါက Sync Waybills ကိုနှိပ်ပါ။"));
+      } else {
+        setMessage("");
+      }
+    } catch (e: any) {
+      setErrorMessage(e?.message || "Failed to load Waybill Studio queue.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const syncWaybills = async () => {
+    setSyncing(true);
+    setLoading(true);
+    setErrorMessage("");
+    setMessage(t("Synchronizing Data Entry rows with Waybill Studio...", "Data Entry စာရင်းများကို Waybill Studio နှင့် ချိတ်ဆက်နေသည်..."));
+
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const actorEmail = userData?.user?.email || null;
+
+      const { data, error } = await supabase.rpc("be_force_waybill_studio_sync_all", {
+        p_actor_email: actorEmail,
+      });
+
+      if (error) throw error;
+
+      const synced = Number(data?.synced_pickups || 0);
+      const skipped = Number(data?.skipped_pickups || 0);
+      setMessage(
+        t(
+          `Waybill sync completed. Synced ${synced} pickup(s), skipped ${skipped}.`,
+          `Waybill ချိတ်ဆက်မှု ပြီးပါပြီ။ Pickup ${synced} ခု ချိတ်ဆက်ပြီး ${skipped} ခု ကျော်ထားသည်။`
+        )
+      );
+
+      await loadData();
+    } catch (e: any) {
+      setErrorMessage(e?.message || "Waybill sync failed.");
+      await loadData();
+    } finally {
+      setSyncing(false);
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return waybills.filter((w) => {
+      if (!q) return true;
+      const text = [
+        w.waybill_no,
+        w.pickup_id,
+        w.delivery_way_id,
+        w.merchant_code,
+        w.merchant_name,
+        w.recipient_name,
+        w.recipient_phone,
+        w.delivery_township,
+        w.warehouse_status,
+        w.waybill_status,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+
+      return text.includes(q);
+    });
+  }, [waybills, search]);
+
+  const totals = useMemo(() => {
+    const pickupIds = new Set(waybills.map((r) => r.pickup_id).filter(Boolean));
+    const waybillIds = new Set(waybills.map((r) => r.waybill_no).filter(Boolean));
+
+    return {
+      pickupCount: pickupIds.size,
+      waybillCount: waybillIds.size,
+      parcelCount: waybills.length,
+      cod: waybills.reduce((sum, r) => sum + n(r.cod_amount), 0),
+      delivery: waybills.reduce((sum, r) => sum + n(r.delivery_charges), 0),
+    };
+  }, [waybills]);
+
+  return (
+    <div className="p-6 md:p-8 max-w-[1600px] mx-auto space-y-6 notranslate" translate="no">
+      <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-3xl shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <div className="text-[#38bdf8] text-[11px] font-bold uppercase tracking-[0.2em] mb-2 flex items-center gap-2">
+            <QrCode size={14} />{" "}
+            <span>{t("Data Entry & Operations", "အချက်အလက် ဖြည့်သွင်းခြင်း")}</span>
+          </div>
+          <h1 className="text-2xl font-bold text-white m-0">
+            <span>{t("Waybill Studio", "Waybill Studio")}</span>
+          </h1>
+          <p className="text-[#4d7a9b] text-[14px] mt-1 m-0 max-w-2xl">
+            <span>
+              {t(
+                "Synced with Data Entry waybill creation, Warehouse queue, and parcel-level DeliveryWay IDs.",
+                "Data Entry မှ Waybill ဖန်တီးမှု၊ Warehouse queue နှင့် DeliveryWay ID များကို ချိတ်ဆက်ထားသည်။"
+              )}
+            </span>
+          </p>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={syncWaybills}
+            disabled={syncing || loading}
+            className="bg-[#1a3a5c]/50 border border-[#1a3a5c] text-[#c8dff0] px-4 py-2 rounded-xl flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider hover:bg-[#1a3a5c] transition-colors disabled:opacity-60 cursor-pointer"
+          >
+            <RefreshCw size={14} className={syncing ? "animate-spin text-[#f6b84b]" : ""} />{" "}
+            <span>{t("Sync Waybills", "အချက်အလက် ရယူမည်")}</span>
+          </button>
+
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="bg-[#f6b84b] hover:bg-[#e5a93a] text-[#061524] px-6 py-2 rounded-xl flex items-center gap-2 text-[12px] font-bold uppercase tracking-wider transition-colors cursor-pointer shadow-lg shadow-[#f6b84b]/10 disabled:opacity-60"
+          >
+            <Plus size={16} /> <span>{t("Refresh View", "ပြန်လည်ကြည့်မည်")}</span>
+          </button>
+        </div>
+      </div>
+
+      {message && (
+        <div className="flex items-center gap-2 rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 px-5 py-4 text-[13px] font-bold text-[#22c55e]">
+          <CheckCircle2 className="shrink-0" size={18} /> <span>{message}</span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4 text-[13px] font-bold text-red-300">
+          {errorMessage}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl">
+          <div className="text-[#4d7a9b] text-[10px] uppercase tracking-widest mb-1">
+            {t("Pickups", "Pickup များ")}
+          </div>
+          <div className="text-[22px] font-black text-[#f6b84b]">{totals.pickupCount}</div>
+        </div>
+        <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl">
+          <div className="text-[#4d7a9b] text-[10px] uppercase tracking-widest mb-1">
+            {t("Waybills", "Waybill များ")}
+          </div>
+          <div className="text-[22px] font-black text-[#f6b84b]">{totals.waybillCount}</div>
+        </div>
+        <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl">
+          <div className="text-[#4d7a9b] text-[10px] uppercase tracking-widest mb-1">
+            {t("Parcels", "ပါဆယ်များ")}
+          </div>
+          <div className="text-[22px] font-black text-[#38bdf8]">{totals.parcelCount}</div>
+        </div>
+        <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl">
+          <div className="text-[#4d7a9b] text-[10px] uppercase tracking-widest mb-1">
+            {t("Delivery Fees", "ပို့ဆောင်ခ")}
+          </div>
+          <div className="text-[20px] font-black text-[#38bdf8]">{fmt(totals.delivery)}</div>
+        </div>
+        <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl">
+          <div className="text-[#4d7a9b] text-[10px] uppercase tracking-widest mb-1">
+            {t("COD", "ကောက်ခံငွေ")}
+          </div>
+          <div className="text-[20px] font-black text-[#22c55e]">{fmt(totals.cod)}</div>
+        </div>
+      </div>
+
+      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
+        <h2 className="text-[16px] font-bold text-white mb-5 flex items-center gap-2">
+          <PackageCheck className="text-[#f6b84b]" size={18} />{" "}
+          <span>{t("Waybill Sync Source", "Waybill ချိတ်ဆက်မှု အခြေခံအချက်အလက်")}</span>
+        </h2>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-[13px] text-[#c8dff0]">
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
+            <div className="mb-1 text-[#4d7a9b] text-[10px] uppercase tracking-widest">
+              {t("Source", "ရင်းမြစ်")}
+            </div>
+            {t("be_v_waybill_studio_queue view", "be_v_waybill_studio_queue view")}
+          </div>
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
+            <div className="mb-1 text-[#4d7a9b] text-[10px] uppercase tracking-widest">
+              {t("Auto Repair", "အလိုအလျောက် ပြင်ဆင်မှု")}
+            </div>
+            {t("Sync button rebuilds rows from Data Entry", "Sync ခလုတ်သည် Data Entry မှ rows ပြန်တည်ဆောက်သည်")}
+          </div>
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
+            <div className="mb-1 text-[#4d7a9b] text-[10px] uppercase tracking-widest">
+              {t("Next Queue", "နောက်တစ်ဆင့်")}
+            </div>
+            {t("Warehouse receives READY_FOR_RECEIVE rows", "Warehouse သို့ READY_FOR_RECEIVE rows ပို့သည်")}
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl flex flex-col min-h-[500px] shadow-xl overflow-hidden">
+        <div className="p-6 border-b border-[#1a3a5c] bg-[#081b2e] flex flex-col md:flex-row gap-4 justify-between items-center">
+          <h2 className="text-[16px] font-bold text-white m-0">
+            <span>{t("Recent Waybills", "မကြာသေးမီက စာရင်းများ")}</span>
+          </h2>
+          <div className="relative w-full md:w-[420px]">
+            <Search size={16} className="absolute left-4 top-3.5 text-[#4d7a9b]" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={t("Search Waybill, Pickup, DeliveryWay, Recipient...", "Waybill / Pickup / DeliveryWay / လက်ခံသူ ရှာရန်...")}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-white rounded-xl py-3 pl-11 pr-4 text-[13px] outline-none focus:border-[#f6b84b]"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-x-auto bg-[#061524]">
+          <table className="w-full text-left border-collapse min-w-[1450px]">
+            <thead className="bg-[#081b2e] sticky top-0 shadow-sm z-10">
+              <tr>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Waybill", "Waybill")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("DeliveryWay", "DeliveryWay")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Pickup", "Pickup")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Merchant", "ကုန်သည်")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Recipient", "လက်ခံသူ")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Township", "မြို့နယ်")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c] text-right">
+                  {t("Delivery Fee", "ပို့ဆောင်ခ")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c] text-right text-[#22c55e]">
+                  {t("COD", "ကောက်ခံငွေ")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Warehouse", "Warehouse")}
+                </th>
+                <th className="p-4 text-[#4d7a9b] text-[11px] font-bold uppercase tracking-wider border-b border-[#1a3a5c]">
+                  {t("Status", "အခြေအနေ")}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={10} className="p-16 text-center text-[#4d7a9b]">
+                    <RefreshCw className="animate-spin mx-auto" size={24} />
+                  </td>
+                </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="p-16 text-center text-[#4d7a9b] font-medium">
+                    <span>{t("No waybills found. Click Sync Waybills.", "Waybill မတွေ့ပါ။ Sync Waybills ကိုနှိပ်ပါ။")}</span>
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((row, i) => (
+                  <tr key={row.id || `${row.pickup_id}-${row.parcel_sequence}-${i}`} className="hover:bg-[#1a3a5c]/30 transition-colors border-b border-[#1a3a5c]/50">
+                    <td className="p-4 font-mono font-black text-[#38bdf8] text-[13px]">
+                      <span>{row.waybill_no || "-"}</span>
+                    </td>
+                    <td className="p-4 font-mono font-bold text-[#c8dff0] text-[13px]">
+                      <span>{row.delivery_way_id || "-"}</span>
+                    </td>
+                    <td className="p-4 font-mono text-[#4d7a9b] text-[12px]">
+                      <span>{row.pickup_id || "-"}</span>
+                      <br />
+                      <span>#{row.parcel_sequence || "-"}</span>
+                    </td>
+                    <td className="p-4 font-bold text-white text-[13px]">
+                      <span>{row.merchant_code ? `${row.merchant_code} - ` : ""}{row.merchant_name || "-"}</span>
+                    </td>
+                    <td className="p-4 font-medium text-[#c8dff0] text-[13px]">
+                      <span>{row.recipient_name || "-"}</span>
+                      <br />
+                      <span className="text-[11px] font-mono text-[#4d7a9b]">{row.recipient_phone || ""}</span>
+                    </td>
+                    <td className="p-4 font-medium text-[#c8dff0] text-[13px]">
+                      <span>{row.delivery_township || "-"}</span>
+                    </td>
+                    <td className="p-4 font-mono font-bold text-[#c8dff0] text-[13px] text-right">
+                      <span>{fmt(row.delivery_charges)} Ks</span>
+                    </td>
+                    <td className="p-4 font-mono font-black text-[#22c55e] text-[13px] text-right">
+                      <span>{fmt(row.cod_amount)} Ks</span>
+                    </td>
+                    <td className="p-4 text-[12px]">
+                      <span className="rounded-full border border-[#22c55e]/40 bg-[#22c55e]/10 px-3 py-1 font-bold text-[#22c55e]">
+                        {row.warehouse_status || "READY_FOR_RECEIVE"}
+                      </span>
+                    </td>
+                    <td className="p-4 text-[12px]">
+                      <span className="rounded-full border border-[#38bdf8]/40 bg-[#38bdf8]/10 px-3 py-1 font-bold text-[#38bdf8]">
+                        {row.waybill_status || row.item_status || "WAYBILL_CREATED"}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 text-[12px] text-[#4d7a9b]">
+        <Calculator size={14} />
+        <span>
+          {t(
+            "Amounts are synced from Data Entry tariff calculation. Warehouse queue is fed from the same waybill item rows.",
+            "ငွေပမာဏများသည် Data Entry tariff calculation မှလာပြီး Warehouse queue ကိုလည်း Waybill item rows မှ ပေးပို့သည်။"
+          )}
+        </span>
+      </div>
+    </div>
+  );
+}

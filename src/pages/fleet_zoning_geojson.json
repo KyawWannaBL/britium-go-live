@@ -1,0 +1,190 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "hub_hq",
+      "properties": {
+        "name": "Head Office (Britium Ventures)",
+        "layer_type": "hub",
+        "marker-color": "#0000FF",
+        "address": "East Dagon, Yangon"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          96.199675,
+          16.889554
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "group_1_bikes",
+      "properties": {
+        "zone_name": "Group 1: Hub Proximity Bike Zone",
+        "layer_type": "zone_boundary",
+        "operation_type": "hybrid_delivery_and_pickup",
+        "vehicle_assignment": "Bicycle / Motorcycle Fleet",
+        "color_hex": "#00FF00",
+        "townships_included": [
+          "East Dagon",
+          "North Dagon",
+          "South Dagon",
+          "North Okkalapa",
+          "South Okkalapa",
+          "Thingangyun",
+          "Yankin"
+        ]
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [
+                96.162,
+                16.942
+              ],
+              [
+                96.245,
+                16.942
+              ],
+              [
+                96.245,
+                16.845
+              ],
+              [
+                96.162,
+                16.845
+              ],
+              [
+                96.162,
+                16.942
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "group_2_4_van1",
+      "properties": {
+        "zone_name": "Group 2 & 4: West & Downtown Waterfront Loop",
+        "layer_type": "zone_boundary",
+        "operation_type": "pickup_only_after_delta_drop",
+        "vehicle_assignment": {
+          "delivery_vans_assigned": [
+            "Van A (Group 2 Delivery)",
+            "Van B (Group 4 Delivery)"
+          ],
+          "pickup_van_assigned": "Pickup Van 1",
+          "first_stop_dropoff": "Dagon Ayar Highway Bus Station"
+        },
+        "color_hex": "#FF9900",
+        "townships_included": [
+          "Ahlone",
+          "Sanchaung",
+          "Kyeemyindaing",
+          "Kamayut",
+          "Hlaing",
+          "Mayangone",
+          "Lanmadaw",
+          "Latha",
+          "Pabedan",
+          "Kyauktada",
+          "Botahtaung",
+          "Pazundaung"
+        ]
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [
+                96.095,
+                16.895
+              ],
+              [
+                96.161,
+                16.895
+              ],
+              [
+                96.161,
+                16.765
+              ],
+              [
+                96.095,
+                16.765
+              ],
+              [
+                96.095,
+                16.895
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "group_3_5_van2",
+      "properties": {
+        "zone_name": "Group 3 & 5: North Ring & East-Central Belt",
+        "layer_type": "zone_boundary",
+        "operation_type": "pickup_only_after_gate_drop",
+        "vehicle_assignment": {
+          "delivery_vans_assigned": [
+            "Van C (Group 3 Delivery)",
+            "Van D (Group 5 Delivery)"
+          ],
+          "pickup_van_assigned": "Pickup Van 2",
+          "first_stop_dropoff": "Aung Mingalar Highway Bus Station"
+        },
+        "color_hex": "#800080",
+        "townships_included": [
+          "Mingaladon",
+          "Shwepyitha",
+          "Insein",
+          "Hlaingtharya",
+          "Bahan",
+          "Tamwe",
+          "Mingala Taungnyunt",
+          "Dawbon",
+          "Thaketa"
+        ]
+      },
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [
+          [
+            [
+              [
+                96.052,
+                17.025
+              ],
+              [
+                96.21,
+                17.025
+              ],
+              [
+                96.21,
+                16.896
+              ],
+              [
+                96.052,
+                16.896
+              ],
+              [
+                96.052,
+                17.025
+              ]
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

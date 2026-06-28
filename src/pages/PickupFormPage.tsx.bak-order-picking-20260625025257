@@ -1,0 +1,597 @@
+// @ts-nocheck
+import { useEffect, useMemo, useState } from "react";
+import {
+  Bike,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  CloudUpload,
+  Download,
+  Filter,
+  Loader2,
+  MapPin,
+  Package,
+  RefreshCw,
+  Send,
+  Truck,
+  UserCheck,
+} from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import "../styles/orderPickingFormExact.css";
+
+type AnyRow = Record<string, any>;
+
+type MasterState = {
+  merchants: AnyRow[];
+  townships: AnyRow[];
+  riders: AnyRow[];
+  drivers: AnyRow[];
+  helpers: AnyRow[];
+  vehicles: AnyRow[];
+};
+
+const todayISO = () => new Date().toISOString().slice(0, 10);
+
+const initialMasters: MasterState = {
+  merchants: [],
+  townships: [],
+  riders: [],
+  drivers: [],
+  helpers: [],
+  vehicles: [],
+};
+
+const initialForm: AnyRow = {
+  merchant_code: "",
+  merchant_name: "",
+  merchant_id: "",
+  business_type: "",
+  payment_type: "COD",
+  pickup_address: "",
+  township: "",
+  city: "Yangon",
+  region_state: "Yangon Region",
+  expected_parcels: 1,
+  pickup_date: todayISO(),
+  vehicle_required: "Bike",
+  pickup_remark: "",
+  rider_name: "",
+  driver_name: "",
+  helper_name: "",
+  vehicle_plate: "",
+};
+
+function norm(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function readFirst(row: AnyRow, names: string[], fallback = "") {
+  for (const name of names) {
+    if (row?.[name] !== undefined && row?.[name] !== null && String(row[name]).trim() !== "") {
+      return row[name];
+    }
+  }
+  return fallback;
+}
+
+function normalizeMerchant(row: AnyRow): AnyRow {
+  const code = String(readFirst(row, ["merchant_code", "code", "merchantCode", "short_code", "customer_code", "id"], ""));
+  const name = String(readFirst(row, ["merchant_name", "business_name", "name", "label", "customer_name", "company_name"], code));
+  return {
+    raw: row,
+    merchant_id: String(readFirst(row, ["merchant_id", "id", "value"], code)),
+    merchant_code: code || name,
+    merchant_name: name,
+    business_type: String(readFirst(row, ["business_type", "businessType", "type"], "")),
+    payment_type: String(readFirst(row, ["payment_type", "payment_terms", "paymentTerms"], "COD")),
+    default_pickup_address: String(readFirst(row, ["default_pickup_address", "pickup_address", "registered_address", "address"], "")),
+    township: String(readFirst(row, ["township", "primary_township", "pickup_township"], "")),
+    city: String(readFirst(row, ["city", "destination_city"], "Yangon")),
+    region_state: String(readFirst(row, ["region_state", "region", "state"], "Yangon Region")),
+    branch_code: String(readFirst(row, ["branch_code", "assigned_branch"], "YGN")),
+  };
+}
+
+function normalizeTownship(row: AnyRow): AnyRow {
+  const township = String(readFirst(row, ["township", "township_name", "name", "label", "value"], ""));
+  return {
+    raw: row,
+    township,
+    city: String(readFirst(row, ["city", "city_name", "district"], "Yangon")),
+    region_state: String(readFirst(row, ["region_state", "region", "state"], "Yangon Region")),
+    zone: String(readFirst(row, ["zone", "zone_code", "delivery_zone"], "")),
+    branch_code: String(readFirst(row, ["branch_code", "branch"], "")),
+  };
+}
+
+function normalizePerson(row: AnyRow, fallbackRole = ""): AnyRow {
+  const id = String(readFirst(row, ["staff_id", "rider_id", "driver_id", "helper_id", "employee_id", "id", "value"], ""));
+  const name = String(readFirst(row, ["staff_name", "rider_name", "driver_name", "helper_name", "employee_name", "name", "label", "full_name"], id));
+  return {
+    raw: row,
+    id,
+    name,
+    role: String(readFirst(row, ["role", "role_name", "staff_role", "type"], fallbackRole)),
+    phone: String(readFirst(row, ["phone", "mobile", "contact_phone", "phone_number"], "")),
+    branch_code: String(readFirst(row, ["branch_code", "branch"], "")),
+  };
+}
+
+function normalizeVehicle(row: AnyRow): AnyRow {
+  const id = String(readFirst(row, ["vehicle_id", "id", "value"], ""));
+  const plate = String(readFirst(row, ["vehicle_plate", "plate_no", "plate_number", "registration_no", "name", "label"], id));
+  return {
+    raw: row,
+    id,
+    plate,
+    vehicle_type: String(readFirst(row, ["vehicle_type", "type", "category"], "")),
+  };
+}
+
+async function trySelect(table: string, limit = 500) {
+  try {
+    const { data, error } = await (supabase as any).from(table).select("*").limit(limit);
+    if (error) return [];
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
+
+async function firstRows(candidates: string[], limit = 500) {
+  for (const table of candidates) {
+    const rows = await trySelect(table, limit);
+    if (rows.length) return rows;
+  }
+  return [];
+}
+
+function csvEscape(value: unknown) {
+  return `"${String(value ?? "").replaceAll('"', '""')}"`;
+}
+
+function downloadTemplate() {
+  const headers = [
+    "Merchant Code",
+    "Merchant Name",
+    "Business Type",
+    "Payment Type",
+    "Pickup Address",
+    "Township",
+    "Expected Parcels",
+    "Pickup Date",
+    "Vehicle Required",
+    "Remark",
+  ];
+  const sample = [
+    "BBG",
+    "Baby Genius",
+    "Online Shop",
+    "COD",
+    "No. 12, Main Road, Hlaing",
+    "Hlaing",
+    "10",
+    todayISO(),
+    "Bike",
+    "Call before pickup",
+  ];
+  const csv = [headers, sample].map((row) => row.map(csvEscape).join(",")).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "britium_order_picking_template.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export default function PickupFormPage() {
+  const [language, setLanguage] = useState<"en" | "my">("my");
+  const t = (en: string, my: string) => (language === "en" ? en : my);
+
+  const [masters, setMasters] = useState<MasterState>(initialMasters);
+  const [form, setForm] = useState<AnyRow>(initialForm);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [pending, setPending] = useState<AnyRow[]>([]);
+  const [loadingMasters, setLoadingMasters] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+
+  const merchantOptions = useMemo(() => masters.merchants.map(normalizeMerchant).filter((m) => m.merchant_code || m.merchant_name), [masters.merchants]);
+  const townshipOptions = useMemo(() => masters.townships.map(normalizeTownship).filter((tw) => tw.township), [masters.townships]);
+  const riderOptions = useMemo(() => masters.riders.map((r) => normalizePerson(r, "rider")).filter((x) => x.name), [masters.riders]);
+  const driverOptions = useMemo(() => masters.drivers.map((r) => normalizePerson(r, "driver")).filter((x) => x.name), [masters.drivers]);
+  const helperOptions = useMemo(() => masters.helpers.map((r) => normalizePerson(r, "helper")).filter((x) => x.name), [masters.helpers]);
+  const vehicleOptions = useMemo(() => masters.vehicles.map(normalizeVehicle).filter((x) => x.plate), [masters.vehicles]);
+
+  async function loadMasters() {
+    setLoadingMasters(true);
+    setError("");
+
+    try {
+      const rpc = await (supabase as any).rpc("be_pickup_form_masterdata");
+      if (!rpc.error && rpc.data) {
+        const data = rpc.data || {};
+        setMasters({
+          merchants: Array.isArray(data.merchants) ? data.merchants : [],
+          townships: Array.isArray(data.townships) ? data.townships : [],
+          riders: Array.isArray(data.riders) ? data.riders : [],
+          drivers: Array.isArray(data.drivers) ? data.drivers : [],
+          helpers: Array.isArray(data.helpers) ? data.helpers : [],
+          vehicles: Array.isArray(data.vehicles) ? data.vehicles : [],
+        });
+      } else {
+        const [merchants, townships, riders, drivers, helpers, vehicles] = await Promise.all([
+          firstRows(["be_v_pickup_merchant_options", "be_pickup_form_merchants", "merchant_masters", "be_merchant_master", "merchants"]),
+          firstRows(["v_address_township_options", "be_township_lookup", "be_pickup_form_townships", "be_township_master", "township_master"]),
+          firstRows(["be_v_rider_options", "be_pickup_form_riders", "be_rider_master", "rider_master"]),
+          firstRows(["be_v_driver_options", "be_pickup_form_drivers", "be_driver_master", "driver_master"]),
+          firstRows(["be_v_helper_options", "be_pickup_form_helpers", "be_helper_master", "helper_master"]),
+          firstRows(["be_v_vehicle_options", "be_pickup_form_vehicles", "be_vehicle_master", "vehicle_master"]),
+        ]);
+        setMasters({ merchants, townships, riders, drivers, helpers, vehicles });
+      }
+
+      await refreshSnapshot(false);
+    } catch (e: any) {
+      setError(e?.message || "Could not load master data.");
+    } finally {
+      setLoadingMasters(false);
+    }
+  }
+
+  async function refreshSnapshot(showMessage = true) {
+    try {
+      const rpc = await (supabase as any).rpc("be_pickup_form_snapshot", { p_search: null });
+      if (!rpc.error && rpc.data) {
+        setPending(Array.isArray(rpc.data.pending) ? rpc.data.pending : []);
+        if (showMessage) setMessage(t("Pickup list refreshed.", "Pickup စာရင်း refresh ပြီးပါပြီ။"));
+        return;
+      }
+
+      const rows = await trySelect("be_pickup_requests", 100);
+      setPending(rows);
+      if (showMessage) setMessage(t("Pickup list refreshed.", "Pickup စာရင်း refresh ပြီးပါပြီ။"));
+    } catch {
+      // optional
+    }
+  }
+
+  useEffect(() => {
+    loadMasters();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function patch(patchValue: AnyRow) {
+    setForm((prev) => ({ ...prev, ...patchValue }));
+  }
+
+  function handleMerchant(value: string) {
+    const merchant = merchantOptions.find((m) => norm(m.merchant_code) === norm(value) || norm(m.merchant_name) === norm(value));
+    if (!merchant) {
+      patch({ merchant_code: value, merchant_name: value });
+      return;
+    }
+
+    const tw = townshipOptions.find((x) => norm(x.township) === norm(merchant.township));
+    patch({
+      merchant_id: merchant.merchant_id,
+      merchant_code: merchant.merchant_code,
+      merchant_name: merchant.merchant_name,
+      business_type: merchant.business_type,
+      payment_type: merchant.payment_type || form.payment_type || "COD",
+      pickup_address: merchant.default_pickup_address || form.pickup_address,
+      township: merchant.township || form.township,
+      city: tw?.city || merchant.city || form.city || "Yangon",
+      region_state: tw?.region_state || merchant.region_state || form.region_state || "Yangon Region",
+    });
+  }
+
+  function handleTownship(value: string) {
+    const tw = townshipOptions.find((x) => norm(x.township) === norm(value));
+    patch({
+      township: value,
+      city: tw?.city || form.city || "Yangon",
+      region_state: tw?.region_state || form.region_state || "Yangon Region",
+    });
+  }
+
+  function handleRider(value: string) {
+    const r = riderOptions.find((x) => norm(x.name) === norm(value) || norm(x.id) === norm(value));
+    patch({ rider_name: r?.name || value, rider_id: r?.id || "" });
+  }
+
+  function handleDriver(value: string) {
+    const r = driverOptions.find((x) => norm(x.name) === norm(value) || norm(x.id) === norm(value));
+    patch({ driver_name: r?.name || value, driver_id: r?.id || "" });
+  }
+
+  function handleHelper(value: string) {
+    const r = helperOptions.find((x) => norm(x.name) === norm(value) || norm(x.id) === norm(value));
+    patch({ helper_name: r?.name || value, helper_id: r?.id || "" });
+  }
+
+  function handleVehicle(value: string) {
+    const v = vehicleOptions.find((x) => norm(x.plate) === norm(value) || norm(x.id) === norm(value));
+    patch({ vehicle_plate: v?.plate || value, vehicle_id: v?.id || "", vehicle_required: v?.vehicle_type || form.vehicle_required });
+  }
+
+  async function submitPickup(event: React.FormEvent) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    setMessage("");
+
+    try {
+      if (!form.merchant_code && !form.merchant_name) throw new Error(t("Merchant / customer is required.", "ကုန်သည် / Customer လိုအပ်သည်။"));
+      if (!form.pickup_address) throw new Error(t("Pickup address is required.", "လိပ်စာ လိုအပ်သည်။"));
+      if (!form.township) throw new Error(t("Township is required.", "မြို့နယ် လိုအပ်သည်။"));
+
+      const userRes = await supabase.auth.getUser().catch(() => ({ data: { user: null } }));
+      const actorEmail = userRes?.data?.user?.email || null;
+
+      const payload = {
+        p_merchant_code: form.merchant_code || form.merchant_name,
+        p_expected_parcels: Number(form.expected_parcels || 1),
+        p_pickup_date: form.pickup_date || todayISO(),
+        p_vehicle_required: form.vehicle_required || "Bike",
+        p_payment_type: form.payment_type || "COD",
+        p_actor_email: actorEmail,
+        p_pickup_address_override: form.pickup_address,
+        p_township_override: form.township,
+        p_city_override: form.city || null,
+        p_region_state_override: form.region_state || null,
+        p_pickup_remark: [
+          form.pickup_remark,
+          form.rider_name ? `Rider: ${form.rider_name}` : "",
+          form.driver_name ? `Driver: ${form.driver_name}` : "",
+          form.helper_name ? `Helper: ${form.helper_name}` : "",
+          form.vehicle_plate ? `Vehicle: ${form.vehicle_plate}` : "",
+        ].filter(Boolean).join(" | ") || null,
+        p_duplicate_confirmed: false,
+      };
+
+      let { data, error: rpcError } = await (supabase as any).rpc("be_create_pickup_request_from_master", payload);
+      if (rpcError) throw rpcError;
+
+      if (data?.requires_confirmation) {
+        const ok = window.confirm(data?.confirmation_message || data?.message || "Active pickup exists. Create another?");
+        if (!ok) return;
+
+        const retry = await (supabase as any).rpc("be_create_pickup_request_from_master", {
+          ...payload,
+          p_duplicate_confirmed: true,
+        });
+
+        if (retry.error) throw retry.error;
+        data = retry.data;
+      }
+
+      const pickupId = data?.pickup_id || data?.pickup_way_id || data?.way_id || "";
+      setMessage(t(`Order picking request created: ${pickupId}`, `Order Picking Request created: ${pickupId}`));
+      setForm({ ...initialForm, pickup_date: form.pickup_date, vehicle_required: form.vehicle_required, payment_type: form.payment_type });
+      await refreshSnapshot(false);
+    } catch (e: any) {
+      setError(e?.message || t("Submit failed.", "Submit မအောင်မြင်ပါ။"));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const formFieldClass = "be-op-field";
+
+  return (
+    <div className="be-op-page">
+      <datalist id="be-op-merchant-options">
+        {merchantOptions.map((m) => <option key={`${m.merchant_code}-${m.merchant_name}`} value={m.merchant_code}>{m.merchant_name}</option>)}
+        {merchantOptions.map((m) => <option key={`m-${m.merchant_code}-${m.merchant_name}`} value={m.merchant_name}>{m.merchant_code}</option>)}
+      </datalist>
+      <datalist id="be-op-township-options">
+        {townshipOptions.map((tw) => <option key={`${tw.township}-${tw.city}`} value={tw.township}>{[tw.city, tw.region_state].filter(Boolean).join(" / ")}</option>)}
+      </datalist>
+      <datalist id="be-op-rider-options">
+        {riderOptions.map((r) => <option key={`${r.id}-${r.name}`} value={r.name}>{[r.id, r.phone, r.branch_code].filter(Boolean).join(" / ")}</option>)}
+      </datalist>
+      <datalist id="be-op-driver-options">
+        {driverOptions.map((r) => <option key={`${r.id}-${r.name}`} value={r.name}>{[r.id, r.phone, r.branch_code].filter(Boolean).join(" / ")}</option>)}
+      </datalist>
+      <datalist id="be-op-helper-options">
+        {helperOptions.map((r) => <option key={`${r.id}-${r.name}`} value={r.name}>{[r.id, r.phone, r.branch_code].filter(Boolean).join(" / ")}</option>)}
+      </datalist>
+      <datalist id="be-op-vehicle-options">
+        {vehicleOptions.map((v) => <option key={`${v.id}-${v.plate}`} value={v.plate}>{[v.vehicle_type, v.id].filter(Boolean).join(" / ")}</option>)}
+      </datalist>
+
+      <div className="be-op-topbar">
+        <button type="button" className="be-op-lang" onClick={() => setLanguage((v) => (v === "en" ? "my" : "en"))}>
+          🌐 {language === "en" ? "English" : "မြန်မာ"}
+        </button>
+      </div>
+
+      <section className="be-op-filter-card">
+        <div className="be-op-filter-group">
+          <label>
+            <span><Filter size={14} /> {t("From Date", "မှ")}</span>
+            <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} />
+          </label>
+          <label>
+            <span><Filter size={14} /> {t("To Date", "ထိ")}</span>
+            <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} />
+          </label>
+        </div>
+
+        <div className="be-op-filter-actions">
+          <button type="button" className="be-op-btn be-op-btn-blue" onClick={() => refreshSnapshot(true)}>
+            <Download size={16} /> {t("Download Report", "အစီရင်ခံစာ ရယူမည်")}
+          </button>
+          <button type="button" className="be-op-btn be-op-btn-dark" onClick={downloadTemplate}>
+            <Download size={16} /> {t("Template", "ပုံစံခွက်")}
+          </button>
+          <button type="button" className="be-op-btn be-op-btn-gold">
+            <CloudUpload size={16} /> {t("Bulk Upload", "ဖိုင်တင်မည်")}
+          </button>
+        </div>
+      </section>
+
+      {error && <div className="be-op-alert be-op-alert-error">{error}</div>}
+      {message && <div className="be-op-alert be-op-alert-ok"><CheckCircle2 size={18} /> {message}</div>}
+
+      <form onSubmit={submitPickup} className="be-op-form-card">
+        <div className="be-op-section-title">
+          <Package size={18} />
+          <span>{t("Merchant & Parcel Details", "ကုန်သည်နှင့် ပစ္စည်းအချက်အလက်")}</span>
+        </div>
+
+        <div className="be-op-grid">
+          <label className={formFieldClass}>
+            <span>{t("Merchant / Customer", "ကုန်သည်")}</span>
+            <select value={form.merchant_code || ""} onChange={(e) => handleMerchant(e.target.value)} disabled={loadingMasters}>
+              <option value="">{loadingMasters ? t("Loading...", "ဖတ်နေသည်...") : t("-- Select Merchant --", "-- ရွေးပါ --")}</option>
+              {merchantOptions.map((m) => (
+                <option key={`${m.merchant_code}-${m.merchant_name}`} value={m.merchant_code}>
+                  {m.merchant_code} - {m.merchant_name}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Business Type", "လုပ်ငန်းအမျိုးအစား")}</span>
+            <input value={form.business_type || ""} onChange={(e) => patch({ business_type: e.target.value })} list="be-op-business-type" placeholder={t("Business type", "လုပ်ငန်းအမျိုးအစား")} />
+            <datalist id="be-op-business-type">
+              <option value="Online Shop" />
+              <option value="Book Store" />
+              <option value="Branch Office" />
+              <option value="Retail" />
+              <option value="Wholesale" />
+              <option value="E-commerce" />
+            </datalist>
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Payment Terms", "ငွေချေစနစ်")}</span>
+            <select value={form.payment_type || "COD"} onChange={(e) => patch({ payment_type: e.target.value })}>
+              <option value="COD">COD</option>
+              <option value="Prepaid">Prepaid</option>
+              <option value="Monthly Billing">Monthly Billing</option>
+              <option value="Merchant Credit">Merchant Credit</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="KBZ Pay">KBZ Pay</option>
+            </select>
+          </label>
+
+          <label className={`${formFieldClass} be-op-span-2`}>
+            <span>{t("Pickup Address", "လိပ်စာ")}</span>
+            <textarea rows={1} value={form.pickup_address || ""} onChange={(e) => patch({ pickup_address: e.target.value })} placeholder={t("Enter full address...", "လိပ်စာရိုက်ပါ...")} />
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Township", "မြို့နယ်")}</span>
+            <input value={form.township || ""} onChange={(e) => handleTownship(e.target.value)} onBlur={(e) => handleTownship(e.target.value)} list="be-op-township-options" placeholder={t("Type or select township", "မြို့နယ် ရွေးပါ သို့မဟုတ် ရိုက်ပါ")} />
+            <small>{form.city || "-"}{form.region_state ? ` / ${form.region_state}` : ""}</small>
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Expected Parcels", "အရေအတွက်")}</span>
+            <input type="number" min="1" value={form.expected_parcels || 1} onChange={(e) => patch({ expected_parcels: Number(e.target.value || 1) })} />
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Pickup Date", "ရက်စွဲ")}</span>
+            <input type="date" value={form.pickup_date || todayISO()} onChange={(e) => patch({ pickup_date: e.target.value })} />
+          </label>
+
+          <label className={formFieldClass}>
+            <span>{t("Vehicle Required", "လိုအပ်သော ယာဉ်")}</span>
+            <select value={form.vehicle_required || "Bike"} onChange={(e) => patch({ vehicle_required: e.target.value })}>
+              <option value="Bike">Bike</option>
+              <option value="Motorcycle">Motorcycle</option>
+              <option value="Van">Van</option>
+              <option value="Mini Truck">Mini Truck</option>
+              <option value="Truck">Truck</option>
+              <option value="Car">Car</option>
+            </select>
+          </label>
+
+          <label className={formFieldClass}>
+            <span><Bike size={12} /> {t("Rider", "Rider")}</span>
+            <input list="be-op-rider-options" value={form.rider_name || ""} onChange={(e) => handleRider(e.target.value)} placeholder={t("Optional pre-assign rider", "Rider ကြိုတင်ရွေးရန်")} />
+          </label>
+
+          <label className={formFieldClass}>
+            <span><Truck size={12} /> {t("Driver", "Driver")}</span>
+            <input list="be-op-driver-options" value={form.driver_name || ""} onChange={(e) => handleDriver(e.target.value)} placeholder={t("Optional driver", "Driver ရွေးရန်")} />
+          </label>
+
+          <label className={formFieldClass}>
+            <span><UserCheck size={12} /> {t("Helper / Vehicle", "Helper / ယာဉ်")}</span>
+            <input list="be-op-helper-options" value={form.helper_name || ""} onChange={(e) => handleHelper(e.target.value)} placeholder={t("Helper", "Helper")} />
+            <input className="be-op-second-input" list="be-op-vehicle-options" value={form.vehicle_plate || ""} onChange={(e) => handleVehicle(e.target.value)} placeholder={t("Vehicle plate", "ယာဉ်နံပါတ်")} />
+          </label>
+
+          <label className={`${formFieldClass} be-op-span-3`}>
+            <span>{t("Remark / Special Instruction", "မှတ်ချက် / အထူးညွှန်ကြားချက်")}</span>
+            <textarea rows={3} maxLength={1000} value={form.pickup_remark || ""} onChange={(e) => patch({ pickup_remark: e.target.value })} placeholder={t("Supervisor / Rider note...", "Supervisor / Rider အတွက် မှတ်ချက် ရိုက်ပါ...")} />
+            <small>{String(form.pickup_remark || "").length}/1000</small>
+          </label>
+        </div>
+
+        <div className="be-op-form-footer">
+          <button type="button" className="be-op-btn be-op-btn-dark" onClick={loadMasters}>
+            {loadingMasters ? <Loader2 className="spin" size={16} /> : <RefreshCw size={16} />} {t("Refresh Master Data", "Master Data Refresh")}
+          </button>
+          <button type="submit" disabled={submitting || loadingMasters} className="be-op-submit">
+            {submitting ? <Loader2 className="spin" size={16} /> : <Send size={16} />}
+            {submitting ? t("Submitting...", "ဆောင်ရွက်နေပါသည်...") : t("Submit Order Picking Request", "အတည်ပြုမည်")}
+          </button>
+        </div>
+      </form>
+
+      <section className="be-op-pending">
+        <div className="be-op-pending-title">
+          <ClipboardListIcon />
+          <div>
+            <h3>{t("Recent Order Picking Requests", "လတ်တလော Order Picking Requests")}</h3>
+            <p>{t("Latest records from pickup workflow.", "Pickup workflow မှ နောက်ဆုံးမှတ်တမ်းများ။")}</p>
+          </div>
+        </div>
+
+        <div className="be-op-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Pickup ID</th>
+                <th>Merchant</th>
+                <th>Township</th>
+                <th>Parcels</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pending.slice(0, 8).map((row, index) => (
+                <tr key={`${row.pickup_id || row.pickup_request_id || index}`}>
+                  <td>{row.pickup_id || row.pickup_request_id || "-"}</td>
+                  <td>{row.merchant_name || row.merchant_code || "-"}</td>
+                  <td>{row.township || "-"}</td>
+                  <td>{row.expected_parcels || "-"}</td>
+                  <td>{row.status || "-"}</td>
+                </tr>
+              ))}
+              {!pending.length && (
+                <tr>
+                  <td colSpan={5} className="be-op-empty">{t("No pickup requests yet.", "Pickup request မရှိသေးပါ။")}</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ClipboardListIcon() {
+  return <Package size={18} className="be-op-title-icon" />;
+}

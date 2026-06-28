@@ -1,0 +1,452 @@
+// @ts-nocheck
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { read, utils } from "xlsx";
+import { supabase } from "@/components/beSupabaseBridge";
+import { Download, FileSpreadsheet, ImageIcon, Maximize2, Minimize2, RefreshCw, Save, Send } from "lucide-react";
+
+type Line = {
+  line_no: number;
+  recipient_name: string;
+  contact_no_1: string;
+  contact_no_2: string;
+  township: string;
+  recipient_address: string;
+  customer_tier: string;
+  item_price: string;
+  weight_kg: string;
+  surcharge: string;
+  total_delivery_fee: string;
+  cod: string;
+  actual_collect: string;
+  remark: string;
+};
+
+const C = {
+  bg: "#061524",
+  panel: "#0b2236",
+  panel2: "#082033",
+  border: "#1b4265",
+  text: "#eef8ff",
+  sub: "#a8c4da",
+  gold: "#f8c14a",
+  green: "#21d07a",
+};
+
+const blankLine = (n: number): Line => ({
+  line_no: n,
+  recipient_name: "",
+  contact_no_1: "",
+  contact_no_2: "",
+  township: "",
+  recipient_address: "",
+  customer_tier: "STANDARD",
+  item_price: "",
+  weight_kg: "1",
+  surcharge: "0",
+  total_delivery_fee: "0",
+  cod: "0",
+  actual_collect: "0",
+  remark: "",
+});
+
+function asText(value: any, fallback = "") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function asNumber(value: any, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function btn(bg = "#123858", color = C.text): React.CSSProperties {
+  return {
+    border: `1px solid ${C.border}`,
+    background: bg,
+    color,
+    borderRadius: 12,
+    padding: "11px 14px",
+    cursor: "pointer",
+    fontWeight: 900,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    whiteSpace: "nowrap",
+  };
+}
+
+function field(extra: React.CSSProperties = {}): React.CSSProperties {
+  return {
+    width: "100%",
+    minWidth: 130,
+    background: C.bg,
+    border: `1px solid ${C.border}`,
+    color: C.text,
+    borderRadius: 10,
+    padding: "10px 11px",
+    outline: "none",
+    fontWeight: 700,
+    ...extra,
+  };
+}
+
+function normalizePickup(row: any) {
+  const pickup_id =
+    asText(row.pickup_id) ||
+    asText(row.pickup_request_id) ||
+    asText(row.pickup_way_id) ||
+    asText(row.pickup_waybill_id) ||
+    asText(row.waybill_no) ||
+    asText(row.request_code);
+
+  return {
+    pickup_id,
+    merchant_code: row.merchant_code,
+    merchant_name: row.merchant_name || row.merchant || row.customer_name || pickup_id,
+    pickup_address: row.pickup_address || row.address || row.merchant_address || "",
+    township: row.township || row.pickup_township || "",
+    expected_parcels: Math.max(1, asNumber(row.expected_parcels || row.parcel_count || row.parcels || row.qty || row.delivery_way_count, 1)),
+  };
+}
+
+function normalizeKey(key: string) {
+  return String(key || "")
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/\s+/g, "_")
+    .replace(/[()]/g, "")
+    .replace(/[^a-z0-9_]/g, "");
+}
+
+function pick(row: Record<string, any>, keys: string[]) {
+  const normal: Record<string, any> = {};
+  Object.keys(row || {}).forEach((key) => {
+    normal[normalizeKey(key)] = row[key];
+  });
+  for (const key of keys) {
+    const value = normal[normalizeKey(key)];
+    if (value !== undefined && value !== null) return String(value);
+  }
+  return "";
+}
+
+function mapUploadRow(row: Record<string, any>, index: number): Line {
+  return {
+    line_no: index + 1,
+    recipient_name: pick(row, ["recipient_name", "recipient name", "name"]),
+    contact_no_1: pick(row, ["contact_no_1", "contact no 1", "contact no. 1", "phone", "phone 1"]),
+    contact_no_2: pick(row, ["contact_no_2", "contact no 2", "contact no. 2", "phone 2"]),
+    township: pick(row, ["township", "township_en_mm", "township en/mm"]),
+    recipient_address: pick(row, ["recipient_address", "recipient address", "address"]),
+    customer_tier: pick(row, ["customer_tier", "customer tier"]) || "STANDARD",
+    item_price: pick(row, ["item_price", "item price"]),
+    weight_kg: pick(row, ["weight_kg", "weight kg", "weight"]) || "1",
+    surcharge: pick(row, ["surcharge"]) || "0",
+    total_delivery_fee: pick(row, ["total_delivery_fee", "total deli fee", "delivery fee"]) || "0",
+    cod: pick(row, ["cod"]) || "0",
+    actual_collect: pick(row, ["actual_collect", "actual collect"]) || "0",
+    remark: pick(row, ["remark", "special instruction", "special_instruction"]),
+  };
+}
+
+function photoUrl(row: any) {
+  const raw =
+    row.display_photo ||
+    row.proof_photo_url ||
+    row.proof_photo_data ||
+    row.photo_url ||
+    row.image_url ||
+    row.proof_photo_path ||
+    "";
+
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw) || /^data:image\//i.test(raw)) return raw;
+
+  const publicUrl = supabase.storage.from("pickup-parcel-proofs").getPublicUrl(raw);
+  return publicUrl?.data?.publicUrl || raw;
+}
+
+export default function DataEntryRegistrationStablePage() {
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const [pickups, setPickups] = useState<any[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [lines, setLines] = useState<Line[]>([]);
+  const [proofs, setProofs] = useState<any[]>([]);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [full, setFull] = useState(false);
+  const [largePhoto, setLargePhoto] = useState<any>(null);
+
+  const selected = useMemo(() => pickups.find((p) => p.pickup_id === selectedId) || pickups[0], [pickups, selectedId]);
+  const totalCod = useMemo(() => lines.reduce((sum, line) => sum + asNumber(line.cod), 0), [lines]);
+  const totalFee = useMemo(() => lines.reduce((sum, line) => sum + asNumber(line.total_delivery_fee), 0), [lines]);
+
+  function toast(text: string) {
+    setMessage(text);
+    window.setTimeout(() => setMessage((old) => (old === text ? "" : old)), 7000);
+  }
+
+  async function loadPickups() {
+    try {
+      const sources = ["be_v_supervisor_pickup_queue", "be_v_rider_pickup_queue", "be_portal_pickup_requests", "be_pickup_requests"];
+      let data: any[] = [];
+      for (const table of sources) {
+        try {
+          const res = await (supabase as any).from(table).select("*").limit(100);
+          if (!res.error && res.data?.length) {
+            data = res.data;
+            break;
+          }
+        } catch {}
+      }
+      const next = data.map(normalizePickup).filter((row) => row.pickup_id);
+      setPickups(next);
+      if (!selectedId && next[0]?.pickup_id) setSelectedId(next[0].pickup_id);
+      toast(`Loaded ${next.length} pickup request(s).`);
+    } catch (error: any) {
+      toast(error?.message || "Unable to load pickups.");
+    }
+  }
+
+  async function loadSavedLines(pickupId: string, expected: number) {
+    if (!pickupId) return;
+    try {
+      const res = await (supabase as any).rpc("be_data_entry_load_registration_lines_v5", { p_pickup_id: pickupId });
+      if (!res.error && res.data?.length) {
+        setLines(res.data.map((row: any, i: number) => ({
+          line_no: row.line_no || i + 1,
+          recipient_name: asText(row.recipient_name),
+          contact_no_1: asText(row.contact_no_1),
+          contact_no_2: asText(row.contact_no_2),
+          township: asText(row.township),
+          recipient_address: asText(row.recipient_address),
+          customer_tier: asText(row.customer_tier, "STANDARD"),
+          item_price: asText(row.item_price),
+          weight_kg: asText(row.weight_kg, "1"),
+          surcharge: asText(row.surcharge, "0"),
+          total_delivery_fee: asText(row.total_delivery_fee, "0"),
+          cod: asText(row.cod, "0"),
+          actual_collect: asText(row.actual_collect, "0"),
+          remark: asText(row.remark),
+        })));
+        return;
+      }
+    } catch {}
+    setLines(Array.from({ length: Math.max(1, expected) }, (_, i) => blankLine(i + 1)));
+  }
+
+  async function loadProofs(pickupId = selected?.pickup_id || selectedId) {
+    if (!pickupId) return;
+    try {
+      let data: any[] = [];
+      try {
+        const res = await (supabase as any).rpc("be_data_entry_any_rider_proofs", { p_pickup_id: pickupId });
+        if (!res.error) data = res.data || [];
+      } catch {}
+      if (!data.length) {
+        const res = await (supabase as any).from("be_v_data_entry_rider_proofs").select("*").eq("pickup_id", pickupId).order("parcel_sequence", { ascending: true });
+        if (!res.error) data = res.data || [];
+      }
+      const next = data.map((row) => ({ ...row, photo_url: photoUrl(row) }));
+      setProofs(next);
+      toast(`Loaded ${next.length} Rider proof row(s). Photos: ${next.filter((r) => r.photo_url).length}.`);
+    } catch (error: any) {
+      toast(error?.message || "Unable to load Rider proof photos.");
+      setProofs([]);
+    }
+  }
+
+  useEffect(() => { void loadPickups(); }, []);
+  useEffect(() => {
+    if (!selected) return;
+    void loadSavedLines(selected.pickup_id, selected.expected_parcels || 1);
+    void loadProofs(selected.pickup_id);
+  }, [selected?.pickup_id]);
+
+  function updateLine(index: number, key: keyof Line, value: string) {
+    setLines((old) => old.map((line, i) => (i === index ? { ...line, [key]: value } : line)));
+  }
+
+  async function parseExcel(file: File) {
+    const buffer = await file.arrayBuffer();
+    const wb = read(buffer, { type: "array" });
+    const sheet = wb.SheetNames[0];
+    const rows = utils.sheet_to_json(wb.Sheets[sheet], { defval: "" }) as Record<string, any>[];
+    const next = rows.filter((row) => Object.values(row).some((v) => String(v ?? "").trim() !== "")).map(mapUploadRow);
+    if (!next.length) return toast("No usable rows found in Excel/CSV.");
+    setLines(next);
+    toast(`Excel loaded: ${next.length} row(s).`);
+  }
+
+  async function save(submit = false) {
+    const pickupId = selected?.pickup_id || selectedId;
+    if (!pickupId) return toast("Please select a pickup first.");
+    setSaving(true);
+    try {
+      const res = await (supabase as any).rpc("be_data_entry_submit_all_info_v5", {
+        p_pickup_id: pickupId,
+        p_rows: lines,
+        p_actor_email: localStorage.getItem("be_user_email") || localStorage.getItem("be_actor_email") || null,
+        p_submit: submit,
+      });
+      if (res.error) throw res.error;
+      toast(res.data?.message || (submit ? "Submitted all information." : "Draft saved."));
+    } catch (error: any) {
+      toast(error?.message || "Unable to save. Run be_data_entry_stable_backend_v5.sql first.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function exportCsv(template = false) {
+    const headers = ["Recipient Name", "Contact No. (1)", "Contact No. (2)", "Township", "Recipient Address", "Customer Tier", "Item Price", "Weight KG", "Surcharge", "Total Deli Fee", "COD", "Actual Collect", "Remark"];
+    const rows = template ? [["Mg Mg", "09777777777", "", "Hlaing", "No. 1, Sample Street", "STANDARD", "25000", "1", "0", "", "25000", "", "Bulk upload sample"]] : lines.map((l) => [l.recipient_name, l.contact_no_1, l.contact_no_2, l.township, l.recipient_address, l.customer_tier, l.item_price, l.weight_kg, l.surcharge, l.total_delivery_fee, l.cod, l.actual_collect, l.remark]);
+    const csv = [headers, ...rows].map((row) => row.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(",")).join("\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = template ? "Britium_DataEntry_Bulk_Template.csv" : `${selected?.pickup_id || "data-entry"}-registration.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+
+  async function beEnterDataEntryFullScreen() {
+    setFull(true);
+
+    try {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    } catch {}
+
+    try {
+      if (document.documentElement.requestFullscreen && !document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      }
+    } catch {}
+  }
+
+  async function beExitDataEntryFullScreen() {
+    setFull(false);
+
+    try {
+      if (document.fullscreenElement && document.exitFullscreen) {
+        await document.exitFullscreen();
+      }
+    } catch {}
+
+    try {
+      document.body.style.overflow = "";
+      document.documentElement.style.overflow = "";
+    } catch {}
+  }
+
+  useEffect(() => {
+    const onFullScreenChange = () => {
+      if (!document.fullscreenElement) {
+        setFull(false);
+        try {
+          document.body.style.overflow = "";
+          document.documentElement.style.overflow = "";
+        } catch {}
+      }
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        void beExitDataEntryFullScreen();
+      }
+    };
+
+    document.addEventListener("fullscreenchange", onFullScreenChange);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("fullscreenchange", onFullScreenChange);
+      document.removeEventListener("keydown", onKeyDown);
+      try {
+        document.body.style.overflow = "";
+        document.documentElement.style.overflow = "";
+      } catch {}
+    };
+  }, []);
+
+  const page: React.CSSProperties = full
+    ? { position: "fixed", inset: 0, zIndex: 99999, overflow: "auto", background: C.bg, color: C.text, padding: 18, fontFamily: "Poppins, Inter, system-ui, sans-serif" }
+    : { minHeight: "100vh", background: C.bg, color: C.text, padding: 18, fontFamily: "Poppins, Inter, system-ui, sans-serif" };
+
+  return (
+    <main data-be-data-entry-stable-root="true" style={page}>
+      <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) void parseExcel(f); e.currentTarget.value = ""; }} />
+      <section style={{ border: `1px solid ${C.border}`, background: C.panel, borderRadius: 20, padding: 18, marginBottom: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ color: C.gold, fontWeight: 950, letterSpacing: ".18em", fontSize: 13 }}>DATA ENTRY REGISTRATION STABLE SCREEN</div>
+            <div style={{ marginTop: 8, color: C.sub }}>Pickup: {selected?.pickup_id || "-"} - Lines: {lines.length} - Rider proof photos: {proofs.filter((p) => p.photo_url).length}/{proofs.length}</div>
+          </div>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
+            <button style={btn("#123858")} onClick={() => loadProofs()}><RefreshCw size={16} /> Refresh Rider Proofs</button>
+            <button style={btn(C.green, "#061524")} onClick={() => fileRef.current?.click()}><FileSpreadsheet size={16} /> Bulk Upload Excel</button>
+            <button style={btn("#123858")} onClick={() => exportCsv(true)}><Download size={16} /> Download Template</button>
+            <button style={btn("#123858")} onClick={() => exportCsv(false)}><Download size={16} /> Export CSV</button>
+            <button style={btn(C.gold, "#061524")} onClick={() => save(false)} disabled={saving}><Save size={16} /> Save Registration Draft</button>
+            <button style={btn(C.green, "#061524")} onClick={() => save(true)} disabled={saving}><Send size={16} /> Submit All Info</button>
+            <button style={btn(C.gold, "#061524")} onClick={() => { if (full) { void beExitDataEntryFullScreen(); } else { void beEnterDataEntryFullScreen(); } }}>{full ? <Minimize2 size={16} /> : <Maximize2 size={16} />} {full ? "Exit Full Screen" : "Full Screen Data Entry"}</button>
+          </div>
+        </div>
+        {message ? <div style={{ marginTop: 12, border: "1px solid #057a55", background: "#064535", color: "#2cff8f", borderRadius: 14, padding: 12, fontWeight: 850 }}>{message}</div> : null}
+      </section>
+      <section style={{ display: "grid", gridTemplateColumns: "330px minmax(0,1fr)", gap: 14 }}>
+        <aside style={{ border: `1px solid ${C.border}`, background: C.panel, borderRadius: 20, padding: 16, minHeight: 520 }}>
+          <div style={{ color: C.gold, fontWeight: 950, marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}><ImageIcon size={16} /> Rider Proof Photos</div>
+          <select style={field({ marginBottom: 12, minWidth: 0 })} value={selected?.pickup_id || selectedId} onChange={(e) => setSelectedId(e.target.value)}>
+            {pickups.map((p) => <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} ({p.merchant_code || p.merchant_name || "-"} - {p.expected_parcels} parcel)</option>)}
+          </select>
+          <div style={{ color: C.sub, marginBottom: 12 }}><strong style={{ color: C.text }}>{selected?.merchant_name || "-"}</strong><br />{selected?.pickup_address || "-"}<br />{selected?.township || ""}</div>
+          <div style={{ display: "grid", gap: 10 }}>
+            {proofs.length === 0 ? (
+              <div style={{ border: `1px dashed ${C.border}`, borderRadius: 14, minHeight: 140, display: "grid", placeItems: "center", color: C.sub, textAlign: "center", padding: 12 }}>No Rider proof rows found.<br />Rider must complete pickup verification with direct photo first.</div>
+            ) : proofs.map((proof, index) => (
+              <button key={`${proof.delivery_way_id || index}-${index}`} type="button" onClick={() => proof.photo_url && setLargePhoto(proof)} style={{ border: `1px solid ${proof.photo_url ? C.green : C.border}`, background: C.panel2, borderRadius: 14, padding: 10, color: C.text, textAlign: "left", cursor: proof.photo_url ? "zoom-in" : "default" }}>
+                {proof.photo_url ? <img src={proof.photo_url} style={{ width: "100%", height: 130, objectFit: "cover", borderRadius: 10, display: "block" }} /> : <div style={{ height: 110, display: "grid", placeItems: "center", color: C.sub, border: `1px dashed ${C.border}`, borderRadius: 10 }}>Rider proof pending / no photo saved</div>}
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, gap: 8 }}><span style={{ color: C.sub }}>Parcel {proof.parcel_sequence || index + 1}</span><strong style={{ color: proof.photo_url ? C.green : C.gold }}>{proof.status || proof.photo_state || "PENDING"}</strong></div>
+                <div style={{ color: C.sub, fontSize: 12, marginTop: 5 }}>{proof.delivery_way_id || ""}</div>
+              </button>
+            ))}
+          </div>
+        </aside>
+        <section style={{ border: `1px solid ${C.border}`, background: C.panel, borderRadius: 20, overflow: "hidden" }}>
+          <div style={{ padding: 14, display: "flex", gap: 12, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+            <div><div style={{ color: C.gold, fontWeight: 950 }}>DATA ENTRY TEMPLATE</div><div style={{ color: C.sub }}>Registration columns only. No code reads way_id here.</div></div>
+            <button style={btn("#123858")} onClick={() => setLines((old) => [...old, blankLine(old.length + 1)])}>Add Line</button>
+          </div>
+          <div style={{ overflow: "auto", maxHeight: full ? "calc(100vh - 220px)" : "68vh" }}>
+            <table style={{ borderCollapse: "collapse", minWidth: 1680, width: "100%" }}>
+              <thead><tr>{["#", "RECIPIENT NAME", "CONTACT NO. (1)", "CONTACT NO. (2)", "TOWNSHIP", "RECIPIENT ADDRESS", "CUSTOMER TIER", "ITEM PRICE", "WEIGHT KG", "SURCHARGE", "TOTAL DELI FEE", "COD", "ACTUAL COLLECT", "REMARK / SPECIAL INSTRUCTION"].map((h) => <th key={h} style={{ position: "sticky", top: 0, background: C.gold, color: "#061524", textAlign: "left", padding: 10, fontSize: 13, whiteSpace: "nowrap" }}>{h}</th>)}</tr></thead>
+              <tbody>
+                {lines.map((line, index) => (
+                  <tr key={line.line_no}>
+                    <td style={{ borderBottom: `1px solid ${C.border}`, padding: 8, color: C.gold, fontWeight: 950 }}>{index + 1}</td>
+                    {[["recipient_name", "input", {}], ["contact_no_1", "input", {}], ["contact_no_2", "input", {}], ["township", "input", { minWidth: 220 }], ["recipient_address", "textarea", { minWidth: 260, minHeight: 58 }]].map(([key, kind, extra]: any) => (
+                      <td key={key} style={{ borderBottom: `1px solid ${C.border}`, padding: 8 }}>
+                        {kind === "textarea" ? <textarea style={field(extra)} value={line[key]} onChange={(e) => updateLine(index, key, e.target.value)} /> : <input style={field(extra)} value={line[key]} onChange={(e) => updateLine(index, key, e.target.value)} />}
+                      </td>
+                    ))}
+                    <td style={{ borderBottom: `1px solid ${C.border}`, padding: 8 }}><select style={field()} value={line.customer_tier} onChange={(e) => updateLine(index, "customer_tier", e.target.value)}><option>STANDARD</option><option>VIP</option><option>COD</option></select></td>
+                    {["item_price", "weight_kg", "surcharge", "total_delivery_fee", "cod", "actual_collect"].map((key: any) => <td key={key} style={{ borderBottom: `1px solid ${C.border}`, padding: 8 }}><input style={field()} value={line[key]} onChange={(e) => updateLine(index, key, e.target.value)} /></td>)}
+                    <td style={{ borderBottom: `1px solid ${C.border}`, padding: 8 }}><textarea style={field({ minWidth: 260, minHeight: 58 })} value={line.remark} onChange={(e) => updateLine(index, "remark", e.target.value)} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div style={{ padding: 14, borderTop: `1px solid ${C.border}`, color: C.sub, display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}><span>Total lines: {lines.length}</span><span>Total delivery fee: {totalFee.toLocaleString()} Ks</span><span>Total COD: {totalCod.toLocaleString()} Ks</span></div>
+        </section>
+      </section>
+      {largePhoto?.photo_url ? <div onClick={() => setLargePhoto(null)} style={{ position: "fixed", inset: 0, zIndex: 100000, background: "rgba(0,0,0,.78)", display: "grid", placeItems: "center", padding: 20 }}><div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 18, padding: 14, maxWidth: "94vw", maxHeight: "94vh" }}><img src={largePhoto.photo_url} style={{ maxWidth: "88vw", maxHeight: "78vh", objectFit: "contain", borderRadius: 12 }} /><div style={{ color: C.text, marginTop: 8, fontWeight: 900 }}>{largePhoto.delivery_way_id || largePhoto.pickup_id || ""}</div></div></div> : null}
+    </main>
+  );
+}

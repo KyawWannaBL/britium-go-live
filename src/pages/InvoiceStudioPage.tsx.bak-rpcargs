@@ -1,0 +1,14 @@
+// @ts-nocheck
+import PortalLiveSnapshotPage from "@/components/PortalLiveSnapshotPage";
+
+export default function InvoiceStudioPage() {
+  return (
+    <PortalLiveSnapshotPage
+      title="Invoice Studio"
+      subtitle="Invoice-ready grouped waybill rows from live delivery workflow."
+      rpcName="be_invoice_studio_snapshot"
+      rpcArgs={}
+      rowsKey="invoices"
+    />
+  );
+}

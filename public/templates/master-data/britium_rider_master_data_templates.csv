@@ -1,0 +1,13 @@
+﻿Rider_Master (EN),,,,,,
+Rider master data used by Supervisor assignment and Rider task flow.,,,,,,
+rider_id,rider_name,phone_primary,nrc_or_id_no,assigned_zone,employment_type,status
+RID001,Ko Kyaw Zin Khant,09-779 052 872,12/DaGaYa(N)032246,Yangon Central,Permanent,Active
+RID002,Ko Paing Zay Htet,09-779 615 147,14/DaDaYa(N)246279,Yangon South,Permanent,Active
+RID003,Ko Chit Yin Htoo,09-662 385 475,12/DaGaYa(N)052464,Yangon North,Permanent,Active
+RID004,Ko Wai Lin Phyo,09-779 634 710,14/PaThaNa(N)366317,Yangon North,Permanent,Active
+RID005,Ko Aye Chan Soe,09-259 725 323,13/KaTaNa(N)211849,Yangon North,Permanent,Active
+RID006,Ma Myo Pa Pa Aung,09-779 617 044,12/DaGaYa(N)023361,Yangon East,Permanent,Active
+RID007,Ko Myo Min Kyaw,09-775 018 446,12/MaYaKa(N)187754,Yangon Central,Permanent,Active
+RID008,Ko Than Min Soe,09-786 015 602,12/MaBaNa(N)228656,Yangon South,Contract,Active
+RID009,Ko S Lin Phyo,09-965 023 790,12/DaGaYa(N)038819,Yangon Central,Contract,Active
+,,,,,,

@@ -1,0 +1,14 @@
+// @ts-nocheck
+import PortalLiveSnapshotPage from "@/components/PortalLiveSnapshotPage";
+
+export default function SupervisorPickupPage() {
+  return (
+    <PortalLiveSnapshotPage
+      title="Supervisor Pickup"
+      subtitle="Rider / driver / helper assignment source linked to pickup queue."
+      rpcName="be_supervisor_pickup_snapshot"
+      rpcArgs={{}}
+      rowsKey="queue"
+    />
+  );
+}

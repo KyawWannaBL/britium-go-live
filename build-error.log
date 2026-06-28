@@ -1,0 +1,110 @@
+
+> britium-clean-enterprise-portal@1.0.0 build
+> vite build
+
+[36mvite v8.0.16 [32mbuilding client environment for production...[36m[39m
+[2Ktransforming...
+/grid.svg referenced in /grid.svg didn't resolve at build time, it will remain unchanged to be resolved at runtime
+✓ 2299 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                                                 0.83 kB │ gzip:   0.46 kB
+dist/assets/index-I7-OhXz4.css                                217.12 kB │ gzip:  33.42 kB
+dist/assets/DocumentPrintStudioPage-0Ogvedad.js                 0.06 kB │ gzip:   0.07 kB
+dist/assets/WaybillStudioPage-0Ogvedad.js                       0.06 kB │ gzip:   0.07 kB
+dist/assets/loader-circle-BSW6dsff.js                           0.13 kB │ gzip:   0.14 kB
+dist/assets/navigation-B1KTDrEn.js                              0.13 kB │ gzip:   0.14 kB
+dist/assets/plus-ByzIjVS7.js                                    0.14 kB │ gzip:   0.14 kB
+dist/assets/x-BzHFMU84.js                                       0.14 kB │ gzip:   0.14 kB
+dist/assets/filter-BME2FYzR.js                                  0.15 kB │ gzip:   0.15 kB
+dist/assets/arrow-left-DU9dSulr.js                              0.15 kB │ gzip:   0.15 kB
+dist/assets/search-WnBobnSJ.js                                  0.16 kB │ gzip:   0.16 kB
+dist/assets/circle-check-Cco9CWLG.js                            0.16 kB │ gzip:   0.16 kB
+dist/assets/clock-Be28RO8b.js                                   0.17 kB │ gzip:   0.16 kB
+dist/assets/trending-up-BGsOUTmn.js                             0.19 kB │ gzip:   0.17 kB
+dist/assets/circle-x-CDzPxJu4.js                                0.19 kB │ gzip:   0.17 kB
+dist/assets/camera-PbM4ZP9S.js                                  0.23 kB │ gzip:   0.20 kB
+dist/assets/circle-alert-C2jCR4UQ.js                            0.23 kB │ gzip:   0.18 kB
+dist/assets/cloud-upload-CtaAOoh6.js                            0.23 kB │ gzip:   0.19 kB
+dist/assets/route-DYtBVCC4.js                                   0.24 kB │ gzip:   0.19 kB
+dist/assets/upload-BOlS3BZu.js                                  0.24 kB │ gzip:   0.20 kB
+dist/assets/map-pin-aNncozpa.js                                 0.24 kB │ gzip:   0.21 kB
+dist/assets/download-cQFPj1kq.js                                0.25 kB │ gzip:   0.21 kB
+dist/assets/zap-gMxKLreL.js                                     0.25 kB │ gzip:   0.19 kB
+dist/assets/image-4BJUO191.js                                   0.25 kB │ gzip:   0.21 kB
+dist/assets/bell-Cd8ASV7H.js                                    0.27 kB │ gzip:   0.22 kB
+dist/assets/send-DB0Yuo9g.js                                    0.27 kB │ gzip:   0.22 kB
+dist/assets/headset-C6dpr04S.js                                 0.28 kB │ gzip:   0.20 kB
+dist/assets/save-DNXooduv.js                                    0.31 kB │ gzip:   0.22 kB
+dist/assets/CODSettlementPage-CpOWp4R0.js                       0.31 kB │ gzip:   0.25 kB
+dist/assets/scan-line-CAmGa3En.js                               0.31 kB │ gzip:   0.21 kB
+dist/assets/FinancePortalPage-CVlu2ia-.js                       0.32 kB │ gzip:   0.25 kB
+dist/assets/InvoiceStudioPage-BJItlEKj.js                       0.32 kB │ gzip:   0.25 kB
+dist/assets/shield-alert-BsBJyuzC.js                            0.34 kB │ gzip:   0.25 kB
+dist/assets/trash-2-DssqGaBJ.js                                 0.34 kB │ gzip:   0.24 kB
+dist/assets/warehouse-DTfse23R.js                               0.34 kB │ gzip:   0.24 kB
+dist/assets/clsx-CjueKrWZ.js                                    0.36 kB │ gzip:   0.23 kB
+dist/assets/supabaseClient-6i8ca98O.js                          0.38 kB │ gzip:   0.33 kB
+dist/assets/RiderSettlementPage-D-sxMHJ4.js                     0.38 kB │ gzip:   0.29 kB
+dist/assets/layers-Oy8IQ2zf.js                                  0.41 kB │ gzip:   0.23 kB
+dist/assets/package-check-C71722Vx.js                           0.41 kB │ gzip:   0.28 kB
+dist/assets/eye-C0bnEDBw.js                                     0.45 kB │ gzip:   0.27 kB
+dist/assets/tag-BmGROx_0.js                                     0.51 kB │ gzip:   0.32 kB
+dist/assets/proofMediaApi-D-zRpZV_.js                           0.66 kB │ gzip:   0.32 kB
+dist/assets/CustomerPortalPage-MdWzykS-.js                      1.43 kB │ gzip:   0.67 kB
+dist/assets/ForgotPasswordPage-C3TSTH5f.js                      3.55 kB │ gzip:   1.59 kB
+dist/assets/BranchAdminPage-NXrRPIGI.js                         3.70 kB │ gzip:   1.23 kB
+dist/assets/GoLiveTemplateCenterPage-C7_E7cvQ.js                4.20 kB │ gzip:   1.38 kB
+dist/assets/BizDevPage-CTNv8pnI.js                              4.47 kB │ gzip:   1.39 kB
+dist/assets/PortalLiveSnapshotPage-DLhXsy-_.js                  4.56 kB │ gzip:   1.89 kB
+dist/assets/CustomerServicePortalPage-BGxwoIgY.js               4.97 kB │ gzip:   1.39 kB
+dist/assets/DashboardPage-By7NmvHS.js                           5.36 kB │ gzip:   1.83 kB
+dist/assets/WorkforceCommissionPage-BcQTrlcJ.js                 5.55 kB │ gzip:   2.01 kB
+dist/assets/ProfilePage-vQx1afIz.js                             5.60 kB │ gzip:   1.38 kB
+dist/assets/ExceptionsPage-DGBpE6wz.js                          6.36 kB │ gzip:   2.09 kB
+dist/assets/AuditLogsPage-Bh58H-wQ.js                           6.45 kB │ gzip:   1.74 kB
+dist/assets/SupervisorWayplanReviewPage-CsGLSrzK.js             6.46 kB │ gzip:   1.80 kB
+dist/assets/britiumGoLiveTemplateSchemas-De90oaWW.js            6.87 kB │ gzip:   2.58 kB
+dist/assets/ProofGalleryPortalPage-CL3n1PgX.js                  6.93 kB │ gzip:   2.27 kB
+dist/assets/AccountsPage-B6LC8FDh.js                            7.15 kB │ gzip:   2.02 kB
+dist/assets/DataEntryUATUploadPage-C79s_wbL.js                  7.15 kB │ gzip:   2.32 kB
+dist/assets/WayplanTemplateGeneratorPage-R7yKYmuk.js            7.46 kB │ gzip:   2.47 kB
+dist/assets/RiderPage-Oe7KXMO6.js                               7.70 kB │ gzip:   2.14 kB
+dist/assets/AnalyticsPage-cAVV0I3q.js                           7.72 kB │ gzip:   2.37 kB
+dist/assets/jsx-runtime-CdvZGgm7.js                             7.75 kB │ gzip:   2.98 kB
+dist/assets/MarketingPage-DYRvgRPR.js                           8.24 kB │ gzip:   1.82 kB
+dist/assets/UATGoLiveCommandCenterPage-BujJePwn.js              8.37 kB │ gzip:   2.72 kB
+dist/assets/WaybillInvoicePage-CZT4qjSr.js                      9.03 kB │ gzip:   2.22 kB
+dist/assets/CustomerServiceCommandCenterPage-BwXQsLTc.js        9.17 kB │ gzip:   2.88 kB
+dist/assets/DataEntryPhotoCheckPage-LKQ8hl1I.js                 9.32 kB │ gzip:   2.80 kB
+dist/assets/DriverPage-Y1kzzgdm.js                             10.00 kB │ gzip:   2.61 kB
+dist/assets/SettingsPage-Bernz5LU.js                           10.12 kB │ gzip:   3.04 kB
+dist/assets/AdminHRPage-B9MZmrIG.js                            10.48 kB │ gzip:   2.53 kB
+dist/assets/MarketingPortalPage-D2XpmeCu.js                    10.86 kB │ gzip:   3.02 kB
+dist/assets/DataEntrySynchronizedPage-DbyuAIYK.js              11.34 kB │ gzip:   3.64 kB
+dist/assets/WarehouseUATUploadPage-DbJQwOYk.js                 11.59 kB │ gzip:   3.05 kB
+dist/assets/SignupPage-DKsk3yFq.js                             12.46 kB │ gzip:   3.86 kB
+dist/assets/DataEntryExcelRegisterPage-DIIz3M5s.js             12.98 kB │ gzip:   3.87 kB
+dist/assets/PickupFormPage-CPq9dJfX.js                         14.11 kB │ gzip:   3.81 kB
+dist/assets/WarehousePage-2134dCXr.js                          14.59 kB │ gzip:   4.10 kB
+dist/assets/TariffPage-iHQWibrX.js                             15.16 kB │ gzip:   3.83 kB
+dist/assets/WarehouseOperationPage-DalnKV_o.js                 16.46 kB │ gzip:   4.58 kB
+dist/assets/MasterDataPage-CgjdoL7t.js                         17.73 kB │ gzip:   5.18 kB
+dist/assets/WayplanDetailPage-jrUKcgsh.js                      18.00 kB │ gzip:   5.43 kB
+dist/assets/SupervisorPickupAssignmentGoLivePage-SaMAEFqV.js   18.03 kB │ gzip:   5.06 kB
+dist/assets/SupervisorPortalPage-SaMAEFqV.js                   18.03 kB │ gzip:   5.06 kB
+dist/assets/DispatchCommandCenterPage-qgq--YD8.js              18.29 kB │ gzip:   5.36 kB
+dist/assets/DataEntryWaybillStudio-COpXp--m.js                 22.23 kB │ gzip:   7.10 kB
+dist/assets/WarehouseRegistrationTemplatePage-X_pJj7Jb.js      22.40 kB │ gzip:   6.08 kB
+dist/assets/WarehouseOperations-DMiIFbs5.js                    23.83 kB │ gzip:   7.52 kB
+dist/assets/WayplanCommandCenterPage-DSR5xUaV.js               23.90 kB │ gzip:   7.32 kB
+dist/assets/MerchantPortalPage-NF8l53JN.js                     38.84 kB │ gzip:   8.60 kB
+dist/assets/RiderAppPage-BbJ3gqvM.js                           45.94 kB │ gzip:  12.00 kB
+dist/assets/DataEntryPage-DQmXFNzg.js                          46.43 kB │ gzip:  11.77 kB
+dist/assets/BranchOfficePage-B4ag0kEY.js                       98.83 kB │ gzip:  19.01 kB
+dist/assets/dist-CvoayENf.js                                  202.41 kB │ gzip:  51.96 kB
+dist/assets/index-BmaySUUh.js                                 247.37 kB │ gzip:  77.85 kB
+dist/assets/ReportingPage-Ukq0kaEd.js                         412.13 kB │ gzip: 107.53 kB
+dist/assets/xlsx-BqVfgZRU.js                                  421.51 kB │ gzip: 140.60 kB
+
+[32m✓ built in 3.13s[39m

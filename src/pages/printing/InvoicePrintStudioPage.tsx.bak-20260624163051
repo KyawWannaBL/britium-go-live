@@ -1,0 +1,225 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  auditInvoicePrint,
+  formatMMK,
+  loadInvoiceGroups,
+  todayInvoiceDate,
+  type InvoiceGroup,
+} from "@/lib/printDocumentApi";
+import "@/styles/exactPrintFormats.css";
+
+function InvoiceSheet({ group }: { group: InvoiceGroup }) {
+  const net = group.total_cod - group.total_fee;
+
+  return (
+    <article className="be-invoice-sheet">
+      <div className="inv-header">
+        <div className="inv-logo-box">
+          <img src="/images/logo.jpg" alt="Britium Logo" />
+          <div className="inv-company-details">
+            <h1>BRITIUM EXPRESS</h1>
+            <p>Delivery Services & Logistics</p>
+            <p>Hotline: 09XXXXXXX | Email: accounts@britiumexpress.com</p>
+          </div>
+        </div>
+        <div className="inv-meta">
+          <h2>SETTLEMENT<br />INVOICE</h2>
+          <p>Invoice No: {group.invoice_key}</p>
+          <p>Date: {todayInvoiceDate()}</p>
+        </div>
+      </div>
+
+      <div className="inv-parties">
+        <div className="party-box">
+          <h3>Billed To (Merchant)</h3>
+          <p><strong>{group.merchant_name || "Unknown Merchant"}</strong></p>
+          <p>ID: {group.merchant_code || "-"}</p>
+          <p>Phone: {group.merchant_phone || "-"}</p>
+          <p>Address: {group.merchant_address || "-"}</p>
+        </div>
+        <div className="party-box">
+          <h3>Reference Details</h3>
+          <p><strong>PickupWay ID:</strong> {group.pickup_id || group.pickup_way_id}</p>
+          <p><strong>Total Parcels:</strong> {group.waybills.length}</p>
+          <p><strong>Settlement Type:</strong> Auto-deduct Delivery Fees from COD</p>
+        </div>
+      </div>
+
+      <table className="invoice-table">
+        <thead>
+          <tr>
+            <th className="text-center" width="5%">#</th>
+            <th width="20%">Tracking No.</th>
+            <th width="15%">Recipient</th>
+            <th className="text-center" width="15%">Status</th>
+            <th className="text-right" width="15%">COD Collected</th>
+            <th className="text-right" width="15%">Delivery Fee</th>
+            <th className="text-right" width="15%">Net Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {group.waybills.map((wb, index) => {
+            const cod = Number(wb.cod_amount || 0);
+            const fee = Number(wb.delivery_fee || 0);
+            return (
+              <tr key={`${wb.waybill_no}-${index}`}>
+                <td className="text-center">{index + 1}</td>
+                <td><strong>{wb.waybill_no}</strong></td>
+                <td>{wb.recipient_name}</td>
+                <td className="text-center">{wb.status}</td>
+                <td className="text-right">{formatMMK(cod)}</td>
+                <td className="text-right">{formatMMK(fee)}</td>
+                <td className="text-right"><strong>{formatMMK(cod - fee)}</strong></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+
+      <div className="inv-summary">
+        <div className="summary-row">
+          <span>Total COD Collected:</span>
+          <span>{formatMMK(group.total_cod)} MMK</span>
+        </div>
+        <div className="summary-row">
+          <span>Total Delivery Fees:</span>
+          <span>- {formatMMK(group.total_fee)} MMK</span>
+        </div>
+        <div className="summary-row total">
+          <span>NET SETTLEMENT DUE:</span>
+          <span>{formatMMK(net)} MMK</span>
+        </div>
+      </div>
+
+      <div className="clear" />
+
+      <div className="signatures">
+        <div className="sig-line">Prepared By (Britium Finance)</div>
+        <div className="sig-line">Merchant Acknowledgement</div>
+      </div>
+
+      <div className="inv-footer">
+        <p>
+          Thank you for partnering with Britium Express. If you have any discrepancies regarding this settlement report,
+          please contact the Hotline within 3 working days.
+        </p>
+      </div>
+    </article>
+  );
+}
+
+export default function InvoicePrintStudioPage() {
+  const [groups, setGroups] = useState<InvoiceGroup[]>([]);
+  const [printGroups, setPrintGroups] = useState<InvoiceGroup[]>([]);
+  const [search, setSearch] = useState("");
+  const [merchantCode, setMerchantCode] = useState("");
+  const [pickupId, setPickupId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const visibleGroups = useMemo(() => groups, [groups]);
+
+  async function load() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const data = await loadInvoiceGroups({ search, merchantCode, pickupId });
+      setGroups(data);
+      if (data.length === 0) setMessage("No invoice groups found for this filter.");
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to load invoice groups.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useEffect(() => {
+    const after = () => {
+      document.body.classList.remove("be-print-invoice");
+      setPrintGroups([]);
+    };
+    window.addEventListener("afterprint", after);
+    return () => window.removeEventListener("afterprint", after);
+  }, []);
+
+  async function printSelected(targetGroups: InvoiceGroup[]) {
+    if (targetGroups.length === 0) {
+      setMessage("No invoice selected to print.");
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      for (const group of targetGroups) await auditInvoicePrint(group);
+      setPrintGroups(targetGroups);
+      document.body.classList.add("be-print-invoice");
+      setTimeout(() => window.print(), 250);
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to print invoice.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="be-exact-print-page">
+      <section className="be-print-toolbar">
+        <h1>Invoice Print Studio</h1>
+        <p>Settlement invoice format matching the supplied A4 reference, with row-level Print / PDF action.</p>
+        <div className="be-print-controls">
+          <input placeholder="Search merchant / pickup / waybill" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input placeholder="Merchant code" value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} />
+          <input placeholder="Pickup ID" value={pickupId} onChange={(e) => setPickupId(e.target.value)} />
+          <button className="be-print-btn" onClick={load} disabled={busy}>Refresh</button>
+          <button className="be-print-btn primary" onClick={() => printSelected(visibleGroups)} disabled={busy || visibleGroups.length === 0}>Print All</button>
+          <button className="be-print-btn" onClick={() => printSelected(visibleGroups)} disabled={busy || visibleGroups.length === 0}>Print All as PDF</button>
+        </div>
+        {message ? <p style={{ color: "#f6b84b", marginTop: 12 }}>{message}</p> : null}
+      </section>
+
+      <section className="be-print-table-wrap">
+        <table className="be-print-table">
+          <thead>
+            <tr>
+              <th>Invoice</th>
+              <th>Merchant</th>
+              <th>Pickup</th>
+              <th>Parcels</th>
+              <th>Total COD</th>
+              <th>Delivery Fees</th>
+              <th>Net Settlement</th>
+              <th>Dedicated Print</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleGroups.map((group) => (
+              <tr key={group.invoice_key}>
+                <td><strong>{group.invoice_key}</strong></td>
+                <td>{group.merchant_code} {group.merchant_name}</td>
+                <td>{group.pickup_id || group.pickup_way_id}</td>
+                <td>{group.waybills.length}</td>
+                <td>{formatMMK(group.total_cod)}</td>
+                <td>{formatMMK(group.total_fee)}</td>
+                <td>{formatMMK(group.total_cod - group.total_fee)}</td>
+                <td>
+                  <div className="be-line-actions">
+                    <button className="be-print-btn primary" onClick={() => printSelected([group])}>Print</button>
+                    <button className="be-print-btn" onClick={() => printSelected([group])}>PDF</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="be-print-canvas be-invoice-canvas">
+        {printGroups.map((group) => <InvoiceSheet key={`print-${group.invoice_key}`} group={group} />)}
+      </section>
+    </main>
+  );
+}

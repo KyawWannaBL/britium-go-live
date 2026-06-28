@@ -1,0 +1,15 @@
+import PrintActionStudioShell from "@/components/print/PrintActionStudioShell";
+import WaybillStudioPage from "@/pages/WaybillStudioPage";
+
+export default function WaybillPrintStudioPage() {
+  return (
+    <PrintActionStudioShell
+      title="Waybill Print Studio"
+      subtitle="Print each waybill, print all waybills, choose sticker/A4 size, or save as PDF from the browser print dialog."
+      type="waybill"
+      defaultSize="sticker-100x150"
+    >
+      <WaybillStudioPage />
+    </PrintActionStudioShell>
+  );
+}

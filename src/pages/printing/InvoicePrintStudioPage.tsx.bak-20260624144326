@@ -1,0 +1,38 @@
+import { Link } from "react-router-dom";
+import { Download, Printer, RefreshCw, Receipt, ArrowLeft } from "lucide-react";
+import InvoiceStudioPage from "@/pages/InvoiceStudioPage";
+
+export default function InvoicePrintStudioPage() {
+  function printPage() {
+    window.print();
+  }
+
+  function exportHtml() {
+    const blob = new Blob([document.documentElement.outerHTML], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "britium-invoice-print-studio.html";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  return (
+    <div className="space-y-4">
+      <style>{`@media print {.print-studio-actions{display:none!important} aside,header{display:none!important} main>div{min-width:0!important;padding:0!important}}`}</style>
+      <div className="print-studio-actions bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-[#f6b84b] text-[12px] uppercase tracking-widest font-black flex items-center gap-2"><Receipt size={16} /> Invoice Print Studio</div>
+          <div className="text-[#4d7a9b] text-[12px] mt-1">Action toolbar added: print, refresh, export, and legacy navigation.</div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link to="/dashboard" className="px-4 py-2 rounded-xl bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] flex items-center gap-2"><ArrowLeft size={14}/> Dashboard</Link>
+          <button onClick={() => window.location.reload()} className="px-4 py-2 rounded-xl bg-[#1a3a5c] text-[#eef8ff] flex items-center gap-2"><RefreshCw size={14}/> Refresh</button>
+          <button onClick={printPage} className="px-4 py-2 rounded-xl bg-[#f6b84b] text-[#061524] font-black flex items-center gap-2"><Printer size={14}/> Print Current View</button>
+          <button onClick={exportHtml} className="px-4 py-2 rounded-xl bg-emerald-400 text-[#061524] font-black flex items-center gap-2"><Download size={14}/> Export HTML</button>
+        </div>
+      </div>
+      <InvoiceStudioPage />
+    </div>
+  );
+}

@@ -1,0 +1,109 @@
+import React, { useEffect, useState } from "react";
+
+import UATGoLiveCommandCenterPage from "./pages/UATGoLiveCommandCenterPage";
+import GoLiveTemplateCenterPage from "./pages/GoLiveTemplateCenterPage";
+import DataEntryUATUploadPage from "./pages/DataEntryUATUploadPage";
+import PortalUploadCenterPage from "./pages/PortalUploadCenterPage";
+import WarehouseUATUploadPage from "./pages/WarehouseUATUploadPage";
+
+const navItems = [
+  ["#/go-live-readiness", "Go-Live Readiness"],
+  ["#/templates", "Template Center"],
+  ["#/data-entry/upload", "Data Entry Upload"],
+  ["#/merchant/upload", "Merchant Upload"],
+  ["#/customer/upload", "Customer Upload"],
+  ["#/warehouse/upload", "Warehouse Upload"],
+  ["#/warehouse/scan", "Warehouse Scan"],
+];
+
+function getRoute() {
+  return window.location.hash.replace("#", "") || "/go-live-readiness";
+}
+
+export default function App() {
+  const [route, setRoute] = useState(getRoute());
+
+  useEffect(() => {
+    const onHashChange = () => setRoute(getRoute());
+    window.addEventListener("hashchange", onHashChange);
+
+    if (!window.location.hash || window.location.hash === "#/login") {
+      window.location.hash = "#/go-live-readiness";
+    }
+
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  let page: React.ReactNode;
+
+  if (route === "/templates") {
+    page = <GoLiveTemplateCenterPage />;
+  } else if (route === "/data-entry/upload" || route === "/data-entry") {
+    page = <DataEntryUATUploadPage />;
+  } else if (route === "/merchant/upload" || route === "/customer/upload") {
+    page = <PortalUploadCenterPage />;
+  } else if (
+    route === "/warehouse" ||
+    route === "/warehouse/upload" ||
+    route === "/warehouse/scan"
+  ) {
+    page = <WarehouseUATUploadPage />;
+  } else {
+    page = <UATGoLiveCommandCenterPage />;
+  }
+
+  return (
+    <div style={styles.app}>
+      <aside style={styles.sidebar}>
+        <h2 style={styles.brand}>Britium UAT</h2>
+        <p style={styles.small}>Login bypassed for UAT smoke testing.</p>
+
+        {navItems.map(([href, label]) => (
+          <a key={href} href={href} style={styles.link}>
+            {label}
+          </a>
+        ))}
+      </aside>
+
+      <main style={styles.main}>{page}</main>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  app: {
+    minHeight: "100vh",
+    display: "grid",
+    gridTemplateColumns: "260px 1fr",
+    background: "#f8fafc",
+    color: "#0f172a",
+    fontFamily: "Arial, sans-serif",
+  },
+  sidebar: {
+    background: "#0f172a",
+    color: "white",
+    padding: 20,
+  },
+  brand: {
+    margin: "0 0 8px",
+  },
+  small: {
+    fontSize: 12,
+    color: "#cbd5e1",
+    marginBottom: 20,
+  },
+  link: {
+    display: "block",
+    color: "white",
+    textDecoration: "none",
+    padding: "12px 14px",
+    borderRadius: 10,
+    background: "rgba(255,255,255,0.08)",
+    marginBottom: 8,
+    fontWeight: 700,
+  },
+  main: {
+    padding: 24,
+    overflow: "auto",
+  },
+};

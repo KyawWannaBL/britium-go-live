@@ -1,0 +1,197 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  auditWaybillPrint,
+  formatMMK,
+  loadWaybillPrintRows,
+  type WaybillPrintRow,
+} from "@/lib/printDocumentApi";
+import "@/styles/exactPrintFormats.css";
+
+function qrSrc(row: WaybillPrintRow) {
+  const payload = JSON.stringify({
+    waybill_no: row.waybill_no,
+    pickup_id: row.pickup_id,
+    delivery_way_id: row.delivery_way_id,
+  });
+  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(payload)}`;
+}
+
+function WaybillLabel({ row }: { row: WaybillPrintRow }) {
+  return (
+    <article className="be-waybill-label">
+      <section className="wb-top">
+        <img className="wb-logo" src="/images/logo.jpg" alt="Britium" />
+        <div>
+          <div className="wb-brand-title">BRITIUM EXPRESS</div>
+          <div className="wb-brand-sub">DELIVERY SERVICE</div>
+          <div className="wb-hotline">HotLine:</div>
+        </div>
+        <div className="wb-qr-box">
+          <div>{row.waybill_no}</div>
+          <img className="wb-qr" src={qrSrc(row)} onError={(event) => { event.currentTarget.src = "/images/QRformat.png"; }} />
+          <div>{row.waybill_no}</div>
+        </div>
+      </section>
+
+      <section className="wb-merchant">
+        <span className="wb-label">Merchant :</span>
+        <strong>{row.merchant_name || row.merchant_code || ""}</strong>
+      </section>
+
+      <section className="wb-recipient">
+        <div>
+          <span className="wb-label">Recipient :</span>
+          <span className="wb-recipient-name">{row.recipient_name || row.township || "-"}</span>
+        </div>
+        <div className="wb-phone">{row.recipient_phone || "-"}</div>
+        <div className="wb-address">
+          {row.recipient_address || row.township || "-"}
+          {row.township ? <><br />{row.township}</> : null}
+          <br />
+          Multiline Text
+        </div>
+      </section>
+
+      <section className="wb-remarks">
+        <span className="wb-label">Remarks :</span>
+      </section>
+
+      <section className="wb-bottom">
+        <div className="wb-money-lines">
+          <div><span className="name">Item Price :</span> {formatMMK(row.item_price || row.cod_amount)}</div>
+          <div><span className="name">Delivery Fees :</span> {formatMMK(row.delivery_fee)}</div>
+          <div><span className="name">Prepaid Amount :</span> {formatMMK(row.prepaid_amount)}</div>
+        </div>
+        <div className="wb-cod-box">
+          <div className="wb-cod-head"><span>COD</span><span>MMK</span></div>
+          <div className="wb-cod-amount">{formatMMK(row.cod_amount)}</div>
+        </div>
+      </section>
+
+      <section className="wb-footer-mm">
+        သတိပြုရန်။ ငွေပေးချေမှုပြီးမှသာ အထုပ်ကို ပေးအပ်ပါ။ Hotline သို့ ဆက်သွယ်၍ စုံစမ်းနိုင်ပါသည်။
+      </section>
+    </article>
+  );
+}
+
+export default function WaybillPrintStudioPage() {
+  const [rows, setRows] = useState<WaybillPrintRow[]>([]);
+  const [printRows, setPrintRows] = useState<WaybillPrintRow[]>([]);
+  const [search, setSearch] = useState("");
+  const [merchantCode, setMerchantCode] = useState("");
+  const [pickupId, setPickupId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const visibleRows = useMemo(() => rows.filter(Boolean), [rows]);
+
+  async function load() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const data = await loadWaybillPrintRows({ search, merchantCode, pickupId });
+      setRows(data);
+      if (data.length === 0) setMessage("No waybill records found for this filter.");
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to load waybill records.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  useEffect(() => {
+    const after = () => {
+      document.body.classList.remove("be-print-waybill");
+      setPrintRows([]);
+    };
+    window.addEventListener("afterprint", after);
+    return () => window.removeEventListener("afterprint", after);
+  }, []);
+
+  async function printSelected(targetRows: WaybillPrintRow[]) {
+    if (targetRows.length === 0) {
+      setMessage("No waybill selected to print.");
+      return;
+    }
+
+    setBusy(true);
+    setMessage("");
+    try {
+      for (const row of targetRows) await auditWaybillPrint(row);
+      setPrintRows(targetRows);
+      document.body.classList.add("be-print-waybill");
+      setTimeout(() => window.print(), 250);
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to print waybill.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="be-exact-print-page">
+      <section className="be-print-toolbar">
+        <h1>Waybill Print Studio</h1>
+        <p>Exact sticker waybill format with dedicated row Print / PDF action for every waybill.</p>
+        <div className="be-print-controls">
+          <input placeholder="Search waybill / recipient / merchant" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input placeholder="Merchant code" value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} />
+          <input placeholder="Pickup / batch ID" value={pickupId} onChange={(e) => setPickupId(e.target.value)} />
+          <button className="be-print-btn" onClick={load} disabled={busy}>Refresh</button>
+          <button className="be-print-btn primary" onClick={() => printSelected(visibleRows)} disabled={busy || visibleRows.length === 0}>Print All</button>
+          <button className="be-print-btn" onClick={() => printSelected(visibleRows)} disabled={busy || visibleRows.length === 0}>Print All as PDF</button>
+        </div>
+        {message ? <p style={{ color: "#f6b84b", marginTop: 12 }}>{message}</p> : null}
+      </section>
+
+      <section className="be-print-table-wrap">
+        <table className="be-print-table">
+          <thead>
+            <tr>
+              <th>Waybill</th>
+              <th>Pickup</th>
+              <th>Merchant</th>
+              <th>Recipient</th>
+              <th>Phone</th>
+              <th>Township</th>
+              <th>COD</th>
+              <th>Fee</th>
+              <th>Status</th>
+              <th>Dedicated Print</th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibleRows.map((row) => (
+              <tr key={`${row.waybill_no}-${row.delivery_way_id}`}>
+                <td><strong>{row.waybill_no}</strong></td>
+                <td>{row.pickup_id || row.pickup_way_id}</td>
+                <td>{row.merchant_code} {row.merchant_name}</td>
+                <td>{row.recipient_name}</td>
+                <td>{row.recipient_phone}</td>
+                <td>{row.township}</td>
+                <td>{formatMMK(row.cod_amount)}</td>
+                <td>{formatMMK(row.delivery_fee)}</td>
+                <td>{row.status}</td>
+                <td>
+                  <div className="be-line-actions">
+                    <button className="be-print-btn primary" onClick={() => printSelected([row])}>Print</button>
+                    <button className="be-print-btn" onClick={() => printSelected([row])}>PDF</button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section className="be-print-canvas be-waybill-canvas">
+        {printRows.map((row) => <WaybillLabel key={`print-${row.waybill_no}-${row.delivery_way_id}`} row={row} />)}
+      </section>
+    </main>
+  );
+}

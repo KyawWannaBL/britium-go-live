@@ -1,0 +1,641 @@
+import MasterDataCombobox from '@/components/shared/MasterDataCombobox';
+import HistoricalDataSuggestions from '@/components/shared/HistoricalDataSuggestions';
+import { useEffect, useMemo, useState } from 'react';
+import {
+  AlertTriangle,
+  Box,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  PackageCheck,
+  RefreshCw,
+  Search,
+  Truck,
+  Warehouse,
+  XCircle,
+} from 'lucide-react';
+
+import { supabase } from '@/integrations/supabase/client';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+
+type ManifestRow = {
+  id: string;
+  manifest_no: string;
+  warehouse_name: string;
+  total_parcels: number;
+  status: string;
+  created_at: string;
+  closed_at?: string | null;
+};
+
+type StorageRow = {
+  id: string;
+  shipment_id?: string | null;
+  tracking_no: string;
+  merchant: string;
+  receiver: string;
+  township: string;
+  warehouse_name: string;
+  location_code: string;
+  status: string;
+  outbound_status: string;
+  manifest_id?: string | null;
+  exception_code?: string | null;
+  exception_note?: string | null;
+  received_at?: string | null;
+  outbound_ready_at?: string | null;
+  dispatched_at?: string | null;
+  updated_at?: string | null;
+};
+
+type WarehouseSnapshot = {
+  summary: {
+    parcels_in_hub: number;
+    outbound_ready: number;
+    in_storage: number;
+    exceptions: number;
+  };
+  manifests: ManifestRow[];
+  storage: StorageRow[];
+  outbound: StorageRow[];
+  exceptions: StorageRow[];
+  generated_at: string;
+};
+
+const EMPTY: WarehouseSnapshot = {
+  summary: {
+    parcels_in_hub: 0,
+    outbound_ready: 0,
+    in_storage: 0,
+    exceptions: 0,
+  },
+  manifests: [],
+  storage: [],
+  outbound: [],
+  exceptions: [],
+  generated_at: '',
+};
+
+function asObject(value: any): Record<string, any> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function asArray<T = any>(value: any): T[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function numberValue(value: unknown): number {
+  const parsed = Number(String(value ?? 0).replace(/,/g, ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function stringValue(value: unknown, fallback = ''): string {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  return text || fallback;
+}
+
+function normalizeManifest(row: any): ManifestRow {
+  return {
+    id: stringValue(row.id || row.manifest_id || row.manifest_no),
+    manifest_no: stringValue(row.manifest_no || row.manifest_id || row.id, '-'),
+    warehouse_name: stringValue(row.warehouse_name || row.hub_name || row.branch_name, '-'),
+    total_parcels: numberValue(row.total_parcels || row.parcel_count || row.count),
+    status: stringValue(row.status, 'open'),
+    created_at: stringValue(row.created_at || row.createdAt),
+    closed_at: row.closed_at || null,
+  };
+}
+
+function normalizeStorageRow(row: any): StorageRow {
+  return {
+    id: stringValue(row.id || row.storage_id || row.shipment_id || row.tracking_no),
+    shipment_id: row.shipment_id || null,
+    tracking_no: stringValue(row.tracking_no || row.way_id || row.waybill_id || row.parcel_code, '-'),
+    merchant: stringValue(row.merchant || row.merchant_name || row.sender_name, '-'),
+    receiver: stringValue(row.receiver || row.receiver_name || row.recipient_name || row.customer_name, '-'),
+    township: stringValue(row.township || row.delivery_township || row.pickup_township, '-'),
+    warehouse_name: stringValue(row.warehouse_name || row.hub_name || row.branch_name, '-'),
+    location_code: stringValue(row.location_code || row.rack_code || row.bin_code, '-'),
+    status: stringValue(row.status, 'in_storage'),
+    outbound_status: stringValue(row.outbound_status, ''),
+    manifest_id: row.manifest_id || null,
+    exception_code: row.exception_code || null,
+    exception_note: row.exception_note || null,
+    received_at: row.received_at || null,
+    outbound_ready_at: row.outbound_ready_at || null,
+    dispatched_at: row.dispatched_at || null,
+    updated_at: row.updated_at || null,
+  };
+}
+
+function normalizeWarehouseSnapshot(payload: any): WarehouseSnapshot {
+  const root = asObject(Array.isArray(payload) ? payload[0] : payload);
+  const summary = asObject(root.summary);
+
+  const manifests = asArray(root.manifests).map(normalizeManifest);
+  const storage = asArray(root.storage || root.rows || root.parcels || root.items).map(normalizeStorageRow);
+  const outbound = asArray(root.outbound).map(normalizeStorageRow);
+  const exceptions = asArray(root.exceptions).map(normalizeStorageRow);
+
+  return {
+    summary: {
+      parcels_in_hub: numberValue(summary.parcels_in_hub ?? root.parcels_in_hub ?? storage.length),
+      outbound_ready: numberValue(summary.outbound_ready ?? root.outbound_ready ?? outbound.length),
+      in_storage: numberValue(summary.in_storage ?? root.in_storage ?? storage.length),
+      exceptions: numberValue(summary.exceptions ?? root.exceptions_count ?? exceptions.length),
+    },
+    manifests,
+    storage,
+    outbound,
+    exceptions,
+    generated_at: stringValue(root.generated_at || root.generatedAt || new Date().toISOString()),
+  };
+}
+
+
+function StatCard({
+  title,
+  value,
+  icon: Icon,
+  tone,
+}: {
+  title: string;
+  value: number | string;
+  icon: any;
+  tone: 'blue' | 'green' | 'amber' | 'red';
+}) {
+  const toneMap = {
+    blue: 'bg-blue-50 text-blue-600',
+    green: 'bg-emerald-50 text-emerald-600',
+    amber: 'bg-amber-50 text-amber-600',
+    red: 'bg-red-50 text-red-600',
+  };
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex items-start gap-4">
+        <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${toneMap[tone]}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+        <div>
+          <p className="text-sm text-slate-500">{title}</p>
+          <p className="mt-2 text-3xl font-black text-slate-950">{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const s = (status || 'open').toLowerCase();
+
+  if (['exception', 'failed', 'damaged'].includes(s)) {
+    return <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-bold text-red-700">{s}</span>;
+  }
+
+  if (['outbound_ready', 'ready'].includes(s)) {
+    return <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-bold text-amber-700">{s}</span>;
+  }
+
+  if (['dispatched', 'closed', 'completed'].includes(s)) {
+    return <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">{s}</span>;
+  }
+
+  if (['in_storage', 'received', 'closed_manifest', 'open'].includes(s)) {
+    return <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">{s}</span>;
+  }
+
+  return <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">{s}</span>;
+}
+
+export default function WarehousePage() {
+  const [snapshot, setSnapshot] = useState<WarehouseSnapshot>(EMPTY);
+  const [activeTab, setActiveTab] = useState<'manifests' | 'storage' | 'outbound' | 'exceptions'>('manifests');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState('');
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
+
+  async function loadWarehouse() {
+    setLoading(true);
+    setError('');
+
+    const { data, error: rpcError } = await supabase.rpc('be_warehouse_snapshot' as any);
+
+    if (rpcError) {
+      setError(rpcError.message);
+      setSnapshot(EMPTY);
+    } else {
+      setSnapshot(normalizeWarehouseSnapshot(data));
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadWarehouse();
+  }, []);
+
+  const rowsForTab = useMemo(() => {
+    if (activeTab === 'outbound') return snapshot.outbound || [];
+    if (activeTab === 'exceptions') return snapshot.exceptions || [];
+    return snapshot.storage || [];
+  }, [activeTab, snapshot]);
+
+  const filteredStorageRows = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    if (!q) return rowsForTab;
+
+    return rowsForTab.filter((row) =>
+      [
+        row.tracking_no,
+        row.merchant,
+        row.receiver,
+        row.township,
+        row.warehouse_name,
+        row.location_code,
+        row.status,
+        row.outbound_status,
+        row.exception_code,
+        row.exception_note,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [rowsForTab, search]);
+
+  const filteredManifests = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    if (!q) return snapshot.manifests || [];
+
+    return (snapshot.manifests || []).filter((row) =>
+      [row.manifest_no, row.warehouse_name, row.status]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [snapshot.manifests, search]);
+
+  const safeSummary = snapshot?.summary || EMPTY.summary;
+
+  async function runRpc(name: string, args: Record<string, unknown>, successMessage: string) {
+    setActionLoading(name);
+    setError('');
+    setMessage('');
+
+    const { error: rpcError } = await supabase.rpc(name as any, args as any);
+
+    if (rpcError) {
+      setError(rpcError.message);
+    } else {
+      setMessage(successMessage);
+      await loadWarehouse();
+    }
+
+    setActionLoading('');
+  }
+
+  async function receiveTracking() {
+    const trackingNo = window.prompt('Enter tracking / waybill number to receive into warehouse');
+    if (!trackingNo) return;
+
+    const warehouseName = window.prompt('Warehouse / hub name', 'Yangon Central Hub') || 'Yangon Central Hub';
+    const locationCode = window.prompt('Rack / location code', 'HUB-IN') || 'HUB-IN';
+    const note = window.prompt('Receiving note, optional', '') || '';
+
+    await runRpc(
+      'be_warehouse_receive_by_tracking',
+      {
+        p_tracking_no: trackingNo,
+        p_warehouse_name: warehouseName,
+        p_location_code: locationCode,
+        p_note: note,
+      },
+      `${trackingNo} received into warehouse.`,
+    );
+  }
+
+  async function createManifest() {
+    const warehouseName = window.prompt('Warehouse / hub name', 'Yangon Central Hub') || 'Yangon Central Hub';
+
+    await runRpc(
+      'be_warehouse_create_manifest',
+      { p_warehouse_name: warehouseName },
+      'New manifest created.',
+    );
+  }
+
+  async function closeManifest(manifest?: ManifestRow) {
+    const target = manifest || snapshot.manifests.find((item) => item.status === 'open');
+
+    if (!target) {
+      setError('No open manifest found.');
+      return;
+    }
+
+    if (!window.confirm(`Close manifest ${target.manifest_no}?`)) return;
+
+    await runRpc(
+      'be_warehouse_close_manifest',
+      { p_manifest_id: target.id },
+      `${target.manifest_no} closed.`,
+    );
+  }
+
+  async function markOutbound(row: StorageRow) {
+    const note = window.prompt('Outbound note, optional', '') || '';
+
+    await runRpc(
+      'be_warehouse_mark_outbound',
+      {
+        p_storage_id: row.id,
+        p_note: note,
+      },
+      `${row.tracking_no} marked outbound-ready.`,
+    );
+  }
+
+  async function dispatchRow(row: StorageRow) {
+    const note = window.prompt('Dispatch note, optional', '') || '';
+
+    await runRpc(
+      'be_warehouse_dispatch_storage',
+      {
+        p_storage_id: row.id,
+        p_note: note,
+      },
+      `${row.tracking_no} dispatched.`,
+    );
+  }
+
+  async function markException(row: StorageRow) {
+    const reason = window.prompt('Exception reason/code', row.exception_code || 'warehouse_exception');
+    if (!reason) return;
+    const note = window.prompt('Exception note', row.exception_note || '') || '';
+
+    await runRpc(
+      'be_warehouse_exception_storage',
+      {
+        p_storage_id: row.id,
+        p_reason: reason,
+        p_note: note,
+      },
+      `${row.tracking_no} marked as warehouse exception.`,
+    );
+  }
+
+  async function resolveException(row: StorageRow) {
+    const note = window.prompt('Resolution note', 'Resolved by warehouse') || '';
+
+    await runRpc(
+      'be_warehouse_resolve_storage',
+      {
+        p_storage_id: row.id,
+        p_note: note,
+      },
+      `${row.tracking_no} exception resolved.`,
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-start">
+        <div>
+          <h1 className="text-3xl font-black text-slate-950">Warehouse Visibility</h1>
+          <p className="mt-1 text-slate-500">Manifests, storage, outbound operations and exceptions</p>
+          {snapshot.generated_at && (
+            <p className="mt-1 text-xs text-slate-400">
+              Last loaded: {new Date(snapshot.generated_at).toLocaleString()}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={receiveTracking} disabled={!!actionLoading}>
+            <PackageCheck className="mr-2 h-4 w-4" />
+            Receive Parcel
+          </Button>
+          <Button variant="outline" onClick={createManifest} disabled={!!actionLoading}>
+            <Warehouse className="mr-2 h-4 w-4" />
+            New Manifest
+          </Button>
+          <Button onClick={loadWarehouse} disabled={loading}>
+            {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh
+          </Button>
+        </div>
+      </div>
+
+      {(error || message) && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm font-semibold ${
+            error ? 'border-red-200 bg-red-50 text-red-700' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {error || message}
+        </div>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-4">
+        <StatCard title="Parcels In Hub" value={safeSummary.parcels_in_hub} icon={Box} tone="blue" />
+        <StatCard title="Outbound Ready" value={safeSummary.outbound_ready} icon={Truck} tone="green" />
+        <StatCard title="In Storage" value={safeSummary.in_storage} icon={Warehouse} tone="amber" />
+        <StatCard title="Exceptions" value={safeSummary.exceptions} icon={AlertTriangle} tone="red" />
+      </div>
+
+      <div className="flex flex-wrap gap-2 rounded-2xl bg-slate-100 p-1">
+        {[
+          ['manifests', 'Manifests'],
+          ['storage', 'Storage'],
+          ['outbound', 'Outbound'],
+          ['exceptions', 'Exceptions'],
+        ].map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveTab(id as any)}
+            className={`rounded-xl px-4 py-2 text-sm font-bold transition ${
+              activeTab === id ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative max-w-xl">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <Input
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          placeholder="Search tracking, manifest, receiver, warehouse, location..."
+          className="pl-10"
+        />
+      </div>
+
+      {activeTab === 'manifests' ? (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col justify-between gap-3 border-b border-slate-200 p-5 md:flex-row md:items-center">
+            <div>
+              <h2 className="text-xl font-black">Manifests</h2>
+              <p className="text-sm text-slate-500">{filteredManifests.length} total</p>
+            </div>
+            <Button variant="outline" onClick={() => closeManifest()} disabled={!!actionLoading}>
+              Close Open Manifest
+            </Button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[900px] text-sm">
+              <thead className="bg-slate-50 text-left">
+                <tr>
+                  <th className="px-4 py-3">Manifest ID</th>
+                  <th className="px-4 py-3">Warehouse</th>
+                  <th className="px-4 py-3">Total Parcels</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Created</th>
+                  <th className="px-4 py-3">Closed</th>
+                  <th className="px-4 py-3 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
+                      Loading warehouse manifests...
+                    </td>
+                  </tr>
+                ) : filteredManifests.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-12 text-center text-slate-500">
+                      No manifests found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredManifests.map((manifest) => (
+                    <tr key={manifest.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono font-bold">{manifest.manifest_no}</td>
+                      <td className="px-4 py-3">{manifest.warehouse_name}</td>
+                      <td className="px-4 py-3 font-bold">{manifest.total_parcels}</td>
+                      <td className="px-4 py-3"><StatusBadge status={manifest.status} /></td>
+                      <td className="px-4 py-3">{manifest.created_at ? new Date(manifest.created_at).toLocaleString() : '-'}</td>
+                      <td className="px-4 py-3">{manifest.closed_at ? new Date(manifest.closed_at).toLocaleString() : '-'}</td>
+                      <td className="px-4 py-3 text-right">
+                        {manifest.status === 'open' ? (
+                          <Button variant="outline" size="sm" onClick={() => closeManifest(manifest)} disabled={!!actionLoading}>
+                            Close
+                          </Button>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-200 p-5">
+            <h2 className="text-xl font-black capitalize">{activeTab}</h2>
+            <p className="text-sm text-slate-500">{filteredStorageRows.length} rows</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1150px] text-sm">
+              <thead className="bg-slate-50 text-left">
+                <tr>
+                  <th className="px-4 py-3">Tracking No</th>
+                  <th className="px-4 py-3">Merchant</th>
+                  <th className="px-4 py-3">Receiver</th>
+                  <th className="px-4 py-3">Township</th>
+                  <th className="px-4 py-3">Warehouse</th>
+                  <th className="px-4 py-3">Location</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Exception</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                      <Loader2 className="mx-auto mb-3 h-6 w-6 animate-spin" />
+                      Loading warehouse storage...
+                    </td>
+                  </tr>
+                ) : filteredStorageRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-12 text-center text-slate-500">
+                      No warehouse rows found.
+                    </td>
+                  </tr>
+                ) : (
+                  filteredStorageRows.map((row) => (
+                    <tr key={row.id} className="border-t border-slate-100">
+                      <td className="px-4 py-3 font-mono font-bold">{row.tracking_no}</td>
+                      <td className="px-4 py-3">{row.merchant}</td>
+                      <td className="px-4 py-3">{row.receiver}</td>
+                      <td className="px-4 py-3">{row.township}</td>
+                      <td className="px-4 py-3">{row.warehouse_name}</td>
+                      <td className="px-4 py-3">{row.location_code || '-'}</td>
+                      <td className="px-4 py-3"><StatusBadge status={row.status} /></td>
+                      <td className="px-4 py-3">
+                        {row.exception_code ? (
+                          <div>
+                            <p className="font-bold text-red-700">{row.exception_code}</p>
+                            <p className="text-xs text-slate-500">{row.exception_note || '-'}</p>
+                          </div>
+                        ) : (
+                          '-'
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex justify-end gap-2">
+                          {activeTab !== 'exceptions' && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => markOutbound(row)} disabled={!!actionLoading}>
+                                <Truck className="mr-1 h-3 w-3" />
+                                Outbound
+                              </Button>
+                              <Button size="sm" onClick={() => dispatchRow(row)} disabled={!!actionLoading}>
+                                <CheckCircle2 className="mr-1 h-3 w-3" />
+                                Dispatch
+                              </Button>
+                              <Button size="sm" variant="destructive" onClick={() => markException(row)} disabled={!!actionLoading}>
+                                <AlertTriangle className="mr-1 h-3 w-3" />
+                                Exception
+                              </Button>
+                            </>
+                          )}
+
+                          {activeTab === 'exceptions' && (
+                            <Button size="sm" onClick={() => resolveException(row)} disabled={!!actionLoading}>
+                              <XCircle className="mr-1 h-3 w-3" />
+                              Resolve
+                            </Button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

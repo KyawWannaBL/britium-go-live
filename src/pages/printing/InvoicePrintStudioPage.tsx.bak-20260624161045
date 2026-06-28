@@ -1,0 +1,15 @@
+import PrintActionStudioShell from "@/components/print/PrintActionStudioShell";
+import InvoiceStudioPage from "@/pages/InvoiceStudioPage";
+
+export default function InvoicePrintStudioPage() {
+  return (
+    <PrintActionStudioShell
+      title="Invoice Print Studio"
+      subtitle="Print each invoice, print all invoices, choose paper size, or save as PDF from the browser print dialog."
+      type="invoice"
+      defaultSize="a4-portrait"
+    >
+      <InvoiceStudioPage />
+    </PrintActionStudioShell>
+  );
+}

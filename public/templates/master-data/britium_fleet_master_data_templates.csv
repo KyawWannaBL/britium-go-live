@@ -1,0 +1,7 @@
+fleet_id,fleet_code,vehicle_no,vehicle_type,capacity_kg,capacity_cbm,assigned_driver_id,ownership_type,insurance_expiry_date,approval_status,status,updated_at,dispatcher_note,dispatcher_name,dispatcher_id,google_maps_url,map_url,mapbox_url,route_map_url,latitude,longitude,pickup_latitude,pickup_longitude,delivery_latitude,delivery_longitude,dispatch_status,route_status,zone_code,zone_name,destination,route_polyline,route_payload
+2Q-6524,2Q-6524,2Q-6524,Mini Truck,850,4,,Owned,01.08.2025,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,{}
+4S-1626,4S-1626,4S-1626,Mini Truck,850,4,,Owned,19.06.2025,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,{}
+6H-7397,6H-7397,6H-7397,Van,700,4.5,,Owned,11.09.2025,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,{}
+7R-1473,7R-1473,7R-1473,Mini Truck,780,1.2,,Owned,05.07.2025,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,{}
+9R-4431,9R-4431,9R-4431,Van,300,3,,Owned,05.07.2026,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,{}
+7K-1890,7K-1890,7K-1890,Box Truck,1500,10,,Rent,05.07.2026,Ready,Assigned,2026-05-07 09:58:32.546669+00,,,,,,,,,,,,,,,,,,,,
