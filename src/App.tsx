@@ -1,320 +1,485 @@
-import { useState, FormEvent, lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, useNavigate, Outlet } from 'react-router-dom';
+import { lazy, Suspense, useState, FormEvent, useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
+import { 
+  LayoutDashboard, Smartphone, LogOut, Package, Database, HeadphonesIcon, Truck, Map as MapIcon, Settings, Briefcase, Users, FileText,
+  Activity, AlertTriangle, QrCode, Edit3, PackageSearch, Send, ShieldCheck, UserCheck, CheckSquare,
+  Command, TrendingUp, DollarSign, Coins, Receipt, Wallet, Banknote, Store, Building2, Building, PieChart,
+  Megaphone, Calculator, Bike, Car, User, LineChart, ClipboardList, FileSpreadsheet, Printer, Navigation as NavIcon,
+  Globe
+} from "lucide-react";
 import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
 import { AuthProvider, useAuth } from '@/contexts/auth';
-import AppShell from '@/components/AppShell';
+import { supabase } from '@/integrations/supabase/client'; 
 import AppErrorBoundary from '@/components/system/AppErrorBoundary';
 import EnvironmentBadge from '@/components/system/EnvironmentBadge';
 
-// --- CORE GO-LIVE PAGES ---
-const DashboardPage = lazy(() => import('@/pages/DashboardPage'));
-const MasterDataPage = lazy(() => import('@/pages/MasterDataPage'));
+// ─── STRICT TYPOGRAPHY ENFORCEMENT ───
+const GLOBAL_FONT = "font-['Poppins',sans-serif] antialiased";
 
-// --- OPERATIONS & DISPATCH ---
-const WarehousePage = lazy(() => import('@/pages/WarehouseOperations'));
-const DispatchCenterGoLivePage = lazy(() => import('@/pages/dispatch/DispatchCenterGoLivePage')); 
-const SupervisorPickupAssignmentGoLivePage = lazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage'));
+// ─── EXPLICIT SAFE LAZY LOAD (WITH VERCEL CACHE BUSTING) ───
+const safeLazy = (importFunc: any) => lazy(() => 
+  importFunc().catch((err: any) => {
+    console.error("Module load error", err);
+    const isChunkError = err.message && err.message.includes('Failed to fetch dynamically imported module');
+    const hasReloaded = sessionStorage.getItem('vite_chunk_reload');
+    if (isChunkError && !hasReloaded) {
+      sessionStorage.setItem('vite_chunk_reload', 'true');
+      window.location.reload();
+      return { default: () => null };
+    }
+    sessionStorage.removeItem('vite_chunk_reload');
+    return { default: () => <div className={`flex h-screen w-full items-center justify-center bg-[#061524] text-[#ff4f86] text-[12px] font-bold tracking-widest uppercase ${GLOBAL_FONT}`}>Failed to load module. Please refresh your browser.</div> };
+  })
+);
 
-// --- FINANCE & CS ---
-const FinancePortalPage = lazy(() => import('@/pages/FinancePortalPage'));
-const CustomerServicePortalPage = lazy(() => import('@/pages/CustomerServicePortalPage'));
-const ExceptionsPage = lazy(() => import('@/pages/ExceptionsPage'));
+// ─── ALL PAGES REGISTRY (Updated with Go-Live Screens) ───
+const DashboardPage = safeLazy(() => import('@/pages/DashboardPage'));
+const AccountsPage = safeLazy(() => import('@/pages/AccountsPage'));
+const AdminHRPage = safeLazy(() => import('@/pages/AdminHRPage'));
+const AnalyticsPage = safeLazy(() => import('@/pages/AnalyticsPage'));
+const AuditLogsPage = safeLazy(() => import('@/pages/AuditLogsPage'));
+const BizDevPage = safeLazy(() => import('@/pages/BizDevPage'));
+const BranchAdminPage = safeLazy(() => import('@/pages/BranchAdminPage'));
+const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
+const CODSettlementPage = safeLazy(() => import('@/pages/CODSettlementPage'));
+const CustomerPortalPage = safeLazy(() => import('@/pages/CustomerPortalPage'));
+const CustomerServiceCommandCenterPage = safeLazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
+const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
+const DataEntryPage = safeLazy(() => import('@/pages/DataEntryPage'));
+const DeliveryDispatchPage = safeLazy(() => import('@/pages/DeliveryDispatchPage'));
+const DeliveryWorkflowPage = safeLazy(() => import('@/pages/DeliveryWorkflowPage'));
+const DispatchCenterPage = safeLazy(() => import('@/pages/DispatchCenterPage'));
+const DocumentPrintStudioPage = safeLazy(() => import('@/pages/DocumentPrintStudioPage'));
+const DriverPage = safeLazy(() => import('@/pages/DriverPage'));
+const ExceptionsPage = safeLazy(() => import('@/pages/ExceptionsPage'));
+const ExecutiveOpsPage = safeLazy(() => import('@/pages/ExecutiveOpsPage'));
+const FinancePortalPage = safeLazy(() => import('@/pages/FinancePortalPage')); // Updated Live Ledger Hub
+const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage'));
+const GoLiveTemplateCenterPage = safeLazy(() => import('@/pages/GoLiveTemplateCenterPage'));
+const InvoiceStudioPage = safeLazy(() => import('@/pages/InvoiceStudioPage'));
+const LiveDispatchWayplanBoard = safeLazy(() => import('@/pages/LiveDispatchWayplanBoard'));
+const MarketingPage = safeLazy(() => import('@/pages/MarketingPage'));
+const MarketingPortalPage = safeLazy(() => import('@/pages/MarketingPortalPage'));
+const MasterDataPortal = safeLazy(() => import('@/pages/MasterDataPortal')); // Updated Strict Master Data
+const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
+const OpsCommandPage = safeLazy(() => import('@/pages/OpsCommandPage'));
+const OpsManagerPage = safeLazy(() => import('@/pages/OpsManagerPage'));
+const PickupFormPage = safeLazy(() => import('@/pages/PickupFormPage'));
+const ProfilePage = safeLazy(() => import('@/pages/ProfilePage'));
+const RiderPage = safeLazy(() => import('@/pages/RiderPage'));
+const RiderDriverApp = safeLazy(() => import('@/pages/RiderDriverApp')); // The new isolated Field App
+const RiderDeliveryPage = safeLazy(() => import('@/pages/RiderDeliveryPage'));
+const RiderSettlementPage = safeLazy(() => import('@/pages/RiderSettlementPage'));
+const SettingsPage = safeLazy(() => import('@/pages/SettingsPage'));
+const SignupPage = safeLazy(() => import('@/pages/SignupPage'));
+const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage')); // Updated Go-Live Assign
+const SupervisorPortalPage = safeLazy(() => import('@/pages/SupervisorPortalPage')); // Updated Go-Live Sup Command
+const SupervisorWayplanReviewPage = safeLazy(() => import('@/pages/SupervisorWayplanReviewPage'));
+const TariffPage = safeLazy(() => import('@/pages/TariffPage')); // Updated Tariff Config
+const UATGoLiveCommandCenterPage = safeLazy(() => import('@/pages/UATGoLiveCommandCenterPage'));
+const WarehouseOperationPage = safeLazy(() => import('@/pages/WarehouseOperationPage'));
+const WarehousePage = safeLazy(() => import('@/pages/WarehousePage'));
+const WaybillStudioPage = safeLazy(() => import('@/pages/WaybillStudioPage'));
+const WayplanCommandCenterPage = safeLazy(() => import('@/pages/WayplanCommandCenterPage')); // Updated Wayplan Command
+const WorkforceCommissionPage = safeLazy(() => import('@/pages/WorkforceCommissionPage'));
+const DispatchPage = safeLazy(() => import('@/pages/DispatchPage'));
 
-// --- ADMIN & CORPORATE ---
-const AdminHRPage = lazy(() => import('@/pages/AdminHRPage'));
-const AnalyticsPage = lazy(() => import('@/pages/AnalyticsPage'));
-const MarketingPage = lazy(() => import('@/pages/MarketingPage'));
-const TariffPage = lazy(() => import('@/pages/TariffPage'));
-const SettingsPage = lazy(() => import('@/pages/SettingsPage'));
-const SignupPage = lazy(() => import('@/pages/SignupPage'));
-const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'));
+// Auxiliary Pages
+const DataEntryExcelRegisterPage = safeLazy(() => import('@/pages/DataEntryExcelRegisterPage'));
+const DataEntryPhotoCheckPage = safeLazy(() => import('@/pages/DataEntryPhotoCheckPage'));
+const DataEntrySynchronizedPage = safeLazy(() => import('@/pages/DataEntrySynchronizedPage'));
+const DataEntryUATUploadPage = safeLazy(() => import('@/pages/DataEntryUATUploadPage'));
+const DataEntryWaybillStudio = safeLazy(() => import('@/pages/DataEntryWaybillStudio'));
+const ProofGalleryPortalPage = safeLazy(() => import('@/pages/ProofGalleryPortalPage'));
+const ReportingPage = safeLazy(() => import('@/pages/ReportingPage'));
+const WarehouseOperations = safeLazy(() => import('@/pages/WarehouseOperations'));
+const WarehouseRegistrationTemplatePage = safeLazy(() => import('@/pages/WarehouseRegistrationTemplatePage'));
+const WarehouseUATUploadPage = safeLazy(() => import('@/pages/WarehouseUATUploadPage'));
+const WaybillInvoicePage = safeLazy(() => import('@/pages/WaybillInvoicePage'));
+const WayplanDetailPage = safeLazy(() => import('@/pages/WayplanDetailPage')); // Updated Wayplan Detail
+const WayplanManagementGoLivePage = safeLazy(() => import('@/pages/WayplanManagementGoLivePage'));
+const WayplanTemplateGeneratorPage = safeLazy(() => import('@/pages/WayplanTemplateGeneratorPage')); // Updated Wayplan Gen
+const FinanceSettlementGoLivePage = safeLazy(() => import('@/pages/FinanceSettlementGoLivePage')); // Updated Reconciliation
 
-// --- BRANDING ---
-const VIDEO_URL = 'https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/background_a93e0a05bfce4d5fa60d226584905742.mp4';
-const LOGO_URL  = 'https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/logo_869b883bce9e40f59d6394b5f754ef08.png';
-const YEAR = new Date().getFullYear();
+// ─── UI COMPONENTS ───
+const PageLoader = () => (
+  <div className={`flex h-screen w-full flex-col items-center justify-center bg-[#061524] gap-5 notranslate ${GLOBAL_FONT}`} translate="no">
+    <div className="w-14 h-14 border-4 border-[#1a3a5c] border-t-[#f6b84b] rounded-full animate-spin"></div>
+    <div className="text-[#4d7a9b] text-[12px] font-bold tracking-widest uppercase flex flex-col items-center gap-2">
+      <span>စနစ်သို့ ဝင်ရောက်နေပါသည်...</span>
+      <span className="text-[#1a3a5c]">LOADING MODULE</span>
+    </div>
+  </div>
+);
 
-type L = 'en' | 'my';
-
-const LT: Record<L, Record<string, string>> = {
-  en: {
-    title: 'BRITIUM EXPRESS', 
-    tagline: 'Enterprise Management Portal',
-    login: 'Sign In', 
-    signup: 'Request Access', 
-    reset: 'Recover Password',
-    email: 'Email Address', 
-    pw: 'Password', 
-    btnLogin: 'Sign In to Portal', 
-    btnSignup: 'Request Access', 
-    btnReset: 'Send Reset Link',
-    forgot: 'Forgot password?', 
-    createAcc: 'Request portal access →',
-    backLogin: '← Back to Sign In', 
-    footer: 'Authorised personnel only',
-    phEmail: 'you@britiumexpress.com', 
-    phPw: '••••••••',
-    phName: 'Full Name', 
-    phPhone: 'Phone (09-XXXXXXX)',
-    processing: 'Authenticating…', 
-    success: '✅ Access granted — redirecting…',
-    errEmail: 'Email is required', 
-    errPw: 'Password is required',
-    portal: 'ENTERPRISE PORTAL', 
-    version: 'v2026',
-  },
-  my: {
-    title: 'BRITIUM EXPRESS', 
-    tagline: 'စီမံခန့်ခွဲမှု Enterprise Portal',
-    login: 'ဝင်ရောက်', 
-    signup: 'ဝင်ခွင့်တောင်းဆို', 
-    reset: 'စကားဝှက်ပြန်ရယူ',
-    email: 'အီးမေးလ်လိပ်စာ', 
-    pw: 'စကားဝှက်', 
-    btnLogin: 'Portal ဝင်ရောက်', 
-    btnSignup: 'ဝင်ခွင့်တောင်းဆိုရန်', 
-    btnReset: 'Link ပို့မည်',
-    forgot: 'မေ့သွားသလား?', 
-    createAcc: 'Portal ဝင်ခွင့်တောင်းဆို →',
-    backLogin: '← ဝင်ရောက်မှုသို့', 
-    footer: 'ခွင့်ပြုထားသောဝန်ထမ်းများသာ',
-    phEmail: 'you@britiumexpress.com', 
-    phPw: '••••••••',
-    phName: 'အမည်အပြည့်အစုံ', 
-    phPhone: 'ဖုန်း (09-XXXXXXX)',
-    processing: 'အတည်ပြုနေသည်…', 
-    success: '✅ ဝင်ခွင့်ရပြီ — ဆောင်ရွက်နေသည်…',
-    errEmail: 'အီးမေးလ် လိုအပ်သည်', 
-    errPw: 'စကားဝှက် လိုအပ်သည်',
-    portal: 'ENTERPRISE PORTAL', 
-    version: 'v2026',
-  },
-};
-
-function LoginPage() {
-  const [lang, setLang] = useState<L>('en');
-  const [tab, setTab]   = useState<'login' | 'signup' | 'reset'>('login');
-  const [email, setEmail]   = useState('');
-  const [pw, setPw]         = useState('');
-  const [name, setName]     = useState('');
-  const [phone, setPhone]   = useState('');
-  const [showPw, setShowPw] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg]         = useState('');
-  const [errs, setErrs]       = useState<Record<string, string>>({});
+// ─── THE FULL ENTERPRISE SIDEBAR ───
+export function Sidebar() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const t = LT[lang];
+
+  const NAV_GROUPS = [
+    {
+      title: "Overview",
+      links: [
+        { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
+        { name: "Go-Live Readiness", path: "/go-live-readiness", icon: Activity },
+        { name: "Analytics", path: "/analytics", icon: LineChart },
+      ]
+    },
+    {
+      title: "Customer Service",
+      links: [
+        { name: "CS Command", path: "/cs-command", icon: HeadphonesIcon },
+        { name: "CS Portal", path: "/cs-portal", icon: HeadphonesIcon },
+        { name: "Exceptions", path: "/exceptions", icon: AlertTriangle },
+      ]
+    },
+    {
+      title: "Data Entry & Forms",
+      links: [
+        { name: "Data Entry", path: "/data-entry", icon: FileText },
+        { name: "Waybill Studio", path: "/waybill-studio", icon: QrCode },
+        { name: "Pickup Form", path: "/pickup-form", icon: Edit3 },
+        { name: "Doc Print", path: "/doc-print", icon: Printer },
+      ]
+    },
+    {
+      title: "Warehouse",
+      links: [
+        { name: "Warehouse", path: "/warehouse", icon: Package },
+        { name: "Warehouse Ops", path: "/warehouse-operations", icon: PackageSearch },
+      ]
+    },
+    {
+      title: "Dispatch & Routing",
+      links: [
+        { name: "Dispatch", path: "/dispatch", icon: Truck },
+        { name: "Dispatch Center", path: "/dispatch-center", icon: Truck },
+        { name: "Live Dispatch", path: "/live-dispatch", icon: Truck },
+        { name: "Delivery Dispatch", path: "/delivery-dispatch", icon: Send },
+        { name: "Delivery Workflow", path: "/delivery-workflow", icon: NavIcon },
+        { name: "Wayplan Command", path: "/wayplan-command", icon: MapIcon },
+      ]
+    },
+    {
+      title: "Management",
+      links: [
+        { name: "Supervisor", path: "/supervisor", icon: ShieldCheck },
+        { name: "Supervisor Pickup", path: "/supervisor-pickup", icon: UserCheck },
+        { name: "Supervisor Wayplan", path: "/supervisor-wayplan", icon: CheckSquare },
+        { name: "Ops Command", path: "/ops-command", icon: Command },
+        { name: "Ops Manager", path: "/ops-manager", icon: Briefcase },
+        { name: "Executive Ops", path: "/exec-ops", icon: TrendingUp },
+      ]
+    },
+    {
+      title: "Finance & Accounts",
+      links: [
+        { name: "Finance Portal", path: "/finance", icon: DollarSign },
+        { name: "Invoice Studio", path: "/invoice-studio", icon: Receipt },
+        { name: "COD Settlement", path: "/cod-settlement", icon: Coins },
+        { name: "Reconciliation", path: "/finance-reconcile", icon: Banknote },
+        { name: "Workforce Commission", path: "/workforce-commission", icon: Wallet },
+      ]
+    },
+    {
+      title: "Client Portals",
+      links: [
+        { name: "Merchant Portal", path: "/merchant-portal", icon: Store },
+        { name: "Customer Portal", path: "/customer-portal", icon: User },
+        { name: "Branch Office", path: "/branch-office", icon: Building2 },
+        { name: "Branch Admin", path: "/branch-admin", icon: Building },
+      ]
+    },
+    {
+      title: "Growth & Master Data",
+      links: [
+        { name: "Master Data", path: "/master-data", icon: Database },
+        { name: "Biz Dev", path: "/biz-dev", icon: PieChart },
+        { name: "Marketing", path: "/marketing", icon: Megaphone },
+        { name: "Marketing Portal", path: "/marketing-portal", icon: Megaphone },
+        { name: "Tariff", path: "/tariff", icon: Calculator },
+      ]
+    },
+    {
+      title: "Field Operations",
+      links: [
+        { name: "Rider Management", path: "/rider", icon: Bike },
+        { name: "Mobile Field App", path: "/field-app", icon: Smartphone },
+        { name: "Driver Management", path: "/driver", icon: Car },
+      ]
+    },
+    {
+      title: "System & HR",
+      links: [
+        { name: "Admin / HR", path: "/admin-hr", icon: Users },
+        { name: "Accounts", path: "/accounts", icon: Users },
+        { name: "Profile", path: "/profile", icon: User },
+        { name: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
+        { name: "Templates", path: "/templates", icon: FileSpreadsheet },
+        { name: "Settings", path: "/settings", icon: Settings },
+      ]
+    }
+  ];
+
+  return (
+    <aside className={`w-64 bg-[#0a1628] border-r border-[#1a3a5c] flex flex-col h-screen shrink-0 ${GLOBAL_FONT}`}>
+      <div className="p-6 border-b border-[#1a3a5c] shrink-0">
+        <h1 className="!text-[20px] !font-black tracking-wider !text-[#f6b84b] !mb-0 uppercase">Britium Ops</h1>
+      </div>
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-24">
+        {NAV_GROUPS.map((group) => (
+          <div key={group.title}>
+            <div className="text-[10px] font-black uppercase tracking-widest text-[#4d7a9b] mb-2 px-3">{group.title}</div>
+            <div className="space-y-1">
+              {group.links.map((link) => {
+                const isActive = location.pathname === link.path || location.pathname.startsWith(`${link.path}/`);
+                return (
+                  <Link 
+                    key={link.path} 
+                    to={link.path} 
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-[13px] font-semibold tracking-wide ${isActive ? 'bg-[#1a3a5c] text-[#f6b84b] shadow-md' : 'text-[#c8dff0] hover:bg-[#0f243b] hover:text-white'}`}
+                  >
+                    <link.icon size={16} strokeWidth={isActive ? 2.5 : 2} /> <span>{link.name}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="p-4 border-t border-[#1a3a5c] shrink-0 bg-[#0a1628]">
+        <button onClick={() => { supabase.auth.signOut(); navigate("/", { replace: true }); }} className="w-full flex items-center gap-3 p-3 text-[#ff4f86] font-bold text-[13px] tracking-wide hover:bg-[#ff4f86]/10 rounded-xl transition-colors cursor-pointer">
+          <LogOut size={18}/> <span>Sign Out</span>
+        </button>
+      </div>
+    </aside>
+  );
+}
+
+// ─── APPSHELL WITH LANGUAGE TOGGLE & UNIFORM LAYOUT WRAPPER ───
+function AppShell({ children }: { children: React.ReactNode }) {
+  const { toggleLang, lang } = useLanguage();
+
+  return (
+    <div className={`flex h-screen w-full bg-[#061524] overflow-hidden ${GLOBAL_FONT}`}>
+      <Sidebar />
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
+        
+        {/* ─── GLOBAL TOP NAVIGATION BAR ─── */}
+        <header className="h-14 bg-[#0a1628] border-b border-[#1a3a5c] flex items-center justify-end px-6 shrink-0 z-50 shadow-md w-full">
+          <button 
+            onClick={toggleLang} 
+            className="flex items-center gap-2 bg-[#1a3a5c] text-[#f6b84b] px-4 py-1.5 rounded-lg text-[12px] font-bold tracking-wider hover:bg-[#0f243b] transition-colors shadow-sm cursor-pointer border border-[#1a3a5c] hover:border-[#f6b84b]"
+          >
+            <Globe size={14} />
+            <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
+          </button>
+        </header>
+
+        {/* ─── SCROLLABLE PAGE CONTAINER WITH MIN-WIDTH ─── */}
+        <main className="flex-1 overflow-auto relative custom-scrollbar">
+          <div className="min-w-[1200px] h-full p-4 md:p-6"> 
+            {children}
+          </div>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ─── LOGIN COMPONENT ───
+function LoginPageComponent() {
+  const auth = useAuth() as any;
+  const [email, setEmail] = useState('');
+  const [pw, setPw] = useState('');
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { t, toggleLang, lang } = useLanguage();
 
   useEffect(() => {
-    import('@/integrations/supabase/client').then(({ supabase: sb }) => {
-      sb.auth.getSession().then(({ data }) => {
-        if (data.session) navigate('/dashboard', { replace: true });
-      });
-    });
-  }, [navigate]);
+    if (auth?.session) navigate('/dashboard', { replace: true });
+  }, [auth?.session, navigate]);
 
-  const inp: React.CSSProperties = {
-    width: '100%', padding: '12px 14px',
-    border: '1.5px solid #e4e4e7', borderRadius: 10,
-    background: '#fafafa', color: '#18181b',
-    fontSize: 14, fontWeight: 500, outline: 'none',
-    fontFamily: "'Poppins', sans-serif",
-    transition: 'border-color 0.15s',
+  const handleLogin = async (e: FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      if (error) throw error;
+      navigate('/dashboard', { replace: true });
+    } catch (err: any) { 
+      alert(t('Authentication failed. Check credentials.', 'အချက်အလက်များ မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။')); 
+    } finally { 
+      setLoading(false); 
+    }
   };
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
-    const e2: Record<string, string> = {};
-    if (!email.trim()) e2.email = t.errEmail;
-    if (tab !== 'reset' && !pw.trim()) e2.pw = t.errPw;
-    if (Object.keys(e2).length) { setErrs(e2); return; }
-    
-    setLoading(true); setErrs({});
-    try {
-      const { supabase: sb } = await import('@/integrations/supabase/client');
-      if (tab === 'login') {
-        const { error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pw });
-        if (error) throw error;
-        setMsg(t.success);
-        setTimeout(() => navigate('/dashboard', { replace: true }), 700);
-      } else if (tab === 'signup') {
-        // Backend handles role provisioning mapping based on user_registry, so frontend role isn't passed
-        const { error } = await sb.auth.signUp({ email: email.trim(), password: pw, options: { data: { full_name: name, phone } } });
-        if (error) throw error;
-        setMsg(lang === 'en' ? '✅ Request submitted. Await admin approval.' : '✅ တောင်းဆိုချက် ပို့ပြီး — Admin ခွင့်ပြုချက် စောင့်ဆိုင်းနေသည်');
-      } else {
-        const { error } = await sb.auth.resetPasswordForEmail(email.trim());
-        if (error) throw error;
-        setMsg(lang === 'en' ? '📧 Reset link sent to your email.' : '📧 Reset link ကို email သို့ ပို့ပြီးပါပြီ');
-      }
-    } catch (err: any) { setErrs({ g: err.message || 'Authentication error' }); }
-    finally { setLoading(false); }
-  }
-
   return (
-    <div style={{ position: 'relative', minHeight: '100vh', width: '100%', overflow: 'hidden', fontFamily: "'Poppins', sans-serif" }}>
-      <video style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} src={VIDEO_URL} autoPlay muted loop playsInline/>
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(140deg,rgba(4,14,28,0.90) 0%,rgba(8,22,45,0.78) 50%,rgba(6,12,24,0.88) 100%)' }}/>
-
-      <button onClick={() => setLang(l => l === 'en' ? 'my' : 'en')} style={{ position: 'absolute', top: 18, right: 18, zIndex: 30, display: 'flex', alignItems: 'center', gap: 6, padding: '7px 13px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.08)', color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer', backdropFilter: 'blur(8px)', fontFamily: "'Poppins', sans-serif" }}>
-        🌐 {lang === 'en' ? 'မြန်မာ' : 'EN'}
+    <div className={`flex min-h-screen items-center justify-center bg-[#061524] p-4 relative overflow-hidden notranslate ${GLOBAL_FONT}`} translate="no">
+      <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(4,14,28,0.90),rgba(8,22,45,0.78),rgba(6,12,24,0.88))] z-0" />
+      <button onClick={toggleLang} type="button" className="absolute top-6 right-6 z-20 bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl text-[12px] font-bold tracking-wider cursor-pointer hover:border-[#f6b84b] transition-colors shadow-lg">
+        <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
       </button>
 
-      <div style={{ position: 'relative', zIndex: 10, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px 16px' }}>
-        <div style={{ width: '100%', maxWidth: 420 }}>
-          
-          {/* Header Branding */}
-          <div style={{ textAlign: 'center', marginBottom: 30 }}>
-            <div style={{ width: 66, height: 66, borderRadius: 16, overflow: 'hidden', background: '#fff', margin: '0 auto 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 6px 30px rgba(0,0,0,0.35)' }}>
-              <img src={LOGO_URL} alt="Britium Express" style={{ width: '100%', height: '100%', objectFit: 'contain' }}/>
-            </div>
-            <h1 style={{ fontSize: 22, fontWeight: 900, color: '#fff', letterSpacing: '0.1em', margin: 0, fontFamily: "'Poppins', sans-serif" }}>{t.title}</h1>
-            <p style={{ fontSize: 11, fontWeight: 700, color: '#f59e0b', letterSpacing: '0.2em', marginTop: 8, textTransform: 'uppercase', fontFamily: "'Poppins', sans-serif" }}>{t.tagline}</p>
-          </div>
-
-          <div style={{ background: '#fff', borderRadius: 22, boxShadow: '0 24px 70px rgba(0,0,0,0.50)', overflow: 'hidden' }}>
-            {/* Tab Switcher */}
-            <div style={{ display: 'flex', background: '#f4f4f5', margin: '20px 20px 0', borderRadius: 14, padding: 4 }}>
-              {(['login', 'signup', 'reset'] as const).map(m => (
-                <button key={m} onClick={() => { setTab(m); setMsg(''); setErrs({}); }} style={{ flex: 1, padding: '10px 4px', borderRadius: 10, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 700, fontFamily: "'Poppins', sans-serif", background: tab === m ? '#fff' : 'transparent', color: tab === m ? '#18181b' : '#71717a', boxShadow: tab === m ? '0 1px 4px rgba(0,0,0,0.12)' : 'none', transition: 'all 0.15s' }}>
-                  {m === 'login' ? t.login : m === 'signup' ? t.signup : t.reset}
-                </button>
-              ))}
-            </div>
-
-            <div style={{ padding: '24px 24px 20px' }}>
-              {msg && <div style={{ padding: '12px 14px', marginBottom: 16, borderRadius: 10, fontSize: 13, fontWeight: 600, background: '#f0fdf4', border: '1px solid #bbf7d0', color: '#15803d', fontFamily: "'Poppins', sans-serif" }}>{msg}</div>}
-              {errs.g && <div style={{ padding: '12px 14px', marginBottom: 16, borderRadius: 10, fontSize: 13, background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', fontFamily: "'Poppins', sans-serif" }}>{errs.g}</div>}
-
-              <form onSubmit={submit} style={{ display: 'grid', gap: 16 }}>
-                {tab === 'signup' && (
-                  <>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, fontFamily: "'Poppins', sans-serif" }}>{t.phName}</label>
-                      <input value={name} onChange={e => setName(e.target.value)} placeholder={t.phName} style={inp}/>
-                    </div>
-                    <div>
-                      <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, fontFamily: "'Poppins', sans-serif" }}>{t.phPhone}</label>
-                      <input value={phone} onChange={e => setPhone(e.target.value)} placeholder={t.phPhone} style={inp}/>
-                    </div>
-                  </>
-                )}
-
-                <div>
-                  <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 6, fontFamily: "'Poppins', sans-serif" }}>{t.email}</label>
-                  <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder={t.phEmail} style={inp}/>
-                  {errs.email && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontFamily: "'Poppins', sans-serif" }}>{errs.email}</p>}
-                </div>
-
-                {tab !== 'reset' && (
-                  <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                      <label style={{ fontSize: 12, fontWeight: 700, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', fontFamily: "'Poppins', sans-serif" }}>{t.pw}</label>
-                      {tab === 'login' && <button type="button" onClick={() => setTab('reset')} style={{ fontSize: 12, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>{t.forgot}</button>}
-                    </div>
-                    <div style={{ position: 'relative' }}>
-                      <input type={showPw ? 'text' : 'password'} value={pw} onChange={e => setPw(e.target.value)} placeholder={t.phPw} style={inp}/>
-                      <button type="button" onClick={() => setShowPw(p => !p)} style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, color: '#71717a', padding: '2px 4px' }}>
-                        {showPw ? '🙈' : '👁'}
-                      </button>
-                    </div>
-                    {errs.pw && <p style={{ fontSize: 12, color: '#dc2626', marginTop: 4, fontFamily: "'Poppins', sans-serif" }}>{errs.pw}</p>}
-                  </div>
-                )}
-
-                <button type="submit" disabled={loading} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', padding: '14px 0', borderRadius: 12, border: 'none', background: loading ? '#d4a438' : '#f59e0b', color: '#1c1917', fontSize: 14, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', marginTop: 4, boxShadow: '0 4px 18px rgba(245,158,11,0.32)', fontFamily: "'Poppins', sans-serif", transition: 'all 0.15s' }}>
-                  {loading ? t.processing : tab === 'login' ? t.btnLogin : tab === 'signup' ? t.btnSignup : t.btnReset}
-                </button>
-              </form>
-
-              <div style={{ textAlign: 'center', marginTop: 20 }}>
-                {tab === 'login'
-                  ? <button onClick={() => setTab('signup')} style={{ fontSize: 13, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>{t.createAcc}</button>
-                  : <button onClick={() => setTab('login')} style={{ fontSize: 13, color: '#2563eb', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: "'Poppins', sans-serif" }}>{t.backLogin}</button>}
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 16, padding: '12px 16px', borderRadius: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', backdropFilter: 'blur(8px)', textAlign: 'center' }}>
-            <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.28)', margin: 0, fontFamily: "'Poppins', sans-serif", fontWeight: 500 }}>{t.footer}</p>
-          </div>
-          <p style={{ textAlign: 'center', marginTop: 12, fontSize: 11, color: 'rgba(255,255,255,0.20)', fontFamily: "'Poppins', sans-serif" }}>
-            © {YEAR} Britium Express · Britium Ventures Co., Ltd
+      <div className="w-full max-w-md p-10 bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-2xl z-10 relative">
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto bg-[#f6b84b] text-[#061524] rounded-2xl flex items-center justify-center text-3xl font-black mb-4 shadow-lg shadow-[#f6b84b]/20">BE</div>
+          <h1 className="text-2xl font-black text-[#eef8ff] tracking-widest uppercase"><span>BRITIUM EXPRESS</span></h1>
+          <p className="text-[#f6b84b] text-[11px] font-bold tracking-[0.16em] uppercase mt-2">
+            <span>{t('Enterprise Management Portal', 'လုပ်ငန်းစီမံခန့်ခွဲမှု ဗဟိုစနစ်')}</span>
           </p>
         </div>
+        <form onSubmit={handleLogin} className="flex flex-col gap-5">
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Business Email', 'လုပ်ငန်းသုံး အီးမေးလ်လိပ်စာ')}</span></label>
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Password', 'စကားဝှက်')}</span></label>
+            <input type="password" value={pw} onChange={e => setPw(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
+          </div>
+          <button type="submit" disabled={loading} className="mt-4 bg-[#f6b84b] text-[#061524] py-4 rounded-xl font-bold text-[14px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors disabled:opacity-50 cursor-pointer shadow-xl shadow-[#f6b84b]/10">
+            <span>{loading ? '...' : t('Secure Sign In', 'စနစ်သို့ ဝင်ရောက်မည်')}</span>
+          </button>
+        </form>
       </div>
     </div>
   );
 }
 
-function Loading() {
-  return (
-    <div style={{ minHeight: '100vh', background: '#061524', display: 'grid', placeItems: 'center', fontFamily: "'Poppins', sans-serif" }}>
-      <div style={{ textAlign: 'center' }}>
-        <div style={{ width: 44, height: 44, border: '3px solid #1a3a5c', borderTopColor: '#f6b84b', borderRadius: '50%', margin: '0 auto 16px', animation: 'spin 0.8s linear infinite' }}/>
-        <p style={{ color: '#4d7a9b', fontSize: 13, fontWeight: 700, letterSpacing: '0.08em' }}>BRITIUM ENTERPRISE</p>
-      </div>
-      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
-    </div>
-  );
-}
-
+// ─── PRODUCTION SECURE LAYOUT & AUTH ───
 function AuthLayout() {
   const auth = useAuth() as any;
-  const session = auth?.session;
-  const loading = Boolean(auth?.loading || auth?.isLoading || auth?.initializing);
-
-  if (loading) return <Loading />;
-  if (!session) return <Navigate to="/" replace />;
-
+  
+  if (auth?.loading) return <PageLoader />;
+  if (!auth?.session) return <Navigate to="/" replace />;
+  
   return (
     <AppShell>
-      <Outlet />
+      <Suspense fallback={<PageLoader />}>
+        <Outlet />
+      </Suspense>
     </AppShell>
   );
 }
 
+// ─── ROUTING MODULE ───
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <AppErrorBoundary pathname={location.pathname}>
+      <Suspense fallback={<PageLoader />}>
+        <Routes>
+          {/* 🔒 Public Access & Login */}
+          <Route path="/" element={<LoginPageComponent />} />
+          <Route path="/login" element={<LoginPageComponent />} />
+          <Route path="/signup" element={<SignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+
+          {/* 📱 DEDICATED MOBILE FIELD WORKFORCE APP */}
+          {/* Pushed entirely outside the AppShell so it takes up 100% of the mobile viewport */}
+          <Route path="/field-app" element={<RiderDriverApp />} />
+          <Route path="/rider-app" element={<Navigate to="/field-app" replace />} />
+
+          {/* 🛡️ Protected Enterprise Routes */}
+          <Route element={<AuthLayout />}>
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/branch-office" element={<BranchOfficePage />} />
+            <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
+            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+            <Route path="/data-entry" element={<DataEntryPage />} />
+            <Route path="/accounts" element={<AccountsPage />} />
+            <Route path="/admin-hr" element={<AdminHRPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
+            <Route path="/audit-logs" element={<AuditLogsPage />} />
+            <Route path="/biz-dev" element={<BizDevPage />} />
+            <Route path="/branch-admin" element={<BranchAdminPage />} />
+            
+            <Route path="/finance" element={<FinancePortalPage />} />
+            <Route path="/finance-reconcile" element={<FinanceSettlementGoLivePage />} />
+            <Route path="/cod-settlement" element={<CODSettlementPage />} />
+            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
+            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
+            <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
+            
+            <Route path="/customer-portal" element={<CustomerPortalPage />} />
+            <Route path="/delivery-dispatch" element={<DeliveryDispatchPage />} />
+            <Route path="/delivery-workflow" element={<DeliveryWorkflowPage />} />
+            <Route path="/dispatch" element={<DispatchPage />} />
+            <Route path="/dispatch-center" element={<DispatchCenterPage />} />
+            <Route path="/live-dispatch" element={<LiveDispatchWayplanBoard />} />
+            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
+            <Route path="/driver" element={<DriverPage />} />
+            <Route path="/exceptions" element={<ExceptionsPage />} />
+            <Route path="/exec-ops" element={<ExecutiveOpsPage />} />
+            
+            <Route path="/marketing" element={<MarketingPage />} />
+            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
+            <Route path="/master-data" element={<MasterDataPortal />} />
+            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
+            <Route path="/ops-command" element={<OpsCommandPage />} />
+            <Route path="/ops-manager" element={<OpsManagerPage />} />
+            <Route path="/pickup-form" element={<PickupFormPage />} />
+            <Route path="/profile" element={<ProfilePage />} />
+            <Route path="/rider" element={<RiderPage />} />
+            <Route path="/rider/delivery" element={<RiderDeliveryPage />} />
+            <Route path="/rider/delivery/:trackingNo" element={<RiderDeliveryPage />} />
+            <Route path="/rider/delivery-routes" element={<RiderDeliveryPage />} />
+            <Route path="/rider/delivery-routes/:trackingNo" element={<RiderDeliveryPage />} />
+            <Route path="/rider/delivery-proof/:trackingNo" element={<RiderDeliveryPage />} />
+            <Route path="/rider-delivery" element={<Navigate to="/rider/delivery" replace />} />
+            <Route path="/delivery" element={<Navigate to="/rider/delivery" replace />} />
+            
+            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
+            <Route path="/supervisor" element={<SupervisorPortalPage />} />
+            <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
+            <Route path="/tariff" element={<TariffPage />} />
+            <Route path="/warehouse" element={<WarehousePage />} />
+            <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
+            <Route path="/waybill-studio" element={<WaybillStudioPage />} />
+            <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
+            <Route path="/wayplan-zone" element={<Navigate to="/wayplan-command" replace />} />
+            
+            <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
+            <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
+            
+            {/* Auxiliary Routes */}
+            <Route path="/data-entry-excel" element={<DataEntryExcelRegisterPage />} />
+            <Route path="/data-entry-photo" element={<DataEntryPhotoCheckPage />} />
+            <Route path="/data-entry-sync" element={<DataEntrySynchronizedPage />} />
+            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+            <Route path="/data-entry-waybill" element={<DataEntryWaybillStudio />} />
+            <Route path="/proof-gallery" element={<ProofGalleryPortalPage />} />
+            <Route path="/reporting" element={<ReportingPage />} />
+            <Route path="/warehouse-ops-alt" element={<WarehouseOperations />} />
+            <Route path="/warehouse-reg" element={<WarehouseRegistrationTemplatePage />} />
+            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+            <Route path="/waybill-invoice" element={<WaybillInvoicePage />} />
+            <Route path="/way-management" element={<Navigate to="/wayplan-command" replace />} />
+            <Route path="/way-management-plan" element={<Navigate to="/wayplan-command" replace />} />
+            <Route path="/wayplan-detail" element={<WayplanDetailPage />} />
+            <Route path="/wayplan-go-live" element={<WayplanManagementGoLivePage />} />
+            <Route path="/wayplan-template-gen" element={<WayplanTemplateGeneratorPage />} />
+
+            {/* Catch-all fallback */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Route>
+        </Routes>
+      </Suspense>
+    </AppErrorBoundary>
+  );
+}
+
+// ─── APP ROOT ───
 export default function App() {
   return (
     <LanguageProvider>
       <AuthProvider>
         <HashRouter>
           <EnvironmentBadge />
-          <AppErrorBoundary>
-            <Suspense fallback={<Loading />}>
-            <Routes>
-            <Route path="/" element={<LoginPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/signup" element={<SignupPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
-            {/* ══ CONSOLIDATED GO-LIVE ROUTES ══ */}
-            <Route element={<AuthLayout />}>
-              <Route path="/dashboard" element={<DashboardPage />} />
-              <Route path="/master-data" element={<MasterDataPage />} />
-              
-              {/* Operations Unified Core */}
-              <Route path="/warehouse" element={<WarehousePage />} />
-              <Route path="/dispatch" element={<DispatchCenterGoLivePage />} />
-              <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
-              <Route path="/exceptions" element={<ExceptionsPage />} />
-              <Route path="/tariff" element={<TariffPage />} />
-
-              {/* Finance & Customer Service */}
-              <Route path="/finance" element={<FinancePortalPage />} />
-              <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
-              
-              {/* Corporate */}
-              <Route path="/admin-hr" element={<AdminHRPage />} />
-              <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/marketing" element={<MarketingPage />} />
-              <Route path="/settings" element={<SettingsPage />} />
-            </Route>
-
-            <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </Suspense>
-          </AppErrorBoundary>
+          <AppRoutes />
         </HashRouter>
       </AuthProvider>
     </LanguageProvider>
