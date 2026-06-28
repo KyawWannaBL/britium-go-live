@@ -1,487 +1,243 @@
-import { lazy, Suspense, useState, FormEvent, useEffect } from 'react';
-import { HashRouter, Routes, Route, Navigate, Outlet, useNavigate, useLocation, Link } from 'react-router-dom';
-import { 
-  LayoutDashboard, Smartphone, LogOut, Package, Database, HeadphonesIcon, Truck, Map as MapIcon, Settings, Briefcase, Users, FileText,
-  Activity, AlertTriangle, QrCode, Edit3, PackageSearch, Send, ShieldCheck, UserCheck, CheckSquare,
-  Command, TrendingUp, DollarSign, Coins, Receipt, Wallet, Banknote, Store, Building2, Building, PieChart,
-  Megaphone, Calculator, Bike, Car, User, LineChart, ClipboardList, FileSpreadsheet, Printer, Navigation as NavIcon,
-  Globe
-} from "lucide-react";
-import { LanguageProvider, useLanguage } from '@/contexts/LanguageContext';
-import { AuthProvider, useAuth } from '@/contexts/auth';
-import { supabase } from '@/integrations/supabase/client'; 
-import AppErrorBoundary from '@/components/system/AppErrorBoundary';
-import EnvironmentBadge from '@/components/system/EnvironmentBadge';
+import React, { useEffect, useMemo, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Calculator, CheckCircle2, Database, Loader2, RefreshCw, Pencil, Save, Plus, X, Search, ShieldAlert } from 'lucide-react';
 
-// ─── STRICT TYPOGRAPHY ENFORCEMENT ───
-const GLOBAL_FONT = "font-['Poppins',sans-serif] antialiased";
+const C = { bg: '#061524', panel: '#0b2236', panel2: '#081b2e', panelHover: '#0f2a42', border: '#1a3a5c', gold: '#f6b84b', text: '#eef8ff', muted: '#4d7a9b', success: '#22c55e', error: '#ff4f86', warning: '#f59e0b', info: '#38bdf8', orange: '#f97316' };
+const FF = { body: "'Poppins', sans-serif" };
 
-// ─── EXPLICIT SAFE LAZY LOAD (WITH VERCEL CACHE BUSTING) ───
-const safeLazy = (importFunc: any) => lazy(() => 
-  importFunc().catch((err: any) => {
-    console.error("Module load error", err);
-    const isChunkError = err.message && err.message.includes('Failed to fetch dynamically imported module');
-    const hasReloaded = sessionStorage.getItem('vite_chunk_reload');
-    if (isChunkError && !hasReloaded) {
-      sessionStorage.setItem('vite_chunk_reload', 'true');
-      window.location.reload();
-      return { default: () => null };
-    }
-    sessionStorage.removeItem('vite_chunk_reload');
-    return { default: () => <div className={`flex h-screen w-full items-center justify-center bg-[#061524] text-[#ff4f86] text-[12px] font-bold tracking-widest uppercase ${GLOBAL_FONT}`}>Failed to load module. Please refresh your browser.</div> };
-  })
-);
+type Tier = 'STANDARD' | 'ROYAL' | 'COMMITMENT_1500' | 'COMMITMENT_3000';
 
-// ─── ALL PAGES REGISTRY (Updated with Go-Live Screens) ───
-const DashboardPage = safeLazy(() => import('@/pages/DashboardPage'));
-const AccountsPage = safeLazy(() => import('@/pages/AccountsPage'));
-const AdminHRPage = safeLazy(() => import('@/pages/AdminHRPage'));
-const AnalyticsPage = safeLazy(() => import('@/pages/AnalyticsPage'));
-const AuditLogsPage = safeLazy(() => import('@/pages/AuditLogsPage'));
-const BizDevPage = safeLazy(() => import('@/pages/BizDevPage'));
-const BranchAdminPage = safeLazy(() => import('@/pages/BranchAdminPage'));
-const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
-const CODSettlementPage = safeLazy(() => import('@/pages/CODSettlementPage'));
-const CustomerPortalPage = safeLazy(() => import('@/pages/CustomerPortalPage'));
-const CustomerServiceCommandCenterPage = safeLazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
-const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
-const DataEntryPage = safeLazy(() => import('@/pages/DataEntryPage'));
-const DeliveryDispatchPage = safeLazy(() => import('@/pages/DeliveryDispatchPage'));
-const DeliveryWorkflowPage = safeLazy(() => import('@/pages/DeliveryWorkflowPage'));
-const DispatchCenterPage = safeLazy(() => import('@/pages/DispatchCenterPage'));
-const DocumentPrintStudioPage = safeLazy(() => import('@/pages/DocumentPrintStudioPage'));
-const DriverPage = safeLazy(() => import('@/pages/DriverPage'));
-const ExceptionsPage = safeLazy(() => import('@/pages/ExceptionsPage'));
-const ExecutiveOpsPage = safeLazy(() => import('@/pages/ExecutiveOpsPage'));
-const FinancePortalPage = safeLazy(() => import('@/pages/FinancePortalPage')); // Updated Live Ledger Hub
-const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage'));
-const GoLiveTemplateCenterPage = safeLazy(() => import('@/pages/GoLiveTemplateCenterPage'));
-const InvoiceStudioPage = safeLazy(() => import('@/pages/InvoiceStudioPage'));
-const LiveDispatchWayplanBoard = safeLazy(() => import('@/pages/LiveDispatchWayplanBoard'));
-const MarketingPage = safeLazy(() => import('@/pages/MarketingPage'));
-const MarketingPortalPage = safeLazy(() => import('@/pages/MarketingPortalPage'));
-const MasterDataPortal = safeLazy(() => import('@/pages/MasterDataPortal')); // Updated Strict Master Data
-const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
-const OpsCommandPage = safeLazy(() => import('@/pages/OpsCommandPage'));
-const OpsManagerPage = safeLazy(() => import('@/pages/OpsManagerPage'));
-const PickupFormPage = safeLazy(() => import('@/pages/PickupFormPage'));
-const ProfilePage = safeLazy(() => import('@/pages/ProfilePage'));
-const RiderPage = safeLazy(() => import('@/pages/RiderPage'));
-const RiderDriverApp = safeLazy(() => import('@/pages/RiderDriverApp')); // The new isolated Field App
-const RiderDeliveryPage = safeLazy(() => import('@/pages/RiderDeliveryPage'));
-const RiderSettlementPage = safeLazy(() => import('@/pages/RiderSettlementPage'));
-const SettingsPage = safeLazy(() => import('@/pages/SettingsPage'));
-const SignupPage = safeLazy(() => import('@/pages/SignupPage'));
-const SupervisorPickupAssignmentGoLivePage = safeLazy(() => import('@/pages/SupervisorPickupAssignmentGoLivePage')); // Updated Go-Live Assign
-const SupervisorPortalPage = safeLazy(() => import('@/pages/SupervisorPortalPage')); // Updated Go-Live Sup Command
-const SupervisorWayplanReviewPage = safeLazy(() => import('@/pages/SupervisorWayplanReviewPage'));
-const TariffPage = safeLazy(() => import('@/pages/TariffPage')); // Updated Tariff Config
-const UATGoLiveCommandCenterPage = safeLazy(() => import('@/pages/UATGoLiveCommandCenterPage'));
-const WarehouseOperationPage = safeLazy(() => import('@/pages/WarehouseOperationPage'));
-const WarehousePage = safeLazy(() => import('@/pages/WarehousePage'));
-const WaybillStudioPage = safeLazy(() => import('@/pages/WaybillStudioPage'));
-const WayplanCommandCenterPage = safeLazy(() => import('@/pages/WayplanCommandCenterPage')); // Updated Wayplan Command
-const WorkforceCommissionPage = safeLazy(() => import('@/pages/WorkforceCommissionPage'));
-const DispatchPage = safeLazy(() => import('@/pages/DispatchPage'));
+type TariffRow = {
+  township: string;
+  zone: string;
+  zoneCode: string;
+  customerTier: Tier;
+  baseFee: number;
+  includedKg: number;
+  extraPerKg: number;
+  highwayDropoffFee: number;
+  commitmentMinWays: number;
+  commitmentRefundPerWay: number;
+  status: string;
+  source: string;
+};
 
-// Auxiliary Pages
-const DataEntryExcelRegisterPage = safeLazy(() => import('@/pages/DataEntryExcelRegisterPage'));
-const DataEntryPhotoCheckPage = safeLazy(() => import('@/pages/DataEntryPhotoCheckPage'));
-const DataEntrySynchronizedPage = safeLazy(() => import('@/pages/DataEntrySynchronizedPage'));
-const DataEntryUATUploadPage = safeLazy(() => import('@/pages/DataEntryUATUploadPage'));
-const DataEntryWaybillStudio = safeLazy(() => import('@/pages/DataEntryWaybillStudio'));
-const ProofGalleryPortalPage = safeLazy(() => import('@/pages/ProofGalleryPortalPage'));
-const ReportingPage = safeLazy(() => import('@/pages/ReportingPage'));
-const WarehouseOperations = safeLazy(() => import('@/pages/WarehouseOperations'));
-const WarehouseRegistrationTemplatePage = safeLazy(() => import('@/pages/WarehouseRegistrationTemplatePage'));
-const WarehouseUATUploadPage = safeLazy(() => import('@/pages/WarehouseUATUploadPage'));
-const WaybillInvoicePage = safeLazy(() => import('@/pages/WaybillInvoicePage'));
-const WayplanDetailPage = safeLazy(() => import('@/pages/WayplanDetailPage')); // Updated Wayplan Detail
-const WayplanManagementGoLivePage = safeLazy(() => import('@/pages/WayplanManagementGoLivePage'));
-const WayplanTemplateGeneratorPage = safeLazy(() => import('@/pages/WayplanTemplateGeneratorPage')); // Updated Wayplan Gen
-const FinanceSettlementGoLivePage = safeLazy(() => import('@/pages/FinanceSettlementGoLivePage')); // Updated Reconciliation
+const TRANSLATIONS = {
+  en: {
+    title: "Tariff Network Control", subtitle: "Manage operational multi-tier price grids. Changes reflect instantly.",
+    refresh: "Sync Live Network", unauthorized: "Access Restricted", unauthSub: "You have view-only access.",
+    btnSave: "Add Rate", btnUpdate: "Update Grid", btnCancel: "Cancel", btnEdit: "Edit",
+    lblTown: "Township", lblZone: "Zone", lblTier: "Customer Tier", lblBase: "Base Rate", lblIncKg: "Allowance", lblExtraKg: "Extra/KG", lblHighway: "Highway Fee", lblStatus: "Status",
+    lblMinWays: "Min Ways", lblRefund: "Refund / Way", lblMonthlyWays: "Monthly Volume",
+    calcTitle: "Quick Quote Matrix", calcNet: "Net Charge", searchPh: "Search network...", empty: "No records found."
+  },
+  mm: {
+    title: "ပို့ဆောင်ခ နှုန်းထားကွန်ရက်", subtitle: "နှုန်းထားဇယားများကို ဤနေရာမှ တိုက်ရိုက်ထိန်းချုပ်စီမံနိုင်ပါသည်။",
+    refresh: "ဆန်းသစ်ရန်", unauthorized: "ခွင့်ပြုချက်မရှိပါ", unauthSub: "ကြည့်ရှုရန်သာ ခွင့်ပြုထားပါသည်။",
+    btnSave: "နှုန်းထားအသစ်ထည့်မည်", btnUpdate: "ပြင်ဆင်မည်", btnCancel: "ပယ်ဖျက်မည်", btnEdit: "ပြင်မည်",
+    lblTown: "မြို့နယ်", lblZone: "ဇုန်", lblTier: "ကဏ္ဍအဆင့်", lblBase: "အခြေခံနှုန်းထား", lblIncKg: "ကီလိုစွမ်းရည်", lblExtraKg: "ထပ်တိုးကြေး", lblHighway: "ဂိတ်ချခ", lblStatus: "အခြေအနေ",
+    lblMinWays: "အနည်းဆုံး အရေအတွက်", lblRefund: "အမ်းငွေ / အော်ဒါ", lblMonthlyWays: "လစဉ် အော်ဒါအရေအတွက်",
+    calcTitle: "နှုန်းထား တွက်ချက်စမ်းသပ်မှု", calcNet: "ကျသင့်ငွေ", searchPh: "ရှာဖွေရန်...", empty: "မှတ်တမ်းများ မတွေ့ရှိပါ။"
+  }
+};
 
-// ─── UI COMPONENTS ───
-const PageLoader = () => (
-  <div className={`flex h-screen w-full flex-col items-center justify-center bg-[#061524] gap-5 notranslate ${GLOBAL_FONT}`} translate="no">
-    <div className="w-14 h-14 border-4 border-[#1a3a5c] border-t-[#f6b84b] rounded-full animate-spin"></div>
-    <div className="text-[#4d7a9b] text-[12px] font-bold tracking-widest uppercase flex flex-col items-center gap-2">
-      <span>စနစ်သို့ ဝင်ရောက်နေပါသည်...</span>
-      <span className="text-[#1a3a5c]">LOADING MODULE</span>
-    </div>
-  </div>
-);
+const emptyForm: TariffRow = { township: '', zone: 'Zone A', zoneCode: 'YGN', customerTier: 'STANDARD', baseFee: 4000, includedKg: 3, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 0, commitmentRefundPerWay: 0, status: 'active', source: 'Manual Entry' };
 
-// ─── THE FULL ENTERPRISE SIDEBAR ───
-export function Sidebar() {
-  const location = useLocation();
-  const navigate = useNavigate();
+const SOURCE_TARIFFS = [
+  ['ပန်းဘဲတန်း', 'Yangon', 'YGN', 4000], ['ကျောက်တံတား', 'Yangon', 'YGN', 4000], ['လမ်းမတော်', 'Yangon', 'YGN', 4000],
+  ['လသာ', 'Yangon', 'YGN', 4000], ['ပုဇွန်တောင်', 'Yangon', 'YGN', 4000], ['ဗိုလ်တထောင်', 'Yangon', 'YGN', 4000],
+  ['ဒဂုံ', 'Yangon', 'YGN', 4000], ['အလုံ', 'Yangon', 'YGN', 4000], ['ကြည့်မြင်တိုင်', 'Yangon', 'YGN', 4000],
+  ['စမ်းချောင်း', 'Yangon', 'YGN', 4000], ['မင်္ဂလာတောင်ညွန့်', 'Yangon', 'YGN', 4000], ['တာမွေ', 'Yangon', 'YGN', 4000],
+  ['ဗဟန်း', 'Yangon', 'YGN', 4000], ['တောင်ဥက္ကလာပ', 'Yangon', 'YGN', 4000], ['မြောက်ဒဂုံ', 'Yangon', 'YGN', 4000],
+  ['အရှေ့ဒဂုံ', 'Yangon', 'YGN', 4000], ['ရန်ကင်း', 'Yangon', 'YGN', 4000], ['ကမာရွတ်', 'Yangon', 'YGN', 4000],
+  ['သာကေတ', 'Yangon', 'YGN', 4000], ['သင်္ဃန်းကျွန်း', 'Yangon', 'YGN', 4000], ['မရမ်းကုန်း', 'Yangon', 'YGN', 4000],
+  ['တောင်ဒဂုံ', 'Yangon', 'YGN', 4000], ['ဒဂုံဆိပ်ကမ်း', 'Yangon', 'YGN', 4000], ['ဒေါပုံ', 'Yangon', 'YGN', 4000],
+  ['လှိုင်', 'Yangon', 'YGN', 4000], ['အင်းစိန်', 'Yangon', 'YGN', 4000], ['မြောက်ဥက္ကလာပ', 'Yangon', 'YGN', 4500],
+  ['မင်္ဂလာဒုံ', 'Yangon', 'YGN', 4500], ['ရွှေပြည်သာ', 'Yangon', 'YGN', 4500], ['လှိုင်သာယာ', 'Yangon', 'YGN', 4500],
+  ['ရွှေပေါက်ကံ', 'Yangon', 'YGN', 4500], ['အောင်မင်္ဂလာကားဂိတ်', 'Yangon', 'YGN', 3000], ['ပရမီ ကားဝင်း (ဗန္ဓုလ)', 'Yangon', 'YGN', 3000],
+  ['အောင်ဆန်းကွင်း', 'Yangon', 'YGN', 3000], ['ဂိတ်ချ', 'Yangon', 'YGN', 3000], ['အဝေးပြေး ဂိတ်ချ', 'Yangon', 'YGN', 3000],
+  ['ရန်ကုန်စာတိုက်ကြီး', 'Yangon', 'YGN', 3000], ['ဘုရင့်နောင် ကားဝင်း', 'Yangon', 'YGN', 4000], ['လိူင်သာယာအဝေးပြေး (ဒဂုံဧရာ)', 'Yangon', 'YGN', 4000],
+  ['အောင်မြေသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000], ['ချမ်းအေးသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000], ['မဟာအောင်မြေမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ချမ်းမြသာစည်မြို့နယ်', 'Mandalay', 'MDY', 6000], ['ပြည်ကြီးတံခွန်မြို့နယ်', 'Mandalay', 'MDY', 6000], ['အမရပူရမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ပုသိမ်ကြီးမြို့နယ်', 'Mandalay', 'MDY', 6000], ['ဇမ္ဗူသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဒက္ခိဏသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ပုဗ္ဗသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဥတ္တရသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဇေယျာသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ပျဉ်းမနားမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000]
+].map(([township, zone, zoneCode, baseFee]) => ({
+  township: String(township), zone: String(zone), zoneCode: String(zoneCode), baseFee: Number(baseFee), status: 'active', source: 'go-live fallback'
+}));
 
-  const NAV_GROUPS = [
-    {
-      title: "Overview",
-      links: [
-        { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-        { name: "Go-Live Readiness", path: "/go-live-readiness", icon: Activity },
-        { name: "Analytics", path: "/analytics", icon: LineChart },
-      ]
-    },
-    {
-      title: "Customer Service",
-      links: [
-        { name: "CS Command", path: "/cs-command", icon: HeadphonesIcon },
-        { name: "CS Portal", path: "/cs-portal", icon: HeadphonesIcon },
-        { name: "Exceptions", path: "/exceptions", icon: AlertTriangle },
-      ]
-    },
-    {
-      title: "Data Entry & Forms",
-      links: [
-        { name: "Data Entry", path: "/data-entry", icon: FileText },
-        { name: "Waybill Studio", path: "/waybill-studio", icon: QrCode },
-        { name: "Pickup Form", path: "/pickup-form", icon: Edit3 },
-        { name: "Doc Print", path: "/doc-print", icon: Printer },
-      ]
-    },
-    {
-      title: "Warehouse",
-      links: [
-        { name: "Warehouse", path: "/warehouse", icon: Package },
-        { name: "Warehouse Ops", path: "/warehouse-operations", icon: PackageSearch },
-      ]
-    },
-    {
-      title: "Dispatch & Routing",
-      links: [
-        { name: "Dispatch", path: "/dispatch", icon: Truck },
-        { name: "Dispatch Center", path: "/dispatch-center", icon: Truck },
-        { name: "Live Dispatch", path: "/live-dispatch", icon: Truck },
-        { name: "Delivery Dispatch", path: "/delivery-dispatch", icon: Send },
-        { name: "Delivery Workflow", path: "/delivery-workflow", icon: NavIcon },
-        { name: "Wayplan Command", path: "/wayplan-command", icon: MapIcon },
-      ]
-    },
-    {
-      title: "Management",
-      links: [
-        { name: "Supervisor", path: "/supervisor", icon: ShieldCheck },
-        { name: "Supervisor Pickup", path: "/supervisor-pickup", icon: UserCheck },
-        { name: "Supervisor Wayplan", path: "/supervisor-wayplan", icon: CheckSquare },
-        { name: "Ops Command", path: "/ops-command", icon: Command },
-        { name: "Ops Manager", path: "/ops-manager", icon: Briefcase },
-        { name: "Executive Ops", path: "/exec-ops", icon: TrendingUp },
-      ]
-    },
-    {
-      title: "Finance & Accounts",
-      links: [
-        { name: "Finance Portal", path: "/finance", icon: DollarSign },
-        { name: "Invoice Studio", path: "/invoice-studio", icon: Receipt },
-        { name: "COD Settlement", path: "/cod-settlement", icon: Coins },
-        { name: "Reconciliation", path: "/finance-reconcile", icon: Banknote },
-        { name: "Workforce Commission", path: "/workforce-commission", icon: Wallet },
-      ]
-    },
-    {
-      title: "Client Portals",
-      links: [
-        { name: "Merchant Portal", path: "/merchant-portal", icon: Store },
-        { name: "Customer Portal", path: "/customer-portal", icon: User },
-        { name: "Branch Office", path: "/branch-office", icon: Building2 },
-        { name: "Branch Admin", path: "/branch-admin", icon: Building },
-      ]
-    },
-    {
-      title: "Growth & Master Data",
-      links: [
-        { name: "Master Data", path: "/master-data", icon: Database },
-        { name: "Biz Dev", path: "/biz-dev", icon: PieChart },
-        { name: "Marketing", path: "/marketing", icon: Megaphone },
-        { name: "Marketing Portal", path: "/marketing-portal", icon: Megaphone },
-        { name: "Tariff", path: "/tariff", icon: Calculator },
-      ]
-    },
-    {
-      title: "Field Operations",
-      links: [
-        { name: "Rider Management", path: "/rider", icon: Bike },
-        { name: "Mobile Field App", path: "/field-app", icon: Smartphone },
-        { name: "Driver Management", path: "/driver", icon: Car },
-      ]
-    },
-    {
-      title: "System & HR",
-      links: [
-        { name: "Admin / HR", path: "/admin-hr", icon: Users },
-        { name: "Accounts", path: "/accounts", icon: Users },
-        { name: "Profile", path: "/profile", icon: User },
-        { name: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
-        { name: "Templates", path: "/templates", icon: FileSpreadsheet },
-        { name: "Settings", path: "/settings", icon: Settings },
-      ]
-    }
-  ];
-
-  return (
-    <aside className={`w-64 bg-[#0a1628] border-r border-[#1a3a5c] flex flex-col h-screen shrink-0 ${GLOBAL_FONT}`}>
-      <div className="p-6 border-b border-[#1a3a5c] shrink-0">
-        <h1 className="!text-[20px] !font-black tracking-wider !text-[#f6b84b] !mb-0 uppercase">Britium Ops</h1>
-      </div>
-      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar pb-24">
-        {NAV_GROUPS.map((group) => (
-          <div key={group.title}>
-            <div className="text-[10px] font-black uppercase tracking-widest text-[#4d7a9b] mb-2 px-3">{group.title}</div>
-            <div className="space-y-1">
-              {group.links.map((link) => {
-                const isActive = location.pathname === link.path || location.pathname.startsWith(`${link.path}/`);
-                return (
-                  <Link 
-                    key={link.path} 
-                    to={link.path} 
-                    className={`flex items-center gap-3 p-3 rounded-xl transition-all duration-200 text-[13px] font-semibold tracking-wide ${isActive ? 'bg-[#1a3a5c] text-[#f6b84b] shadow-md' : 'text-[#c8dff0] hover:bg-[#0f243b] hover:text-white'}`}
-                  >
-                    <link.icon size={16} strokeWidth={isActive ? 2.5 : 2} /> <span>{link.name}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="p-4 border-t border-[#1a3a5c] shrink-0 bg-[#0a1628]">
-        <button onClick={() => { supabase.auth.signOut(); navigate("/", { replace: true }); }} className="w-full flex items-center gap-3 p-3 text-[#ff4f86] font-bold text-[13px] tracking-wide hover:bg-[#ff4f86]/10 rounded-xl transition-colors cursor-pointer">
-          <LogOut size={18}/> <span>Sign Out</span>
-        </button>
-      </div>
-    </aside>
-  );
+function expandTierRows(rowsArray: any[], source: string): TariffRow[] {
+  return rowsArray.flatMap((row) => [
+    { ...row, customerTier: 'STANDARD' as Tier, includedKg: 3, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 0, commitmentRefundPerWay: 0, source },
+    { ...row, customerTier: 'ROYAL' as Tier, includedKg: 5, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 0, commitmentRefundPerWay: 0, source },
+    { ...row, customerTier: 'COMMITMENT_1500' as Tier, includedKg: 5, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 1500, commitmentRefundPerWay: 500, source },
+    { ...row, customerTier: 'COMMITMENT_3000' as Tier, includedKg: 6, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 3000, commitmentRefundPerWay: 700, source },
+  ]);
 }
 
-// ─── APPSHELL WITH LANGUAGE TOGGLE & UNIFORM LAYOUT WRAPPER ───
-function AppShell({ children }: { children: React.ReactNode }) {
-  const { toggleLang, lang } = useLanguage();
+const FALLBACK_ROWS = expandTierRows(SOURCE_TARIFFS, 'go-live fallback');
 
-  return (
-    <div className={`flex h-screen w-full bg-[#061524] overflow-hidden ${GLOBAL_FONT}`}>
-      <Sidebar />
-      <div className="flex flex-col flex-1 min-w-0 overflow-hidden relative">
-        
-        {/* ─── GLOBAL TOP NAVIGATION BAR ─── */}
-        <header className="h-14 bg-[#0a1628] border-b border-[#1a3a5c] flex items-center justify-end px-6 shrink-0 z-50 shadow-md w-full">
-          <button 
-            onClick={toggleLang} 
-            className="flex items-center gap-2 bg-[#1a3a5c] text-[#f6b84b] px-4 py-1.5 rounded-lg text-[12px] font-bold tracking-wider hover:bg-[#0f243b] transition-colors shadow-sm cursor-pointer border border-[#1a3a5c] hover:border-[#f6b84b]"
-          >
-            <Globe size={14} />
-            <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
-          </button>
-        </header>
+export default function TariffPage() {
+  const { lang } = useLanguage();
+  const t = TRANSLATIONS[lang as 'en' | 'mm'] || TRANSLATIONS.en;
 
-        {/* ─── SCROLLABLE PAGE CONTAINER WITH MIN-WIDTH ─── */}
-        <main className="flex-1 overflow-auto relative custom-scrollbar">
-          <div className="min-w-[1200px] h-full p-4 md:p-6"> 
-            {children}
-          </div>
-        </main>
-      </div>
-    </div>
-  );
-}
+  const [rows, setRows] = useState<TariffRow[]>(FALLBACK_ROWS);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [form, setForm] = useState<TariffRow>(emptyForm);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
-// ─── LOGIN COMPONENT ───
-function LoginPageComponent() {
-  const auth = useAuth() as any;
-  const [email, setEmail] = useState('');
-  const [pw, setPw] = useState('');
-  const [loading, setLoading] = useState(false);
-  const navigate = useNavigate();
-  const { t, toggleLang, lang } = useLanguage();
+  const [calcTownship, setCalcTownship] = useState('တာမွေ');
+  const [calcTier, setCalcTier] = useState<Tier>('STANDARD');
+  const [calcWeight, setCalcWeight] = useState(1.5);
+  const [calcSurcharge, setCalcSurcharge] = useState(0);
+  const [calcMonthlyWays, setCalcMonthlyWays] = useState(0);
 
-  useEffect(() => {
-    if (auth?.session) navigate('/dashboard', { replace: true });
-  }, [auth?.session, navigate]);
-
-  const handleLogin = async (e: FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
+  const initialize = async () => {
+    setLoading(true); setMessage(null);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password: pw });
+      const { data: authData } = await supabase.auth.getUser();
+      const email = authData.user?.email || "";
+      const userMeta = authData.user?.user_metadata || {};
+      setIsSuperAdmin(email.includes('admin') || userMeta.role === 'superadmin' || userMeta.role === 'director');
+
+      const { data, error } = await supabase.from('townships').select('*').order('township_name', { ascending: true });
       if (error) throw error;
-      navigate('/dashboard', { replace: true });
-    } catch (err: any) { 
-      alert(t('Authentication failed. Check credentials.', 'အချက်အလက်များ မှားယွင်းနေပါသည်။ ပြန်လည်စစ်ဆေးပါ။')); 
-    } finally { 
-      setLoading(false); 
-    }
+
+      if (data && data.length > 0) {
+        setRows(data.flatMap((r: any) => expandTierRows([{ township: r.township_name || r.township_code, zone: r.zone || 'Yangon', zoneCode: r.branch_code || 'YGN', baseFee: Number(r.delivery_fee || 4000), status: r.is_active === false ? 'blocked' : 'active' }], 'Live Database')));
+      }
+    } catch (e: any) { setRows(FALLBACK_ROWS); } finally { setLoading(false); }
   };
 
-  return (
-    <div className={`flex min-h-screen items-center justify-center bg-[#061524] p-4 relative overflow-hidden notranslate ${GLOBAL_FONT}`} translate="no">
-      <div className="absolute inset-0 bg-[linear-gradient(140deg,rgba(4,14,28,0.90),rgba(8,22,45,0.78),rgba(6,12,24,0.88))] z-0" />
-      <button onClick={toggleLang} type="button" className="absolute top-6 right-6 z-20 bg-[#081b2e] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl text-[12px] font-bold tracking-wider cursor-pointer hover:border-[#f6b84b] transition-colors shadow-lg">
-        <span>{lang === 'en' ? 'မြန်မာဘာသာ' : 'English'}</span>
-      </button>
+  useEffect(() => { void initialize(); }, []);
 
-      <div className="w-full max-w-md p-10 bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-2xl z-10 relative">
-        <div className="text-center mb-8">
-          <div className="w-16 h-16 mx-auto bg-[#f6b84b] text-[#061524] rounded-2xl flex items-center justify-center text-3xl font-black mb-4 shadow-lg shadow-[#f6b84b]/20">BE</div>
-          <h1 className="text-2xl font-black text-[#eef8ff] tracking-widest uppercase"><span>BRITIUM EXPRESS</span></h1>
-          <p className="text-[#f6b84b] text-[11px] font-bold tracking-[0.16em] uppercase mt-2">
-            <span>{t('Enterprise Management Portal', 'လုပ်ငန်းစီမံခန့်ခွဲမှု ဗဟိုစနစ်')}</span>
-          </p>
+  const handleSave = () => {
+    if (!isSuperAdmin) return setMessage({ type: 'error', text: t.unauthorized });
+    setSaving(true);
+    if (editingId) setRows(prev => prev.map(r => (r.township === form.township && r.customerTier === form.customerTier) ? { ...r, ...form } : r));
+    else setRows(prev => [{ ...form, status: 'active', source: 'Frontend Overwrite' }, ...prev]);
+    setMessage({ type: 'success', text: "Tariff successfully updated." });
+    setEditingId(null); setForm(emptyForm); setSaving(false);
+  };
+
+  const filteredRows = useMemo(() => {
+    const q = search.toLowerCase().trim();
+    return rows.filter(r => !q || [r.township, r.zone, r.zoneCode, r.customerTier].map(x => String(x || '')).join(' ').toLowerCase().includes(q));
+  }, [rows, search]);
+
+  const calcResult = useMemo(() => {
+    const activeRow = rows.find(r => r.township === calcTownship && r.customerTier === calcTier) || rows.find(r => r.customerTier === calcTier) || FALLBACK_ROWS[0];
+    const cw = Math.ceil(Math.max(0, calcWeight));
+    const extraKg = Math.max(0, cw - activeRow.includedKg);
+    const wSurcharge = extraKg * activeRow.extraPerKg;
+    const isHighway = ['ဂိတ်ချ', 'အဝေးပြေး', 'ကားဂိတ်', 'ကားဝင်း', 'drop off'].some(x => activeRow.township.toLowerCase().includes(x));
+    const refundApplied = calcMonthlyWays >= activeRow.commitmentMinWays ? activeRow.commitmentRefundPerWay : 0;
+    const total = activeRow.baseFee + wSurcharge + Math.max(0, calcSurcharge) + (isHighway ? activeRow.highwayDropoffFee : 0) - refundApplied;
+    return { ...activeRow, cw, extraKg, wSurcharge, refundApplied, total: Math.max(0, total), isHighway };
+  }, [rows, calcTownship, calcTier, calcWeight, calcSurcharge, calcMonthlyWays]);
+
+  const inpSty = { width: '100%', height: 42, background: C.panel2, border: `1px solid ${C.border}`, borderRadius: 10, padding: '0 14px', color: C.text, fontSize: 13, outline: 'none', fontFamily: FF.body };
+  const btnSty = (primary = false) => ({ height: 42, background: primary ? C.gold : C.panel2, color: primary ? '#000' : C.text, border: `1px solid ${primary ? C.gold : C.border}`, borderRadius: 10, padding: '0 16px', fontSize: 13, fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, fontFamily: FF.body });
+
+  return (
+    <div style={{ background: C.bg, minHeight: '100vh', padding: 24, color: C.text, fontFamily: FF.body }}>
+      <div style={{ maxWidth: 1600, margin: '0 auto', display: 'grid', gap: 24 }}>
+        <header style={{ background: C.panel, border: `1px solid ${C.border}`, padding: 24, borderRadius: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16, boxShadow: '0 10px 30px rgba(0,0,0,0.2)' }}>
+          <div>
+            <div style={{ color: C.gold, fontSize: 12, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.14em', display: 'flex', alignItems: 'center', gap: 8 }}><Database size={16} /> <span>Britium Enterprise</span></div>
+            <h1 style={{ margin: '8px 0 0', fontSize: 26, fontWeight: 900 }}>{t.title}</h1>
+            <p style={{ color: C.muted, margin: '6px 0 0', fontSize: 14, fontWeight: 500 }}>{t.subtitle}</p>
+          </div>
+          <button onClick={initialize} disabled={loading} style={btnSty()}>{loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} {t.refresh}</button>
+        </header>
+
+        {message && <div style={{ padding: 18, background: message.type==='error'?'rgba(255,79,134,0.1)':'rgba(34,197,94,0.1)', border: `1px solid ${message.type==='error'?C.error:C.success}40`, color: message.type==='error'?C.error:C.success, borderRadius: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, fontSize: 14 }}><CheckCircle2 size={20} /> {message.text}</div>}
+        {!isSuperAdmin && !loading && <div style={{ padding: 18, background: 'rgba(245,158,11,0.1)', border: `1px solid ${C.warning}40`, color: C.warning, borderRadius: 16, display: 'flex', alignItems: 'flex-start', gap: 12 }}><ShieldAlert size={24} className="shrink-0" /><div><div style={{ fontWeight: 900, fontSize: 15, textTransform: 'uppercase' }}>{t.unauthorized}</div><div style={{ fontSize: 13, marginTop: 4 }}>{t.unauthSub}</div></div></div>}
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: 24, alignItems: 'start' }}>
+          <div style={{ display: 'grid', gap: 24 }}>
+            <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 24, padding: 24 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}><div style={{ background: 'rgba(56,189,248,0.1)', padding: 10, borderRadius: 12 }}><Calculator size={20} color={C.info} /></div><h2 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>{t.calcTitle}</h2></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 16, alignItems: 'end' }}>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTown}</div><select value={calcTownship} onChange={e => setCalcTownship(e.target.value)} style={inpSty}>{Array.from(new Set(rows.map(r => r.township))).map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+                <div>
+                  <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTier}</div>
+                  <select value={calcTier} onChange={e => setCalcTier(e.target.value as Tier)} style={inpSty}><option value="STANDARD">Standard</option><option value="ROYAL">Royal</option><option value="COMMITMENT_1500">1500 Ways</option><option value="COMMITMENT_3000">3000 Ways</option></select>
+                </div>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>Weight (KG)</div><input type="number" min="0" step="0.1" value={calcWeight} onChange={e => setCalcWeight(Number(e.target.value))} style={inpSty} /></div>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblMonthlyWays}</div><input type="number" min="0" value={calcMonthlyWays} onChange={e => setCalcMonthlyWays(Number(e.target.value))} style={inpSty} /></div>
+              </div>
+              <div style={{ marginTop: 20, background: C.panel2, border: `1px solid ${C.info}40`, borderRadius: 16, padding: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 16 }}>
+                <div style={{ display: 'flex', gap: 16, fontSize: 13, color: C.muted, flexWrap: 'wrap' }}>
+                  <div>Base: <strong style={{ color: C.text }}>{calcResult.baseFee.toLocaleString()}</strong></div>
+                  <div>Extra: <strong style={{ color: C.text }}>{calcResult.extraKg}kg ({calcResult.wSurcharge.toLocaleString()} Ks)</strong></div>
+                  {calcResult.isHighway && <div style={{ color: C.orange }}>Highway: +{calcResult.highwayDropoffFee.toLocaleString()}</div>}
+                  {calcResult.refundApplied > 0 && <div style={{ color: C.success, fontWeight: 800 }}>Refund: -{calcResult.refundApplied.toLocaleString()}</div>}
+                </div>
+                <div style={{ textAlign: 'right' }}><div style={{ fontSize: 11, color: C.info, fontWeight: 900, textTransform: 'uppercase' }}>{t.calcNet}</div><div style={{ fontSize: 24, fontWeight: 900, color: C.gold, marginTop: 4 }}>{calcResult.total.toLocaleString()} MMK</div></div>
+              </div>
+            </section>
+
+            <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 24, overflow: 'hidden' }}>
+              <div style={{ padding: 20, borderBottom: `1px solid ${C.border}`, background: C.panel2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: 18, fontWeight: 900, margin: 0 }}>Active Tariff Matrix</h2>
+                <div style={{ position: 'relative' }}><Search size={16} color={C.muted} style={{ position: 'absolute', left: 12, top: 12 }} /><input value={search} onChange={e => setSearch(e.target.value)} placeholder={t.searchPh} style={{ ...inpSty, paddingLeft: 40, width: 260 }} /></div>
+              </div>
+              <div style={{ overflowX: 'auto', maxHeight: 500 }}>
+                <table style={{ width: '100%', minWidth: 1000, borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+                  <thead style={{ background: C.bg, position: 'sticky', top: 0 }}>
+                    <tr>{[t.lblTown, t.lblTier, t.lblBase, t.lblIncKg, t.lblExtraKg, t.lblRefund, ""].map(h => <th key={h} style={{ padding: '14px 16px', color: C.muted, fontWeight: 800, textTransform: 'uppercase' }}>{h}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {filteredRows.map((r, i) => (
+                      <tr key={i} style={{ borderBottom: `1px solid ${C.border}40`, opacity: r.status === 'blocked' ? 0.5 : 1 }} className="hover:bg-[#0f2a42]">
+                        <td style={{ padding: '14px 16px', fontWeight: 800 }}>{r.township}</td>
+                        <td style={{ padding: '14px 16px', fontWeight: 800, color: r.customerTier.includes('COMMITMENT') ? C.success : C.info }}>{r.customerTier}</td>
+                        <td style={{ padding: '14px 16px', fontWeight: 700 }}>{r.baseFee.toLocaleString()}</td>
+                        <td style={{ padding: '14px 16px' }}>{r.includedKg} kg</td>
+                        <td style={{ padding: '14px 16px' }}>+{r.extraPerKg}</td>
+                        <td style={{ padding: '14px 16px', color: C.success, fontWeight: 700 }}>{r.commitmentRefundPerWay > 0 ? `-${r.commitmentRefundPerWay}` : '—'}</td>
+                        <td style={{ padding: '14px 16px', textAlign: 'right' }}>{isSuperAdmin && <button onClick={() => { setEditingId(r.township); setForm(r); }} style={{ background: 'transparent', border: 'none', color: C.gold, cursor: 'pointer' }}><Pencil size={14} /></button>}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+
+          <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 24, padding: 24, position: 'sticky', top: 24, opacity: isSuperAdmin ? 1 : 0.5, pointerEvents: isSuperAdmin ? 'auto' : 'none' }}>
+            <h2 style={{ fontSize: 18, fontWeight: 900, margin: '0 0 24px', display: 'flex', alignItems: 'center', gap: 8 }}>{editingId ? <Pencil size={18} color={C.gold}/> : <Plus size={18} color={C.info}/>} {editingId ? t.btnUpdate : t.btnSave}</h2>
+            <div style={{ display: 'grid', gap: 16 }}>
+              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTown}</div><input value={form.township || ''} onChange={e => setForm({ ...form, township: e.target.value })} style={inpSty} /></div>
+              <div>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTier}</div>
+                <select value={form.customerTier || 'STANDARD'} onChange={e => setForm({ ...form, customerTier: e.target.value as Tier })} style={inpSty}><option value="STANDARD">STANDARD</option><option value="ROYAL">ROYAL</option><option value="COMMITMENT_1500">COMMITMENT (1500)</option><option value="COMMITMENT_3000">COMMITMENT (3000)</option></select>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblBase}</div><input type="number" value={form.baseFee || ''} onChange={e => setForm({ ...form, baseFee: Number(e.target.value) })} style={inpSty} /></div>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblIncKg}</div><input type="number" value={form.includedKg || ''} onChange={e => setForm({ ...form, includedKg: Number(e.target.value) })} style={inpSty} /></div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblMinWays}</div><input type="number" value={form.commitmentMinWays || 0} onChange={e => setForm({ ...form, commitmentMinWays: Number(e.target.value) })} style={inpSty} /></div>
+                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblRefund}</div><input type="number" value={form.commitmentRefundPerWay || 0} onChange={e => setForm({ ...form, commitmentRefundPerWay: Number(e.target.value) })} style={inpSty} /></div>
+              </div>
+              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblExtraKg}</div><input type="number" value={form.extraPerKg || ''} onChange={e => setForm({ ...form, extraPerKg: Number(e.target.value) })} style={inpSty} /></div>
+              <div>
+                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblStatus}</div>
+                <select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })} style={inpSty}><option value="active">Active</option><option value="blocked">Blocked</option></select>
+              </div>
+              <button onClick={handleSave} disabled={saving} style={{ ...btnSty(true), width: '100%', justifyContent: 'center', height: 46, fontSize: 14, marginTop: 10 }}><Save size={16} /> {editingId ? t.btnUpdate : t.btnSave}</button>
+              {editingId && <button onClick={() => { setEditingId(null); setForm(emptyForm); }} style={{ ...btnSty(), width: '100%', justifyContent: 'center' }}><X size={16} /> {t.btnCancel}</button>}
+            </div>
+          </div>
         </div>
-        <form onSubmit={handleLogin} className="flex flex-col gap-5">
-          <div>
-            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Business Email', 'လုပ်ငန်းသုံး အီးမေးလ်လိပ်စာ')}</span></label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
-          </div>
-          <div>
-            <label className="block text-[12px] font-bold tracking-wider uppercase mb-2 text-[#4d7a9b]"><span>{t('Password', 'စကားဝှက်')}</span></label>
-            <input type="password" value={pw} onChange={e => setPw(e.target.value)} required className="w-full bg-[#081b2e] border border-[#1a3a5c] text-white p-4 rounded-xl outline-none focus:border-[#f6b84b] transition-colors text-[14px]" />
-          </div>
-          <button type="submit" disabled={loading} className="mt-4 bg-[#f6b84b] text-[#061524] py-4 rounded-xl font-bold text-[14px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors disabled:opacity-50 cursor-pointer shadow-xl shadow-[#f6b84b]/10">
-            <span>{loading ? '...' : t('Secure Sign In', 'စနစ်သို့ ဝင်ရောက်မည်')}</span>
-          </button>
-        </form>
       </div>
     </div>
-  );
-}
-
-// ─── PRODUCTION SECURE LAYOUT & AUTH ───
-function AuthLayout() {
-  const auth = useAuth() as any;
-  
-  if (auth?.loading) return <PageLoader />;
-  if (!auth?.session) return <Navigate to="/" replace />;
-  
-  return (
-    <AppShell>
-      <Suspense fallback={<PageLoader />}>
-        <Outlet />
-      </Suspense>
-    </AppShell>
-  );
-}
-
-// ─── ROUTING MODULE ───
-function AppRoutes() {
-  const location = useLocation();
-  return (
-    <AppErrorBoundary pathname={location.pathname}>
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {/* 🔒 Public Access & Login */}
-          <Route path="/" element={<LoginPageComponent />} />
-          <Route path="/login" element={<LoginPageComponent />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-
-          {/* 📱 DEDICATED MOBILE FIELD WORKFORCE APP */}
-          {/* Pushed entirely outside the AppShell so it takes up 100% of the mobile viewport */}
-          <Route path="/field-app" element={<RiderDriverApp />} />
-          <Route path="/rider-app" element={<Navigate to="/field-app" replace />} />
-
-          {/* 🛡️ Protected Enterprise Routes */}
-          <Route element={<AuthLayout />}>
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/branch-office" element={<BranchOfficePage />} />
-            <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
-            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
-            <Route path="/data-entry" element={<DataEntryPage />} />
-            <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/admin-hr" element={<AdminHRPage />} />
-            <Route path="/analytics" element={<AnalyticsPage />} />
-            <Route path="/audit-logs" element={<AuditLogsPage />} />
-            <Route path="/biz-dev" element={<BizDevPage />} />
-            <Route path="/branch-admin" element={<BranchAdminPage />} />
-            
-            <Route path="/finance" element={<FinancePortalPage />} />
-            <Route path="/finance-reconcile" element={<FinanceSettlementGoLivePage />} />
-            <Route path="/cod-settlement" element={<CODSettlementPage />} />
-            <Route path="/rider-settlement" element={<RiderSettlementPage />} />
-            <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
-            <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
-            
-            <Route path="/customer-portal" element={<CustomerPortalPage />} />
-            <Route path="/delivery-dispatch" element={<DeliveryDispatchPage />} />
-            <Route path="/delivery-workflow" element={<DeliveryWorkflowPage />} />
-            <Route path="/dispatch" element={<DispatchPage />} />
-            <Route path="/dispatch-center" element={<DispatchCenterPage />} />
-            <Route path="/live-dispatch" element={<LiveDispatchWayplanBoard />} />
-            <Route path="/doc-print" element={<DocumentPrintStudioPage />} />
-            <Route path="/driver" element={<DriverPage />} />
-            <Route path="/exceptions" element={<ExceptionsPage />} />
-            <Route path="/exec-ops" element={<ExecutiveOpsPage />} />
-            
-            <Route path="/marketing" element={<MarketingPage />} />
-            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
-            <Route path="/master-data" element={<MasterDataPortal />} />
-            <Route path="/merchant-portal" element={<MerchantPortalPage />} />
-            <Route path="/ops-command" element={<OpsCommandPage />} />
-            <Route path="/ops-manager" element={<OpsManagerPage />} />
-            <Route path="/pickup-form" element={<PickupFormPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/rider" element={<RiderPage />} />
-            <Route path="/rider/delivery" element={<RiderDeliveryPage />} />
-            <Route path="/rider/delivery/:trackingNo" element={<RiderDeliveryPage />} />
-            <Route path="/rider/delivery-routes" element={<RiderDeliveryPage />} />
-            <Route path="/rider/delivery-routes/:trackingNo" element={<RiderDeliveryPage />} />
-            <Route path="/rider/delivery-proof/:trackingNo" element={<RiderDeliveryPage />} />
-            <Route path="/rider-delivery" element={<Navigate to="/rider/delivery" replace />} />
-            <Route path="/delivery" element={<Navigate to="/rider/delivery" replace />} />
-            
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
-            <Route path="/supervisor" element={<SupervisorPortalPage />} />
-            <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
-            <Route path="/tariff" element={<TariffPage />} />
-            <Route path="/warehouse" element={<WarehousePage />} />
-            <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
-            <Route path="/waybill-studio" element={<WaybillStudioPage />} />
-            <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
-            <Route path="/wayplan-zone" element={<Navigate to="/wayplan-command" replace />} />
-            
-            <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
-            <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
-            
-            {/* Auxiliary Routes */}
-            <Route path="/data-entry-excel" element={<DataEntryExcelRegisterPage />} />
-            <Route path="/data-entry-photo" element={<DataEntryPhotoCheckPage />} />
-            <Route path="/data-entry-sync" element={<DataEntrySynchronizedPage />} />
-            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
-            <Route path="/data-entry-waybill" element={<DataEntryWaybillStudio />} />
-            <Route path="/proof-gallery" element={<ProofGalleryPortalPage />} />
-            <Route path="/reporting" element={<ReportingPage />} />
-            <Route path="/warehouse-ops-alt" element={<WarehouseOperations />} />
-            <Route path="/warehouse-reg" element={<WarehouseRegistrationTemplatePage />} />
-            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
-            <Route path="/waybill-invoice" element={<WaybillInvoicePage />} />
-            <Route path="/way-management" element={<Navigate to="/wayplan-command" replace />} />
-            <Route path="/way-management-plan" element={<Navigate to="/wayplan-command" replace />} />
-            <Route path="/wayplan-detail" element={<WayplanDetailPage />} />
-            <Route path="/wayplan-go-live" element={<WayplanManagementGoLivePage />} />
-            <Route path="/wayplan-template-gen" element={<WayplanTemplateGeneratorPage />} />
-
-            {/* Catch-all fallback */}
-            <Route path="*" element={<Navigate to="/dashboard" replace />} />
-          </Route>
-        </Routes>
-      </Suspense>
-    </AppErrorBoundary>
-  );
-}
-
-// ─── APP ROOT ───
-export default function App() {
-  return (
-    <LanguageProvider>
-      <AuthProvider>
-        <HashRouter>
-          <EnvironmentBadge />
-          <AppRoutes />
-        </HashRouter>
-      </AuthProvider>
-    </LanguageProvider>
   );
 }

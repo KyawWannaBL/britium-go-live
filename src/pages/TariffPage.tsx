@@ -47,12 +47,60 @@ const emptyForm: TariffRow = {
   township: '', zone: 'Zone A', zoneCode: 'YGN', customerTier: 'STANDARD', baseFee: 4000, includedKg: 3, extraPerKg: 500, highwayDropoffFee: 3000, commitmentMinWays: 0, commitmentRefundPerWay: 0, status: 'active', source: 'Manual Entry'
 };
 
+// FULL SOURCE TARIFF DICTIONARY RESTORED
 const SOURCE_TARIFFS = [
-  ['ပန်းဘဲတန်း', 'Yangon', 'YGN', 4000], ['ကျောက်တံတား', 'Yangon', 'YGN', 4000], ['လမ်းမတော်', 'Yangon', 'YGN', 4000], ['လသာ', 'Yangon', 'YGN', 4000], ['ပုဇွန်တောင်', 'Yangon', 'YGN', 4000], ['ဗိုလ်တထောင်', 'Yangon', 'YGN', 4000], ['ဒဂုံ', 'Yangon', 'YGN', 4000], ['အလုံ', 'Yangon', 'YGN', 4000], ['ကြည့်မြင်တိုင်', 'Yangon', 'YGN', 4000], ['စမ်းချောင်း', 'Yangon', 'YGN', 4000], ['မင်္ဂလာတောင်ညွန့်', 'Yangon', 'YGN', 4000], ['တာမွေ', 'Yangon', 'YGN', 4000], ['ဗဟန်း', 'Yangon', 'YGN', 4000], ['တောင်ဥက္ကလာပ', 'Yangon', 'YGN', 4000], ['မြောက်ဒဂုံ', 'Yangon', 'YGN', 4000], ['အရှေ့ဒဂုံ', 'Yangon', 'YGN', 4000], ['ရန်ကင်း', 'Yangon', 'YGN', 4000], ['ကမာရွတ်', 'Yangon', 'YGN', 4000], ['သာကေတ', 'Yangon', 'YGN', 4000], ['သင်္ဃန်းကျွန်း', 'Yangon', 'YGN', 4000], ['မရမ်းကုန်း', 'Yangon', 'YGN', 4000], ['တောင်ဒဂုံ', 'Yangon', 'YGN', 4000], ['ဒဂုံဆိပ်ကမ်း', 'Yangon', 'YGN', 4000], ['ဒေါပုံ', 'Yangon', 'YGN', 4000], ['လှိုင်', 'Yangon', 'YGN', 4000], ['အင်းစိန်', 'Yangon', 'YGN', 4000],
-  ['မြောက်ဥက္ကလာပ', 'Yangon', 'YGN', 4500], ['မင်္ဂလာဒုံ', 'Yangon', 'YGN', 4500], ['ရွှေပြည်သာ', 'Yangon', 'YGN', 4500], ['လှိုင်သာယာ', 'Yangon', 'YGN', 4500], ['ရွှေပေါက်ကံ', 'Yangon', 'YGN', 4500],
-  ['အောင်မင်္ဂလာကားဂိတ်', 'Yangon', 'YGN', 3000], ['ပရမီ ကားဝင်း (ဗန္ဓုလ)', 'Yangon', 'YGN', 3000], ['အောင်ဆန်းကွင်း', 'Yangon', 'YGN', 3000], ['ဂိတ်ချ', 'Yangon', 'YGN', 3000], ['အဝေးပြေး ဂိတ်ချ', 'Yangon', 'YGN', 3000], ['ရန်ကုန်စာတိုက်ကြီး', 'Yangon', 'YGN', 3000], ['ဘုရင့်နောင် ကားဝင်း', 'Yangon', 'YGN', 4000], ['လိူင်သာယာအဝေးပြေး (ဒဂုံဧရာ)', 'Yangon', 'YGN', 4000],
-  ['အောင်မြေသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000], ['ချမ်းအေးသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000], ['မဟာအောင်မြေမြို့နယ်', 'Mandalay', 'MDY', 6000], ['ချမ်းမြသာစည်မြို့နယ်', 'Mandalay', 'MDY', 6000], ['ပြည်ကြီးတံခွန်မြို့နယ်', 'Mandalay', 'MDY', 6000], ['အမရပူရမြို့နယ်', 'Mandalay', 'MDY', 6000], ['ပုသိမ်ကြီးမြို့နယ်', 'Mandalay', 'MDY', 6000],
-  ['ဇမ္ဗူသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဒက္ခိဏသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ပုဗ္ဗသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဥတ္တရသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ဇေယျာသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000], ['ပျဉ်းမနားမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ပန်းဘဲတန်း', 'Yangon', 'YGN', 4000],
+  ['ကျောက်တံတား', 'Yangon', 'YGN', 4000],
+  ['လမ်းမတော်', 'Yangon', 'YGN', 4000],
+  ['လသာ', 'Yangon', 'YGN', 4000],
+  ['ပုဇွန်တောင်', 'Yangon', 'YGN', 4000],
+  ['ဗိုလ်တထောင်', 'Yangon', 'YGN', 4000],
+  ['ဒဂုံ', 'Yangon', 'YGN', 4000],
+  ['အလုံ', 'Yangon', 'YGN', 4000],
+  ['ကြည့်မြင်တိုင်', 'Yangon', 'YGN', 4000],
+  ['စမ်းချောင်း', 'Yangon', 'YGN', 4000],
+  ['မင်္ဂလာတောင်ညွန့်', 'Yangon', 'YGN', 4000],
+  ['တာမွေ', 'Yangon', 'YGN', 4000],
+  ['ဗဟန်း', 'Yangon', 'YGN', 4000],
+  ['တောင်ဥက္ကလာပ', 'Yangon', 'YGN', 4000],
+  ['မြောက်ဒဂုံ', 'Yangon', 'YGN', 4000],
+  ['အရှေ့ဒဂုံ', 'Yangon', 'YGN', 4000],
+  ['ရန်ကင်း', 'Yangon', 'YGN', 4000],
+  ['ကမာရွတ်', 'Yangon', 'YGN', 4000],
+  ['သာကေတ', 'Yangon', 'YGN', 4000],
+  ['သင်္ဃန်းကျွန်း', 'Yangon', 'YGN', 4000],
+  ['မရမ်းကုန်း', 'Yangon', 'YGN', 4000],
+  ['တောင်ဒဂုံ', 'Yangon', 'YGN', 4000],
+  ['ဒဂုံဆိပ်ကမ်း', 'Yangon', 'YGN', 4000],
+  ['ဒေါပုံ', 'Yangon', 'YGN', 4000],
+  ['လှိုင်', 'Yangon', 'YGN', 4000],
+  ['အင်းစိန်', 'Yangon', 'YGN', 4000],
+  ['မြောက်ဥက္ကလာပ', 'Yangon', 'YGN', 4500],
+  ['မင်္ဂလာဒုံ', 'Yangon', 'YGN', 4500],
+  ['ရွှေပြည်သာ', 'Yangon', 'YGN', 4500],
+  ['လှိုင်သာယာ', 'Yangon', 'YGN', 4500],
+  ['ရွှေပေါက်ကံ', 'Yangon', 'YGN', 4500],
+  ['အောင်မင်္ဂလာကားဂိတ်', 'Yangon', 'YGN', 3000],
+  ['ပရမီ ကားဝင်း (ဗန္ဓုလ)', 'Yangon', 'YGN', 3000],
+  ['အောင်ဆန်းကွင်း', 'Yangon', 'YGN', 3000],
+  ['ဂိတ်ချ', 'Yangon', 'YGN', 3000],
+  ['အဝေးပြေး ဂိတ်ချ', 'Yangon', 'YGN', 3000],
+  ['ရန်ကုန်စာတိုက်ကြီး', 'Yangon', 'YGN', 3000],
+  ['ဘုရင့်နောင် ကားဝင်း', 'Yangon', 'YGN', 4000],
+  ['လိူင်သာယာအဝေးပြေး (ဒဂုံဧရာ)', 'Yangon', 'YGN', 4000],
+  ['အောင်မြေသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ချမ်းအေးသာစံမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['မဟာအောင်မြေမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ချမ်းမြသာစည်မြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ပြည်ကြီးတံခွန်မြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['အမရပူရမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ပုသိမ်ကြီးမြို့နယ်', 'Mandalay', 'MDY', 6000],
+  ['ဇမ္ဗူသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ဒက္ခိဏသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ပုဗ္ဗသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ဥတ္တရသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ဇေယျာသီရိမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
+  ['ပျဉ်းမနားမြို့နယ်', 'Nay Pyi Taw', 'NPT', 6000],
 ].map(([township, zone, zoneCode, baseFee]) => ({
   township: String(township), zone: String(zone), zoneCode: String(zoneCode), baseFee: Number(baseFee), status: 'active', source: 'go-live fallback',
 }));
@@ -98,6 +146,7 @@ export default function TariffPage() {
       const hasAuthority = email.includes('admin') || userMeta.role === 'superadmin' || userMeta.role === 'director';
       setIsSuperAdmin(hasAuthority);
 
+      // Attempt to load from `townships` table as the primary source
       const { data, error } = await supabase.from('townships').select('*').order('township_name', { ascending: true });
       if (error) throw error;
 
@@ -110,7 +159,7 @@ export default function TariffPage() {
         setRows(mapped);
       }
     } catch (e: any) {
-      setRows(FALLBACK_ROWS); // Fail-safe structural fallback
+      setRows(FALLBACK_ROWS); // Fail-safe structural fallback to the full list above
     } finally {
       setLoading(false);
     }
@@ -136,7 +185,7 @@ export default function TariffPage() {
 
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase().trim();
-    return rows.filter(r => !q || [r.township, r.zone, r.zoneCode, r.customerTier].join(' ').toLowerCase().includes(q));
+    return rows.filter(r => !q || [r.township, r.zone, r.zoneCode, r.customerTier].map(x => String(x || '')).join(' ').toLowerCase().includes(q));
   }, [rows, search]);
 
   const calcResult = useMemo(() => {
@@ -290,41 +339,4 @@ export default function TariffPage() {
             
             <div style={{ display: 'grid', gap: 16 }}>
               <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTown}</div><input value={form.township || ''} onChange={e => setForm({ ...form, township: e.target.value })} style={inpSty} /></div>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblZone}</div><input value={form.zone || ''} onChange={e => setForm({ ...form, zone: e.target.value })} style={inpSty} /></div>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>Zone Code</div><input value={form.zoneCode || ''} onChange={e => setForm({ ...form, zoneCode: e.target.value })} style={inpSty} /></div>
-              <div>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblTier}</div>
-                <select value={form.customerTier || 'STANDARD'} onChange={e => setForm({ ...form, customerTier: e.target.value as Tier })} style={inpSty}>
-                  <option value="STANDARD">STANDARD</option>
-                  <option value="ROYAL">ROYAL</option>
-                  <option value="COMMITMENT_1500">COMMITMENT (1500 Ways)</option>
-                  <option value="COMMITMENT_3000">COMMITMENT (3000 Ways)</option>
-                </select>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblBase}</div><input type="number" value={form.baseFee || ''} onChange={e => setForm({ ...form, baseFee: Number(e.target.value) })} style={inpSty} /></div>
-                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblIncKg}</div><input type="number" value={form.includedKg || ''} onChange={e => setForm({ ...form, includedKg: Number(e.target.value) })} style={inpSty} /></div>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblMinWays}</div><input type="number" value={form.commitmentMinWays || 0} onChange={e => setForm({ ...form, commitmentMinWays: Number(e.target.value) })} style={inpSty} /></div>
-                <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblRefund}</div><input type="number" value={form.commitmentRefundPerWay || 0} onChange={e => setForm({ ...form, commitmentRefundPerWay: Number(e.target.value) })} style={inpSty} /></div>
-              </div>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblExtraKg}</div><input type="number" value={form.extraPerKg || ''} onChange={e => setForm({ ...form, extraPerKg: Number(e.target.value) })} style={inpSty} /></div>
-              <div><div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblHighway}</div><input type="number" value={form.highwayDropoffFee || ''} onChange={e => setForm({ ...form, highwayDropoffFee: Number(e.target.value) })} style={inpSty} /></div>
-              <div>
-                <div style={{ fontSize: 11, color: C.muted, fontWeight: 800, textTransform: 'uppercase', marginBottom: 6 }}>{t.lblStatus}</div>
-                <select value={form.status || 'active'} onChange={e => setForm({ ...form, status: e.target.value })} style={inpSty}>
-                  <option value="active">Active</option><option value="blocked">Blocked</option>
-                </select>
-              </div>
-
-              <button onClick={handleSave} disabled={saving} style={{ ...btnSty(true), width: '100%', justifyContent: 'center', height: 46, fontSize: 14, marginTop: 10 }}><Save size={16} /> {editingId ? t.btnUpdate : t.btnSave}</button>
-              {editingId && <button onClick={() => { setEditingId(null); setForm(emptyForm); }} style={{ ...btnSty(), width: '100%', justifyContent: 'center' }}><X size={16} /> {t.btnCancel}</button>}
-            </div>
-          </div>
-
-        </div>
-      </div>
-    </div>
-  );
-}
+              <div><div style={{ fontSize: 11, color: C
