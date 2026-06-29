@@ -1,249 +1,454 @@
-import React, { useState, useCallback, useEffect } from 'react'
-import { Package, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
-import { supabase } from '@/integrations/supabase/client'
-import { useEnterpriseMasterData } from '@/hooks/useEnterpriseMasterData'
-import { useLanguage } from '@/contexts/LanguageContext'
+import { useEffect, useMemo, useState } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Package, Send, Download, Filter, UploadCloud } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
-const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
-const FF = { body:"'Poppins',Inter,system-ui,sans-serif", sub:"'Helvetica Neue',Helvetica,Arial,sans-serif" }
+type MerchantOption = {
+  merchant_id?: string | null;
+  merchant_code: string;
+  merchant_name: string;
+  business_name?: string | null;
+  business_type?: string | null;
+  default_pickup_address?: string | null;
+  township?: string | null;
+  city?: string | null;
+  region_state?: string | null;
+};
 
-type PaymentMethod = 'COD' | 'Prepaid' | 'Monthly'
-type ServiceType = 'Standard' | 'Express' | 'Overnight'
-type Priority = 'Normal' | 'High' | 'Urgent'
-type Tier = 'Standard' | 'Royal'
+type TownshipOption = {
+  township: string;
+  city?: string | null;
+  region_state?: string | null;
+  zone?: string | null;
+  branch_code?: string | null;
+};
 
-interface FormState {
-  merchantId: string
-  merchantName: string
-  merchantCode: string
-  senderPhone: string
-  pickupAddress: string
-  pickupTownship: string
-  pickupCity: string
-  pickupDate: string
-  pickupTime: string
-  parcelCount: number
-  recipientName: string
-  recipientPhone: string
-  deliveryTownship: string
-  deliveryAddress: string
-  paymentMethod: PaymentMethod
-  codAmount: number
-  serviceType: ServiceType
-  priority: Priority
-  tier: Tier
-  weightKg: number
-  baseFee: number
-  isHighway: boolean
-  remarks: string
-}
+type PickupFormState = {
+  merchant_code: string;
+  business_type: string;
+  payment_type: string;
+  pickup_address: string;
+  township: string;
+  city: string;
+  region_state: string;
+  expected_parcels: number;
+  pickup_date: string;
+  vehicle_required: string;
+  pickup_remark: string;
+};
 
-// ... Keep calcTariff, pickupId, deliverId, invoiceNo, waybillNo helper functions ...
-function calcTariff(tier: Tier, weightKg: number, baseFee: number, isHighway: boolean) {
-  const ceilWt = Math.ceil(weightKg)
-  const allow = tier === 'Royal' ? 5 : 3
-  const extra = Math.max(0, ceilWt - allow)
-  const surcharge = extra * 500
-  const hwFee = isHighway ? 3000 : 0
-  return { ceilWt, allow, extra, surcharge, hwFee, total: baseFee + surcharge + hwFee }
-}
-function pickupId(date: string, code: string, count: number): string {
-  if (!date || !code) return 'P----'
-  return `P${new Date(date).toISOString().slice(5, 10).replace('-','')}-${code.toUpperCase().slice(0, 3).padEnd(3, 'X')}-${String(count).padStart(3, '0')}`
-}
-function deliverId(date: string, code: string, count: number): string { return pickupId(date, code, count).replace(/^P/, 'D') }
-function invoiceNo(date: string, code: string): string { return deliverId(date, code, 0).replace(/^D/, 'INV') }
-function waybillNo(pickId: string): string { return pickId.replace(/^P/, 'WB') }
+const todayISO = () => new Date().toISOString().slice(0, 10);
 
-function SectionHeader({ title, sub }: { title: string; sub?: string }) {
-  return (
-    <div style={{ borderBottom: '1px solid ' + C.border, paddingBottom: 12, marginBottom: 16 }}>
-      <h2 style={{ fontFamily: FF.sub, fontSize: 18, fontWeight: 600, color: C.text2, margin: '0 0 4px' }}>{title}</h2>
-      {sub ? <p style={{ fontSize: 14, color: C.muted, margin: 0 }}>{sub}</p> : null}
-    </div>
-  )
-}
-function Label({ children }: { children?: React.ReactNode }) {
-  return <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.muted, marginBottom: 6 }}>{children}</label>
-}
+const initialForm: PickupFormState = {
+  merchant_code: '',
+  business_type: '',
+  payment_type: 'COD',
+  pickup_address: '',
+  township: '',
+  city: 'Yangon',
+  region_state: 'Yangon Region',
+  expected_parcels: 1,
+  pickup_date: todayISO(),
+  vehicle_required: 'Bike',
+  pickup_remark: '',
+};
 
-const today = new Date().toISOString().slice(0, 10)
-const defaultForm: FormState = {
-  merchantId: '', merchantName: '', merchantCode: '', senderPhone: '', pickupAddress: '', pickupTownship: '', pickupCity: 'Yangon', pickupDate: today, pickupTime: '09:00', parcelCount: 1, recipientName: '', recipientPhone: '', deliveryTownship: '', deliveryAddress: '', paymentMethod: 'COD', codAmount: 0, serviceType: 'Standard', priority: 'Normal', tier: 'Standard', weightKg: 1, baseFee: 4000, isHighway: false, remarks: '',
+function norm(value: unknown) {
+  return String(value || '').trim().toLowerCase();
 }
 
 export default function PickupFormPage() {
-  const { lang, setLang } = useLanguage()
-  const { snapshot, loading: loadingMaster } = useEnterpriseMasterData() // Globally wired Master Data
-  
-  const [form, setForm] = useState<FormState>(defaultForm)
-  const [submitting, setSubmitting] = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [successId, setSuccessId] = useState<string | null>(null)
+  const { t } = useLanguage();
+  const [loading, setLoading] = useState(false);
+  const [masterLoading, setMasterLoading] = useState(true);
+  const [form, setForm] = useState<PickupFormState>(initialForm);
+  const [merchants, setMerchants] = useState<MerchantOption[]>([]);
+  const [townships, setTownships] = useState<TownshipOption[]>([]);
 
-  // Dynamically map from unified registry 
-  const merchants = snapshot.merchant || []
-  const townships = snapshot.township || []
+  const selectedMerchant = useMemo(
+    () => merchants.find((m) => norm(m.merchant_code) === norm(form.merchant_code)),
+    [merchants, form.merchant_code]
+  );
 
-  const handleMerchantSelect = useCallback((merchantCode: string) => {
-    const m = merchants.find((x: any) => x.record_code === merchantCode || x.merchant_code === merchantCode)
-    if (m) {
-      setForm(prev => ({
-        ...prev,
-        merchantId: merchantCode,
-        merchantCode: String(merchantCode).slice(0, 3).toUpperCase(),
-        merchantName: m.display_name || m.merchant_name || '',
-        senderPhone: m.phone_primary || m.contact_phone || '',
-        pickupAddress: m.address_line_1 || m.pickup_address || '',
-        pickupTownship: m.township || m.pickup_township || '',
-      }))
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadMasters() {
+      setMasterLoading(true);
+      try {
+        const [merchantResult, townshipResult] = await Promise.all([
+          (supabase as any)
+            .from('be_v_pickup_merchant_options')
+            .select('*')
+            .order('merchant_name', { ascending: true }),
+          (supabase as any)
+            .from('be_v_township_options')
+            .select('*')
+            .order('township', { ascending: true }),
+        ]);
+
+        if (merchantResult.error) throw merchantResult.error;
+        if (townshipResult.error) throw townshipResult.error;
+
+        if (mounted) {
+          setMerchants((merchantResult.data || []) as MerchantOption[]);
+          setTownships((townshipResult.data || []) as TownshipOption[]);
+        }
+      } catch (error: any) {
+        console.error('Pickup master sync failed:', error);
+        alert(error?.message || t('Failed to load pickup master data.', 'Master data ဖတ်ယူမှု မအောင်မြင်ပါ။'));
+      } finally {
+        if (mounted) setMasterLoading(false);
+      }
     }
-  }, [merchants])
 
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm(prev => ({ ...prev, [key]: value }))
+    loadMasters();
 
-  const pickId = pickupId(form.pickupDate, form.merchantCode, form.parcelCount)
-  const tariff = calcTariff(form.tier, form.weightKg, form.baseFee, form.isHighway)
+    return () => {
+      mounted = false;
+    };
+  }, [t]);
 
-  const handleSubmit = async () => {
-    if (!form.merchantId || !form.pickupAddress || !form.recipientName) {
-      setSubmitError('Please fill in Merchant, Pickup Address, and Recipient Name.')
-      return
+  function updateForm(patch: Partial<PickupFormState>) {
+    setForm((prev) => ({ ...prev, ...patch }));
+  }
+
+  function handleMerchantChange(merchantCode: string) {
+    const merchant = merchants.find((m) => norm(m.merchant_code) === norm(merchantCode));
+
+    if (!merchant) {
+      updateForm({ merchant_code: merchantCode });
+      return;
     }
-    setSubmitting(true)
-    setSubmitError(null)
-    
+
+    const township = merchant.township || '';
+    const townshipMaster = townships.find((x) => norm(x.township) === norm(township));
+
+    updateForm({
+      merchant_code: merchant.merchant_code,
+      business_type: merchant.business_type || '',
+      pickup_address: merchant.default_pickup_address || '',
+      township,
+      city: townshipMaster?.city || merchant.city || 'Yangon',
+      region_state: townshipMaster?.region_state || merchant.region_state || 'Yangon Region',
+      payment_type: form.payment_type || 'COD',
+    });
+  }
+
+  function handleTownshipChange(value: string) {
+    const townshipMaster = townships.find((x) => norm(x.township) === norm(value));
+
+    updateForm({
+      township: value,
+      city: townshipMaster?.city || form.city || selectedMerchant?.city || 'Yangon',
+      region_state:
+        townshipMaster?.region_state ||
+        form.region_state ||
+        selectedMerchant?.region_state ||
+        'Yangon Region',
+    });
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+
     try {
-      // Create Pickup Request Backend Record
-      const { error } = await supabase.from('be_portal_pickup_requests').insert({
-        pickup_id: pickId,
-        merchant_id: form.merchantId,
-        merchant_name: form.merchantName,
-        merchant_code: form.merchantCode,
-        sender_phone: form.senderPhone,
-        pickup_address: form.pickupAddress,
-        pickup_township: form.pickupTownship,
-        pickup_city: form.pickupCity,
-        expected_parcels: form.parcelCount,
-        payment_terms: form.paymentMethod,
-        priority: form.priority,
-        status: 'PICKUP_REQUESTED'
-      })
+      if (!form.merchant_code) throw new Error('Merchant is required.');
+      if (!form.township.trim()) throw new Error('Township is required.');
+      if (!form.pickup_address.trim()) throw new Error('Pickup address is required.');
 
-      if (error) throw error
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
 
-      // Log the event securely
-      await supabase.from('be_portal_cargo_events').insert({
-        pickup_id: pickId,
-        event_type: 'PICKUP_REQUESTED',
-        description: `Pickup request created by Operations via Portal.`,
-        actor_role: 'operations'
-      })
+      const { data, error } = await (supabase as any).rpc('be_create_pickup_request_from_master', {
+        p_merchant_code: form.merchant_code,
+        p_expected_parcels: Number(form.expected_parcels || 1),
+        p_pickup_date: form.pickup_date,
+        p_vehicle_required: form.vehicle_required,
+        p_payment_type: form.payment_type || 'COD',
+        p_actor_email: user?.email ?? null,
 
-      setSuccessId(pickId)
-      setForm(defaultForm)
-    } catch (e: any) {
-      setSubmitError(e.message || 'Submission failed. Please try again.')
+        // Optional overrides. Defaults still come from merchant_masters.
+        // Township is validated/enriched from be_v_township_options when it matches.
+        p_pickup_address_override: form.pickup_address.trim(),
+        p_township_override: form.township.trim(),
+        p_city_override: form.city || null,
+        p_region_state_override: form.region_state || null,
+        p_pickup_remark: form.pickup_remark.trim() || null,
+      });
+
+      if (error) throw error;
+
+      alert(
+        t(
+          `Pickup request created: ${data?.pickup_id || data?.pickup_way_id || ''}`,
+          `Pickup request created: ${data?.pickup_id || data?.pickup_way_id || ''}`
+        )
+      );
+
+      setForm({
+        ...initialForm,
+        pickup_date: form.pickup_date,
+        vehicle_required: form.vehicle_required,
+        payment_type: form.payment_type || 'COD',
+      });
+    } catch (error: any) {
+      console.error('Pickup submit failed:', error);
+      alert(error?.message || t('Pickup request failed.', 'တောင်းဆိုမှု မအောင်မြင်ပါ။'));
     } finally {
-      setSubmitting(false)
+      setLoading(false);
     }
   }
 
-  const inputStyle: React.CSSProperties = { width: '100%', padding: '10px 12px', background: C.panel2, border: '1px solid ' + C.border, borderRadius: 8, color: C.text, fontSize: 14, fontFamily: FF.body, outline: 'none' }
-
-  if (successId) {
-    return (
-      <div style={{ background: C.bg, padding: 24, minHeight: '100%', fontFamily: FF.body, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ width: '100%', maxWidth: 520, background: C.panel, border: '1px solid ' + C.border, borderRadius: 16, padding: 36, textAlign: 'center' }}>
-          <CheckCircle size={52} color={C.success} style={{ margin: '0 auto 16px' }} />
-          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: C.success, marginBottom: 8 }}>Pickup Request Submitted</div>
-          <div style={{ fontSize: 28, fontWeight: 700, color: C.gold, marginBottom: 8, fontFamily: 'monospace' }}>{successId}</div>
-          <p style={{ fontSize: 14, color: C.text2, marginTop: 0, marginBottom: 24 }}>Your pickup request has been registered. The rider will be assigned shortly.</p>
-          <button onClick={() => setSuccessId(null)} style={{ display: 'inline-flex', padding: '9px 18px', background: C.gold, color: '#1a0a00', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>New Pickup Request</button>
-        </div>
-      </div>
-    )
-  }
+  const downloadFile = (fileName: string) => {
+    const link = document.createElement('a');
+    link.href = `/templates/${fileName}`;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <div style={{ background: C.bg, padding: 24, minHeight: '100%', fontFamily: FF.body }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, textTransform: 'uppercase', color: C.gold, margin: 0 }}>Pickup Request Form</h1>
-          <p style={{ fontSize: 14, color: C.muted, margin: '4px 0 0' }}>Register a new pickup with real-time master data mapping.</p>
+    <div className="space-y-6">
+      <div className="border-b border-[#1a3a5c] pb-4">
+        <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px] tracking-widest">
+          {t('ORDER PICKING REQUEST', 'ပစ္စည်းကောက်ယူရန် တောင်းဆိုမှု')}
+        </h1>
+        <p className="text-[#4d7a9b] text-[13px]">
+          {t(
+            'Customer Service registers the pickup request to initiate the operational workflow.',
+            'CS မှ ပစ္စည်းကောက်ယူရန် ကနဦးတောင်းဆိုမှုကို စာရင်းသွင်းပါ။'
+          )}
+        </p>
+      </div>
+
+      <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-2xl flex flex-col lg:flex-row gap-4 items-end">
+        <div className="w-full lg:w-auto">
+          <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1">
+            <Filter size={12} />
+            {t('From Date', 'မှ')}
+          </label>
+          <input
+            type="date"
+            className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+          />
         </div>
-        <div style={{ display: 'flex', background: C.panel2, borderRadius: 8, padding: 4, border: '1px solid ' + C.border }}>
-          <button onClick={() => setLang('en')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'en' ? C.panelHover : 'transparent', color: lang === 'en' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>EN</button>
-          <button onClick={() => setLang('mm')} style={{ padding: '6px 12px', borderRadius: 4, background: lang === 'mm' ? C.panelHover : 'transparent', color: lang === 'mm' ? C.text : C.muted, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}>မြန်မာ</button>
+        <div className="w-full lg:w-auto">
+          <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1">
+            <Filter size={12} />
+            {t('To Date', 'ထိ')}
+          </label>
+          <input
+            type="date"
+            className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+          />
+        </div>
+        <div className="flex gap-2 w-full lg:flex-1 justify-end">
+          <button
+            type="button"
+            className="bg-[#1a3a5c] text-[#eef8ff] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:border-[#f6b84b] border border-[#1a3a5c] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <Download size={14} /> {t('Download Report', 'အစီရင်ခံစာ ရယူမည်')}
+          </button>
+          <button
+            type="button"
+            onClick={() => downloadFile('Britium_Data_Entry_UAT_GoLive_Template.xlsx')}
+            className="bg-[#061524] text-[#4ea8de] border border-[#1a3a5c] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:border-[#4ea8de] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <Download size={14} /> {t('Template', 'ပုံစံခွက်')}
+          </button>
+          <button
+            type="button"
+            className="bg-[#f6b84b] text-[#061524] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:bg-[#e5a93a] flex items-center justify-center gap-2 transition-colors cursor-pointer"
+          >
+            <UploadCloud size={14} /> {t('Bulk Upload', 'ဖိုင်တင်မည်')}
+          </button>
         </div>
       </div>
 
-      <div style={{ background: C.panel, border: '1px solid ' + C.border, borderRadius: 12, padding: 20, marginBottom: 20 }}>
-        <SectionHeader title="1. Merchant / Sender" sub="Select merchant to auto-fill details from Master Data Registry" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
+      <form onSubmit={handleSubmit} className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-2xl space-y-6">
+        <div className="flex items-center gap-2 border-b border-[#1a3a5c] pb-3 text-[#eef8ff] text-[14px] uppercase tracking-widest">
+          <Package size={16} className="text-[#4ea8de]" />
+          {t('Merchant & Parcel Details', 'ကုန်သည်နှင့် ပစ္စည်းအချက်အလက်')}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div>
-            <Label>Merchant Select</Label>
-            <select value={form.merchantId} onChange={e => handleMerchantSelect(e.target.value)} style={inputStyle}>
-              <option value="">{loadingMaster ? 'Loading synced master data...' : '— Select Merchant —'}</option>
-              {merchants.map((m: any) => <option key={m.record_code} value={m.record_code}>{m.display_name}</option>)}
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Merchant / Customer', 'ကုန်သည်')}
+            </label>
+            <select
+              value={form.merchant_code}
+              onChange={(e) => handleMerchantChange(e.target.value)}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              required
+              disabled={masterLoading}
+            >
+              <option value="">{masterLoading ? t('Loading...', 'ဖတ်နေသည်...') : t('-- Select Merchant --', '-- ရွေးပါ --')}</option>
+              {merchants.map((m) => (
+                <option key={m.merchant_code} value={m.merchant_code}>
+                  {m.merchant_code} - {m.merchant_name}
+                </option>
+              ))}
             </select>
           </div>
-          <div>
-            <Label>Merchant Name</Label>
-            <input value={form.merchantName} onChange={e => set('merchantName', e.target.value)} style={inputStyle} />
-          </div>
-          <div>
-            <Label>Sender Phone</Label>
-            <input value={form.senderPhone} onChange={e => set('senderPhone', e.target.value)} style={inputStyle} />
-          </div>
-        </div>
-      </div>
 
-      <div style={{ background: C.panel, border: '1px solid ' + C.border, borderRadius: 12, padding: 20, marginBottom: 20 }}>
-        <SectionHeader title="2. Pickup Details" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          <div style={{ gridColumn: '1 / -1' }}>
-            <Label>Pickup Address</Label>
-            <input value={form.pickupAddress} onChange={e => set('pickupAddress', e.target.value)} style={inputStyle} />
-          </div>
           <div>
-            <Label>Township</Label>
-            <select value={form.pickupTownship} onChange={e => set('pickupTownship', e.target.value)} style={inputStyle}>
-              <option value="">— Select Township —</option>
-              {townships.length > 0 ? townships.map((t: any) => <option key={t.display_name} value={t.display_name}>{t.display_name}</option>) : <option>Yangon Central</option>}
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Business Type', 'လုပ်ငန်းအမျိုးအစား')}
+            </label>
+            <input
+              value={form.business_type}
+              onChange={(e) => updateForm({ business_type: e.target.value })}
+              list="business-type-options"
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              placeholder={t('Business type', 'လုပ်ငန်းအမျိုးအစား')}
+              required
+            />
+            <datalist id="business-type-options">
+              <option value="Online Shop" />
+              <option value="Book Store" />
+              <option value="Branch Office" />
+              <option value="Retail" />
+              <option value="Wholesale" />
+              <option value="E-commerce" />
+            </datalist>
+          </div>
+
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Payment Terms', 'ငွေချေစနစ်')}
+            </label>
+            <select
+              value={form.payment_type}
+              onChange={(e) => updateForm({ payment_type: e.target.value })}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              required
+            >
+              <option value="COD">COD</option>
+              <option value="Prepaid">Prepaid</option>
+              <option value="Monthly Billing">Monthly Billing</option>
+              <option value="Merchant Credit">Merchant Credit</option>
+              <option value="Bank Transfer">Bank Transfer</option>
+              <option value="KBZ Pay">KBZ Pay</option>
             </select>
           </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Pickup Address', 'လိပ်စာ')}
+            </label>
+            <textarea
+              rows={1}
+              value={form.pickup_address}
+              onChange={(e) => updateForm({ pickup_address: e.target.value })}
+              placeholder={t('Enter full address...', 'လိပ်စာရိုက်ပါ...')}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] resize-none"
+              required
+            />
+          </div>
+
           <div>
-            <Label>Parcel Count</Label>
-            <input type="number" min={1} value={form.parcelCount} onChange={e => set('parcelCount', parseInt(e.target.value) || 1)} style={inputStyle} />
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Township', 'မြို့နယ်')}
+            </label>
+            <input
+              value={form.township}
+              onChange={(e) => handleTownshipChange(e.target.value)}
+              onBlur={(e) => handleTownshipChange(e.target.value)}
+              list="township-master-options"
+              placeholder={t('Type or select township', 'မြို့နယ် ရွေးပါ သို့မဟုတ် ရိုက်ပါ')}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              required
+            />
+            <datalist id="township-master-options">
+              {townships.map((tw) => (
+                <option key={`${tw.township}-${tw.city || ''}`} value={tw.township}>
+                  {[tw.city, tw.region_state].filter(Boolean).join(' / ')}
+                </option>
+              ))}
+            </datalist>
+            <p className="text-[#4d7a9b] text-[11px] mt-1">
+              {form.city || '-'}{form.region_state ? ` / ${form.region_state}` : ''}
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Expected Parcels', 'အရေအတွက်')}
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={form.expected_parcels}
+              onChange={(e) => updateForm({ expected_parcels: Number(e.target.value || 1) })}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Pickup Date', 'ရက်စွဲ')}
+            </label>
+            <input
+              required
+              type="date"
+              value={form.pickup_date}
+              onChange={(e) => updateForm({ pickup_date: e.target.value })}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Vehicle Required', 'လိုအပ်သော ယာဉ်')}
+            </label>
+            <select
+              value={form.vehicle_required}
+              onChange={(e) => updateForm({ vehicle_required: e.target.value })}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+            >
+              <option value="Bike">Bike</option>
+              <option value="Van">Van</option>
+              <option value="Mini Truck">Mini Truck</option>
+              <option value="Truck">Truck</option>
+              <option value="Car">Car</option>
+            </select>
+          </div>
+
+          <div className="md:col-span-3">
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              {t('Remark / Special Instruction', 'မှတ်ချက် / အထူးညွှန်ကြားချက်')}
+            </label>
+            <textarea
+              rows={3}
+              value={form.pickup_remark}
+              onChange={(e) => updateForm({ pickup_remark: e.target.value })}
+              maxLength={1000}
+              placeholder={t('Optional pickup remark for supervisor/rider...', 'Supervisor / Rider အတွက် မှတ်ချက် ရိုက်ပါ...')}
+              className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] resize-none"
+            />
+            <p className="text-[#4d7a9b] text-[11px] mt-1">
+              {form.pickup_remark.length}/1000
+            </p>
           </div>
         </div>
-      </div>
 
-      <div style={{ background: C.panel, border: '1px solid ' + C.border, borderRadius: 12, padding: 20, marginBottom: 20 }}>
-        <SectionHeader title="3. Recipient Details" />
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))', gap: 16 }}>
-          <div><Label>Recipient Name</Label><input value={form.recipientName} onChange={e => set('recipientName', e.target.value)} style={inputStyle} /></div>
-          <div><Label>Recipient Phone</Label><input value={form.recipientPhone} onChange={e => set('recipientPhone', e.target.value)} style={inputStyle} /></div>
-          <div><Label>Delivery Address</Label><input value={form.deliveryAddress} onChange={e => set('deliveryAddress', e.target.value)} style={inputStyle} /></div>
+        <div className="flex justify-end pt-4 border-t border-[#1a3a5c]">
+          <button
+            type="submit"
+            disabled={loading || masterLoading}
+            className="bg-[#f6b84b] text-[#061524] px-8 py-3 rounded-xl uppercase tracking-wider hover:bg-[#e5a93a] transition-colors flex items-center justify-center gap-2 cursor-pointer text-[13px] disabled:opacity-60"
+          >
+            <Send size={16} />{' '}
+            {loading ? t('Submitting...', 'ဆောင်ရွက်နေပါသည်...') : t('Submit Order Picking Request', 'အတည်ပြုမည်')}
+          </button>
         </div>
-      </div>
-
-      {submitError && (
-        <div style={{ background: '#4a0521', border: '1px solid #831843', borderRadius: 10, padding: '12px 18px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10 }}>
-          <AlertCircle size={15} color={C.error} />
-          <p style={{ color: C.error, fontSize: 13, margin: 0 }}>{submitError}</p>
-        </div>
-      )}
-
-      <button
-        onClick={handleSubmit}
-        disabled={submitting}
-        style={{ width: '100%', padding: '12px 18px', background: submitting ? '#a16207' : C.gold, color: '#1a0a00', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 700, cursor: submitting ? 'not-allowed' : 'pointer' }}
-      >
-        {submitting ? <Loader2 size={16} className="animate-spin inline mr-2"/> : null} 
-        {submitting ? 'Submitting...' : 'Submit Pickup Request'}
-      </button>
+      </form>
     </div>
-  )
+  );
 }

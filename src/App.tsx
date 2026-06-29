@@ -34,9 +34,10 @@ const safeLazy = (importFunc: any) => lazy(() =>
 
 // ─── CORE PAGES REGISTRY ───
 // Authentication
-const LoginPage = safeLazy(() => import('@/pages/LoginPage').catch(() => import('@/pages/auth/LoginPage')));
-const SignupPage = safeLazy(() => import('@/pages/SignupPage').catch(() => import('@/pages/auth/SignupPage')));
-const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage').catch(() => import('@/pages/auth/ForgotPasswordPage')));
+// REPLACE WITH THESE:
+const LoginPage = safeLazy(() => import('@/pages/LoginPage'));
+const SignupPage = safeLazy(() => import('@/pages/SignupPage'));
+const ForgotPasswordPage = safeLazy(() => import('@/pages/ForgotPasswordPage'));
 
 // Dashboards & Primary Portals
 const DashboardPage = safeLazy(() => import('@/pages/DashboardPage'));
@@ -44,6 +45,7 @@ const MerchantPortalPage = safeLazy(() => import('@/pages/MerchantPortalPage'));
 const CustomerPortalPage = safeLazy(() => import('@/pages/CustomerPortalPage'));
 const CustomerServiceCommandCenterPage = safeLazy(() => import('@/pages/CustomerServiceCommandCenterPage'));
 const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
+const ExceptionsPage = safeLazy(() => import('@/pages/ExceptionsPage'));
 const BusinessDevelopmentManagerPortal = safeLazy(() => import('@/pages/BusinessDevelopmentManagerPortal').catch(() => import('@/pages/BizDevPage')));
 
 // Operations & Logistics

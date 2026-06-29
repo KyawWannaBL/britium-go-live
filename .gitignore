@@ -11,3 +11,4 @@ backups/
 .env.admin
 .env.production
 .env.uat
+geminiapikey.txt

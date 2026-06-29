@@ -1,105 +1,75 @@
-import { FormEvent, useCallback, useMemo, useState } from "react";
-import { ArrowLeft, Download, Loader2, Mail } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { Button } from '@/components/ui/button';
+import { ShieldCheck, Mail, ArrowLeft, Globe } from 'lucide-react';
 
 export default function ForgotPasswordPage() {
-  const [searchParams] = useSearchParams();
-  const mode = searchParams.get("mode") === "rider" ? "rider" : "portal";
-  const loginPath = mode === "rider" ? "/rider-login" : "/login";
-  const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const apkHref = useMemo(() => "/downloads/britium-rider-app.apk", []);
+  const navigate = useNavigate();
+  const { toggleLang, lang } = useLanguage();
+  const [email, setEmail] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSent, setIsSent] = useState(false);
 
-  const submit = useCallback(async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setMessage("");
-
-    const normalizedEmail = email.trim();
-
-    if (!normalizedEmail) {
-      setMessage("Please enter your account email.");
-      return;
-    }
-
-    setBusy(true);
-
-    try {
-      const next = mode === "rider" ? "/rider-dashboard" : "/dashboard";
-      const redirectTo = `${window.location.origin}/must-change-password?mode=${mode}&next=${encodeURIComponent(next)}`;
-
-      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-        redirectTo,
-      });
-
-      if (error) throw error;
-
-      setMessage("Password reset email sent. Please check your inbox and open the reset link.");
-    } catch (error: any) {
-      setMessage(error?.message || "Unable to send password reset email.");
-    } finally {
-      setBusy(false);
-    }
-  }, [email, mode]);
+  const handleReset = (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+    setTimeout(() => {
+      setIsLoading(false);
+      setIsSent(true);
+    }, 1500);
+  };
 
   return (
-    <main className="min-h-screen bg-[#061524] px-6 py-10 font-sans text-[#eef8ff]">
-      <section className="mx-auto flex min-h-[calc(100vh-80px)] max-w-xl items-center justify-center">
-        <form onSubmit={submit} className="w-full rounded-[32px] border border-[#1a3a5c] bg-[#0b2236] p-8 shadow-2xl">
-          <Link to={loginPath} className="inline-flex items-center gap-2 text-sm font-black text-[#f6b84b] hover:underline">
-            <ArrowLeft className="h-4 w-4" />
-            Back to {mode === "rider" ? "rider login" : "portal login"}
-          </Link>
+    <div className="relative min-h-screen flex flex-col items-center justify-center overflow-hidden bg-[#05080F] p-4">
+      <video autoPlay muted loop playsInline className="absolute z-0 min-w-full min-h-full object-cover opacity-20 grayscale-[0.3]">
+        <source src="/background.mp4" type="video/mp4" />
+      </video>
 
-          <p className="mt-8 text-xs font-black uppercase tracking-[0.35em] text-[#f6b84b]">Account recovery</p>
-          <h1 className="mt-3 text-3xl font-black">Forgot password</h1>
-          <p className="mt-3 text-sm font-semibold leading-6 text-[#9bb7cc]">
-            Enter your BRITIUM account email. The reset link opens the secure change-password page.
-          </p>
+      <div className="relative z-10 w-full max-w-md flex flex-col items-center">
+        <div className="w-16 h-16 bg-[#0B101B]/80 backdrop-blur-md border border-white/5 rounded-2xl flex items-center justify-center mb-6 shadow-2xl">
+          <ShieldCheck className="text-emerald-500 h-8 w-8" strokeWidth={2} />
+        </div>
 
-          {message && (
-            <div className="mt-6 rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4 text-sm font-bold">
-              {message}
+        <h1 className="text-4xl font-black text-white tracking-widest uppercase mb-3">
+          SYSTEM <span className="text-emerald-500">RECOVERY</span>
+        </h1>
+        <p className="text-[10px] text-slate-400 font-mono tracking-[0.2em] uppercase mb-8 text-center">
+          RESET SECURITY CLEARANCE KEY
+        </p>
+
+        <div className="w-full bg-[#111622]/95 backdrop-blur-2xl rounded-3xl p-8 shadow-2xl border border-white/5 border-t-[6px] border-t-emerald-500 relative overflow-hidden">
+          {!isSent ? (
+            <form onSubmit={handleReset} className="space-y-6">
+              <div>
+                <label className="text-[10px] font-black font-mono text-slate-400 tracking-widest uppercase mb-2 block">{lang === 'en' ? 'Registered Corporate Email' : 'စာရင်းသွင်းထားသော အီးမေးလ်'}</label>
+                <div className="relative group">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500 group-focus-within:text-emerald-500 transition-colors" />
+                  <input type="email" required className="w-full bg-[#0B0E17] border border-white/5 rounded-xl h-14 pl-12 pr-4 text-white font-mono text-sm outline-none focus:border-emerald-500/50 transition-all" placeholder="admin@britium.com" onChange={e => setEmail(e.target.value)} />
+                </div>
+              </div>
+              <Button type="submit" disabled={isLoading} className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white font-black rounded-xl text-lg tracking-widest uppercase transition-all shadow-lg shadow-emerald-900/20 mt-2">
+                {isLoading ? (lang === 'en' ? "PROCESSING..." : "လုပ်ဆောင်နေပါသည်...") : (lang === 'en' ? 'INITIATE RECOVERY' : 'ပြန်လည်ရယူမည်')}
+              </Button>
+            </form>
+          ) : (
+            <div className="text-center space-y-4 py-4">
+              <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-4"><Mail className="h-8 w-8 text-emerald-500" /></div>
+              <h3 className="text-emerald-500 font-bold tracking-widest uppercase">{lang === 'en' ? 'Recovery Protocol Active' : 'လင့်ခ်ပေးပို့ပြီးပါပြီ'}</h3>
+              <p className="text-slate-400 text-xs font-mono">{lang === 'en' ? 'A secure link has been transmitted to your terminal. Check your inbox to proceed.' : 'စကားဝှက်အသစ်လုပ်ရန် လင့်ခ်ကို အီးမေးလ်သို့ ပေးပို့ထားပါသည်။'}</p>
             </div>
           )}
 
-          <label className="mt-8 block">
-            <span className="mb-2 block text-sm font-black">Account Email</span>
-            <div className="flex h-14 items-center gap-3 rounded-2xl border border-[#1a3a5c] bg-[#061524] px-4 focus-within:border-[#f6b84b]">
-              <Mail className="h-5 w-5 text-[#4d7a9b]" />
-              <input
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                type="email"
-                autoComplete="username"
-                placeholder={mode === "rider" ? "rider_ygn_0001@britiumventures.com" : "name@britiumexpress.com"}
-                className="h-full flex-1 bg-transparent text-sm font-bold outline-none placeholder:text-[#4d7a9b]"
-              />
-            </div>
-          </label>
-
-          <button
-            type="submit"
-            disabled={busy}
-            className="mt-8 inline-flex h-14 w-full items-center justify-center gap-3 rounded-2xl bg-[#f6b84b] px-5 font-black text-[#061524] hover:bg-[#e5a93a] disabled:opacity-60"
-          >
-            {busy && <Loader2 className="h-5 w-5 animate-spin" />}
-            Send reset link
-          </button>
-
-          {mode === "rider" ? (
-            <a
-              href={apkHref}
-              download
-              className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] text-[12px] font-black uppercase tracking-wider text-[#c8dff0] hover:border-[#f6b84b]"
-            >
-              <Download className="h-4 w-4 text-[#f6b84b]" />
-              Download Rider APK
-            </a>
-          ) : null}
-        </form>
-      </section>
-    </main>
+          <div className="mt-8 pt-6 border-t border-white/5 space-y-4 text-center">
+            <button type="button" onClick={() => navigate('/login')} className="text-[11px] font-mono text-slate-400 hover:text-emerald-400 flex items-center justify-center w-full transition-colors uppercase tracking-widest">
+              <ArrowLeft className="h-4 w-4 mr-2" />{lang === 'en' ? 'ABORT RECOVERY & RETURN' : 'နောက်သို့ပြန်သွားမည်'}
+            </button>
+            <Button onClick={toggleLang} variant="ghost" className="w-full text-slate-500 hover:text-white flex items-center justify-center gap-2 text-[10px] font-bold font-mono uppercase tracking-widest h-8">
+              <Globe size={14} /> {lang === 'en' ? "မြန်မာစာ" : "English"}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

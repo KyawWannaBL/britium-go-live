@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 import { Button } from '@/components/ui/button';
-import { Truck, Map, Scan, Banknote, Building2, UserCircle, LogOut } from 'lucide-react';
+import { Truck, Map, Scan, Banknote, Building2, UserCircle, LogOut, Database } from 'lucide-react';
 
 // Import our newly created pages
 import SupervisorPickupAssignmentGoLivePage from '@/pages/supervisor/SupervisorPickupAssignmentGoLivePage';
@@ -11,11 +11,12 @@ import BranchOfficeGoLivePage from '@/pages/branch/BranchOfficeGoLivePage';
 import WarehouseScannerGoLivePage from '@/pages/warehouse/WarehouseScannerGoLivePage';
 import FinanceSettlementGoLivePage from '@/pages/finance/FinanceSettlementGoLivePage';
 import UnifiedPickupFormGoLive from '@/pages/portal/UnifiedPickupFormGoLive';
+import MasterDataControlCenter from '@/pages/master/MasterDataControlCenter';
 
 export default function PortalLayoutGoLive({ currentUser }: { currentUser: any }) {
   const [activeTab, setActiveTab] = useState('dashboard');
 
-  const navConfig = {
+  const navConfig: Record<string, any[]> = {
     Supervisor: [
       { id: 'assignment', label: 'Dispatch Assignment', icon: UserCircle, component: <SupervisorPickupAssignmentGoLivePage /> },
       { id: 'pickup', label: 'Log Pickup', icon: Truck, component: <UnifiedPickupFormGoLive role="Supervisor" merchantCode="WALKIN" /> }
@@ -29,21 +30,36 @@ export default function PortalLayoutGoLive({ currentUser }: { currentUser: any }
     ],
     Finance: [
       { id: 'settlement', label: 'COD Reconciliation', icon: Banknote, component: <FinanceSettlementGoLivePage /> }
+    ],
+    "Super Admin": [
+      // Master Data Control specific to Super Admins
+      { id: 'master-data', label: 'Master Data Control', icon: Database, component: <MasterDataControlCenter currentUser={currentUser} /> },
+      // Give Super Admins visibility into the rest of the operation
+      { id: 'assignment', label: 'Dispatch Assignment', icon: UserCircle, component: <SupervisorPickupAssignmentGoLivePage /> },
+      { id: 'routing', label: 'Route Command', icon: Map, component: <DispatchCenterGoLivePage /> },
+      { id: 'branch', label: 'Branch Snapshot', icon: Building2, component: <BranchOfficeGoLivePage /> },
+      { id: 'scanner', label: 'Warehouse Intake', icon: Scan, component: <WarehouseScannerGoLivePage /> },
+      { id: 'settlement', label: 'Finance Settlement', icon: Banknote, component: <FinanceSettlementGoLivePage /> }
     ]
   };
 
-  const allowedNavs = navConfig[currentUser.role as keyof typeof navConfig] || [];
+  const allowedNavs = navConfig[currentUser?.role] || [];
   
   // Default to the first allowed tab on load
   useEffect(() => {
     if (allowedNavs.length > 0 && activeTab === 'dashboard') {
       setActiveTab(allowedNavs[0].id);
     }
-  }, [currentUser.role]);
+  }, [currentUser?.role]);
 
   const renderActiveComponent = () => {
-    const navItem = allowedNavs.find(nav => nav.id === activeTab);
-    return navItem ? navItem.component : <div className="p-8 text-center text-gray-500">Access Restricted</div>;
+    const navItem = allowedNavs.find((nav: any) => nav.id === activeTab);
+    return navItem ? navItem.component : (
+      <div className="flex flex-col items-center justify-center h-full p-8 text-center text-gray-500">
+        <h2 className="text-2xl font-bold text-gray-900 mb-2">Access Restricted</h2>
+        <p>You do not have the required permissions to view this module.</p>
+      </div>
+    );
   };
 
   return (
@@ -58,11 +74,11 @@ export default function PortalLayoutGoLive({ currentUser }: { currentUser: any }
         <div className="flex-1 py-6 px-4 space-y-2">
           <div className="mb-6 px-2">
             <p className="text-xs text-blue-400 uppercase tracking-widest font-semibold">Active Role</p>
-            <p className="font-medium text-lg">{currentUser.role}</p>
-            <p className="text-sm text-blue-300">{currentUser.branch_code} Branch</p>
+            <p className="font-medium text-lg">{currentUser?.role || 'Guest'}</p>
+            <p className="text-sm text-blue-300">{currentUser?.branch_code || 'YGN'} Branch</p>
           </div>
 
-          {allowedNavs.map(nav => {
+          {allowedNavs.map((nav: any) => {
             const Icon = nav.icon;
             const isActive = activeTab === nav.id;
             return (
@@ -70,7 +86,7 @@ export default function PortalLayoutGoLive({ currentUser }: { currentUser: any }
                 key={nav.id}
                 onClick={() => setActiveTab(nav.id)}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-                  isActive ? 'bg-blue-800 text-white' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
+                  isActive ? 'bg-blue-800 text-white shadow-inner' : 'text-blue-200 hover:bg-blue-800/50 hover:text-white'
                 }`}
               >
                 <Icon className="w-5 h-5" />
@@ -92,7 +108,9 @@ export default function PortalLayoutGoLive({ currentUser }: { currentUser: any }
         {/* Mobile Header */}
         <header className="bg-white border-b p-4 flex justify-between items-center md:hidden shadow-sm">
           <h2 className="font-bold text-xl text-blue-900">BRITIUM</h2>
-          <span className="text-sm font-semibold bg-gray-100 px-3 py-1 rounded-full">{currentUser.role}</span>
+          <span className="text-sm font-semibold bg-gray-100 px-3 py-1 rounded-full text-gray-800">
+            {currentUser?.role || 'Guest'}
+          </span>
         </header>
 
         {/* Dynamic Page Rendering */}
