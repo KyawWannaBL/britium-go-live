@@ -1,7 +1,3 @@
-// ============================================================
-// BRITIUM EXPRESS — Mock / Demo Data
-// ============================================================
-
 export const mockOrders = Array.from({ length: 40 }, (_, i) => ({
   id:            i % 2 === 0 ? `PU-015${String(i+1).padStart(3,"0")}` : `DV-016${String(i+1).padStart(3,"0")}`,
   type:          i % 2 === 0 ? "PICKUP" : "DELIVERY",
@@ -66,8 +62,6 @@ export const mockCSTickets = [
   { id:"CS-004", ref:"WH-00189",  type:"Damage Claim",       customer:"U Thant", merchant:"Beauty Plus",   status:"Open",     priority:"High",   assignee:"CS Manager",  date:"2026-06-09" },
   { id:"CS-005", ref:"DV-016022", type:"Customer Unreachable",customer:"Ko Naing",merchant:"Fresh Mart",   status:"In Progress",priority:"Low",  assignee:"CS Agent 3",  date:"2026-06-09" },
 ];
-
-// ── Chart Data ───────────────────────────────────────────────
 export const weeklyOrderTrend = [
   { day:"Mon", pickup:145, delivery:132, exceptions:12 },
   { day:"Tue", pickup:178, delivery:165, exceptions:9  },
@@ -92,8 +86,6 @@ export const zonePerformance = [
   { zone:"Tamwe",      orders:112, onTime:101, rate:90 },
   { zone:"Insein",     orders:89,  onTime:79,  rate:89 },
 ];
-
-// ── Rider App Mock ───────────────────────────────────────────
 export const riderTasks = [
   { id:"PU-015241", type:"PICKUP",   merchant:"Kyaw Store",  address:"No.12 Bo Aung Kyaw St, East Dagon", cod:0,     weight:1.2, status:"PICKUP_ASSIGNED",  phone:"+95-9-123456" },
   { id:"PU-015242", type:"PICKUP",   merchant:"Star Fashion",address:"No.34 Mingalar Rd, East Dagon",     cod:0,     weight:0.8, status:"PICKUP_ASSIGNED",  phone:"+95-9-234567" },

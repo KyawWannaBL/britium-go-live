@@ -1,0 +1,430 @@
+import { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+
+type PrintSize = "4x6" | "4x3" | "2x3" | "A5" | "A4";
+type PrintMode = "single" | "batch";
+
+type Waybill = {
+  id: string;
+  waybillNo: string;
+  pickupId: string;
+  invoiceNo: string;
+  merchant: string;
+  merchantName: string;
+  recipient: string;
+  phone: string;
+  township: string;
+  city: string;
+  address: string;
+  multiline: string;
+  remarks: string;
+  itemPrice: number;
+  deliveryFee: number;
+  prepaid: number;
+  cod: number;
+  actualCollect: number;
+  weightKg: number;
+  customerTier: string;
+  raw: any;
+};
+
+const PRINT_SIZES: Record<PrintSize, { label: string; width: string; height: string; note: string }> = {
+  "4x6": { label: "4 x 6 Main sticker", width: "4in", height: "6in", note: "1 label / page" },
+  "4x3": { label: "4 x 3 Half sticker", width: "4in", height: "3in", note: "1 label / page" },
+  "2x3": { label: "2 x 3 Small sticker", width: "2in", height: "3in", note: "1 label / page" },
+  A5: { label: "A5", width: "148mm", height: "210mm", note: "1 label / page" },
+  A4: { label: "A4", width: "210mm", height: "297mm", note: "4 labels / page ready" },
+};
+
+const SAMPLE: Waybill = {
+  id: "WB0620-APA-030",
+  waybillNo: "WB0620-APA-030",
+  pickupId: "P0620-APA-030",
+  invoiceNo: "I0620-APA-030",
+  merchant: "APAC",
+  merchantName: "APAC",
+  recipient: "Khin Khin Kyaw",
+  phone: "9784637689",
+  township: "N Okkalapa",
+  city: "Yangon",
+  address: "-",
+  multiline: "Multiline Text",
+  remarks: "",
+  itemPrice: 42000,
+  deliveryFee: 4500,
+  prepaid: 0,
+  cod: 46500,
+  actualCollect: 46500,
+  weightKg: 1,
+  customerTier: "STANDARD",
+  raw: {},
+};
+
+function pick(row: any, keys: string[], fallback = "") {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+  }
+  return fallback;
+}
+
+function num(...values: any[]) {
+  for (const value of values) {
+    const n = Number(String(value ?? "").replace(/,/g, ""));
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return 0;
+}
+
+function normalizeTier(value: any) {
+  const v = String(value || "STANDARD").trim().toUpperCase();
+  if (v.includes("COMMIT")) return "COMMITMENT";
+  if (v.includes("ROYAL") || v.includes("LOYAL")) return "ROYAL";
+  return "STANDARD";
+}
+
+function compactTownship(value: string) {
+  return String(value || "")
+    .replace(/township/gi, "")
+    .replace(/\u1019\u103c\u102d\u102f\u1037\u1014\u101a\u103a/g, "")
+    .trim();
+}
+
+function baseFeeForDestination(township: string, city: string) {
+  const text = `${township} ${city}`.toLowerCase();
+  if (text.includes("aung mingalar") || text.includes("\u1021\u1031\u102c\u1004\u103a\u1019\u1004\u103a\u1039\u1002\u101c\u102c")) return 3000;
+  if (text.includes("parami") || text.includes("\u1015\u101b\u1019\u102e")) return 3000;
+  if (text.includes("post") || text.includes("\u1005\u102c\u1010\u102d\u102f\u1000\u103a")) return 3000;
+  if (text.includes("dagon ayar") || text.includes("dagon thiri") || text.includes("\u1012\u1002\u102f\u1036\u1027\u101b\u102c") || text.includes("\u1012\u1002\u102f\u1036\u101e\u102e\u101b\u102d")) return 4000;
+  if (text.includes("hlaing thar") || text.includes("hling thar") || text.includes("\u101c\u103e\u102d\u102f\u1004\u103a\u101e\u102c\u101a\u102c")) return 4500;
+  if (text.includes("shwe pyi") || text.includes("\u101b\u103d\u103e\u1031\u1015\u103c\u100a\u103a\u101e\u102c")) return 4500;
+  if (text.includes("mandalay") || text.includes("mdy") || text.includes("\u1019\u1014\u1039\u1010\u101c\u1031\u1038")) return 6000;
+  if (text.includes("nay") || text.includes("npt") || text.includes("\u1014\u1031\u1015\u103c\u100a\u103a")) return 6000;
+  return 4000;
+}
+
+function estimatedDeliveryFee(row: any, township: string, city: string, tier: string, weightKg: number) {
+  const stored = num(
+    row.total_delivery_fee,
+    row.delivery_fee,
+    row.delivery_fees,
+    row.delivery_charge,
+    row.deli_fee,
+    row.deli_charges,
+  );
+  if (stored > 0) return stored;
+
+  const includedKg = tier === "STANDARD" ? 3 : 5;
+  const chargeable = Math.ceil(Math.max(weightKg || 1, 1));
+  const extraKg = Math.max(0, chargeable - includedKg);
+  return baseFeeForDestination(township, city) + extraKg * 500;
+}
+
+function normalizeWaybill(source: any, index: number): Waybill {
+  const row = { ...(source?.payload || {}), ...(source?.raw_payload || {}), ...source };
+  const waybillNo = pick(row, ["waybill_no", "waybillNo", "delivery_way_id", "way_id", "invoice_no", "parcel_no"], `WB-${index + 1}`);
+  const pickupId = pick(row, ["pickup_id", "pickupId", "request_id"], "");
+  const invoiceNo = pick(row, ["invoice_no", "invoiceNo"], waybillNo);
+  const merchant = pick(row, ["merchant_code", "merchant", "merchant_name", "merchantName", "customer_code"], "");
+  const recipient = pick(row, ["recipient", "recipient_name", "receiver_name", "consignee", "customer_name"], "");
+  const phone = pick(row, ["phone", "recipient_phone", "contact_no", "receiver_phone", "mobile"], "");
+  const township = compactTownship(pick(row, ["township", "recipient_township", "destination_township", "to_township"], ""));
+  const city = pick(row, ["city", "zone", "region", "destination_city"], "Yangon");
+  const address = pick(row, ["address", "recipient_address", "receiver_address", "delivery_address"], "-");
+  const remarks = pick(row, ["remarks", "remark", "note", "notes"], "");
+  const itemPrice = num(row.item_price, row.itemPrice, row.price, row.cod, row.cod_amount, row.product_value);
+  const prepaid = num(row.prepaid, row.prepaid_amount, row.paid_amount);
+  const weightKg = num(row.weight_kg, row.weight, row.actual_weight, row.parcel_weight) || 1;
+  const tier = normalizeTier(row.customer_tier || row.customer_type || row.tier || row.service_type);
+  const deliveryFee = estimatedDeliveryFee(row, township, city, tier, weightKg);
+  const codStored = num(row.cod, row.cod_amount, row.actual_collect, row.collect_amount);
+  const cod = codStored || Math.max(0, itemPrice + deliveryFee - prepaid);
+  const actualCollect = num(row.actual_collect, row.collect_amount, row.total_collect) || cod;
+
+  return {
+    id: String(row.id || row.uuid || waybillNo || index),
+    waybillNo,
+    pickupId,
+    invoiceNo,
+    merchant,
+    merchantName: merchant,
+    recipient,
+    phone,
+    township,
+    city,
+    address,
+    multiline: pick(row, ["multiline", "multiline_text", "description", "item_description"], "Multiline Text"),
+    remarks,
+    itemPrice,
+    deliveryFee,
+    prepaid,
+    cod,
+    actualCollect,
+    weightKg,
+    customerTier: tier,
+    raw: row,
+  };
+}
+
+function money(value: number) {
+  return Number(value || 0).toLocaleString("en-US");
+}
+
+function paddedMoney(value: number) {
+  const text = money(value);
+  return value > 0 ? text : "000,000,000";
+}
+
+function qrPayload(w: Waybill) {
+  return JSON.stringify({
+    waybill_no: w.waybillNo,
+    pickup_id: w.pickupId,
+    invoice_no: w.invoiceNo,
+    merchant: w.merchant,
+    recipient: w.recipient,
+    phone: w.phone,
+    township: w.township,
+    item_price: w.itemPrice,
+    delivery_fee: w.deliveryFee,
+    collect: w.actualCollect,
+  });
+}
+
+function qrUrl(w: Waybill) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(qrPayload(w))}`;
+}
+
+function WaybillSticker({ waybill, size }: { waybill: Waybill; size: PrintSize }) {
+  const isSmall = size === "2x3" || size === "4x3";
+  return (
+    <article className={`be-waybill be-waybill-${size}`}>
+      <section className="be-top">
+        <div className="be-brand">
+          <div className="be-logo">B</div>
+          <div>
+            <div className="be-title">BRITIUM EXPRESS</div>
+            <div className="be-subtitle">DELIVERY SERVICE</div>
+            <div className="be-hotline">HotLine:</div>
+          </div>
+        </div>
+        <div className="be-qrbox">
+          <div className="be-qrcode-no">{waybill.waybillNo}</div>
+          <img alt="QR" className="be-qr" src={qrUrl(waybill)} />
+          <div className="be-qrcode-no bottom">{waybill.waybillNo}</div>
+        </div>
+      </section>
+
+      <section className="be-merchant">
+        <span className="be-label">Merchant :</span>
+        <span className="be-value">{waybill.merchant}</span>
+      </section>
+
+      <section className="be-recipient">
+        <div className="be-line be-recipient-name">
+          <span className="be-label">Recipient :</span>
+          <span className="be-value strong-township">{waybill.township || waybill.recipient}</span>
+        </div>
+        <div className="be-centered">{waybill.phone || "-"}</div>
+        <div className="be-centered be-address">{waybill.address || "-"}</div>
+        {!isSmall && <div className="be-centered be-multiline">{waybill.multiline || "Multiline Text"}</div>}
+      </section>
+
+      <section className="be-remarks">
+        <span className="be-label">Remarks :</span>
+        <span>{waybill.remarks}</span>
+      </section>
+
+      <section className="be-money-section">
+        <div className="be-money-left">
+          <div><b>Item Price :</b><span>{paddedMoney(waybill.itemPrice)}</span></div>
+          <div><b>Delivery Fees :</b><span>{paddedMoney(waybill.deliveryFee)}</span></div>
+          <div><b>Prepaid Amount :</b><span>{paddedMoney(waybill.prepaid)}</span></div>
+        </div>
+        <div className="be-cod-box">
+          <div className="be-cod-top"><b>COD</b><b>MMK</b></div>
+          <div className="be-cod-amount">{paddedMoney(waybill.actualCollect)}</div>
+        </div>
+      </section>
+
+      {!isSmall && (
+        <section className="be-warning">
+          <b>Hotline</b> phone number must be contacted for delivery issue, return, or customer service support.
+        </section>
+      )}
+    </article>
+  );
+}
+
+async function tryLoadFromTable(table: string) {
+  const first = await supabase.from(table).select("*").order("created_at", { ascending: false }).limit(300);
+  if (!first.error && Array.isArray(first.data) && first.data.length) return first.data;
+
+  const second = await supabase.from(table).select("*").limit(300);
+  if (!second.error && Array.isArray(second.data) && second.data.length) return second.data;
+
+  return [];
+}
+
+async function loadWaybills() {
+  const tables = [
+    "be_data_entry_registration_lines",
+    "be_waybill_registry",
+    "be_portal_pickup_requests",
+    "be_pickup_requests",
+    "waybills",
+  ];
+
+  for (const table of tables) {
+    try {
+      const rows = await tryLoadFromTable(table);
+      const mapped = rows.map(normalizeWaybill).filter((row) => row.waybillNo || row.recipient || row.phone);
+      if (mapped.length) return { rows: mapped, source: table };
+    } catch {
+      // Try next source.
+    }
+  }
+
+  return { rows: [SAMPLE], source: "sample fallback" };
+}
+
+export default function ExactWaybillPrintStudioV14() {
+  const [rows, setRows] = useState<Waybill[]>([SAMPLE]);
+  const [source, setSource] = useState("loading");
+  const [query, setQuery] = useState("");
+  const [size, setSize] = useState<PrintSize>("4x6");
+  const [mode, setMode] = useState<PrintMode>("single");
+  const [activeId, setActiveId] = useState(SAMPLE.id);
+  const [selectedIds, setSelectedIds] = useState<string[]>([SAMPLE.id]);
+  const [loading, setLoading] = useState(false);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const result = await loadWaybills();
+      setRows(result.rows);
+      setSource(result.source);
+      const firstId = result.rows[0]?.id || SAMPLE.id;
+      setActiveId(firstId);
+      setSelectedIds((prev) => {
+        const available = new Set(result.rows.map((r) => r.id));
+        const kept = prev.filter((id) => available.has(id));
+        return kept.length ? kept : [firstId];
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void refresh();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((row) => `${row.waybillNo} ${row.recipient} ${row.phone} ${row.merchant} ${row.township}`.toLowerCase().includes(q));
+  }, [rows, query]);
+
+  const active = rows.find((row) => row.id === activeId) || rows[0] || SAMPLE;
+  const selected = rows.filter((row) => selectedIds.includes(row.id));
+  const printable = mode === "single" ? [active] : selected.length ? selected : [active];
+  const allFilteredSelected = filtered.length > 0 && filtered.every((row) => selectedIds.includes(row.id));
+
+  function toggle(id: string) {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]));
+  }
+
+  function toggleAllFiltered() {
+    if (allFilteredSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !filtered.some((row) => row.id === id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...filtered.map((row) => row.id)])));
+    }
+  }
+
+  function printNow(nextMode: PrintMode) {
+    setMode(nextMode);
+    setTimeout(() => window.print(), 120);
+  }
+
+  function copyQr() {
+    void navigator.clipboard?.writeText(qrPayload(active));
+  }
+
+  return (
+    <main className="be-page-shell">
+      <style>{CSS}</style>
+
+      <section className="be-screen-only be-header-card">
+        <div>
+          <div className="be-kicker">PRINT & DOCUMENT STUDIO</div>
+          <h1>Exact Waybill Studio</h1>
+          <p>Reference-matched BRITIUM EXPRESS sticker, selected-list workflow, individual print, batch print, and print-size selector.</p>
+          <p className="be-source">Source: {source}</p>
+        </div>
+        <div className="be-actions">
+          <button onClick={refresh} disabled={loading}>{loading ? "Refreshing..." : "Refresh"}</button>
+          <button onClick={copyQr}>Copy QR Data</button>
+          <button className="gold" onClick={() => printNow("single")}>Print Individual</button>
+          <button className="gold" onClick={() => printNow("batch")}>Print Batch Selected</button>
+        </div>
+      </section>
+
+      <section className="be-screen-only be-workspace">
+        <aside className="be-panel">
+          <input className="be-search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search waybill, recipient, phone..." />
+
+          <div className="be-size-grid">
+            {(Object.keys(PRINT_SIZES) as PrintSize[]).map((key) => (
+              <button key={key} className={size === key ? "active" : ""} onClick={() => setSize(key)}>
+                <b>{key}</b>
+                <span>{PRINT_SIZES[key].note}</span>
+              </button>
+            ))}
+          </div>
+
+          <div className="be-print-mode">
+            <label><input type="radio" checked={mode === "single"} onChange={() => setMode("single")} /> Individual</label>
+            <label><input type="radio" checked={mode === "batch"} onChange={() => setMode("batch")} /> Batch selected</label>
+          </div>
+
+          <button className="be-select-all" onClick={toggleAllFiltered}>{allFilteredSelected ? "Clear visible selection" : "Select visible waybills"}</button>
+
+          <div className="be-waybill-list">
+            {filtered.map((row) => (
+              <div key={row.id} className={`be-row ${row.id === active.id ? "active" : ""}`} onClick={() => setActiveId(row.id)}>
+                <input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggle(row.id)} onClick={(e) => e.stopPropagation()} />
+                <div>
+                  <b>{row.waybillNo}</b>
+                  <span>{row.recipient || "No recipient"} - {row.phone || "No phone"}</span>
+                  <em>{row.township || "No township"} / Fee {money(row.deliveryFee)}</em>
+                </div>
+              </div>
+            ))}
+          </div>
+        </aside>
+
+        <section className="be-preview-card">
+          <div className="be-preview-title">
+            <div>
+              <b>Live Preview</b>
+              <span>Size: {PRINT_SIZES[size].label}</span>
+            </div>
+            <div>{mode === "batch" ? `${selected.length} selected` : "Individual"}</div>
+          </div>
+          <div className="be-preview-stage" style={{ ["--label-width" as any]: PRINT_SIZES[size].width, ["--label-height" as any]: PRINT_SIZES[size].height }}>
+            <WaybillSticker waybill={active} size={size} />
+          </div>
+        </section>
+      </section>
+
+      <section className="be-print-area" style={{ ["--label-width" as any]: PRINT_SIZES[size].width, ["--label-height" as any]: PRINT_SIZES[size].height }}>
+        {printable.map((row) => <WaybillSticker key={row.id} waybill={row} size={size} />)}
+      </section>
+    </main>
+  );
+}
+
+const CSS = `
+.be-page-shell{min-height:100vh;background:#061523;color:#eaf4ff;padding:28px;font-family:Inter,Arial,sans-serif}.be-header-card,.be-workspace{max-width:1500px;margin:0 auto}.be-header-card{border:1px solid #12385a;background:#09253d;border-radius:20px;padding:22px 26px;display:flex;justify-content:space-between;gap:18px;align-items:center}.be-kicker{color:#ffb83d;letter-spacing:4px;font-weight:900;font-size:12px}.be-header-card h1{margin:8px 0 6px;font-size:18px}.be-header-card p{margin:0;color:#9bc5e6;font-size:13px}.be-source{margin-top:8px!important;color:#d7eaff!important}.be-actions{display:flex;gap:9px;flex-wrap:wrap;justify-content:flex-end}.be-actions button,.be-select-all{border:1px solid #1d4568;background:#061523;color:#eaf4ff;border-radius:12px;padding:10px 14px;font-weight:800;cursor:pointer}.be-actions .gold{background:#f5b642;color:#061523;border-color:#f5b642}.be-workspace{display:grid;grid-template-columns:320px 1fr;gap:20px;margin-top:20px}.be-panel,.be-preview-card{border:1px solid #12385a;background:#09253d;border-radius:20px;padding:16px}.be-search{width:100%;height:42px;border-radius:12px;border:1px solid #174267;background:#061523;color:#eaf4ff;padding:0 14px;outline:none}.be-size-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.be-size-grid button{border:1px solid #174267;background:#061523;color:#a9d2ee;border-radius:12px;padding:12px;cursor:pointer}.be-size-grid button.active{border-color:#f5b642;color:#f5b642;background:#203443}.be-size-grid b{display:block}.be-size-grid span{display:block;font-size:11px;margin-top:3px}.be-print-mode{display:flex;gap:8px;margin:14px 0}.be-print-mode label{flex:1;border:1px solid #174267;background:#061523;border-radius:12px;padding:10px;font-size:12px;font-weight:800}.be-select-all{width:100%;margin-bottom:12px}.be-waybill-list{max-height:620px;overflow:auto;display:grid;gap:8px}.be-row{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;border:1px solid #174267;background:#061523;border-radius:12px;padding:11px;cursor:pointer}.be-row.active{border-color:#39a2ff;background:#11314d}.be-row b{display:block;color:#ffcf70}.be-row span,.be-row em{display:block;color:#a9d2ee;font-size:11px;margin-top:3px}.be-row em{font-style:normal;color:#7eaacb}.be-preview-title{display:flex;justify-content:space-between;border-bottom:1px solid #12385a;padding-bottom:12px;margin-bottom:14px}.be-preview-title b{display:block}.be-preview-title span{display:block;color:#9bc5e6;font-size:12px;margin-top:4px}.be-preview-stage{min-height:640px;border-radius:18px;background:linear-gradient(45deg,#0d2a43 25%,transparent 25%),linear-gradient(-45deg,#0d2a43 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#0d2a43 75%),linear-gradient(-45deg,transparent 75%,#0d2a43 75%);background-size:22px 22px;background-position:0 0,0 11px,11px -11px,-11px 0;display:flex;align-items:flex-start;justify-content:center;padding:36px;overflow:auto}.be-preview-stage .be-waybill{box-shadow:0 16px 40px rgba(0,0,0,.35)}.be-print-area{display:none}.be-waybill{width:var(--label-width);height:var(--label-height);background:white;color:#111;border:1.6px solid #999;box-sizing:border-box;overflow:hidden;font-family:Arial,Helvetica,sans-serif;display:flex;flex-direction:column}.be-top{height:1.06in;border-bottom:1.3px solid #999;display:grid;grid-template-columns:1fr 1.34in}.be-brand{display:flex;gap:10px;align-items:flex-start;padding:12px 6px 4px 12px}.be-logo{width:.62in;height:.62in;border:2px solid #111;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:900;color:#1e577c}.be-title{font-size:19px;font-weight:900;letter-spacing:.2px}.be-subtitle{font-size:16px;font-weight:800;margin-top:1px}.be-hotline{font-size:13px;font-weight:700;margin-top:3px}.be-qrbox{text-align:center;padding:6px 10px 3px 2px}.be-qrcode-no{font-size:11px;font-weight:900;line-height:1}.be-qrcode-no.bottom{margin-top:2px}.be-qr{width:.76in;height:.76in;object-fit:contain;margin-top:2px}.be-merchant{height:.86in;border-bottom:1.3px solid #999;padding:13px 12px;box-sizing:border-box}.be-label{font-size:13px;font-weight:800;color:#333;margin-right:8px}.be-value{font-size:13px}.be-recipient{height:2.28in;border-bottom:1.3px solid #999;padding:13px 12px;box-sizing:border-box}.be-line{display:flex;gap:8px}.be-recipient-name .be-label{font-size:13px}.strong-township{font-size:18px;font-weight:500}.be-centered{text-align:center;font-size:17px;margin-top:18px}.be-address{font-size:15px;font-weight:700;min-height:20px}.be-multiline{font-size:13px;font-weight:900;margin-top:15px}.be-remarks{height:.42in;border-bottom:1.3px solid #999;padding:11px 12px;box-sizing:border-box}.be-money-section{height:.94in;border-bottom:1.3px solid #999;display:grid;grid-template-columns:1fr 1.78in;gap:8px;padding:9px 8px 8px 12px;box-sizing:border-box}.be-money-left{font-size:12px;line-height:1.65}.be-money-left div{display:grid;grid-template-columns:1.05in 1fr;gap:4px}.be-money-left b{text-align:right;font-weight:800}.be-money-left span{text-align:left;font-size:15px;letter-spacing:.3px}.be-cod-box{border:1.2px solid #777;border-radius:18px;background:linear-gradient(#eee,#d7d7d7);padding:10px 14px;box-shadow:inset 0 1px 2px rgba(255,255,255,.7);box-sizing:border-box}.be-cod-top{display:flex;justify-content:space-between;font-size:13px}.be-cod-amount{font-size:30px;line-height:1.15;margin-top:6px;font-weight:300}.be-warning{flex:1;padding:7px 9px;font-size:13px;line-height:1.15;font-weight:800}.be-waybill-4x3 .be-top{height:.72in}.be-waybill-4x3 .be-title{font-size:13px}.be-waybill-4x3 .be-subtitle{font-size:12px}.be-waybill-4x3 .be-logo{width:.43in;height:.43in;font-size:18px}.be-waybill-4x3 .be-qr{width:.52in;height:.52in}.be-waybill-4x3 .be-merchant{height:.38in;padding:6px 8px}.be-waybill-4x3 .be-recipient{height:1.12in;padding:7px 8px}.be-waybill-4x3 .be-centered{font-size:11px;margin-top:6px}.be-waybill-4x3 .strong-township{font-size:12px}.be-waybill-4x3 .be-remarks{height:.28in;padding:5px 8px}.be-waybill-4x3 .be-money-section{height:.5in;grid-template-columns:1fr 1.2in;padding:4px 6px}.be-waybill-4x3 .be-money-left{font-size:8px}.be-waybill-4x3 .be-money-left div{grid-template-columns:.75in 1fr}.be-waybill-4x3 .be-cod-box{border-radius:10px;padding:4px 7px}.be-waybill-4x3 .be-cod-amount{font-size:16px}.be-waybill-2x3 .be-top{height:.72in;grid-template-columns:1fr .7in}.be-waybill-2x3 .be-brand{gap:4px;padding:6px 3px}.be-waybill-2x3 .be-logo{width:.28in;height:.28in;font-size:12px}.be-waybill-2x3 .be-title{font-size:8px}.be-waybill-2x3 .be-subtitle{font-size:7px}.be-waybill-2x3 .be-hotline{font-size:6px}.be-waybill-2x3 .be-qrcode-no{font-size:5px}.be-waybill-2x3 .be-qr{width:.45in;height:.45in}.be-waybill-2x3 .be-merchant{height:.38in;padding:6px}.be-waybill-2x3 .be-label,.be-waybill-2x3 .be-value{font-size:7px}.be-waybill-2x3 .be-recipient{height:1.1in;padding:6px}.be-waybill-2x3 .strong-township{font-size:8px}.be-waybill-2x3 .be-centered{font-size:8px;margin-top:7px}.be-waybill-2x3 .be-remarks{height:.24in;padding:4px 6px}.be-waybill-2x3 .be-money-section{height:.55in;grid-template-columns:1fr .86in;padding:4px}.be-waybill-2x3 .be-money-left{font-size:6px}.be-waybill-2x3 .be-money-left div{grid-template-columns:.5in 1fr}.be-waybill-2x3 .be-money-left span{font-size:6px}.be-waybill-2x3 .be-cod-box{border-radius:8px;padding:3px}.be-waybill-2x3 .be-cod-top{font-size:6px}.be-waybill-2x3 .be-cod-amount{font-size:10px}.be-waybill-A5,.be-waybill-A4{transform-origin:top center}.be-waybill-A5 .be-top,.be-waybill-A4 .be-top{height:40mm}.be-waybill-A5 .be-merchant,.be-waybill-A4 .be-merchant{height:28mm}.be-waybill-A5 .be-recipient,.be-waybill-A4 .be-recipient{height:78mm}.be-waybill-A5 .be-remarks,.be-waybill-A4 .be-remarks{height:18mm}.be-waybill-A5 .be-money-section,.be-waybill-A4 .be-money-section{height:34mm}.be-waybill-A5 .be-warning,.be-waybill-A4 .be-warning{font-size:18px}@media print{body{margin:0!important;background:white!important}.be-screen-only{display:none!important}.be-page-shell{padding:0;background:white}.be-print-area{display:block!important}.be-print-area .be-waybill{page-break-after:always;break-after:page;margin:0 auto;box-shadow:none}@page{margin:0}}
+`;

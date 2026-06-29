@@ -4,7 +4,7 @@ import { supabase } from '@/integrations/supabase/client'
 import {
   Printer, Download, RefreshCw, Search, Package, CheckCircle2,
   Tag, QrCode, Truck, DollarSign, FileText, BarChart2, Layers,
-  Archive, ArrowRight, Lock, CheckCheck, Box, Scan
+  Archive, ArrowRight, Lock, CheckCheck, Box, Scan, Copy
 } from 'lucide-react'
 
 const C = { bg:'#061524', panel:'#0b2236', panel2:'#081b2e', panelHover:'#0f2a42', border:'#1a3a5c', gold:'#f6b84b', orange:'#ff8a4c', text:'#eef8ff', text2:'#c8dff0', muted:'#4d7a9b', success:'#22c55e', error:'#ff4f86', warning:'#f59e0b', info:'#38bdf8' }
@@ -25,25 +25,20 @@ interface ParcelRow {
   payment_method: string | null
 }
 
-const WAYBILL_STATUSES: Array<{
-  key: string
-  label: string
-  color: string
-  bg: string
-}> = [
-  { key: 'Printed',          label: 'Printed',           color: '#9ca3af',  bg: 'rgba(156,163,175,0.15)' },
-  { key: 'Picked Up',        label: 'Picked Up',         color: '#60a5fa',  bg: 'rgba(96,165,250,0.15)'  },
-  { key: 'Received',         label: 'Received',          color: '#2dd4bf',  bg: 'rgba(45,212,191,0.15)'  },
-  { key: 'In Warehouse',     label: 'In Warehouse',      color: '#818cf8',  bg: 'rgba(129,140,248,0.15)' },
-  { key: 'Sorting',          label: 'Sorting',           color: '#c084fc',  bg: 'rgba(192,132,252,0.15)' },
-  { key: 'Bagged',           label: 'Bagged',            color: '#e879f9',  bg: 'rgba(232,121,249,0.15)' },
-  { key: 'Dispatched',       label: 'Dispatched',        color: '#22d3ee',  bg: 'rgba(34,211,238,0.15)'  },
-  { key: 'Out for Delivery', label: 'Out for Delivery',  color: '#fbbf24',  bg: 'rgba(251,191,36,0.15)'  },
-  { key: 'Delivered',        label: 'Delivered',         color: '#34d399',  bg: 'rgba(52,211,153,0.15)'  },
-  { key: 'Failed Attempt',   label: 'Failed Attempt',    color: '#f87171',  bg: 'rgba(248,113,113,0.15)' },
-  { key: 'Returned',         label: 'Returned',          color: '#fbbf24',  bg: 'rgba(251,191,36,0.12)'  },
-  { key: 'Finance Pending',  label: 'Finance Pending',   color: '#fb923c',  bg: 'rgba(251,146,60,0.15)'  },
-  { key: 'Closed',           label: 'Closed',            color: '#10b981',  bg: 'rgba(16,185,129,0.15)'  },
+const WAYBILL_STATUSES = [
+  { key: 'Printed',          label: 'Printed',          color: '#9ca3af',  bg: 'rgba(156,163,175,0.15)' },
+  { key: 'Picked Up',        label: 'Picked Up',        color: '#60a5fa',  bg: 'rgba(96,165,250,0.15)'  },
+  { key: 'Received',         label: 'Received',         color: '#2dd4bf',  bg: 'rgba(45,212,191,0.15)'  },
+  { key: 'In Warehouse',     label: 'In Warehouse',     color: '#818cf8',  bg: 'rgba(129,140,248,0.15)' },
+  { key: 'Sorting',          label: 'Sorting',          color: '#c084fc',  bg: 'rgba(192,132,252,0.15)' },
+  { key: 'Bagged',           label: 'Bagged',           color: '#e879f9',  bg: 'rgba(232,121,249,0.15)' },
+  { key: 'Dispatched',       label: 'Dispatched',       color: '#22d3ee',  bg: 'rgba(34,211,238,0.15)'  },
+  { key: 'Out for Delivery', label: 'Out for Delivery', color: '#fbbf24',  bg: 'rgba(251,191,36,0.15)'  },
+  { key: 'Delivered',        label: 'Delivered',        color: '#34d399',  bg: 'rgba(52,211,153,0.15)'  },
+  { key: 'Failed Attempt',   label: 'Failed Attempt',   color: '#f87171',  bg: 'rgba(248,113,113,0.15)' },
+  { key: 'Returned',         label: 'Returned',         color: '#fbbf24',  bg: 'rgba(251,191,36,0.12)'  },
+  { key: 'Finance Pending',  label: 'Finance Pending',  color: '#fb923c',  bg: 'rgba(251,146,60,0.15)'  },
+  { key: 'Closed',           label: 'Closed',           color: '#10b981',  bg: 'rgba(16,185,129,0.15)'  },
 ]
 
 const CLOSE_CONDITIONS = [
@@ -58,27 +53,27 @@ const CLOSE_CONDITIONS = [
 ]
 
 const WAYBILL_FIELDS = [
-  { field: 'Waybill No',         desc: 'Unique waybill identifier — W{MMDD}-{MERCHANT_3}-{SEQ}'     },
+  { field: 'Waybill No',         desc: 'Unique waybill identifier — W{MMDD}-{MERCHANT_3}-{SEQ}'      },
   { field: 'Pickup ID',          desc: 'Links to the originating pickup request'                     },
   { field: 'Deliver ID',         desc: 'Links to the delivery workflow record'                       },
-  { field: 'Invoice No',         desc: 'Paired invoice — I{MMDD}-{MERCHANT_3}-{SEQ}'                },
-  { field: 'Merchant ID/Code',   desc: 'Merchant account identifier and 3-char code'                },
+  { field: 'Invoice No',         desc: 'Paired invoice — I{MMDD}-{MERCHANT_3}-{SEQ}'                 },
+  { field: 'Merchant ID/Code',   desc: 'Merchant account identifier and 3-char code'                 },
   { field: 'Sender',             desc: 'Sender name from merchant profile'                           },
   { field: 'Receiver',           desc: 'Recipient name for delivery'                                 },
-  { field: 'Pickup Address',     desc: 'Origin address for parcel collection'                       },
-  { field: 'Delivery Address',   desc: 'Destination address for parcel delivery'                    },
-  { field: 'Parcel Count',       desc: 'Number of parcels in the shipment'                          },
-  { field: 'Weight (Actual)',     desc: 'Physical weight measured at warehouse (kg)'                 },
-  { field: 'Weight (Chargeable)', desc: 'Greater of actual weight vs volumetric weight'              },
-  { field: 'COD Amount',         desc: 'Cash on delivery amount to collect from recipient'          },
+  { field: 'Pickup Address',     desc: 'Origin address for parcel collection'                        },
+  { field: 'Delivery Address',   desc: 'Destination address for parcel delivery'                     },
+  { field: 'Parcel Count',       desc: 'Number of parcels in the shipment'                           },
+  { field: 'Weight (Actual)',    desc: 'Physical weight measured at warehouse (kg)'                  },
+  { field: 'Weight (Chargeable)',desc: 'Greater of actual weight vs volumetric weight'               },
+  { field: 'COD Amount',         desc: 'Cash on delivery amount to collect from recipient'           },
   { field: 'Delivery Fee',       desc: 'Fee calculated from tariff master'                           },
   { field: 'Payment Method',     desc: 'PREPAID / COD / CREDIT'                                      },
-  { field: 'Barcode/QR',        desc: 'Scannable identifier for warehouse and rider ops'            },
-  { field: 'Proof Type',         desc: 'POD / PHOTO / SIGNATURE / E-SIGNATURE'                      },
-  { field: 'Status',             desc: 'Current pipeline status (see status stepper above)'         },
+  { field: 'Barcode/QR',         desc: 'Scannable identifier for warehouse and rider ops'            },
+  { field: 'Proof Type',         desc: 'POD / PHOTO / SIGNATURE / E-SIGNATURE'                       },
+  { field: 'Status',             desc: 'Current pipeline status (see status stepper above)'          },
 ]
 
-const NETWORK_USES: Array<{ icon: typeof Tag; label: string; color: string }> = [
+const NETWORK_USES = [
   { icon: Tag,          label: 'Label Printing',       color: '#60a5fa' },
   { icon: Scan,         label: 'Warehouse Scanning',   color: '#34d399' },
   { icon: Archive,      label: 'Bag Scan / Dispatch',  color: '#c084fc' },
@@ -87,7 +82,7 @@ const NETWORK_USES: Array<{ icon: typeof Tag; label: string; color: string }> = 
   { icon: CheckCheck,   label: 'POD Validation',        color: '#2dd4bf' },
   { icon: FileText,     label: 'Invoice Matching',      color: '#fb923c' },
   { icon: BarChart2,    label: 'Merchant Settlement',   color: '#e879f9' },
-  { icon: Layers,       label: 'Audit Trail',            color: '#94a3b8' },
+  { icon: Layers,       label: 'Audit Trail',           color: '#94a3b8' },
 ]
 
 function statusStyle(raw: string | null) {
@@ -127,11 +122,6 @@ function WaybillLabel({ row }: { row: ParcelRow }) {
       width: 38, height: 38, borderRadius: '50%', border: '1.5px solid #222',
       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
       overflow: 'hidden',
-    },
-    logoImg: { width: 36, height: 36, objectFit: 'contain' },
-    logoFallback: {
-      width: 36, height: 36, background: '#0A1628', borderRadius: '50%',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
     },
     companyBlock: { flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingLeft: 4 },
     companyName:  { fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', margin: 0, lineHeight: 1.2 },
@@ -261,6 +251,7 @@ export default function WaybillStudioPage() {
   const [loading, setLoading]     = useState(true)
   const [search, setSearch]       = useState('')
   const [lastSync, setLastSync]   = useState(new Date())
+  const [printTarget, setPrintTarget] = useState<string | null>(null) // Used for isolating single print
 
   const loadRows = useCallback(async () => {
     setLoading(true)
@@ -292,6 +283,7 @@ export default function WaybillStudioPage() {
     )
   })
 
+  // Bulk CSV Actions
   const handleDownloadCSV = () => {
     if (filtered.length === 0) return
     const headers = ['Tracking No', 'Recipient Name', 'Phone', 'Status', 'Created', 'Delivery Address', 'COD Amount'].join(',')
@@ -313,15 +305,65 @@ export default function WaybillStudioPage() {
     URL.revokeObjectURL(url)
   }
 
-  const handlePrint = () => window.print()
+  // Row-Level Actions 
+  const handleDownloadSingleCSV = (row: ParcelRow) => {
+    const headers = ['Tracking No', 'Recipient Name', 'Phone', 'Status', 'Created', 'Delivery Address', 'COD Amount'].join(',')
+    const csvData = [
+      row.tracking_no ?? '',
+      `"${(row.recipient_name ?? '').replace(/"/g, '""')}"`,
+      row.recipient_phone ?? '',
+      row.status ?? '',
+      row.created_at?.split('T')[0] ?? '',
+      `"${(row.delivery_address ?? '').replace(/"/g, '""')}"`,
+      row.cod_amount ?? '',
+    ].join(',')
+    const blob = new Blob([headers + '\n' + csvData], { type: 'text/csv' })
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    a.href     = url
+    a.download = `waybill_${row.tracking_no}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Print Orchestration
+  const handlePrintAll = () => {
+    setPrintTarget(null);
+    setTimeout(() => window.print(), 50);
+  }
+
+  const handlePrintSingle = (id: string) => {
+    setPrintTarget(id);
+    setTimeout(() => {
+      window.print();
+      setPrintTarget(null);
+    }, 50);
+  }
 
   const totalCod = filtered.reduce((sum, row) => sum + Number(row.cod_amount || 0), 0)
   const printedRows = filtered.filter((row) => String(row.status || '').toLowerCase() === 'printed').length
   const openCodRows = filtered.filter(r => (r.cod_amount ?? 0) > 0 && r.status !== 'Closed').length
 
+  // Determine which waybills to loop through in the print canvas
+  const printItems = printTarget ? rows.filter(r => r.id === printTarget) : (filtered.length > 0 ? filtered : rows)
+
   return (
-    <div style={root()}>
-      <div style={shell()}>
+    <div style={root()} className="print-root">
+      
+      {/* Dynamic Print CSS Overrides */}
+      <style>{`
+        .waybill-print-area { display: none; }
+        @media print {
+          .no-print { display: none !important; }
+          .waybill-print-area { display: block !important; width: 105mm; }
+          body, .print-root { background: #fff !important; padding: 0 !important; margin: 0 !important; }
+          .waybill-label-page { page-break-after: always; break-after: page; }
+          @page { size: 105mm 148mm; margin: 0mm; }
+        }
+      `}</style>
+
+      {/* Main Studio Shell */}
+      <div style={shell()} className="no-print">
         <section style={heroCard()}>
           <div style={heroGlow()} />
           <div style={heroTop()}>
@@ -354,7 +396,7 @@ export default function WaybillStudioPage() {
           </div>
         </section>
 
-        <section style={statsGrid()} className="max-[980px]:grid-cols-2 max-[620px]:grid-cols-1">
+        <section style={statsGrid()} className="grid-cols-5 max-[980px]:grid-cols-2 max-[620px]:grid-cols-1">
           <KpiCard label="Loaded Rows" value={rows.length} tone={C.info} icon={Package} />
           <KpiCard label="Filtered Queue" value={filtered.length} tone={C.gold} icon={Printer} />
           <KpiCard label="Printed Status" value={printedRows} tone={C.success} icon={CheckCircle2} />
@@ -386,7 +428,7 @@ export default function WaybillStudioPage() {
           </div>
         </section>
 
-        <div style={twoCol()} className="max-[1120px]:grid-cols-1">
+        <div style={twoCol()} className="grid-cols-2 max-[1120px]:grid-cols-1">
           <section style={panel()}>
             <div style={sectionHeader()}>
               <div style={titleRow()}>
@@ -459,11 +501,11 @@ export default function WaybillStudioPage() {
                 <Download size={14} />CSV
               </button>
               <button
-                onClick={handlePrint}
+                onClick={handlePrintAll}
                 disabled={filtered.length === 0}
                 style={primaryBtn({ opacity: filtered.length === 0 ? 0.45 : 1 })}
               >
-                <Printer size={14} />Print
+                <Printer size={14} />Print All
               </button>
             </div>
           </div>
@@ -490,7 +532,7 @@ export default function WaybillStudioPage() {
                 ) : filtered.length === 0 ? (
                   <tr>
                     <td colSpan={9} style={emptyCell()}>
-                      <Package size={28} style={{ marginBottom: 10, color: C.muted }} />
+                      <Package size={28} style={{ marginBottom: 10, color: C.muted, marginInline: 'auto' }} />
                       <div style={emptyTitle()}>No waybills in print queue</div>
                       <div style={emptySub()}>{search ? 'Try adjusting your search.' : 'Generate waybills from a pickup request.'}</div>
                     </td>
@@ -513,16 +555,16 @@ export default function WaybillStudioPage() {
                         <td style={td()}>
                           <div style={rowActions()}>
                             <button
-                              onClick={handlePrint}
+                              onClick={() => handlePrintSingle(row.id)}
                               style={tinyBtn(C.gold)}
-                              title="Print waybill"
+                              title="Print specific waybill"
                             >
                               <Printer size={10} />Print
                             </button>
                             <button
-                              onClick={handleDownloadCSV}
+                              onClick={() => handleDownloadSingleCSV(row)}
                               style={tinyBtn(C.info)}
-                              title="Download CSV"
+                              title="Download single CSV row"
                             >
                               <Download size={10} />
                             </button>
@@ -551,7 +593,7 @@ export default function WaybillStudioPage() {
               <h2 style={h2()}>Waybill Usage Across Network</h2>
             </div>
           </div>
-          <div style={usageGrid()} className="max-[1120px]:grid-cols-5 max-[760px]:grid-cols-3 max-[520px]:grid-cols-2">
+          <div style={usageGrid()} className="grid-cols-9 max-[1120px]:grid-cols-5 max-[760px]:grid-cols-3 max-[520px]:grid-cols-2">
             {NETWORK_USES.map(({ icon: Icon, label, color }, idx) => (
               <div key={label} style={usageCard(color)}>
                 <span style={usageIndex(color)}>{idx + 1}</span>
@@ -572,15 +614,17 @@ export default function WaybillStudioPage() {
           <p style={footerMeta()}>BRITIUM EXPRESS · WAYBILL STUDIO · v2.0</p>
           <p style={footerMeta()}>Last sync: {lastSync.toLocaleString()}</p>
         </div>
-
-        <div className="waybill-print-area" aria-hidden="true">
-          {(filtered.length > 0 ? filtered : rows).map(row => (
-            <div key={row.id} className="waybill-label-page">
-              <WaybillLabel row={row} />
-            </div>
-          ))}
-        </div>
       </div>
+
+      {/* 🖨️ Isolate the A6 Print Media Overlay Block */}
+      <div className="waybill-print-area" aria-hidden="true">
+        {printItems.map(row => (
+          <div key={row.id} className="waybill-label-page">
+            <WaybillLabel row={row} />
+          </div>
+        ))}
+      </div>
+      
     </div>
   )
 }
@@ -597,6 +641,7 @@ function KpiCard({ label, value, tone, icon: Icon }: any) {
   )
 }
 
+// Fixed UI/Layout functions
 function sx(style: React.CSSProperties) { return style }
 function root() { return sx({ background: C.bg, padding: 24, minHeight: '100%', fontFamily: FF.body, color: C.text }) }
 function shell() { return sx({ display: 'grid', gap: 18 }) }
@@ -605,11 +650,15 @@ function heroGlow() { return sx({ position: 'absolute', top: -110, right: -80, w
 function heroTop() { return sx({ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }) }
 function heroMetaGrid() { return sx({ position: 'relative', zIndex: 1, display: 'flex', flexWrap: 'wrap', gap: 14, marginTop: 22 }) }
 function heroBadge(color: string) { return sx({ minWidth: 280, flex: '1 1 320px', padding: 16, borderRadius: 18, background: `${color}12`, border: `1px solid ${color}33` }) }
-function statsGrid() { return sx({ display: 'grid', gridTemplateColumns: 'repeat(5, minmax(0,1fr))', gap: 12 }) }
+
+// Removed hardcoded grid overrides so tailwind breakpoints work 
+function statsGrid() { return sx({ display: 'grid', gap: 12 }) }
+function twoCol() { return sx({ display: 'grid', gap: 16 }) }
+function usageGrid() { return sx({ display: 'grid', gap: 10 }) }
+
 function panel(extra: React.CSSProperties = {}) { return sx({ border: `1px solid ${C.border}`, background: `linear-gradient(180deg, ${C.panel}, ${C.panel2})`, borderRadius: 22, padding: 18, boxShadow: '0 16px 40px rgba(0,0,0,.20)', ...extra }) }
 function sectionHeader() { return sx({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14, flexWrap: 'wrap' }) }
 function titleRow() { return sx({ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }) }
-function twoCol() { return sx({ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }) }
 function toolbar() { return sx({ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', padding: '18px 18px 14px', borderBottom: `1px solid ${C.border}` }) }
 function toolbarActions() { return sx({ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }) }
 function searchWrap() { return sx({ position: 'relative' }) }
@@ -652,7 +701,6 @@ function conditionText() { return sx({ color: C.text, fontSize: 14, lineHeight: 
 function statusPill(bg: string, color: string) { return sx({ display: 'inline-flex', alignItems: 'center', borderRadius: 999, padding: '6px 10px', background: bg, color, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }) }
 function rowActions() { return sx({ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }) }
 function tinyBtn(color: string) { return sx({ display: 'inline-flex', alignItems: 'center', gap: 6, minHeight: 30, padding: '0 10px', borderRadius: 10, background: `${color}12`, color, border: `1px solid ${color}33`, fontSize: 11, fontWeight: 700, fontFamily: FF.body, cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '.05em' }) }
-function usageGrid() { return sx({ display: 'grid', gridTemplateColumns: 'repeat(9, minmax(0,1fr))', gap: 10 }) }
 function usageCard(color: string) { return sx({ position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, padding: 16, borderRadius: 16, background: `${color}10`, border: `1px solid ${color}25`, textAlign: 'center' }) }
 function usageIndex(color: string) { return sx({ position: 'absolute', top: -8, left: '50%', transform: 'translateX(-50%)', padding: '2px 8px', borderRadius: 999, background: C.bg, color, border: `1px solid ${color}33`, fontSize: 10, fontWeight: 700 }) }
 function usageIconWrap(color: string) { return sx({ width: 38, height: 38, borderRadius: 12, display: 'grid', placeItems: 'center', background: `${color}18`, border: `1px solid ${color}2d`, marginTop: 4 }) }

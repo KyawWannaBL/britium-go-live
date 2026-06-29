@@ -3,6 +3,7 @@
 // Path: src/router/RiderAppRouter.tsx
 // Integrates into the main enterprise BrowserRouter tree.
 // Add <Route path="/rider/*" element={<RiderAppRouter />} /> in your main App.tsx Routes.
+
 import React, { useEffect, useState } from "react";
 import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -27,9 +28,8 @@ import PickupVerificationPage from "@/pages/PickupVerificationPage";
 
 const C = { page: "#061524", text: "#eef8ff", orange: "#ff8a4c" };
 
-// ============================================================
-// Auth Guard — blocks non-authenticated routes
-// ============================================================
+// ---- Auth Guard — blocks non-authenticated routes ----
+
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const navigate = useNavigate();
   const [checking, setChecking] = useState(true);
@@ -66,9 +66,8 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return authed ? <>{children}</> : null;
 }
 
-// ============================================================
-// Placeholder pages for routes not yet fully extracted
-// ============================================================
+// ---- Placeholder pages for routes not yet fully extracted ----
+
 function DeliveryStopDetailPage() {
   const navigate = useNavigate();
   return (
@@ -104,9 +103,8 @@ function PickupExceptionPage() {
   );
 }
 
-// ============================================================
-// Main Router
-// ============================================================
+// ---- Main Router ----
+
 export default function RiderAppRouter() {
   return (
     <Routes>
@@ -135,15 +133,3 @@ export default function RiderAppRouter() {
     </Routes>
   );
 }
-
-// ============================================================
-// Route snippet for main App.tsx
-// ============================================================
-// In your App.tsx <Routes>:
-//
-//   import RiderAppRouter from "@/router/RiderAppRouter";
-//
-//   <Route path="/rider/*" element={<RiderAppRouter />} />
-//
-// LoginPage.tsx already navigates to /rider after Supabase login.
-// ============================================================

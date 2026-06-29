@@ -119,3 +119,4 @@ enterprise_portal/.env.*
 .env.*
 enterprise_portal/.env
 enterprise_portal/.env.*
+.env*.local

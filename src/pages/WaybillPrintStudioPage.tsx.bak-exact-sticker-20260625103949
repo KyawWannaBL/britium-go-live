@@ -1,0 +1,270 @@
+import React, { useState, useMemo } from "react";
+import { QrCode, Printer, ArrowLeft, Settings, LayoutGrid } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+// If you have these installed locally, uncomment them. Otherwise, the component uses API fallbacks.
+// import QRCode from "react-qr-code";
+// import Barcode from "react-barcode";
+
+type PaperSize = "A4" | "A5" | "4x6" | "4x3" | "2x3";
+
+// Dummy Data (Replace with your actual backend payload)
+const MOCK_WAYBILLS = Array.from({ length: 8 }).map((_, i) => ({
+  id: `BE-WYB-88${i}29301`,
+  sender: "Tech Hub Myanmar",
+  senderPhone: "09-123456789",
+  senderAddr: "No 12, Hledan Road, Kamayut Township, Yangon",
+  receiver: `Customer ${i + 1}`,
+  receiverPhone: `09-98765432${i}`,
+  receiverAddr: "No 45, Pearl Street, North Dagon Township, Yangon Region",
+  cod: i % 2 === 0 ? "150,000 MMK" : "0 MMK",
+  route: ["YGN-NTH", "MDY-S", "BGO-W", "NPT-C"][i % 4],
+  weight: "2.5 KG",
+  pcs: 1,
+  details: "Electronic Accessories (Fragile)",
+  date: "2026-06-24",
+}));
+
+export default function WaybillPrintStudioPage() {
+  const navigate = useNavigate();
+  const [paperSize, setPaperSize] = useState<PaperSize>("4x6");
+
+  // Determine physical page dimensions and items per page
+  const layoutConfig = useMemo(() => {
+    switch (paperSize) {
+      case "A4":
+        return { pageCSS: "A4", itemsPerPage: 4, cols: 2, w: "210mm", h: "297mm", labelW: "100mm", labelH: "140mm" };
+      case "A5":
+        return { pageCSS: "A5", itemsPerPage: 2, cols: 1, w: "148mm", h: "210mm", labelW: "140mm", labelH: "100mm" };
+      case "4x6":
+        return { pageCSS: "4in 6in", itemsPerPage: 1, cols: 1, w: "4in", h: "6in", labelW: "100%", labelH: "100%" };
+      case "4x3":
+        return { pageCSS: "4in 6in", itemsPerPage: 2, cols: 1, w: "4in", h: "6in", labelW: "100%", labelH: "3in" };
+      case "2x3":
+        return { pageCSS: "4in 6in", itemsPerPage: 4, cols: 2, w: "4in", h: "6in", labelW: "2in", labelH: "3in" };
+      default:
+        return { pageCSS: "4in 6in", itemsPerPage: 1, cols: 1, w: "4in", h: "6in", labelW: "100%", labelH: "100%" };
+    }
+  }, [paperSize]);
+
+  // Chunk waybills into pages
+  const pages = useMemo(() => {
+    const result = [];
+    for (let i = 0; i < MOCK_WAYBILLS.length; i += layoutConfig.itemsPerPage) {
+      result.push(MOCK_WAYBILLS.slice(i, i + layoutConfig.itemsPerPage));
+    }
+    return result;
+  }, [layoutConfig.itemsPerPage]);
+
+  return (
+    <div className="min-h-screen bg-[#061524] flex flex-col items-center font-['Inter','Helvetica',sans-serif] notranslate pb-20">
+      
+      {/* 🖨️ NON-PRINTABLE CONTROL PANEL */}
+      <div className="w-full bg-[#0a1628] border-b border-[#1a3a5c] p-4 flex flex-wrap items-center justify-between sticky top-0 z-50 print:hidden shadow-xl">
+        <div className="flex items-center gap-4">
+          <button 
+            onClick={() => navigate(-1)}
+            className="flex items-center gap-2 bg-transparent text-[#c8dff0] px-4 py-2 rounded-lg font-bold text-[13px] hover:bg-[#1a3a5c] transition-colors cursor-pointer border border-transparent hover:border-[#4d7a9b]"
+          >
+            <ArrowLeft size={16} /> Back
+          </button>
+          <div className="h-6 w-px bg-[#1a3a5c]"></div>
+          <h1 className="text-[#f6b84b] font-black text-[16px] tracking-widest uppercase flex items-center gap-2">
+            <Printer size={18} /> Waybill Print Studio
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-4 bg-[#061524] p-1.5 rounded-xl border border-[#1a3a5c]">
+          <div className="pl-3 pr-2 flex items-center gap-2 text-[#4d7a9b]">
+            <LayoutGrid size={16} />
+            <span className="text-[12px] font-bold tracking-wider uppercase">Format:</span>
+          </div>
+          {(["A4", "A5", "4x6", "4x3", "2x3"] as PaperSize[]).map((size) => (
+            <button
+              key={size}
+              onClick={() => setPaperSize(size)}
+              className={`px-4 py-1.5 rounded-lg font-bold text-[13px] transition-all cursor-pointer ${
+                paperSize === size 
+                  ? "bg-[#1a3a5c] text-[#f6b84b] shadow-md" 
+                  : "text-white hover:bg-[#1a3a5c]/50"
+              }`}
+            >
+              {size}
+            </button>
+          ))}
+        </div>
+
+        <button 
+          onClick={() => window.print()}
+          className="flex items-center gap-2 bg-[#f6b84b] text-[#061524] px-6 py-2.5 rounded-xl font-black text-[13px] shadow-[0_0_15px_rgba(246,184,75,0.3)] hover:bg-[#e5a93a] transition-all cursor-pointer uppercase tracking-wider scale-100 hover:scale-105 active:scale-95"
+        >
+          <Printer size={16} /> Print {MOCK_WAYBILLS.length} Labels
+        </button>
+      </div>
+
+      {/* 📏 DYNAMIC PRINT MEDIA RULES */}
+      <style>
+        {`
+          @media print {
+            @page { size: ${layoutConfig.pageCSS}; margin: 0; }
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; margin: 0; padding: 0; background: white; }
+            ::-webkit-scrollbar { display: none; }
+          }
+        `}
+      </style>
+
+      {/* 📦 PRINT CANVAS */}
+      <div className="mt-8 flex flex-col gap-8 print:mt-0 print:gap-0">
+        {pages.map((pageItems, pageIndex) => (
+          <div 
+            key={`page-${pageIndex}`}
+            className="bg-white shadow-2xl print:shadow-none relative overflow-hidden flex flex-wrap content-start mx-auto"
+            style={{ 
+              width: layoutConfig.w, 
+              height: layoutConfig.h,
+              pageBreakAfter: "always"
+            }}
+          >
+            {pageItems.map((wb, index) => (
+              <WaybillLabel 
+                key={wb.id} 
+                data={wb} 
+                width={layoutConfig.labelW} 
+                height={layoutConfig.labelH}
+                paperSize={paperSize}
+              />
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── INDIVIDUAL LABEL COMPONENT ─── */
+function WaybillLabel({ data, width, height, paperSize }: { data: any; width: string; height: string; paperSize: PaperSize }) {
+  
+  // Dynamic scaling classes for ultra-small labels (2x3)
+  const isTiny = paperSize === "2x3";
+  const isMedium = paperSize === "4x3";
+  const textScale = isTiny ? "scale-[0.65] origin-top-left" : isMedium ? "scale-[0.85] origin-top-left" : "";
+
+  return (
+    <div 
+      className={`box-border border-black flex flex-col bg-white overflow-hidden ${
+        paperSize === "4x3" ? "border-b-2 border-dashed last:border-b-0" : 
+        paperSize === "2x3" ? "border-[1px] border-dashed" : "border-2"
+      }`}
+      style={{ width, height }}
+    >
+      {/* 1. HEADER */}
+      <div className="flex border-b-2 border-black h-[15%] min-h-[22px]">
+        <div className="w-[70%] border-r-2 border-black px-2 flex flex-col justify-center">
+          <h1 className={`font-black tracking-widest uppercase m-0 leading-none ${isTiny ? 'text-[10px]' : isMedium ? 'text-[14px]' : 'text-[20px]'}`}>
+            BRITIUM EXPRESS
+          </h1>
+          {!isTiny && (
+            <p className={`font-bold uppercase tracking-wider ${isMedium ? 'text-[7px]' : 'text-[9px]'}`}>
+              Enterprise Logistics
+            </p>
+          )}
+        </div>
+        <div className="w-[30%] flex items-center justify-center bg-black text-white">
+          <span className={`font-black uppercase tracking-widest ${isTiny ? 'text-[12px]' : isMedium ? 'text-[16px]' : 'text-[22px]'}`}>
+            {data.route.split('-')[0]}
+          </span>
+        </div>
+      </div>
+
+      {/* 2. BARCODE & ROUTING */}
+      <div className="flex border-b-2 border-black h-[25%]">
+        <div className="w-[70%] border-r-2 border-black p-2 flex flex-col items-center justify-center relative">
+          
+          {/* BARCODE GENERATOR */}
+          <div className="w-full h-[60%] flex items-center justify-center overflow-hidden">
+            {/* Fallback to API for immediate visual rendering. Swap with <Barcode value={data.id} /> if library installed */}
+            <img 
+              src={`https://barcode.tec-it.com/barcode.ashx?data=${data.id}&code=Code128&translate-esc=on&dpi=300`} 
+              alt="Barcode" 
+              className="max-h-full max-w-full object-contain mix-blend-multiply" 
+            />
+          </div>
+          
+          <span className={`font-black tracking-[0.1em] mt-1 uppercase ${isTiny ? 'text-[8px]' : isMedium ? 'text-[10px]' : 'text-[14px]'}`}>
+            {data.id}
+          </span>
+        </div>
+        
+        {/* BIG ROUTE BLOCK */}
+        <div className="w-[30%] flex flex-col items-center justify-center bg-[#f0f0f0] border-black" style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}>
+          <span className={`font-black tracking-wider uppercase text-center leading-none ${isTiny ? 'text-[14px]' : isMedium ? 'text-[20px]' : 'text-[30px]'}`}>
+            {data.route}
+          </span>
+        </div>
+      </div>
+
+      {/* 3. ADDRESS BLOCK */}
+      <div className="flex border-b-2 border-black h-[35%]">
+        <div className="w-1/2 border-r-2 border-black p-2 flex flex-col">
+          <div className="border-b border-black pb-0.5 mb-1">
+            <span className={`font-black uppercase tracking-widest ${isTiny ? 'text-[6px]' : 'text-[9px]'}`}>Sender / From</span>
+          </div>
+          <span className={`font-black uppercase truncate ${isTiny ? 'text-[8px]' : 'text-[12px]'}`}>{data.sender}</span>
+          <span className={`font-bold ${isTiny ? 'text-[7px]' : 'text-[10px]'}`}>{data.senderPhone}</span>
+          <span className={`font-semibold leading-tight uppercase break-words line-clamp-3 mt-1 ${isTiny ? 'text-[6px]' : 'text-[9px]'}`}>
+            {data.senderAddr}
+          </span>
+        </div>
+        
+        <div className="w-1/2 p-2 flex flex-col">
+          <div className="border-b border-black pb-0.5 mb-1">
+            <span className={`font-black uppercase tracking-widest ${isTiny ? 'text-[6px]' : 'text-[9px]'}`}>Receiver / To</span>
+          </div>
+          <span className={`font-black uppercase truncate ${isTiny ? 'text-[8px]' : 'text-[12px]'}`}>{data.receiver}</span>
+          <span className={`font-bold ${isTiny ? 'text-[7px]' : 'text-[10px]'}`}>{data.receiverPhone}</span>
+          <span className={`font-semibold leading-tight uppercase break-words line-clamp-3 mt-1 ${isTiny ? 'text-[6px]' : 'text-[9px]'}`}>
+            {data.receiverAddr}
+          </span>
+        </div>
+      </div>
+
+      {/* 4. PACKAGE METRICS & QR */}
+      <div className="flex flex-1">
+        
+        {/* Metrics & COD */}
+        <div className="w-[70%] border-r-2 border-black flex flex-col">
+          <div className="flex border-b-2 border-black h-1/2">
+            <div className="w-1/2 border-r-2 border-black flex flex-col justify-center items-center">
+              <span className={`font-black uppercase tracking-wider ${isTiny ? 'text-[6px]' : 'text-[8px]'}`}>Weight</span>
+              <span className={`font-black ${isTiny ? 'text-[10px]' : 'text-[13px]'}`}>{data.weight}</span>
+            </div>
+            <div className="w-1/2 flex flex-col justify-center items-center">
+              <span className={`font-black uppercase tracking-wider ${isTiny ? 'text-[6px]' : 'text-[8px]'}`}>Pieces</span>
+              <span className={`font-black ${isTiny ? 'text-[10px]' : 'text-[13px]'}`}>{data.pcs}</span>
+            </div>
+          </div>
+          
+          <div className="flex-1 flex flex-col justify-center items-center bg-black text-white" style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}>
+             <span className={`font-black uppercase tracking-widest ${isTiny ? 'text-[6px]' : 'text-[9px]'}`}>COD Amount</span>
+             <span className={`font-black tracking-wider ${isTiny ? 'text-[12px]' : 'text-[18px]'}`}>{data.cod}</span>
+          </div>
+        </div>
+
+        {/* QR Code */}
+        <div className="w-[30%] flex flex-col items-center justify-center p-1.5 relative">
+          {/* Fallback to API for immediate visual rendering. Swap with <QRCode value={data.id} size={80} /> if library installed */}
+          <div className="w-full h-full max-h-[80px] max-w-[80px] flex items-center justify-center">
+            <img 
+              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${data.id}`} 
+              alt="QR Code" 
+              className="max-h-full max-w-full object-contain"
+            />
+          </div>
+          <span className={`font-black mt-0.5 uppercase tracking-widest text-center ${isTiny ? 'text-[4px]' : 'text-[6px]'}`}>
+            Scan to Update
+          </span>
+        </div>
+
+      </div>
+    </div>
+  );
+}

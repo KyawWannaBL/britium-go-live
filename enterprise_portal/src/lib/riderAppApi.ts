@@ -1,6 +1,7 @@
 // @ts-nocheck
 // Britium Express — Rider App API Layer (Extended Go-Live)
 // Path: src/lib/riderAppApi.ts
+
 import { supabase } from "@/integrations/supabase/client";
 
 export type RiderActionResult = { ok?: boolean; [key: string]: any };
@@ -33,9 +34,8 @@ function ensureNoRpcError(data: any, error: any) {
   return data;
 }
 
-// ============================================================
-// localStorage helpers (offline queue + rider identity)
-// ============================================================
+// ---- localStorage helpers (offline queue + rider identity) ----
+
 export const riderStorage = {
   getRiderId(): string   { return localStorage.getItem(RIDER_KEY) || ""; },
   setRiderId(id: string) { localStorage.setItem(RIDER_KEY, id || ""); },
@@ -68,19 +68,18 @@ export const riderStorage = {
   clearQueue() { this.setQueue([]); },
 };
 
-// ============================================================
-// Main API object
-// ============================================================
+// ---- Main API object ----
+
 export const riderAppApi = {
 
   // ---- Auth / Session ----------------------------------------
-  /** Returns rider profile linked to the current Supabase auth session */
+  /* Returns rider profile linked to the current Supabase auth session */
   async loginContext(): Promise<any> {
     const { data, error } = await (supabase as any).rpc("be_rider_login_context");
     return ensureNoRpcError(data, error);
   },
 
-  /** Links authenticated user to a template rider code (RID001, RID002 …) */
+  /* Links authenticated user to a template rider code (RID001, RID002 …) */
   async linkToTemplateRider(templateCode: string): Promise<any> {
     if (!templateCode?.trim()) throw new Error("Rider template code is required");
     const { data, error } = await (supabase as any).rpc(
@@ -90,7 +89,7 @@ export const riderAppApi = {
     return ensureNoRpcError(data, error);
   },
 
-  /** Returns auth diagnostics: linkage status, table/RPC checks */
+  /* Returns auth diagnostics: linkage status, table/RPC checks */
   async authDiagnostics(): Promise<any> {
     const { data, error } = await (supabase as any).rpc("be_rider_auth_diagnostics");
     return ensureNoRpcError(data, error);
@@ -119,7 +118,7 @@ export const riderAppApi = {
   },
 
   // ---- Dedicated pickup/wayplan queries ----------------------
-  /** Returns assigned pickup requests for a rider */
+  /* Returns assigned pickup requests for a rider */
   async assignedPickups(riderId: string, limit = 50): Promise<any> {
     const { data, error } = await (supabase as any).rpc("be_rider_assigned_pickups", {
       p_rider_id: riderId,
@@ -128,7 +127,7 @@ export const riderAppApi = {
     return ensureNoRpcError(data, error);
   },
 
-  /** Returns assigned delivery wayplans with stops for a rider */
+  /* Returns assigned delivery wayplans with stops for a rider */
   async assignedWayplans(riderId: string, limit = 20): Promise<any> {
     const { data, error } = await (supabase as any).rpc("be_rider_assigned_wayplans", {
       p_rider_id: riderId,
@@ -181,15 +180,15 @@ export const riderAppApi = {
     callAttemptCount?: number | null; nextAttemptDate?: string | null;
   }) {
     const { data, error } = await (supabase as any).rpc("be_rider_report_pickup_exception", {
-      p_request_code:      payload.requestCode,
-      p_exception_code:    payload.exceptionCode,
-      p_rider_id:          payload.riderId,
-      p_remarks:           payload.remarks,
-      p_gps_lat:           payload.gpsLat,
-      p_gps_lng:           payload.gpsLng,
-      p_photo_url:         payload.photoUrl || null,
+      p_request_code:       payload.requestCode,
+      p_exception_code:     payload.exceptionCode,
+      p_rider_id:           payload.riderId,
+      p_remarks:            payload.remarks,
+      p_gps_lat:            payload.gpsLat,
+      p_gps_lng:            payload.gpsLng,
+      p_photo_url:          payload.photoUrl || null,
       p_call_attempt_count: payload.callAttemptCount || null,
-      p_next_attempt_date: payload.nextAttemptDate || null,
+      p_next_attempt_date:  payload.nextAttemptDate || null,
     });
     return ensureNoRpcError(data, error);
   },
@@ -255,7 +254,7 @@ export const riderAppApi = {
   },
 
   // ---- GPS & Offline -----------------------------------------
-  /** Log a GPS breadcrumb ping for audit trail */
+  /* Log a GPS breadcrumb ping for audit trail */
   async logGpsPing(payload: {
     riderId: string; gpsLat: number; gpsLng: number;
     context?: string; entityType?: string; entityKey?: string; accuracy?: number;
@@ -272,7 +271,7 @@ export const riderAppApi = {
     return ensureNoRpcError(data, error);
   },
 
-  /** Submit offline event queue to server for audit */
+  /* Submit offline event queue to server for audit */
   async submitOfflineEvents(riderId: string, events: OfflineEvent[]) {
     const { data, error } = await (supabase as any).rpc("be_rider_submit_offline_events", {
       p_rider_id: riderId,
@@ -281,7 +280,7 @@ export const riderAppApi = {
     return ensureNoRpcError(data, error);
   },
 
-  /** Legacy alias for submitOfflineEvents */
+  /* Legacy alias for submitOfflineEvents */
   async ingestOfflineEvents(riderId: string, events: OfflineEvent[]) {
     return this.submitOfflineEvents(riderId, events);
   },
@@ -318,9 +317,8 @@ export const riderAppApi = {
   },
 };
 
-// ============================================================
-// GPS helper
-// ============================================================
+// ---- GPS helper ----
+
 export function getBrowserLocation(): Promise<{ gpsLat: number; gpsLng: number }> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
@@ -335,9 +333,8 @@ export function getBrowserLocation(): Promise<{ gpsLat: number; gpsLng: number }
   });
 }
 
-// ============================================================
-// Exception rule validator
-// ============================================================
+// ---- Exception rule validator ----
+
 export function validateRuleDrivenException(rule: any, input: any): string[] {
   const errors: string[] = [];
   const yes = (v: any) => String(v || "").toUpperCase() === "YES";

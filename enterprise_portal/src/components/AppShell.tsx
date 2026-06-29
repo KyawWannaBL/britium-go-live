@@ -1,455 +1,142 @@
-// @ts-nocheck
-import { useState, ReactNode } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard, Package, PackagePlus, Send, Truck, Route, AlertTriangle,
-  Shield, ClipboardCheck, Bike, Car, BadgeDollarSign,
-  Command, Gauge, Star, Map, MapPin,
-  DollarSign, Banknote, BookOpen, Tag, FileText, Wallet,
-  FileCheck, Printer,
-  Store, Users, Headphones, Radio,
-  Building, Building2, UserCog, Database, Server,
-  BarChart3, ScrollText,
-  Megaphone, Globe, TrendingUp,
-  User, Settings, LogOut, Bell, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Menu, X
-} from 'lucide-react';
+import React from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/auth';
 import { supabase } from '@/integrations/supabase/client';
+import {
+  LayoutDashboard, Database, Warehouse, Truck, Users, Map, ShieldAlert,
+  DollarSign, HeadphonesIcon, Settings, LogOut, FileText, UserPlus, PieChart,
+  Briefcase, Network, Globe
+} from 'lucide-react';
 
-/* ── Brand ─────────────────────────────────────────────────── */
-const LOGO = 'https://skyagent-artifacts.skywork.ai/router/agent/2026-06-09/prod_agent_73dcc7b2-6a06-4769-ba6f-a24e8e15113e/logo_869b883bce9e40f59d6394b5f754ef08.png';
-const C = {
-  bg:       '#061524',
-  panel:    '#081b2e',
-  header:   '#040e1a',
-  active:   '#0f2a42',
-  hover:    '#0c2235',
-  border:   '#1a3a5c',
-  gold:     '#f6b84b',
-  text:     '#c8dff0',
-  muted:    '#4d7a9b',
-  white:    '#eef8ff',
-  accent:   '#ff8a4c',
-  green:    '#22c55e',
-  red:      '#ff4f86',
-};
-
-/* ── Nav Definition ─────────────────────────────────────────── */
-type NavItem = { path: string; Icon: any; en: string; my: string; badge?: string; };
-type Section  = { en: string; my: string; items: NavItem[]; };
-
-const NAV: Section[] = [
+const MENU_GROUPS = [
   {
-    en: 'Overview', my: 'ခြုံငုံကြည့်',
+    label: { en: 'Overview', mm: 'အကျဉ်းချုပ်' },
     items: [
-      { path: '/dashboard',         Icon: LayoutDashboard, en: 'Dashboard',          my: 'ဒက်ရှ်ဘုတ်' },
-    ],
+      { path: '/dashboard', icon: LayoutDashboard, en: 'Dashboard', mm: 'ပင်မစာမျက်နှာ' },
+      { path: '/analytics', icon: PieChart, en: 'Analytics', mm: 'စိစစ်ချက်များ' },
+      { path: '/master-data', icon: Database, en: 'Master Data', mm: 'အခြေခံဒေတာ' },
+    ]
   },
   {
-    en: 'Operations', my: 'လုပ်ငန်းဆောင်ရွက်မှု',
+    label: { en: 'Operations', mm: 'လုပ်ငန်းလည်ပတ်မှု' },
     items: [
-      { path: '/warehouse',         Icon: Package,         en: 'Warehouse',           my: 'သိုလှောင်ရုံ' },
-      { path: '/pickup-form',       Icon: PackagePlus,     en: 'Pickup Entry',        my: 'ကုန်မှတ်ပုံတင်' },
-      { path: '/dispatch',          Icon: Send,            en: 'Dispatch',            my: 'ပေးပို့စတင်' },
-      { path: '/delivery-dispatch', Icon: Truck,           en: 'Delivery Dispatch',   my: 'ပေးပို့စီမံ' },
-      { path: '/delivery-workflow', Icon: Route,           en: 'Delivery Workflow',   my: 'ပေးပို့လုပ်ငန်းစဉ်' },
-      { path: '/exceptions',        Icon: AlertTriangle,   en: 'Exceptions',          my: 'ချွေလျင်မှု' },
-    ],
+      { path: '/warehouse', icon: Warehouse, en: 'Warehouse', mm: 'ကုန်လှောင်ရုံ' },
+      { path: '/dispatch', icon: Truck, en: 'Dispatch Command', mm: 'ပို့ဆောင်ရေးစနစ်' },
+      { path: '/delivery-dispatch', icon: Truck, en: 'Delivery Dispatch', mm: 'ပေးပို့မှုစနစ်' },
+      { path: '/delivery-workflow', icon: Network, en: 'Delivery Workflow', mm: 'ပို့ဆောင်မှုလုပ်ငန်းစဉ်' },
+      { path: '/exceptions', icon: ShieldAlert, en: 'Exceptions', mm: 'ပြဿနာများ' },
+      { path: '/wayplan-command', icon: Map, en: 'Wayplan Command', mm: 'လမ်းကြောင်းထိန်းချုပ်' },
+      { path: '/wayplan-zone', icon: Map, en: 'Wayplan Zone', mm: 'ဇုန်လမ်းကြောင်း' },
+    ]
   },
   {
-    en: 'Workforce', my: 'လုပ်သားအင်အား',
+    label: { en: 'Workforce', mm: 'လုပ်ငန်းခွင်အင်အား' },
     items: [
-      { path: '/supervisor',        Icon: Shield,          en: 'Supervisor Portal',   my: 'ကြီးကြပ်ရေး' },
-      { path: '/supervisor-pickup', Icon: ClipboardCheck,  en: 'Pickup Assignment',   my: 'ကြိုဆောင်ရွက်' },
-      { path: '/rider',             Icon: Bike,            en: 'Rider Management',    my: 'ရိုက်ဒါစီမံ' },
-      { path: '/driver',            Icon: Car,             en: 'Driver Management',   my: 'ဒရိုင်ဘာစီမံ' },
-      { path: '/workforce-commission', Icon: BadgeDollarSign, en: 'Workforce Commission', my: 'ကော်မရှင်' },
-    ],
+      { path: '/supervisor-pickup', icon: Users, en: 'Supervisor Pickup', mm: 'ကြီးကြပ်သူ(ကောက်ယူ)' },
+      { path: '/supervisor', icon: Users, en: 'Supervisor Portal', mm: 'ကြီးကြပ်သူ(ပေါ်တယ်)' },
+      { path: '/rider', icon: Truck, en: 'Riders', mm: 'ပို့ဆောင်သူများ' },
+      { path: '/driver', icon: Truck, en: 'Drivers', mm: 'ယာဉ်မောင်းများ' },
+      { path: '/workforce-commission', icon: DollarSign, en: 'Commissions', mm: 'ကော်မရှင်' },
+    ]
   },
   {
-    en: 'Command Center', my: 'ကွပ်ကဲမှုစင်တာ',
+    label: { en: 'Finance & CS', mm: 'ဘဏ္ဍာရေးနှင့် ဝန်ဆောင်မှု' },
     items: [
-      { path: '/ops-command',       Icon: Command,         en: 'Ops Command',         my: 'လုပ်ငန်းကွပ်ကဲ' },
-      { path: '/ops-manager',       Icon: Gauge,           en: 'Ops Manager',         my: 'မန်နေဂျာဒက်ရှ်' },
-      { path: '/executive-ops',     Icon: Star,            en: 'Executive Ops',       my: 'အမှုဆောင်ဒက်ရှ်' },
-      { path: '/wayplan-command',   Icon: Map,             en: 'Wayplan Command',     my: 'ကားလမ်းစီမံ' },
-      { path: '/wayplan-zone',      Icon: MapPin,          en: 'Wayplan Zone',        my: 'ဇုန်စီမံ' },
-    ],
+      { path: '/finance', icon: DollarSign, en: 'Finance Portal', mm: 'ဘဏ္ဍာရေး' },
+      { path: '/cod-settlement', icon: DollarSign, en: 'COD Settlement', mm: 'COD ရှင်းလင်းမှု' },
+      { path: '/tariff', icon: FileText, en: 'Tariff Master', mm: 'နှုန်းထားများ' },
+      { path: '/invoice-studio', icon: FileText, en: 'Invoice Studio', mm: 'ပြေစာထုတ်ယူမှု' },
+      { path: '/rider-settlement', icon: DollarSign, en: 'Rider Settlement', mm: 'ပို့ဆောင်သူရှင်းလင်းမှု' },
+      { path: '/cs-portal', icon: HeadphonesIcon, en: 'Customer Service', mm: 'ဖောက်သည်ဝန်ဆောင်မှု' },
+      { path: '/cs-command', icon: HeadphonesIcon, en: 'CS Command', mm: 'CS ထိန်းချုပ်ရေး' },
+    ]
   },
   {
-    en: 'Finance', my: 'ဘဏ္ဍာရေး',
+    label: { en: 'Corporate', mm: 'စီမံခန့်ခွဲရေး' },
     items: [
-      { path: '/finance',           Icon: DollarSign,      en: 'Finance Portal',      my: 'ဘဏ္ဍာရေးစင်တာ' },
-      { path: '/cod-settlement',    Icon: Banknote,        en: 'COD Settlement',      my: 'COD ဆပ်ငွေ' },
-      { path: '/accounts',          Icon: BookOpen,        en: 'Accounts',            my: 'ငွေစာရင်း' },
-      { path: '/tariff',            Icon: Tag,             en: 'Tariff',              my: 'ကုန်ခနှုန်း' },
-      { path: '/invoice-studio',    Icon: FileText,        en: 'Invoice Studio',      my: 'ငွေတောင်းခံ' },
-      { path: '/rider-settlement',  Icon: Wallet,          en: 'Rider Settlement',    my: 'ရိုက်ဒါဆပ်ငွေ' },
-    ],
-  },
-  {
-    en: 'Documents', my: 'စာရွက်စာတမ်း',
-    items: [
-      { path: '/waybill-studio',    Icon: FileCheck,       en: 'Waybill Studio',      my: 'ကုန်တင်လက်မှတ်' },
-      { path: '/document-studio',   Icon: Printer,         en: 'Document Studio',     my: 'စာရွက်ပုံနှိပ်' },
-    ],
-  },
-  {
-    en: 'Portals', my: 'ဝဝ်ဘ်ပေါ်တယ်',
-    items: [
-      { path: '/merchant-portal',   Icon: Store,           en: 'Merchant Portal',     my: 'ကုန်သည်ပေါ်တယ်' },
-      { path: '/customer-portal',   Icon: Users,           en: 'Customer Portal',     my: 'ဖောက်သည်ပေါ်တယ်' },
-      { path: '/cs-portal',         Icon: Headphones,      en: 'CS Portal',           my: 'CS ဝန်ဆောင်မှု' },
-      { path: '/cs-command',        Icon: Radio,           en: 'CS Command',          my: 'CS ကွပ်ကဲ' },
-    ],
-  },
-  {
-    en: 'Branch & Admin', my: 'ဌာနခွဲနှင့်စီမံ',
-    items: [
-      { path: '/branch-admin',      Icon: Building,        en: 'Branch Admin',        my: 'ဌာနခွဲစီမံ' },
-      { path: '/branch-office',     Icon: Building2,       en: 'Branch Office',       my: 'ဌာနခွဲရုံး' },
-      { path: '/admin-hr',          Icon: UserCog,         en: 'Admin / HR',          my: 'HR စီမံ' },
-      { path: '/data-entry',        Icon: Database,        en: 'Data Entry',          my: 'ဒေတာသွင်း' },
-      { path: '/master-data',       Icon: Server,          en: 'Master Data',         my: 'မာစတာဒေတာ' },
-    ],
-  },
-  {
-    en: 'Analytics', my: 'ခွဲခြမ်းစိတ်ဖြာ',
-    items: [
-      { path: '/analytics',         Icon: BarChart3,       en: 'Analytics',           my: 'ခွဲခြမ်းစိတ်ဖြာ' },
-      { path: '/audit-logs',        Icon: ScrollText,      en: 'Audit Logs',          my: 'စစ်ဆေးမှတ်တမ်း' },
-    ],
-  },
-  {
-    en: 'Growth', my: 'ကုမ္ပဏီတိုးတက်မှု',
-    items: [
-      { path: '/marketing',         Icon: Megaphone,       en: 'Marketing',           my: 'မားကတ်တင်း' },
-      { path: '/marketing-portal',  Icon: Globe,           en: 'Marketing Portal',    my: 'မားကတ်တင်းပေါ်တယ်' },
-      { path: '/biz-dev',           Icon: TrendingUp,      en: 'Business Dev',        my: 'စီးပွားဖွံ့ဖြိုး' },
-    ],
-  },
+      { path: '/admin-hr', icon: UserPlus, en: 'Admin & HR', mm: 'စီမံနှင့် လူ့စွမ်းအား' },
+      { path: '/branch-admin', icon: Briefcase, en: 'Branch Admin', mm: 'ရုံးခွဲစီမံ' },
+      { path: '/branch-office', icon: Briefcase, en: 'Branch Office', mm: 'ရုံးခွဲ' },
+      { path: '/marketing', icon: Globe, en: 'Marketing', mm: 'ဈေးကွက်ရှာဖွေရေး' },
+      { path: '/marketing-portal', icon: Globe, en: 'Marketing Portal', mm: 'ဈေးကွက်ရှာဖွေရေး ပေါ်တယ်' },
+      { path: '/biz-dev', icon: Globe, en: 'Biz Dev', mm: 'လုပ်ငန်းချဲ့ထွင်ရေး' },
+      { path: '/data-entry', icon: FileText, en: 'Data Entry', mm: 'စာရင်းသွင်းဌာန' },
+      { path: '/document-studio', icon: FileText, en: 'Document Studio', mm: 'စာရွက်စာတမ်း' },
+      { path: '/waybill-studio', icon: FileText, en: 'Waybill Studio', mm: 'Waybill ထုတ်ယူမှု' },
+      { path: '/audit-logs', icon: ShieldAlert, en: 'Audit Logs', mm: 'စစ်ဆေးမှုမှတ်တမ်း' },
+      { path: '/settings', icon: Settings, en: 'Settings', mm: 'ဆက်တင်' },
+    ]
+  }
 ];
 
-const BOTTOM_NAV: NavItem[] = [
-  { path: '/profile',  Icon: User,     en: 'Profile',  my: 'ကိုယ်ရေး' },
-  { path: '/settings', Icon: Settings, en: 'Settings', my: 'ဆက်တင်' },
-];
-
-/* ── Props ──────────────────────────────────────────────────── */
-interface AppShellProps {
-  children: ReactNode;
-  role?: string;
-  onOpenProfile?: () => void;
-}
-
-/* ── Component ──────────────────────────────────────────────── */
-export default function AppShell({ children, role, onOpenProfile }: AppShellProps) {
-  const { lang, toggle: toggleLang } = useLanguage();
-  const { session } = useAuth();
-  const location = useLocation();
+export default function AppShell() {
+  const { lang, setLang } = useLanguage();
   const navigate = useNavigate();
 
-  const [sidebarOpen, setSidebarOpen]         = useState(true);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [collapsed, setCollapsed]             = useState<Record<string, boolean>>({});
-
-  const L = (item: { en: string; my: string }) => lang === 'my' ? item.my : item.en;
-
-  const isActive = (path: string) =>
-    path === '/dashboard'
-      ? location.pathname === path
-      : location.pathname.startsWith(path);
-
-  const toggleSection = (key: string) =>
-    setCollapsed(p => ({ ...p, [key]: !p[key] }));
-
-  const handleSignOut = async () => {
+  const handleLogout = async () => {
     await supabase.auth.signOut();
-    navigate('/');
+    navigate('/login');
   };
 
-  const userEmail = session?.user?.email ?? 'staff@britiumexpress.com';
-  const userInitial = userEmail.charAt(0).toUpperCase();
-  const displayRole = role ?? session?.user?.user_metadata?.role ?? 'staff';
-
-  /* Sidebar inner ─────────────────────────────────────────── */
-  const SidebarContent = () => (
-    <div style={{ display:'flex', flexDirection:'column', height:'100%', overflow:'hidden' }}>
-      {/* Logo */}
-      <div style={{ padding: sidebarOpen ? '20px 20px 16px' : '20px 10px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid ${C.border}`, flexShrink:0 }}>
-        <div style={{ width:34, height:34, borderRadius:8, overflow:'hidden', flexShrink:0, background:'#fff', display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <img src={LOGO} alt="Britium" style={{ width:'100%', height:'100%', objectFit:'contain' }}/>
+  return (
+    <div className="flex h-screen bg-[#061524] text-[#eef8ff] font-['Poppins'] overflow-hidden">
+      {/* Sidebar */}
+      <aside className="w-[280px] bg-[#0b2236] border-r border-[#1a3a5c] flex flex-col h-full overflow-hidden shrink-0">
+        <div className="p-6 border-b border-[#1a3a5c]">
+          <h1 className="text-xl font-black text-[#f6b84b] tracking-wider font-['Poppins']">BRITIUM EXPRESS</h1>
+          <p className="text-xs font-bold text-[#4d7a9b] mt-1 tracking-widest uppercase font-['Poppins']">Enterprise Portal</p>
         </div>
-        {sidebarOpen && (
-          <div style={{ overflow:'hidden', lineHeight:1 }}>
-            <div style={{ fontSize:13, fontWeight:900, color:C.white, letterSpacing:'0.06em', whiteSpace:'nowrap' }}>BRITIUM</div>
-            <div style={{ fontSize:9, fontWeight:700, color:C.gold, letterSpacing:'0.14em', marginTop:2, whiteSpace:'nowrap' }}>EXPRESS ENTERPRISE</div>
-          </div>
-        )}
-      </div>
 
-      {/* Scrollable nav */}
-      <div style={{ flex:1, overflowY:'auto', overflowX:'hidden', padding:'8px 0' }}>
-        {NAV.map(section => {
-          const secKey = section.en;
-          const isCollapsed = collapsed[secKey];
-          return (
-            <div key={secKey} style={{ marginBottom:2 }}>
-              {/* Section header */}
-              {sidebarOpen ? (
-                <button
-                  onClick={() => toggleSection(secKey)}
-                  style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%', padding:'5px 16px', background:'none', border:'none', cursor:'pointer', gap:6 }}
-                >
-                  <span style={{ fontSize:10, fontWeight:800, color:C.muted, letterSpacing:'0.10em', textTransform:'uppercase', fontFamily:'Pyidaungsu,Inter,sans-serif' }}>
-                    {L(section)}
-                  </span>
-                  {isCollapsed
-                    ? <ChevronDown size={12} color={C.muted}/>
-                    : <ChevronUp   size={12} color={C.muted}/>}
-                </button>
-              ) : (
-                <div style={{ margin:'4px 0 2px', borderTop:`1px solid ${C.border}22` }}/>
-              )}
-
-              {/* Items */}
-              {!isCollapsed && section.items.map(item => {
-                const active = isActive(item.path);
-                return (
-                  <Link
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-[#1a3a5c] scrollbar-track-transparent">
+          {MENU_GROUPS.map((group, idx) => (
+            <div key={idx}>
+              <div className="text-[11px] font-black text-[#4d7a9b] uppercase tracking-widest mb-2 px-3 font-['Poppins']">
+                {lang === 'en' ? group.label.en : group.label.mm}
+              </div>
+              <nav className="space-y-1">
+                {group.items.map((item) => (
+                  <NavLink
                     key={item.path}
                     to={item.path}
-                    onClick={() => setMobileSidebarOpen(false)}
-                    style={{
-                      display:'flex', alignItems:'center',
-                      gap: sidebarOpen ? 10 : 0,
-                      justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                      padding: sidebarOpen ? '7px 16px' : '8px',
-                      margin:'1px 6px',
-                      borderRadius:8,
-                      textDecoration:'none',
-                      background: active ? C.active : 'transparent',
-                      borderLeft: active ? `3px solid ${C.gold}` : '3px solid transparent',
-                      transition:'all 0.15s',
-                    }}
-                    onMouseEnter={e => { if(!active)(e.currentTarget as HTMLElement).style.background=C.hover; }}
-                    onMouseLeave={e => { if(!active)(e.currentTarget as HTMLElement).style.background='transparent'; }}
-                    title={sidebarOpen ? undefined : (lang==='my' ? item.my : item.en)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold transition-all font-['Poppins'] ${
+                        isActive
+                          ? 'bg-[#1a3a5c] text-[#38bdf8] border border-[#38bdf8]/30'
+                          : 'text-[#c8dff0] hover:bg-[#0f2a42] hover:text-white border border-transparent'
+                      }`
+                    }
                   >
-                    <item.Icon
-                      size={15}
-                      color={active ? C.gold : C.text}
-                      strokeWidth={active ? 2.2 : 1.6}
-                      style={{ flexShrink:0 }}
-                    />
-                    {sidebarOpen && (
-                      <span style={{
-                        fontSize:12.5, fontWeight: active ? 700 : 500,
-                        color: active ? C.white : C.text,
-                        fontFamily:'Pyidaungsu,Inter,sans-serif',
-                        whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis',
-                      }}>
-                        {L(item)}
-                      </span>
-                    )}
-                  </Link>
-                );
-              })}
+                    <item.icon size={18} />
+                    <span className="text-[13px]">{lang === 'en' ? item.en : item.mm}</span>
+                  </NavLink>
+                ))}
+              </nav>
             </div>
-          );
-        })}
-      </div>
+          ))}
+        </div>
 
-      {/* Bottom nav */}
-      <div style={{ borderTop:`1px solid ${C.border}`, padding:'8px 0', flexShrink:0 }}>
-        {BOTTOM_NAV.map(item => {
-          const active = isActive(item.path);
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              style={{
-                display:'flex', alignItems:'center',
-                gap: sidebarOpen ? 10 : 0,
-                justifyContent: sidebarOpen ? 'flex-start' : 'center',
-                padding: sidebarOpen ? '7px 16px' : '8px',
-                margin:'1px 6px',
-                borderRadius:8,
-                textDecoration:'none',
-                background: active ? C.active : 'transparent',
-                borderLeft: active ? `3px solid ${C.gold}` : '3px solid transparent',
-              }}
-              onMouseEnter={e => { if(!active)(e.currentTarget as HTMLElement).style.background=C.hover; }}
-              onMouseLeave={e => { if(!active)(e.currentTarget as HTMLElement).style.background='transparent'; }}
-            >
-              <item.Icon size={15} color={active ? C.gold : C.text} strokeWidth={active ? 2.2 : 1.6} style={{ flexShrink:0 }}/>
-              {sidebarOpen && (
-                <span style={{ fontSize:12.5, fontWeight: active ? 700 : 500, color: active ? C.white : C.text, fontFamily:'Pyidaungsu,Inter,sans-serif' }}>
-                  {L(item)}
-                </span>
-              )}
-            </Link>
-          );
-        })}
-
-        {/* Sign out */}
-        <button
-          onClick={handleSignOut}
-          style={{
-            display:'flex', alignItems:'center',
-            gap: sidebarOpen ? 10 : 0,
-            justifyContent: sidebarOpen ? 'flex-start' : 'center',
-            width:'100%', padding: sidebarOpen ? '7px 16px' : '8px',
-            margin:'1px 6px', width:'calc(100% - 12px)',
-            borderRadius:8, border:'none', cursor:'pointer',
-            background:'transparent',
-          }}
-          onMouseEnter={e => (e.currentTarget as HTMLElement).style.background=C.hover}
-          onMouseLeave={e => (e.currentTarget as HTMLElement).style.background='transparent'}
-          title={sidebarOpen ? undefined : 'Sign Out'}
-        >
-          <LogOut size={15} color={C.red} strokeWidth={1.8} style={{ flexShrink:0 }}/>
-          {sidebarOpen && (
-            <span style={{ fontSize:12.5, fontWeight:500, color:C.red, fontFamily:'Pyidaungsu,Inter,sans-serif' }}>
-              {lang==='my' ? 'ထွက်သွား' : 'Sign Out'}
-            </span>
-          )}
-        </button>
-
-        {/* User info */}
-        {sidebarOpen && (
-          <div style={{ margin:'8px 10px 4px', padding:'8px 10px', borderRadius:8, background:C.active, border:`1px solid ${C.border}` }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <div style={{ width:28, height:28, borderRadius:7, background:`linear-gradient(135deg,${C.gold},#e07a20)`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:12, fontWeight:800, color:'#1a0a00' }}>
-                {userInitial}
-              </div>
-              <div style={{ overflow:'hidden' }}>
-                <div style={{ fontSize:11, fontWeight:700, color:C.white, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{userEmail}</div>
-                <div style={{ fontSize:10, color:C.gold, fontWeight:700, textTransform:'capitalize', marginTop:1 }}>{displayRole}</div>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-
-  /* ── Layout ─────────────────────────────────────────────── */
-  const sidebarW = sidebarOpen ? 260 : 64;
-
-  return (
-    <div style={{ display:'flex', minHeight:'100vh', background:'#040f1c', fontFamily:"'Pyidaungsu','Poppins',Inter,system-ui,sans-serif" }}>
-
-      {/* Desktop sidebar */}
-      <aside style={{
-        width: sidebarW, flexShrink:0, background:C.bg,
-        borderRight:`1px solid ${C.border}`,
-        display:'flex', flexDirection:'column',
-        position:'fixed', top:0, left:0, bottom:0, zIndex:50,
-        transition:'width 0.22s cubic-bezier(.4,0,.2,1)',
-        overflowX:'hidden',
-      }}>
-        <SidebarContent/>
+        <div className="p-4 border-t border-[#1a3a5c] space-y-3 bg-[#081b2e]">
+          <button
+            onClick={() => setLang(lang === 'en' ? 'mm' : 'en')}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#0f2a42] hover:bg-[#1a3a5c] border border-[#1a3a5c] rounded-xl text-sm font-bold text-[#c8dff0] transition-colors font-['Poppins']"
+          >
+            <Globe size={16} />
+            {lang === 'en' ? 'Switch to Myanmar' : 'Switch to English'}
+          </button>
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-[#4a0521]/30 hover:bg-[#4a0521]/60 border border-[#831843]/50 rounded-xl text-sm font-bold text-[#ff4f86] transition-colors font-['Poppins']"
+          >
+            <LogOut size={16} />
+            {lang === 'en' ? 'Sign Out' : 'ထွက်မည်'}
+          </button>
+        </div>
       </aside>
 
-      {/* Mobile overlay */}
-      {mobileSidebarOpen && (
-        <div style={{ position:'fixed', inset:0, zIndex:99, display:'flex' }}>
-          <div style={{ position:'absolute', inset:0, background:'rgba(0,0,0,0.6)', backdropFilter:'blur(2px)' }} onClick={() => setMobileSidebarOpen(false)}/>
-          <aside style={{ position:'relative', zIndex:100, width:260, background:C.bg, borderRight:`1px solid ${C.border}`, display:'flex', flexDirection:'column' }}>
-            <button onClick={() => setMobileSidebarOpen(false)} style={{ position:'absolute', top:8, right:8, background:'none', border:'none', cursor:'pointer', color:C.muted, zIndex:10 }}><X size={18}/></button>
-            <SidebarContent/>
-          </aside>
-        </div>
-      )}
-
-      {/* Main area */}
-      <div style={{ flex:1, marginLeft:sidebarW, display:'flex', flexDirection:'column', minHeight:'100vh', transition:'margin-left 0.22s cubic-bezier(.4,0,.2,1)' }}>
-
-        {/* Header */}
-        <header style={{
-          height:52, background:C.header, borderBottom:`1px solid ${C.border}`,
-          display:'flex', alignItems:'center', justifyContent:'space-between',
-          padding:'0 20px', position:'sticky', top:0, zIndex:40, flexShrink:0,
-        }}>
-          {/* Left: collapse toggle + breadcrumb */}
-          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-            {/* Desktop collapse */}
-            <button
-              onClick={() => setSidebarOpen(p => !p)}
-              style={{ display:'none', background:'none', border:`1px solid ${C.border}`, borderRadius:7, padding:'5px 7px', cursor:'pointer', color:C.muted }}
-              className="desktop-toggle"
-            >
-              {sidebarOpen ? <ChevronLeft size={15}/> : <ChevronRight size={15}/>}
-            </button>
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setMobileSidebarOpen(true)}
-              style={{ background:'none', border:`1px solid ${C.border}`, borderRadius:7, padding:'5px 7px', cursor:'pointer', color:C.muted }}
-            >
-              <Menu size={15}/>
-            </button>
-
-            <div style={{ height:20, width:1, background:C.border }}/>
-            <div style={{ fontSize:11, fontWeight:700, color:C.muted, fontFamily:'Pyidaungsu,Inter,sans-serif' }}>
-              {lang === 'my' ? 'ဘရစ်တီယမ် Express စီမံခန့်ခွဲမှုစနစ်' : 'Britium Express · Enterprise Management System'}
-            </div>
-          </div>
-
-          {/* Right: controls */}
-          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-            {/* Sidebar collapse (desktop, always visible) */}
-            <button
-              onClick={() => setSidebarOpen(p => !p)}
-              style={{ background:`${C.border}55`, border:`1px solid ${C.border}`, borderRadius:7, padding:'5px 8px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:C.text, fontSize:11, fontWeight:700 }}
-            >
-              {sidebarOpen ? <ChevronLeft size={13}/> : <ChevronRight size={13}/>}
-            </button>
-
-            {/* Language toggle */}
-            <button
-              onClick={toggleLang}
-              style={{ background:`${C.border}55`, border:`1px solid ${C.border}`, borderRadius:7, padding:'5px 10px', cursor:'pointer', display:'flex', alignItems:'center', gap:5, color:C.text, fontSize:11, fontWeight:800, letterSpacing:'0.04em' }}
-            >
-              🌐 {lang === 'en' ? 'မြန်မာ' : 'EN'}
-            </button>
-
-            {/* Notification bell */}
-            <button style={{ position:'relative', background:`${C.border}55`, border:`1px solid ${C.border}`, borderRadius:7, padding:'5px 8px', cursor:'pointer', color:C.text }}>
-              <Bell size={14}/>
-              <span style={{ position:'absolute', top:3, right:3, width:6, height:6, borderRadius:'50%', background:C.red, border:`1.5px solid ${C.header}` }}/>
-            </button>
-
-            {/* Avatar */}
-            <button
-              onClick={onOpenProfile}
-              style={{ width:30, height:30, borderRadius:8, background:`linear-gradient(135deg,${C.gold},#e07a20)`, border:'none', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:'#1a0a00' }}
-              title={userEmail}
-            >
-              {userInitial}
-            </button>
-          </div>
-        </header>
-
-        {/* Page content */}
-        <main style={{ flex:1, overflow:'auto' }}>
-          {children}
-        </main>
-      </div>
-
-      <style>{`
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body{background:#040f1c;font-family:'Poppins',Inter,system-ui,sans-serif;}
-        ::-webkit-scrollbar{width:4px;height:4px;}
-        ::-webkit-scrollbar-track{background:transparent;}
-        ::-webkit-scrollbar-thumb{background:${C.border};border-radius:4px;}
-        ::-webkit-scrollbar-thumb:hover{background:${C.muted};}
-        a{text-decoration:none;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-      `}</style>
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-y-auto relative h-full bg-[#061524]">
+        <Outlet />
+      </main>
     </div>
   );
 }
