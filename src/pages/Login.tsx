@@ -294,7 +294,7 @@ export default function Login() {
       });
       if (error) throw error;
 
-      await auth.refresh?.();
+      await auth.refreshUser();
 
       const prof = await loadProfile(data.user.id);
       setCurrentRole(prof.role);
