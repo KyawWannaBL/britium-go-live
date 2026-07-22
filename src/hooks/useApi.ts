@@ -4,6 +4,16 @@
 import { useQuery, useMutation, useQueryClient, QueryKey } from "@tanstack/react-query";
 import api, { ApiError } from "../lib/apiClient";
 import { API_ROUTES } from "../lib/config";
+import type { RiderTask } from "../types";
+import {
+  listAssignedRiderTasks,
+  performRiderAction,
+  submitPickupVerification,
+  uploadRiderProof,
+  type RiderActionRequest,
+  type RiderPickupVerificationRequest,
+  type RiderProofUploadRequest,
+} from "../lib/riderWorkflow";
 
 // ── Generic helpers ───────────────────────────────────────────────────────────
 export function useApiQuery<T>(
@@ -319,31 +329,68 @@ export function useConfirmManifest() {
 // RIDER hooks
 // ─────────────────────────────────────────────────────────────────────────────
 export function useRiderTasks() {
-  return useApiQuery(["rider", "tasks"], API_ROUTES.RIDER_TASKS, undefined, {
+  return useQuery<RiderTask[], Error>({
+    queryKey: ["rider", "tasks"],
+    queryFn: () => listAssignedRiderTasks(100),
+    staleTime: 10_000,
     refetchInterval: 15_000,
   });
 }
+
 export function useRiderWallet() {
-  return useApiQuery(["rider", "wallet"], API_ROUTES.RIDER_WALLET, undefined, {
-    refetchInterval: 30_000,
+  return useApiQuery(
+    ["rider", "wallet"],
+    API_ROUTES.RIDER_WALLET,
+    undefined,
+    { refetchInterval: 30_000 }
+  );
+}
+
+export function useRiderAction() {
+  const qc = useQueryClient();
+
+  return useMutation<unknown, Error, RiderActionRequest>({
+    mutationFn: performRiderAction,
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        queryKey: ["rider", "tasks"],
+      });
+    },
   });
 }
-export function useCompleteDelivery() {
-  return useApiMutation(
-    (body: { task_id: string; cod_collected: number; pod_photo_url?: string; notes?: string }) =>
-      api.post(API_ROUTES.RIDER_COMPLETE, body),
-    [["rider", "tasks"], ["rider", "wallet"]]
-  );
+
+export function useSubmitPickupVerification() {
+  const qc = useQueryClient();
+
+  return useMutation<
+    unknown,
+    Error,
+    RiderPickupVerificationRequest
+  >({
+    mutationFn: submitPickupVerification,
+    onSuccess: async () => {
+      await qc.invalidateQueries({
+        queryKey: ["rider", "tasks"],
+      });
+    },
+  });
 }
-export function useFailDelivery() {
-  return useApiMutation(
-    (body: { task_id: string; failure_reason: string; notes?: string }) =>
-      api.post(API_ROUTES.RIDER_FAIL, body),
-    [["rider", "tasks"]]
-  );
+
+export function useUploadRiderProof() {
+  return useMutation<string, Error, RiderProofUploadRequest>({
+    mutationFn: ({ task_id, file }) =>
+      uploadRiderProof(task_id, file),
+  });
 }
-export function useRiderHistory(params?: Record<string, string>) {
-  return useApiQuery(["rider", "history", params], API_ROUTES.RIDER_HISTORY, params);
+
+export function useRiderHistory(
+  params?: Record<string, string>
+) {
+  return useApiQuery(
+    ["rider", "history", params],
+    API_ROUTES.RIDER_HISTORY,
+    params
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

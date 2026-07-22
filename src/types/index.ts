@@ -418,18 +418,68 @@ export interface RiderAssignment {
 }
 
 // ── Rider ─────────────────────────────────────────────────────────────────────
+export type RiderTaskStatus =
+  | "assigned"
+  | "in_progress"
+  | "waiting_review"
+  | "delivered"
+  | "failed";
+
+export type RiderTaskType = "pickup" | "delivery";
+
+export type RiderNextAction =
+  | "accept"
+  | "arrive"
+  | "submit_pickup_verification"
+  | "collect"
+  | "delivered_to_warehouse"
+  | "start_delivery"
+  | "deliver";
+
 export interface RiderTask {
   id: string;
+  record_id: string;
+  pickup_id: string;
+  pickup_way_id: string;
+  delivery_way_id: string;
   tracking_no: string;
+
+  merchant_name: string;
+  sender_name: string;
+  sender_phone: string;
+  pickup_address: string;
+  pickup_township: string;
+  pickup_city: string;
+
   receiver_name: string;
   receiver_phone: string;
   receiver_address: string;
   receiver_township: string;
+  receiver_city: string;
+
+  parcel_count: number;
   cod_amount: number;
   service_type: string;
-  status: "assigned" | "in_progress" | "delivered" | "failed";
-  sequence: number;
   notes?: string;
+
+  task_type: RiderTaskType;
+  next_action: RiderNextAction | null;
+  status: RiderTaskStatus;
+  sequence: number;
+
+  pickup_status: string;
+  rider_status: string;
+  rider_app_stage: string;
+  assignment_status: string;
+  warehouse_status: string;
+  workflow_stage: string;
+  delivery_status: string;
+
+  assigned_rider_code: string;
+  assigned_rider_name: string;
+  assigned_at: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export type FailureReason =
