@@ -117,12 +117,12 @@ export default function Receipts() {
     setSelectedReceipts(new Set());
   };
 
-  const columns = [
+  const baseColumns = [
     {
-      key: 'select',
-      label: '',
+      id: 'select',
+      header: '',
       sortable: false,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <Checkbox
           checked={selectedReceipts.has(receipt.id)}
           onCheckedChange={(checked) => handleSelectReceipt(receipt.id, checked as boolean)}
@@ -130,18 +130,18 @@ export default function Receipts() {
       ),
     },
     {
-      key: 'receiptNumber',
-      label: 'Receipt Number',
+      id: 'receiptNumber',
+      header: 'Receipt Number',
       sortable: true,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <div className="font-mono text-sm font-medium">{receipt.receiptNumber}</div>
       ),
     },
     {
-      key: 'merchantName',
-      label: 'Merchant',
+      id: 'merchantName',
+      header: 'Merchant',
       sortable: true,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <div>
           <div className="font-medium">{receipt.merchantName}</div>
           <div className="text-sm text-muted-foreground">{receipt.deliveryCount} deliveries</div>
@@ -149,18 +149,18 @@ export default function Receipts() {
       ),
     },
     {
-      key: 'amount',
-      label: 'Amount',
+      id: 'amount',
+      header: 'Amount',
       sortable: true,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <div className="font-mono font-semibold">{formatCurrency(receipt.amount)}</div>
       ),
     },
     {
-      key: 'period',
-      label: 'Period',
+      id: 'period',
+      header: 'Period',
       sortable: false,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <div className="text-sm">
           <div>{formatDate(receipt.periodStart)}</div>
           <div className="text-muted-foreground">to {formatDate(receipt.periodEnd)}</div>
@@ -168,16 +168,16 @@ export default function Receipts() {
       ),
     },
     {
-      key: 'issuedDate',
-      label: 'Issued Date',
+      id: 'issuedDate',
+      header: 'Issued Date',
       sortable: true,
-      render: (receipt: Receipt) => <div className="text-sm">{formatDate(receipt.issuedDate)}</div>,
+      cell: (receipt: Receipt) => <div className="text-sm">{formatDate(receipt.issuedDate)}</div>,
     },
     {
-      key: 'dueDate',
-      label: 'Due Date',
+      id: 'dueDate',
+      header: 'Due Date',
       sortable: true,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <div className="text-sm">
           <div>{formatDate(receipt.dueDate)}</div>
           {receipt.status === PaymentStatus.OVERDUE && (
@@ -187,10 +187,10 @@ export default function Receipts() {
       ),
     },
     {
-      key: 'status',
-      label: 'Status',
+      id: 'status',
+      header: 'Status',
       sortable: true,
-      render: (receipt: Receipt) => (
+      cell: (receipt: Receipt) => (
         <Badge className={getStatusColor(receipt.status)}>{getStatusLabel(receipt.status)}</Badge>
       ),
     },
@@ -210,6 +210,30 @@ export default function Receipts() {
     {
       label: 'Mark as Paid',
       onClick: handleMarkAsPaid,
+    },
+  ];
+
+  const columns = [
+    ...baseColumns,
+    {
+      id: "actions",
+      header: "Actions",
+      sortable: false,
+      cell: (receipt: Receipt) => (
+        <div className="flex flex-wrap gap-2">
+          {actions.map((action) => (
+            <Button
+              key={action.label}
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => action.onClick(receipt)}
+            >
+              {action.label}
+            </Button>
+          ))}
+        </div>
+      ),
     },
   ];
 
@@ -321,7 +345,7 @@ export default function Receipts() {
             </Select>
           </div>
 
-          <DataTable columns={columns} data={filteredReceipts} actions={actions} />
+          <DataTable columns={columns} data={filteredReceipts} />
         </CardContent>
       </Card>
 
