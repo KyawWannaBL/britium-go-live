@@ -14,6 +14,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { TariffSettingsPanel } from "@/components/settings/TariffSettingsPanel";
 
 type Language = "en" | "my" | "both";
 type SettingsTab =
@@ -49,14 +50,6 @@ type RoutePointRow = {
   address: string;
   updated: string;
   type: "highway" | "postOffice" | "poi";
-};
-
-type TariffRow = {
-  name: string;
-  base: number;
-  updated: string;
-  plan: string;
-  active: boolean;
 };
 
 type NetworkRow = {
@@ -195,12 +188,6 @@ const ROUTE_POINTS: RoutePointRow[] = [
     updated: "2026-04-08",
     type: "poi",
   },
-];
-
-const TARIFF_ROWS: TariffRow[] = [
-  { name: "Yangon → Mandalay", base: 5000, updated: "2026-04-09", plan: "Regular", active: true },
-  { name: "Yangon → Naypyitaw", base: 5000, updated: "2026-04-09", plan: "Regular", active: true },
-  { name: "Yangon → Highway Gate", base: 3000, updated: "2026-04-09", plan: "Regular", active: true },
 ];
 
 const NETWORK_ROWS: NetworkRow[] = [
@@ -458,7 +445,7 @@ export default function Settings() {
             {t("Terms", "Terms")}
           </TabButton>
           <TabButton active={activeTab === "tariff"} onClick={() => setActiveTab("tariff")} icon={<Calculator size={16} />}>
-            {t("Tariff", "Tariff")}
+            {t("Tariff", "ကုန်ကျစရိတ်နှုန်းထား")}
           </TabButton>
           <TabButton active={activeTab === "network"} onClick={() => setActiveTab("network")} icon={<Network size={16} />}>
             {t("Network", "Network")}
@@ -642,41 +629,7 @@ export default function Settings() {
       )}
 
       {activeTab === "tariff" && (
-        <div className="mt-6">
-          <Panel
-            title={t("Tariff Matrix", "Tariff Matrix")}
-            subtitle={t("Base package pricing rows.", "အခြေခံ pricing rows များ။")}
-          >
-            <div className="overflow-hidden rounded-2xl border border-black/10">
-              <table className="min-w-full text-sm">
-                <thead className="bg-white/80 text-left text-slate-600">
-                  <tr>
-                    <th className="px-4 py-3 font-black">Name</th>
-                    <th className="px-4 py-3 font-black">Base</th>
-                    <th className="px-4 py-3 font-black">Plan</th>
-                    <th className="px-4 py-3 font-black">Updated</th>
-                    <th className="px-4 py-3 font-black">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {TARIFF_ROWS.map((row) => (
-                    <tr key={row.name} className="border-t border-black/5 bg-white/50">
-                      <td className="px-4 py-3 font-semibold text-slate-900">{row.name}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.base.toLocaleString()} MMK</td>
-                      <td className="px-4 py-3 text-slate-700">{row.plan}</td>
-                      <td className="px-4 py-3 text-slate-700">{row.updated}</td>
-                      <td className="px-4 py-3">
-                        <span className="inline-flex rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-black uppercase text-emerald-700">
-                          {row.active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Panel>
-        </div>
+        <TariffSettingsPanel language={language} />
       )}
 
       {activeTab === "network" && (
