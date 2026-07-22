@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/hooks/useLanguage';
 import { getPortalBanner } from '@/lib/portalBanner';
 import { addressText, safeText } from '@/lib/displayValue';
+import { bi, workforceErrorMessage } from '@/lib/workforceI18n';
 import { PortalBanner } from '@/components/portal/PortalBanner';
 import { MapboxRoutePanel } from '@/components/workflow/MapboxRoutePanel';
 import { PhotoUploaderField } from '@/components/workflow/PhotoUploaderField';
@@ -15,8 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 
-function tt(language: string, en: string, mm: string) {
-  return language === 'mm' ? mm : en;
+function tt(_language: string, en: string, mm: string) {
+  return bi(en, mm);
 }
 function currentView(pathname: string) {
   if (pathname.includes('/route')) return 'route';
@@ -29,7 +30,32 @@ function labelize(value: unknown) {
 }
 function fmtCurrency(value: unknown) {
   const num = Number(value || 0);
-  return `${new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(Number.isFinite(num) ? num : 0)} MMK`;
+  const amount = new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(num) ? num : 0);
+
+  return `${amount} MMK / ကျပ်`;
+}
+
+function statusLabel(value: unknown) {
+  const status = String(value || '').toLowerCase();
+
+  const labels: Record<string, string> = {
+    assigned: bi('Assigned', 'တာဝန်ခွဲဝေထား'),
+    pending: bi('Pending', 'စောင့်ဆိုင်းနေ'),
+    accepted: bi('Accepted', 'လက်ခံပြီး'),
+    in_progress: bi('In Progress', 'လုပ်ဆောင်နေ'),
+    out_for_delivery: bi('Out for Delivery', 'ပို့ဆောင်နေ'),
+    delivered: bi('Delivered', 'ပို့ဆောင်ပြီး'),
+    failed: bi('Failed', 'မအောင်မြင်'),
+    cancelled: bi('Cancelled', 'ပယ်ဖျက်ထား'),
+    exception: bi('Exception', 'ပြဿနာရှိ'),
+  };
+
+  return labels[status] || bi(
+    labelize(value),
+    'အခြေအနေ'
+  );
 }
 
 export default function DriverPortal() {
@@ -45,11 +71,16 @@ export default function DriverPortal() {
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [podPhoto, setPodPhoto] = useState<string>('');
   const [podSignature, setPodSignature] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
   useEffect(() => setView(currentView(location.pathname)), [location.pathname]);
 
   async function loadData() {
     setLoading(true);
+    setErrorMessage('');
+
     try {
       const [{ data: auth }, staffRes] = await Promise.all([
         supabase.auth.getUser(),
@@ -58,13 +89,24 @@ export default function DriverPortal() {
       if (staffRes.error) throw staffRes.error;
       setStaffRows(staffRes.data || []);
 
-      let current = (staffRes.data || []).find((r: any) => r.auth_user_id === auth.user?.id || r.user_profile_id === auth.user?.id);
-      if (!current) current = (staffRes.data || []).find((r: any) => ['driver', 'rider'].includes(String(r.staff_type)));
+      const current = (staffRes.data || []).find(
+        (row: any) =>
+          row.auth_user_id === auth.user?.id ||
+          row.user_profile_id === auth.user?.id
+      );
+
       setDriver(current || null);
 
       if (!current?.id) {
         setDeliveries([]);
         setShipments([]);
+        setSelectedRowId(null);
+        setErrorMessage(
+          bi(
+            'Your Driver staff profile is not connected to this login.',
+            'ဤအကောင့်နှင့် ချိတ်ဆက်ထားသော ယာဉ်မောင်းဝန်ထမ်းအချက်အလက် မရှိပါ။'
+          )
+        );
         return;
       }
 
@@ -83,6 +125,7 @@ export default function DriverPortal() {
       console.error(e);
       setDeliveries([]);
       setShipments([]);
+      setErrorMessage(workforceErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -96,45 +139,96 @@ export default function DriverPortal() {
   const deliveredRows = rows.filter((r: any) => String(r.status) === 'delivered');
 
   async function saveProof() {
-    if (!selected) return;
-    const proof = {
-      photo_path: podPhoto || null,
-      signature_path: podSignature || null,
-      captured_at: new Date().toISOString(),
-    };
+    setNotice('');
+    setErrorMessage('');
 
-    const shipmentRes = await supabase
-      .from('shipments')
-      .update({
-        proof_of_delivery: proof,
-        status: 'delivered',
-        actual_delivery_date: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', selected.shipment_id);
+    if (!selected) {
+      setErrorMessage(
+        bi(
+          'Select a delivery first.',
+          'ပို့ဆောင်မှုတစ်ခုကို အရင်ရွေးပါ။'
+        )
+      );
+      return;
+    }
 
-    if (shipmentRes.error) throw shipmentRes.error;
+    if (!podPhoto) {
+      setErrorMessage(
+        bi(
+          'Delivery photo is required.',
+          'ပို့ဆောင်မှုဓာတ်ပုံ လိုအပ်ပါသည်။'
+        )
+      );
+      return;
+    }
 
-    const deliveryRes = await supabase
-      .from('deliveries')
-      .update({
-        status: 'delivered',
-        delivered_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', selected.id);
+    if (!podSignature) {
+      setErrorMessage(
+        bi(
+          'Recipient signature is required.',
+          'လက်ခံသူလက်မှတ် လိုအပ်ပါသည်။'
+        )
+      );
+      return;
+    }
 
-    if (deliveryRes.error) throw deliveryRes.error;
+    setSaving(true);
 
-    await loadData();
+    try {
+      const now = new Date().toISOString();
+      const proof = {
+        photo_path: podPhoto,
+        signature_path: podSignature,
+        captured_at: now,
+      };
+
+      const shipmentRes = await supabase
+        .from('shipments')
+        .update({
+          proof_of_delivery: proof,
+          status: 'delivered',
+          actual_delivery_date: now,
+          updated_at: now,
+        })
+        .eq('id', selected.shipment_id);
+
+      if (shipmentRes.error) throw shipmentRes.error;
+
+      const deliveryRes = await supabase
+        .from('deliveries')
+        .update({
+          status: 'delivered',
+          delivered_at: now,
+          updated_at: now,
+        })
+        .eq('id', selected.id);
+
+      if (deliveryRes.error) throw deliveryRes.error;
+
+      setPodPhoto('');
+      setPodSignature('');
+
+      await loadData();
+
+      setNotice(
+        bi(
+          'Delivery completed successfully.',
+          'ပို့ဆောင်မှု အောင်မြင်စွာ ပြီးစီးပါပြီ။'
+        )
+      );
+    } catch (error) {
+      setErrorMessage(workforceErrorMessage(error));
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <div className="space-y-6">
       <PortalBanner
         image={getPortalBanner(view === 'route' ? 'driver_route' : 'driver')}
-        title={tt(language, 'Driver / Rider Portal', 'Driver / Rider Portal')}
-        subtitle={tt(language, 'Live jobs, route, proof of delivery, and earnings.', 'live jobs, route, proof of delivery နှင့် earnings')}
+        title={tt(language, 'Driver / Rider Portal', 'ယာဉ်မောင်း / ပို့ဆောင်ရေးဝန်ထမ်း အက်ပ်')}
+        subtitle={tt(language, 'Live jobs, route, proof of delivery, and earnings.', 'လက်ရှိတာဝန်များ၊ လမ်းကြောင်း၊ ပို့ဆောင်မှုအထောက်အထားနှင့် ဝင်ငွေစာရင်း။')}
       >
         <Button variant="outline" onClick={loadData} disabled={loading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
@@ -142,17 +236,29 @@ export default function DriverPortal() {
         </Button>
       </PortalBanner>
 
+      {notice && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-medium text-emerald-800">
+          {notice}
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-800">
+          {errorMessage}
+        </div>
+      )}
+
       <div className="grid gap-2 rounded-2xl bg-muted p-1 md:grid-cols-4">
         <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'jobs' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/jobs')}>{tt(language, 'Active Jobs', 'လက်ရှိအလုပ်များ')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'route' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/route')}>{tt(language, 'Route', 'Route')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'proof' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/proof')}>{tt(language, 'Proof', 'Proof')}</button>
-        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'earnings' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/earnings')}>{tt(language, 'Earnings', 'Earnings')}</button>
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'route' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/route')}>{tt(language, 'Route', 'လမ်းကြောင်း')}</button>
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'proof' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/proof')}>{tt(language, 'Proof', 'အထောက်အထား')}</button>
+        <button className={`rounded-xl px-4 py-3 text-sm font-semibold ${view === 'earnings' ? 'bg-background shadow-sm' : ''}`} onClick={() => navigate('/driver/earnings')}>{tt(language, 'Earnings', 'ဝင်ငွေ')}</button>
       </div>
 
       {view === 'jobs' && (
         <Card>
           <CardHeader>
-            <CardTitle>{tt(language, 'Assigned Jobs', 'ခန့်ထားသောအလုပ်များ')}</CardTitle>
+            <CardTitle>{tt(language, 'Assigned Jobs', 'ခွဲဝေထားသောအလုပ်များ')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {rows.map((row: any) => (
@@ -163,11 +269,11 @@ export default function DriverPortal() {
                     <div className="text-sm text-muted-foreground">{safeText(row.shipment?.recipient?.name)}</div>
                     <div className="text-sm text-muted-foreground">{addressText(row.shipment?.recipient?.address)}</div>
                   </div>
-                  <Badge>{labelize(row.status)}</Badge>
+                  <Badge>{statusLabel(row.status)}</Badge>
                 </div>
                 <div className="mt-3">
                   <QrStepActionCard
-                    title={tt(language, 'Confirm Process Step', 'Process Step အတည်ပြုရန်')}
+                    title={tt(language, 'Confirm Process Step', 'လုပ်ငန်းအဆင့်ကို အတည်ပြုမည်')}
                     processStep="driver_job_progress"
                     shipmentId={row.shipment_id}
                     deliveryId={row.id}
@@ -185,7 +291,7 @@ export default function DriverPortal() {
         <div className="grid gap-6 xl:grid-cols-[320px_minmax(0,1fr)]">
           <Card>
             <CardHeader>
-              <CardTitle>{tt(language, 'Stops', 'Stops')}</CardTitle>
+              <CardTitle>{tt(language, 'Stops', 'ပို့ဆောင်ရမည့်နေရာများ')}</CardTitle>
               <CardDescription>{driver ? safeText(driver.full_name) : '—'}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
@@ -199,7 +305,7 @@ export default function DriverPortal() {
           </Card>
 
           <MapboxRoutePanel
-            title={tt(language, 'Route Preview', 'Route Preview')}
+            title={tt(language, 'Route Preview', 'လမ်းကြောင်းကြိုတင်ကြည့်ရန်')}
             destinationAddress={selected?.shipment?.recipient?.address}
             destinationCoord={selected?.shipment?.recipient?.coordinates || null}
           />
@@ -222,13 +328,24 @@ export default function DriverPortal() {
                 label={tt(language, 'Recipient Signature', 'လက်ခံသူလက်မှတ်')}
                 onUploaded={(path) => setPodSignature(path)}
               />
-              <Button onClick={saveProof}>{tt(language, 'Mark Delivered', 'ပို့ပြီးကြောင်းအတည်ပြုမည်')}</Button>
+              <Button
+                  onClick={saveProof}
+                  disabled={saving || !selected}
+                >
+                  {saving
+                    ? tt(language, 'Saving…', 'သိမ်းဆည်းနေသည်…')
+                    : tt(
+                        language,
+                        'Mark Delivered',
+                        'ပို့ပြီးကြောင်း အတည်ပြုမည်'
+                      )}
+                </Button>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <CardTitle>{tt(language, 'Selected Shipment', 'ရွေးထားသော Shipment')}</CardTitle>
+              <CardTitle>{tt(language, 'Selected Shipment', 'ရွေးထားသော ပို့ဆောင်မှု')}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
               <div>{safeText(selected?.shipment?.recipient?.name)}</div>
@@ -242,7 +359,7 @@ export default function DriverPortal() {
       {view === 'earnings' && (
         <Card>
           <CardHeader>
-            <CardTitle>{tt(language, 'Delivered Ledger', 'Delivered Ledger')}</CardTitle>
+            <CardTitle>{tt(language, 'Delivered Ledger', 'ပို့ဆောင်ပြီးစာရင်း')}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
             {deliveredRows.map((row: any) => (
