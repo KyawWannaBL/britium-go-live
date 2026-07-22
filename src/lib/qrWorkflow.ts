@@ -45,40 +45,34 @@ export async function recordQrWorkflowStep(params: {
   return data as string;
 }
 
-export async function acknowledgeWorkflow(id: string, status: 'accepted' | 'completed' | 'rejected', notes?: string) {
-  const patch: Record<string, unknown> = {
-    status,
-    notes: notes || null,
-    updated_at: new Date().toISOString(),
-  };
-
-  if (status === 'accepted') patch.accepted_at = new Date().toISOString();
-  if (status === 'completed') patch.completed_at = new Date().toISOString();
-
-  const { error } = await supabase
-    .from('workflow_acknowledgements')
-    .update(patch)
-    .eq('id', id);
+export async function acknowledgeWorkflow(
+  id: string,
+  status: 'accepted' | 'completed' | 'rejected',
+  notes?: string
+) {
+  const { data, error } = await supabase.rpc(
+    'be_update_workflow_acknowledgement',
+    {
+      p_acknowledgement_id: id,
+      p_status: status,
+      p_notes: notes || null
+    }
+  );
 
   if (error) throw error;
+
+  return data;
 }
 
 export async function bumpReminder(id: string) {
-  const { data, error } = await supabase
-    .from('workflow_acknowledgements')
-    .select('reminder_count')
-    .eq('id', id)
-    .single();
+  const { data, error } = await supabase.rpc(
+    'be_bump_workflow_acknowledgement_reminder',
+    {
+      p_acknowledgement_id: id
+    }
+  );
 
   if (error) throw error;
 
-  const { error: updateError } = await supabase
-    .from('workflow_acknowledgements')
-    .update({
-      reminder_count: Number(data?.reminder_count || 0) + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
-
-  if (updateError) throw updateError;
+  return data;
 }
