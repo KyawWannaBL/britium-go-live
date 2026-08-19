@@ -1,5 +1,14 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap");
 @import "tailwindcss";
+
+/* Protect the enterprise shell from legacy global scroll rules. */
+[data-be-app-shell="true"] {
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+ HEAD
+
 @import "tw-animate-css";
 
 before, after { box-sizing: border-box; }
@@ -17,8 +26,89 @@ html, body, #root {
 body { overflow-x: hidden; }
 button { cursor: pointer; }
 input, textarea, select { font-family: inherit; }
+4646c0320cd6b080a8a3d06ac01efadef71748b2
 
 @custom-variant dark (&:is(.dark ));
+
+ HEAD
+/*
+  Britium Rider readable dark theme.
+  Purpose: keep Rider App labels, form values, table text, badges, and buttons visible
+  on the dark navy mobile interface without crushing the layout or hiding scroll.
+*/
+
+:root {
+  color-scheme: dark;
+
+  --be-font-sans: "Poppins", "Noto Sans Myanmar", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --be-font-mono: "JetBrains Mono", Consolas, Monaco, monospace;
+
+  --radius: 0.75rem;
+
+  --background: #061524;
+  --foreground: #eef8ff;
+  --card: #0b2236;
+  --card-foreground: #eef8ff;
+  --popover: #0b2236;
+  --popover-foreground: #eef8ff;
+  --primary: #f6b84b;
+  --primary-foreground: #061524;
+  --secondary: #102b45;
+  --secondary-foreground: #eef8ff;
+  --muted: #102b45;
+  --muted-foreground: #c8dff0;
+  --accent: #f6b84b;
+  --accent-foreground: #061524;
+  --destructive: #f87171;
+  --destructive-foreground: #fff7f7;
+  --border: #1a3a5c;
+  --input: #1a3a5c;
+  --ring: #f6b84b;
+
+  --chart-1: #f6b84b;
+  --chart-2: #4ea8de;
+  --chart-3: #b985ff;
+  --chart-4: #34d399;
+  --chart-5: #38d2ff;
+
+  --sidebar: #061524;
+  --sidebar-foreground: #eef8ff;
+  --sidebar-primary: #f6b84b;
+  --sidebar-primary-foreground: #061524;
+  --sidebar-accent: #102b45;
+  --sidebar-accent-foreground: #eef8ff;
+  --sidebar-border: #1a3a5c;
+  --sidebar-ring: #f6b84b;
+}
+
+.dark {
+  --background: #061524;
+  --foreground: #eef8ff;
+  --card: #0b2236;
+  --card-foreground: #eef8ff;
+  --popover: #0b2236;
+  --popover-foreground: #eef8ff;
+  --primary: #f6b84b;
+  --primary-foreground: #061524;
+  --secondary: #102b45;
+  --secondary-foreground: #eef8ff;
+  --muted: #102b45;
+  --muted-foreground: #c8dff0;
+  --accent: #f6b84b;
+  --accent-foreground: #061524;
+  --destructive: #f87171;
+  --destructive-foreground: #fff7f7;
+  --border: #1a3a5c;
+  --input: #1a3a5c;
+  --ring: #f6b84b;
+  --sidebar: #061524;
+  --sidebar-foreground: #eef8ff;
+  --sidebar-primary: #f6b84b;
+  --sidebar-primary-foreground: #061524;
+  --sidebar-accent: #102b45;
+  --sidebar-accent-foreground: #eef8ff;
+  --sidebar-border: #1a3a5c;
+  --sidebar-ring: #f6b84b;
 
 /* 【AI HANDOVER NOTE】
 1. DESIGN PHILOSOPHY:
@@ -119,6 +209,7 @@ input, textarea, select { font-family: inherit; }
   --sidebar-accent-foreground: oklch(0.15 0.02 210);
   --sidebar-border: oklch(0.28 0.03 210);
   --sidebar-ring: oklch(0.82 0.18 45);
+4646c0320cd6b080a8a3d06ac01efadef71748b2
 }
 
 @theme inline {
@@ -154,22 +245,333 @@ input, textarea, select { font-family: inherit; }
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+ HEAD
+  --font-sans: var(--be-font-sans);
+  --font-mono: var(--be-font-mono);
+
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+4646c0320cd6b080a8a3d06ac01efadef71748b2
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/* 1. Uniform readable font. Poppins alone does not cover Burmese, so Noto Sans Myanmar is included. */
+:where(html, body, #root, main, section, article, aside, nav, header, footer, div, p, span, label, input, select, textarea, button, table, th, td, a, li) {
+  font-family: var(--be-font-sans) !important;
+}
+
+/* 2. Remove extreme bolding and stretched tracking that makes mobile labels hard to read. */
+:where(.font-black, .font-extrabold, .font-bold, .font-semibold, strong, b) {
+  font-weight: 400 !important;
+}
+
+:where(.tracking-widest, .tracking-wider, .tracking-wide) {
+  letter-spacing: normal !important;
+}
+
+/* 3. Keep normal text at 14px, with slightly larger headings. */
+:where(body, p, span, label, input, select, textarea, button, td, th, a, li) {
+  font-size: 14px !important;
+  line-height: 1.55 !important;
+}
+
+:where(h1, h2, h3, h4, .text-2xl, .text-xl, .text-lg, .text-\[20px\], .text-\[18px\]) {
+  font-size: 16px !important;
+  line-height: 1.45 !important;
+  font-weight: 500 !important;
+}
+
+:where(.text-xs, .text-\[10px\], .text-\[11px\], .text-\[12px\]) {
+  font-size: 13px !important;
+  line-height: 1.45 !important;
+}
+
+code, pre, .font-mono {
+  font-family: var(--be-font-mono) !important;
+}
+
+svg {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+/* 4. Page layout. Do not use overflow:hidden; it hides lower labels and action buttons. */
+html, body, #root {
+  min-height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: #061524 !important;
+  color: #eef8ff !important;
+  overflow-x: hidden;
+}
+
+body {
+  min-height: 100vh;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "kern";
+}
+
+main {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-height: 100vh;
+  background: #061524 !important;
+  color: #eef8ff !important;
+}
+
+main > div,
+main > section,
+main [class*="max-w-"],
+main .container,
+main .mx-auto,
+#root main > div > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+@media (min-width: 768px) {
+  main > div,
+  main > section,
+  #root main > div > div {
+    max-width: 980px !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+}
+
+/* 5. Force readable dark surfaces in rider and enterprise runtime screens. */
+:where(main .bg-white, main .bg-slate-50, main .bg-slate-100, main .bg-slate-200, main .bg-gray-50, main .bg-gray-100, main .bg-white\/70, main .bg-white\/75, main .bg-white\/76, main .bg-white\/80, main .bg-white\/90) {
+  background-color: #0b2236 !important;
+  background-image: none !important;
+  border-color: #1a3a5c !important;
+  color: #eef8ff !important;
+}
+
+:where(main .bg-slate-900, main .bg-gray-900, main .bg-black) {
+  color: #eef8ff !important;
+}
+
+:where(main .border, main .border-slate-100, main .border-slate-200, main .border-gray-100, main .border-gray-200, main .border-white\/10) {
+  border-color: #1a3a5c !important;
+}
+
+/* 6. Text color overrides for common Tailwind classes that disappear on navy backgrounds. */
+:where(main .text-black, main .text-slate-950, main .text-slate-900, main .text-slate-800, main .text-gray-950, main .text-gray-900, main .text-gray-800, main .text-neutral-900, main .text-zinc-900, main .text-\[\#0d2c54\], main .text-\[\#102b45\]) {
+  color: #eef8ff !important;
+}
+
+:where(main .text-slate-700, main .text-slate-600, main .text-slate-500, main .text-gray-700, main .text-gray-600, main .text-gray-500, main .text-muted-foreground, main .text-\[\#4d7a9b\], main .text-\[\#64748b\]) {
+  color: #c8dff0 !important;
+}
+
+:where(main .text-slate-400, main .text-gray-400, main .text-zinc-400) {
+  color: #a9c8dc !important;
+}
+
+/* 7. Labels and helper text: make them impossible to disappear. */
+:where(label, legend, .form-label, [data-slot="label"], [class*="Label"], [class*="label"]) {
+  display: block;
+  color: #d9ecf8 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+  margin-bottom: 0.35rem;
+}
+
+:where(.help-text, .form-helper, .description, [class*="hint"], [class*="Hint"]) {
+  color: #a9c8dc !important;
+  opacity: 1 !important;
+}
+
+/* 8. Forms. */
+:where(input, select, textarea) {
+  min-height: 44px;
+  width: 100%;
+  background-color: #061524 !important;
+  color: #eef8ff !important;
+  border: 1px solid #1a3a5c !important;
+  border-radius: 12px;
+  outline: none !important;
+  caret-color: #f6b84b;
+  box-shadow: none !important;
+}
+
+:where(input, select) {
+  padding: 0.65rem 0.85rem;
+}
+
+textarea {
+  min-height: 96px;
+  padding: 0.75rem 0.85rem;
+}
+
+:where(input::placeholder, textarea::placeholder) {
+  color: #8fb4cd !important;
+  opacity: 1 !important;
+}
+
+:where(input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible) {
+  border-color: #f6b84b !important;
+  outline: 2px solid rgba(246, 184, 75, 0.45) !important;
+  outline-offset: 2px;
+}
+
+:where(input:disabled, select:disabled, textarea:disabled, button:disabled) {
+  opacity: 0.65 !important;
+  cursor: not-allowed !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #eef8ff !important;
+  -webkit-box-shadow: 0 0 0 1000px #061524 inset !important;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* 9. Buttons and action links. */
+:where(button, a[role="button"], .btn) {
+  min-height: 44px;
+  text-align: center !important;
+  justify-content: center !important;
+  align-items: center !important;
+  font-weight: 500 !important;
+}
+
+:where(button span, .text-center) {
+  text-align: center !important;
+}
+
+:where(button:not(:disabled), a[role="button"]) {
+  cursor: pointer;
+}
+
+/* 10. Cards, tables, and lists. */
+:where(main article, main section, main aside, main .card, main [class*="rounded-"]) {
+  border-color: #1a3a5c;
+}
+
+:where(table) {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  color: #eef8ff !important;
+}
+
+:where(th, td) {
+  color: #eef8ff !important;
+  border-color: #1a3a5c !important;
+  vertical-align: top;
+  text-align: left !important;
+}
+
+:where(th) {
+  color: #d9ecf8 !important;
+  font-weight: 500 !important;
+  background: #102b45 !important;
+}
+
+:where(td) {
+  background: #0b2236;
+}
+
+:where(.badge, [class*="badge"], [class*="Badge"]) {
+  color: #eef8ff !important;
+  border-color: #1a3a5c !important;
+}
+
+/* 11. Rider bottom navigation and safe-area support. */
+:where(nav, aside) {
+  color: #eef8ff !important;
+}
+
+:where(.fixed.bottom-0, [class*="bottom-0"]) {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
+
+:where(.pb-24) {
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom)) !important;
+}
+
+/* 12. Image/proof capture controls. */
+:where(input[type="file"]) {
+  padding: 0.65rem;
+  color: #c8dff0 !important;
+}
+
+:where(img, video, canvas) {
+  max-width: 100%;
+  height: auto;
+}
+
+/* 13. Alignment. Keep field content left-aligned; keep buttons centered. */
+:where(th, td, label, p, h1, h2, h3, h4, input, select, textarea) {
+  text-align: left !important;
+}
+
+:where(button, button *, a[role="button"], a[role="button"] *) {
+  text-align: center !important;
+}
+
+/* 14. Scrollbars. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: #061524;
+  border-left: 1px solid #1a3a5c;
+  border-top: 1px solid #1a3a5c;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1a3a5c;
+  border-radius: 999px;
+  border: 2px solid #061524;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #f6b84b;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #1a3a5c;
+  border-radius: 999px;
+  border: 0;
+}
+
+/* 15. Base Tailwind layer. */
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-[#1a3a5c] outline-[#f6b84b]/40;
   }
   html {
     @apply scroll-smooth antialiased;
   }
   body {
+ HEAD
+    @apply bg-[#061524] text-[#eef8ff];
+
     @apply bg-background text-foreground font-sans min-h-screen;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
@@ -178,8 +580,24 @@ input, textarea, select { font-family: inherit; }
   }
   code, pre {
     @apply font-mono;
+4646c0320cd6b080a8a3d06ac01efadef71748b2
   }
   ::selection {
+ HEAD
+    background: rgba(246, 184, 75, 0.25);
+    color: #fff8e8;
+  }
+}
+
+@media (max-width: 480px) {
+  main {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  :where(main article, main section, main header) {
+    border-radius: 14px !important;
+
     @apply bg-primary/20 text-primary;
   }
   ::-webkit-scrollbar {
@@ -207,29 +625,15 @@ input, textarea, select { font-family: inherit; }
     font-weight: 600;
     line-height: 1.4;
     color: #fff;
+4646c0320cd6b080a8a3d06ac01efadef71748b2
   }
-  /* Sub-headings / table headers */
-  .be-subheading {
-    font-size: 0.75rem;    /* 12px */
-    font-weight: 500;
-    line-height: 1.4;
-    color: rgba(255,255,255,0.6);
-  }
-  /* Body copy */
-  .be-body {
-    font-size: 0.8125rem;  /* 13px */
-    font-weight: 400;
-    line-height: 1.6;
-    color: rgba(255,255,255,0.55);
-  }
-  /* Caption / micro labels */
-  .be-caption {
-    font-size: 0.6875rem;  /* 11px */
-    font-weight: 400;
-    line-height: 1.4;
-    color: rgba(255,255,255,0.35);
+
+  :where(button, a[role="button"], input, select) {
+    min-height: 46px;
   }
 }
+
+ HEAD
 
 @layer utilities {
   /* Redefine text-2xl to 20px (was 24px) — prevents oversized page titles */
@@ -262,46 +666,67 @@ input, textarea, select { font-family: inherit; }
 }
 
 /* == PRINT STYLES — waybill label printing == */
+4646c0320cd6b080a8a3d06ac01efadef71748b2
 @media print {
-  /* Hide all screen UI */
-  body > #root > * { display: none !important; }
-
-  .waybill-print-area {
-    display: block !important;
-    position: fixed;
-    inset: 0;
-    background: #fff;
-    z-index: 99999;
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
   }
 
-  .waybill-label-page {
-    page-break-after: always;
+  aside,
+  nav,
+  button,
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  main,
+  section,
+  div {
+    box-shadow: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
     page-break-inside: avoid;
-    width: 105mm;
-    min-height: 148mm;
-    margin: 0 auto;
-    padding: 0;
-    background: #fff;
-  }
-
-  .waybill-label-page:last-child {
     page-break-after: auto;
-  }
-
-  @page {
-    size: A6 portrait;
-    margin: 4mm;
-  }
-
-  * {
-    -webkit-print-color-adjust: exact;
-    print-color-adjust: exact;
   }
 }
 
-/* Screen preview of waybill area */
-.waybill-print-area {
-  display: none;
+/* Local fallback for removed tw-animate-css dependency */
+@keyframes be-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes be-slide-in-from-top {
+  from { opacity: 0; transform: translateY(-0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes be-slide-in-from-bottom {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-in {
+  animation-duration: 180ms;
+  animation-fill-mode: both;
+}
+
+.fade-in {
+  animation-name: be-fade-in;
+}
+
+.slide-in-from-top-2 {
+  animation-name: be-slide-in-from-top;
+}
+
+.slide-in-from-bottom-2 {
+  animation-name: be-slide-in-from-bottom;
 }
 
 /* UAT emergency input unlock */
