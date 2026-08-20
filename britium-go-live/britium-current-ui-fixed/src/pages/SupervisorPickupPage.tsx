@@ -1,0 +1,405 @@
+// @ts-nocheck
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, Bell, CheckCircle, ClipboardCheck, Download, Filter, RefreshCcw, Search, Truck, UserCheck } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
+
+function txt(v: any) { return String(v ?? "").trim(); }
+function normalizePickup(row: any) {
+  const pickupId = txt(row.pickup_id || row.pickup_code || row.pickup_request_id || row.id || row.request_code);
+  return {
+    id: txt(row.id || pickupId),
+    pickup_id: pickupId,
+    pickup_waybill_id: txt(row.pickup_waybill_id || row.waybill_no || row.pickup_way_id),
+    waybill_no: txt(row.waybill_no),
+    merchant_code: txt(row.merchant_code),
+    merchant_name: txt(row.merchant_name || row.customer_name || row.contact_person),
+    pickup_address: txt(row.pickup_address || row.address || row.default_pickup_address),
+    township: txt(row.township || row.pickup_township),
+    city: txt(row.city || row.pickup_city),
+    region_state: txt(row.region_state),
+    zone: txt(row.zone || row.assigned_zone),
+    branch_code: txt(row.branch_code || row.origin_branch_code),
+    expected_parcels: Number(row.expected_parcels || row.parcel_count || row.qty || 1),
+    pickup_date: txt(row.pickup_date || row.requested_pickup_date),
+    vehicle_type: txt(row.vehicle_type || row.vehicle_required),
+    pickup_status: txt(row.pickup_status),
+    workflow_stage: txt(row.workflow_stage),
+    supervisor_status: txt(row.supervisor_status),
+    rider_status: txt(row.rider_status),
+    driver_status: txt(row.driver_status),
+    helper_status: txt(row.helper_status),
+    team_acceptance_status: txt(row.team_acceptance_status),
+    assigned_rider_name: txt(row.assigned_rider_name || row.rider_name),
+    assigned_driver_name: txt(row.assigned_driver_name || row.driver_name),
+    assigned_helper_name: txt(row.assigned_helper_name || row.helper_name),
+    rider_accepted_at: txt(row.rider_accepted_at),
+    driver_accepted_at: txt(row.driver_accepted_at),
+    helper_accepted_at: txt(row.helper_accepted_at),
+    rider_rejected_at: txt(row.rider_rejected_at),
+    driver_rejected_at: txt(row.driver_rejected_at),
+    helper_rejected_at: txt(row.helper_rejected_at),
+    assigned_rider_email: txt(row.assigned_rider_email),
+    assigned_driver_email: txt(row.assigned_driver_email),
+    assigned_helper_email: txt(row.assigned_helper_email),
+    assigned_rider_id: txt(row.assigned_rider_id || row.rider_auth_id),
+    assigned_driver_id: txt(row.assigned_driver_id || row.driver_auth_id),
+    assigned_helper_id: txt(row.assigned_helper_id || row.helper_auth_id),
+    assigned_rider_code: txt(row.assigned_rider_code),
+    assigned_driver_code: txt(row.assigned_driver_code),
+    assigned_helper_code: txt(row.assigned_helper_code),
+    assigned_vehicle_id: txt(row.assigned_vehicle_id || row.assigned_fleet_id),
+    assigned_fleet_id: txt(row.assigned_fleet_id || row.assigned_vehicle_id),
+    has_unread_notification: Boolean(row.has_unread_notification),
+    created_at: txt(row.created_at),
+  };
+}
+function normalizeAssignmentStatus(status?: string) {
+  const value = txt(status).toUpperCase();
+  if (["ACCEPTED", "ACCEPTED_PICKUP", "ACCEPTED_BY_RIDER", "PICKUP_VERIFIED", "DELIVERED", "COD_SETTLED"].includes(value)) return "ACCEPTED";
+  if (["REJECTED", "FAILED", "DECLINED"].includes(value)) return "REJECTED";
+  return value || "WAITING_ACCEPTANCE";
+}
+
+function statusColor(status?: string) {
+  const value = normalizeAssignmentStatus(status);
+  if (value === "ACCEPTED") return "border-emerald-400/30 bg-emerald-500/15 text-emerald-300";
+  if (value === "REJECTED") return "border-red-400/30 bg-red-500/15 text-red-300";
+  if (value === "NOT_ASSIGNED") return "border-slate-400/20 bg-slate-500/10 text-slate-400";
+  return "border-amber-400/30 bg-amber-500/15 text-amber-300";
+}
+
+function TeamStatusCard({label,name,code,status,acceptedAt,rejectedAt}: any){
+  const assigned = Boolean(name || code);
+  const current = assigned ? normalizeAssignmentStatus(status) : "NOT_ASSIGNED";
+  const respondedAt = current === "ACCEPTED" ? acceptedAt : current === "REJECTED" ? rejectedAt : "";
+  return <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+    <div className="text-[10px] uppercase text-[#9cc2d9] font-black">{label}</div>
+    <div className="text-white font-bold mt-1">{name || code || "Not assigned"}</div>
+    <span className={`mt-2 inline-flex rounded-full border px-2 py-1 text-[10px] font-black ${statusColor(current)}`}>{current.replace(/_/g," ")}</span>
+    {respondedAt ? <div className="mt-2 text-[10px] text-[#6f91aa]">{new Date(respondedAt).toLocaleString()}</div> : null}
+  </div>;
+}
+
+function normalizeWorker(row: any, fallbackRole: "RIDER" | "DRIVER" | "HELPER") {
+  const rawRole = txt(row.role || row.workforce_role || row.employee_type || row.staff_type || fallbackRole).toUpperCase();
+  let role = fallbackRole;
+  if (rawRole.includes("RIDER")) role = "RIDER";
+  if (rawRole.includes("DRIVER")) role = "DRIVER";
+  if (rawRole.includes("HELPER")) role = "HELPER";
+  const id = txt(row.auth_user_id || row.id);
+  const code = txt(row.workforce_code || row.rider_id || row.driver_id || row.helper_id || row.employee_id || row.code || row.id);
+  const email = txt(row.email || row.user_email || row.login_email || row.auth_email);
+  const name = txt(row.full_name || row.rider_name || row.driver_name || row.helper_name || row.employee_name || row.name || row.display_name || email || code);
+  if (!id || (!code && !email)) return null;
+  return { id, code: code || email, email, name, role, status: txt(row.status || row.record_status || (row.is_active === false ? "Inactive" : "Active")), branch_code: txt(row.branch_code), phone: txt(row.phone_primary || row.phone || row.mobile) };
+}
+function normalizeFleet(row: any) {
+  const id = txt(row.fleet_id || row.vehicle_id || row.id || row.code);
+  const vehicleNo = txt(row.vehicle_no || row.plate || row.plate_no || row.vehicle_plate || row.registration_no);
+  if (!id && !vehicleNo) return null;
+  return { id: id || vehicleNo, vehicle_no: vehicleNo || id, vehicle_type: txt(row.vehicle_type || row.type), status: txt(row.status || row.fleet_status || (row.is_active === false ? "Inactive" : "Available")), branch_code: txt(row.branch_code) };
+}
+function isActiveStatus(status: any) { return !["INACTIVE", "SUSPENDED", "BLACKLISTED", "MAINTENANCE", "UNAVAILABLE"].includes(txt(status).toUpperCase()); }
+function sameBranch(masterBranch?: string, pickupBranch?: string) { if (!masterBranch || !pickupBranch) return true; return masterBranch.toUpperCase() === pickupBranch.toUpperCase(); }
+function workerValue(worker: any) { return worker.id; }
+function isVehicleEligible(vehicle: any, pickup: any) {
+  if (!isActiveStatus(vehicle.status)) return false;
+  const vehicleType = txt(vehicle.vehicle_type).toUpperCase().replace(/[^A-Z0-9]+/g, "_");
+  if (["VAN", "DELIVERY_VAN", "BIKE", "BICYCLE"].includes(vehicleType)) return true;
+  return ["MOTORBIKE", "MOTORCYCLE"].includes(vehicleType) &&
+    Boolean(vehicle.branch_code && pickup?.branch_code && sameBranch(vehicle.branch_code, pickup.branch_code));
+}
+
+export default function SupervisorPickupPage() {
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [queue, setQueue] = useState<any[]>([]);
+  const [riders, setRiders] = useState<any[]>([]);
+  const [drivers, setDrivers] = useState<any[]>([]);
+  const [helpers, setHelpers] = useState<any[]>([]);
+  const [fleets, setFleets] = useState<any[]>([]);
+  const [selectedId, setSelectedId] = useState("");
+  const [selectedRider, setSelectedRider] = useState("");
+  const [selectedDriver, setSelectedDriver] = useState("");
+  const [selectedHelper, setSelectedHelper] = useState("");
+  const [selectedFleet, setSelectedFleet] = useState("");
+  const [supervisorNote, setSupervisorNote] = useState("");
+
+  const selectedPickup = useMemo(() => queue.find((item) => item.id === selectedId || item.pickup_id === selectedId) || null, [queue, selectedId]);
+  const eligibleRiders = useMemo(() => riders.filter((row) => sameBranch(row.branch_code, selectedPickup?.branch_code)), [riders, selectedPickup]);
+  const eligibleDrivers = useMemo(() => drivers.filter((row) => sameBranch(row.branch_code, selectedPickup?.branch_code)), [drivers, selectedPickup]);
+  const eligibleHelpers = useMemo(() => helpers.filter((row) => sameBranch(row.branch_code, selectedPickup?.branch_code)), [helpers, selectedPickup]);
+  const eligibleFleets = useMemo(() => fleets.filter((row) => isVehicleEligible(row, selectedPickup)), [fleets, selectedPickup]);
+
+  const filteredQueue = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return queue.filter((item) => {
+      const dateText = String(item.pickup_date || item.created_at || "");
+      if (fromDate && dateText < fromDate) return false;
+      if (toDate && dateText > toDate) return false;
+      if (!q) return true;
+      return [item.pickup_id, item.pickup_waybill_id, item.waybill_no, item.merchant_name, item.merchant_code, item.township, item.city, item.branch_code, item.pickup_status, item.workflow_stage].filter(Boolean).join(" ").toLowerCase().includes(q);
+    });
+  }, [queue, search, fromDate, toDate]);
+
+  async function loadQueue() {
+    let viewQuery = (supabase as any).from("be_v_supervisor_pickup_queue").select("*").order("created_at", { ascending: false }).limit(150);
+    if (fromDate) viewQuery = viewQuery.gte("pickup_date", fromDate);
+    if (toDate) viewQuery = viewQuery.lte("pickup_date", toDate);
+
+    const [viewResult, liveResult] = await Promise.allSettled([
+      viewQuery,
+      (supabase as any).from("be_portal_pickup_requests").select("*").order("updated_at", { ascending: false }).limit(250),
+    ]);
+
+    const viewRows = viewResult.status === "fulfilled" && !viewResult.value.error ? (viewResult.value.data || []) : [];
+    const liveRows = liveResult.status === "fulfilled" && !liveResult.value.error ? (liveResult.value.data || []) : [];
+    if (!viewRows.length && !liveRows.length) {
+      const message = viewResult.status === "fulfilled" ? viewResult.value.error?.message : String(viewResult.reason || "");
+      throw new Error(message || "Supervisor pickup queue is unavailable.");
+    }
+
+    const liveByKey = new Map<string, any>();
+    for (const row of liveRows) {
+      for (const key of [row.pickup_id, row.pickup_way_id, row.id].filter(Boolean)) liveByKey.set(String(key), row);
+    }
+
+    const merged = viewRows.map((row: any) => {
+      const live = liveByKey.get(String(row.pickup_id || "")) || liveByKey.get(String(row.pickup_way_id || "")) || liveByKey.get(String(row.id || ""));
+      return { ...row, ...(live || {}) };
+    });
+    const seen = new Set(merged.map((row: any) => String(row.pickup_id || row.pickup_way_id || row.id)));
+    for (const row of liveRows) {
+      const key = String(row.pickup_id || row.pickup_way_id || row.id);
+      if (!seen.has(key)) merged.push(row);
+    }
+    return merged.map(normalizePickup);
+  }
+
+  async function loadMasters() {
+    let workforceRows: any[] = [];
+    try {
+      const { data, error } = await (supabase as any).from("be_mobile_workforce_accounts").select("*").order("role", { ascending: true }).order("workforce_code", { ascending: true });
+      if (error) throw error;
+      workforceRows = data || [];
+    } catch { workforceRows = []; }
+    if (!workforceRows.length) {
+      try {
+        const { data } = await (supabase as any).rpc("be_master_data_page_snapshot");
+        const snapshot = data || {};
+        workforceRows = [...(snapshot.workforce || []), ...(snapshot.workforce_accounts || []), ...(snapshot.riders || []).map((row: any) => ({ ...row, role: "RIDER" })), ...(snapshot.drivers || []).map((row: any) => ({ ...row, role: "DRIVER" })), ...(snapshot.helpers || []).map((row: any) => ({ ...row, role: "HELPER" }))];
+      } catch { workforceRows = []; }
+    }
+    let fleetRows: any[] = [];
+    for (const table of ["be_fleet_master", "be_fleet_vehicles", "fleet_master"]) {
+      try { const { data, error } = await (supabase as any).from(table).select("*"); if (error) throw error; if (data?.length) { fleetRows = data; break; } } catch {}
+    }
+    const unique = (rows: any[]) => { const seen = new Set<string>(); return rows.filter((row) => { const key = String(row.email || row.code || row.id || "").toLowerCase(); if (!key || seen.has(key)) return false; seen.add(key); return true; }); };
+    const workers = unique(workforceRows.map((row) => normalizeWorker(row, "RIDER")).filter(Boolean)).filter((row) => isActiveStatus(row.status));
+    setRiders(workers.filter((row) => row.role === "RIDER"));
+    setDrivers(workers.filter((row) => row.role === "DRIVER"));
+    setHelpers(workers.filter((row) => row.role === "HELPER"));
+    setFleets(unique(fleetRows.map(normalizeFleet).filter(Boolean)).filter((row) => isActiveStatus(row.status)));
+  }
+
+  async function loadData(showSpinner = true) {
+    if (showSpinner) setLoading(true);
+    setMessage("");
+    try {
+      const [pickupRows] = await Promise.all([loadQueue(), loadMasters()]);
+      setQueue(pickupRows);
+      if (pickupRows.length && !selectedId) setSelectedId(pickupRows[0].id || pickupRows[0].pickup_id);
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to synchronize supervisor pickup queue.");
+    } finally {
+      if (showSpinner) setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    let mounted = true;
+    const safeLoad = async () => { if (!mounted) return; await loadData(false); };
+    loadData();
+    const channel = supabase
+      .channel("supervisor-pickup-live-queue")
+      .on("postgres_changes", { event: "*", schema: "public", table: "be_portal_pickup_requests" }, safeLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "be_pickup_requests" }, safeLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "be_app_notifications" }, safeLoad)
+      .on("postgres_changes", { event: "*", schema: "public", table: "be_mobile_workforce_accounts" }, safeLoad)
+      .subscribe();
+    const timer = window.setInterval(safeLoad, 8000);
+    return () => { mounted = false; window.clearInterval(timer); supabase.removeChannel(channel); };
+  }, []);
+
+  function selectPickup(item: any) {
+    setSelectedId(item.id || item.pickup_id);
+    setSelectedRider(item.assigned_rider_id || riders.find((worker) => [worker.email, worker.code].includes(item.assigned_rider_email || item.assigned_rider_code || ""))?.id || "");
+    setSelectedDriver(item.assigned_driver_id || drivers.find((worker) => [worker.email, worker.code].includes(item.assigned_driver_email || item.assigned_driver_code || ""))?.id || "");
+    setSelectedHelper(item.assigned_helper_id || helpers.find((worker) => [worker.email, worker.code].includes(item.assigned_helper_email || item.assigned_helper_code || ""))?.id || "");
+    setSelectedFleet(item.assigned_vehicle_id || item.assigned_fleet_id || "");
+    setSupervisorNote("");
+  }
+
+  async function confirmAssignment() {
+    if (!selectedPickup) { setMessage("Please select a pickup request."); return; }
+    if (!selectedRider) { setMessage("Select an authenticated Rider."); return; }
+    if (!selectedFleet) { setMessage("Select an eligible fleet vehicle."); return; }
+    if (supervisorNote.length > 500) { setMessage("Supervisor note must be 500 characters or fewer."); return; }
+
+    setLoading(true);
+    setMessage("");
+
+    try {
+      toast.loading(`Assigning ${selectedPickup.pickup_id}...`, { id: "assign-toast" });
+
+      const { data: authData } = await supabase.auth.getUser();
+      const actorEmail = authData.user?.email;
+      if (!actorEmail) throw new Error("Authenticated supervisor identity is unavailable.");
+      const rider = riders.find((worker) => worker.id === selectedRider);
+      const driver = drivers.find((worker) => worker.id === selectedDriver);
+      const helper = helpers.find((worker) => worker.id === selectedHelper);
+      const vehicle = eligibleFleets.find((fleet) => fleet.id === selectedFleet);
+
+      const { data, error } = await (supabase as any).rpc("be_supervisor_assign_job", {
+        p_payload: {
+          pickup_id: selectedPickup.pickup_id,
+          pickup_way_id: selectedPickup.pickup_waybill_id || selectedPickup.pickup_id,
+          rider_auth_id: rider?.id || null,
+          rider_code: rider?.code || null,
+          rider_name: rider?.name || null,
+          rider_email: rider?.email || null,
+          driver_auth_id: driver?.id || null,
+          driver_code: driver?.code || null,
+          driver_name: driver?.name || null,
+          driver_email: driver?.email || null,
+          helper_auth_id: helper?.id || null,
+          helper_code: helper?.code || null,
+          helper_name: helper?.name || null,
+          helper_email: helper?.email || null,
+          vehicle_id: vehicle?.id || null,
+          vehicle_code: vehicle?.vehicle_no || null,
+          actor_email: actorEmail,
+          supervisor_note: supervisorNote.trim() || null,
+        },
+      });
+
+      if (error) throw error;
+
+      // Clear any pending notifications
+      await (supabase as any).from("be_app_notifications").update({ is_read: true, read_at: new Date().toISOString() }).eq("recipient_role", "supervisor").eq("notification_type", "PICKUP_REQUESTED").eq("pickup_id", selectedPickup.pickup_id);
+
+      toast.success(`${selectedPickup.pickup_id} Successfully Assigned!`, { id: "assign-toast" });
+      setMessage(`Assigned ${selectedPickup.pickup_id}. Rider/Driver app job is now visible.`);
+
+      setSelectedId(""); setSelectedRider(""); setSelectedDriver(""); setSelectedHelper(""); setSelectedFleet(""); setSupervisorNote("");
+      await loadData(false);
+
+    } catch (error: any) {
+      console.error(error);
+      toast.error(`Assignment failed: ${error?.message}`, { id: "assign-toast" });
+      setMessage(error?.message || "Assignment failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function downloadReport() {
+    const headers = ["pickup_id", "merchant_code", "merchant_name", "township", "city", "branch_code", "expected_parcels", "pickup_date", "pickup_status", "workflow_stage", "supervisor_status", "assigned_rider_code", "rider_status", "assigned_driver_code", "driver_status", "assigned_helper_code", "helper_status", "team_acceptance_status"];
+    const csv = [headers.join(","), ...filteredQueue.map((row) => headers.map((header) => `"${String((row as any)[header] || "").replaceAll('"', '""')}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a"); link.href = url; link.download = "supervisor-pickup-assignment-report.csv"; link.click(); URL.revokeObjectURL(url);
+  }
+
+  const errorCount = !riders.length ? 1 : 0;
+  const warningCount = (!drivers.length ? 1 : 0) + (!helpers.length ? 1 : 0) + (!fleets.length ? 1 : 0);
+
+  return (
+    <div className="space-y-6 overflow-x-hidden">
+      <div className="border-b border-[#1a3a5c] pb-4">
+        <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px] tracking-widest">SUPERVISOR PICKUP ASSIGNMENT</h1>
+        <p className="text-[#4d7a9b] text-[13px]">Live order pickup requests from Pickup Form. Assignment writes Rider/Driver/Helper into backend so mobile apps receive jobs.</p>
+      </div>
+
+      <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-2xl flex flex-col lg:flex-row gap-4 items-end">
+        <div className="w-full lg:w-auto">
+          <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1"><Filter size={12} /> From Date</label>
+          <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]" />
+        </div>
+        <div className="w-full lg:w-auto">
+          <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1"><Filter size={12} /> To Date</label>
+          <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]" />
+        </div>
+        <div className="w-full lg:flex-1">
+          <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2 flex items-center gap-1"><Search size={12} /> Search Pickup</label>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pickup ID / merchant / township..." className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]" />
+        </div>
+        <button type="button" onClick={downloadReport} className="bg-[#1a3a5c] text-[#eef8ff] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:border-[#f6b84b] border border-[#1a3a5c] flex items-center justify-center gap-2 transition-colors cursor-pointer"><Download size={14} /> Download Report</button>
+      </div>
+
+      {message ? <div className="bg-[#0b2236] border border-[#1a3a5c] p-4 rounded-2xl flex items-start gap-3 text-[#eef8ff] text-[13px]"><AlertTriangle size={16} className="text-[#f6b84b] mt-0.5 shrink-0" /><span className="break-words">{message}</span></div> : null}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.55fr)_minmax(420px,0.95fr)] gap-6 items-start">
+        <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col min-h-[560px] min-w-0">
+          <div className="p-4 border-b border-[#1a3a5c] flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+            <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest flex items-center gap-2"><ClipboardCheck size={16} className="text-[#4ea8de]" /> Live Supervisor Queue</h3>
+            <div className="flex items-center gap-3 text-[12px] text-[#4d7a9b]"><span>{filteredQueue.length} records</span><button type="button" onClick={() => loadData()} className="text-[#4ea8de] hover:text-[#f6b84b] flex items-center gap-1 uppercase tracking-widest"><RefreshCcw size={12} /> {loading ? "Syncing..." : "Sync"}</button></div>
+          </div>
+          <div className="flex-1 overflow-auto custom-scrollbar p-4 space-y-3">
+            {filteredQueue.length === 0 ? (
+              <div className="bg-[#061524] border border-[#1a3a5c] p-6 rounded-xl text-center text-[#4d7a9b] text-[13px]">{loading ? "Loading backend pickup queue..." : "No pickup requests loaded from supervisor queue."}</div>
+            ) : filteredQueue.map((item) => {
+              const active = item.id === selectedId || item.pickup_id === selectedId;
+              const assigned = Boolean(item.assigned_rider_code || item.assigned_driver_code || item.assigned_helper_code) || item.supervisor_status === "ASSIGNED" || item.pickup_status === "RIDER_ASSIGNED" || item.pickup_status === "IN_TRANSIT" || item.pickup_status === "assigned";
+              return (
+                <button key={`${item.id}-${item.pickup_id}`} type="button" onClick={() => selectPickup(item)} className={`w-full text-left bg-[#061524] border ${active ? "border-[#f6b84b]" : "border-[#1a3a5c]"} p-4 rounded-xl cursor-pointer transition-colors hover:border-[#f6b84b] min-w-0`}>
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-start gap-3 mb-3 min-w-0">
+                    <div className="min-w-0">
+                      <div className="text-[#f6b84b] text-[13px] font-bold break-words flex items-center gap-2">{item.has_unread_notification && !assigned ? <Bell size={14} className="text-[#ff4f93]" /> : null}<span>{item.pickup_id || "Missing Pickup ID"}</span></div>
+                      <div className="text-[#4ea8de] text-[11px] mt-1 break-words">{item.waybill_no ? `Waybill: ${item.waybill_no}` : null}{item.workflow_stage ? ` Stage: ${item.workflow_stage}` : null}</div>
+                    </div>
+                    <span className={`border px-2 py-1 rounded-full text-[10px] uppercase tracking-widest shrink-0 ${assigned ? "bg-[#083927] text-[#22c55e] border-[#0d6b4c]" : "bg-[#2a1934] text-[#ff4f93] border-[#ff4f93]/40"}`}>{assigned ? "Assigned" : "New Request"}</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[12px] min-w-0">
+                    <div><div className="text-[#4d7a9b] uppercase tracking-wider text-[10px]">Merchant</div><div className="text-[#eef8ff] break-words">{item.merchant_code ? `${item.merchant_code} - ` : ""}{item.merchant_name || "—"}</div></div>
+                    <div><div className="text-[#4d7a9b] uppercase tracking-wider text-[10px]">Location</div><div className="text-[#eef8ff] break-words">{[item.township, item.city, item.branch_code].filter(Boolean).join(", ") || "—"}</div></div>
+                    <div><div className="text-[#4d7a9b] uppercase tracking-wider text-[10px]">Parcels / Vehicle</div><div className="text-[#eef8ff] break-words">{item.expected_parcels || 1} / {item.vehicle_type || "Any"}</div></div>
+                  </div>
+                  <div className="text-[#4d7a9b] text-[12px] mt-3 break-words">{item.pickup_address || "No pickup address available."}</div>
+      <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <TeamStatusCard label="Rider" name={item.assigned_rider_name} code={item.assigned_rider_code} status={item.rider_status} acceptedAt={item.rider_accepted_at} rejectedAt={item.rider_rejected_at} />
+        <TeamStatusCard label="Driver" name={item.assigned_driver_name} code={item.assigned_driver_code} status={item.driver_status} acceptedAt={item.driver_accepted_at} rejectedAt={item.driver_rejected_at} />
+        <TeamStatusCard label="Helper" name={item.assigned_helper_name} code={item.assigned_helper_code} status={item.helper_status} acceptedAt={item.helper_accepted_at} rejectedAt={item.helper_rejected_at} />
+      </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="space-y-6 min-w-0">
+          <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col p-6 min-w-0">
+            <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest mb-6 border-b border-[#1a3a5c] pb-4 flex items-center gap-2"><UserCheck size={16} className="text-[#4ea8de]" /> Assignment Control</h3>
+            <div className="space-y-4 mb-6">
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Selected Pickup ID</label><input readOnly value={selectedPickup?.pickup_id || ""} placeholder="Select a pickup request" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#4d7a9b] p-3 rounded-xl outline-none text-[13px]" /></div>
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Rider</label><select value={selectedRider} onChange={(e) => setSelectedRider(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] cursor-pointer"><option value="">Select Rider</option>{eligibleRiders.map((rider) => <option key={workerValue(rider)} value={workerValue(rider)}>{rider.code} - {rider.name}{rider.email ? ` (${rider.email})` : ""}</option>)}</select></div>
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Driver</label><select value={selectedDriver} onChange={(e) => setSelectedDriver(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] cursor-pointer"><option value="">Select Driver</option>{eligibleDrivers.map((driver) => <option key={workerValue(driver)} value={workerValue(driver)}>{driver.code} - {driver.name}{driver.email ? ` (${driver.email})` : ""}</option>)}</select></div>
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Helper</label><select value={selectedHelper} onChange={(e) => setSelectedHelper(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] cursor-pointer"><option value="">Select Helper</option>{eligibleHelpers.map((helper) => <option key={workerValue(helper)} value={workerValue(helper)}>{helper.code} - {helper.name}{helper.email ? ` (${helper.email})` : ""}</option>)}</select></div>
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Vehicle / Fleet</label><select value={selectedFleet} onChange={(e) => setSelectedFleet(e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] cursor-pointer"><option value="">Select Vehicle</option>{eligibleFleets.map((fleet) => <option key={fleet.id} value={fleet.id}>{fleet.vehicle_no}{fleet.vehicle_type ? ` - ${fleet.vehicle_type}` : ""}</option>)}</select></div>
+              <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">Supervisor Note</label><textarea value={supervisorNote} onChange={(e) => setSupervisorNote(e.target.value)} maxLength={500} rows={4} placeholder="Route, urgency, parcel handling instruction..." className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px] resize-none" /><div className="text-[#4d7a9b] text-[11px] mt-1">{supervisorNote.length}/500</div></div>
+            </div>
+            <button type="button" disabled={loading || !selectedPickup || !selectedRider || !selectedFleet} onClick={confirmAssignment} className="w-full bg-[#f6b84b] disabled:opacity-50 disabled:cursor-not-allowed text-[#061524] py-3 rounded-xl text-[12px] font-black uppercase tracking-[0.1em] hover:bg-[#ffdb99] hover:shadow-[0_0_20px_rgba(246,184,75,0.5)] transition-all cursor-pointer flex items-center justify-center gap-2">{loading ? <RefreshCcw size={14} className="animate-spin" /> : <Truck size={16} />} Confirm Dispatch →</button>
+          </div>
+          <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-2xl">
+            <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest mb-4 flex items-center gap-2"><CheckCircle size={16} className="text-[#4ea8de]" /> Go-Live Checks</h3>
+            <div className="flex flex-wrap gap-2 mb-4 text-[11px] uppercase tracking-widest"><span className="bg-[#08251b] text-[#22c55e] border border-[#0d6b4c] px-3 py-1 rounded-full">Errors: {errorCount}</span><span className="bg-[#30250b] text-[#f6b84b] border border-[#f6b84b]/40 px-3 py-1 rounded-full">Warnings: {warningCount}</span></div>
+            <div className="space-y-3">{[["Supervisor queue source", "be_v_supervisor_pickup_queue", "OK"], ["Pickup request selected", selectedPickup?.pickup_id || "Select a pending pickup request.", selectedPickup?.pickup_id ? "OK" : "WARN"], ["Field-team connection", selectedRider || selectedDriver || (riders.length || drivers.length ? "Active riders/drivers loaded." : "No active rider or driver loaded."), selectedRider || selectedDriver || riders.length || drivers.length ? "OK" : "ERROR"], ["Helper app connection", helpers.length ? "Helpers loaded." : "Helper optional.", helpers.length ? "OK" : "WARN"], ["Fleet master", selectedFleet || (fleets.length ? "Fleet records loaded." : "Fleet optional."), selectedFleet || fleets.length ? "OK" : "WARN"], ["Supervisor note length", `${supervisorNote.length}/500`, supervisorNote.length <= 500 ? "OK" : "ERROR"]].map(([label, detail, status]) => <div key={label} className="bg-[#061524] border border-[#1a3a5c] p-3 rounded-xl min-w-0"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="text-[#eef8ff] text-[12px] uppercase tracking-wider break-words">{label}</div><div className="text-[#4d7a9b] text-[12px] mt-1 break-words">{detail}</div></div><span className={`text-[10px] font-black px-2 py-1 rounded-full border shrink-0 ${status === "OK" ? "text-[#22c55e] border-[#0d6b4c] bg-[#08251b]" : status === "ERROR" ? "text-[#ff4f93] border-[#ff4f93]/40 bg-[#2a1934]" : "text-[#f6b84b] border-[#f6b84b]/40 bg-[#30250b]"}`}>{status}</span></div></div>)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

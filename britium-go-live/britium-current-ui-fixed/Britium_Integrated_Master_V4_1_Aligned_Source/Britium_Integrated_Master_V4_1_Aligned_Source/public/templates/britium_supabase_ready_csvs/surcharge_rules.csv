@@ -1,0 +1,4 @@
+surcharge_code,version_code,surcharge_type,state_region_code,township_code,zone_label,amount_mmk,percent,start_date,end_date,is_active,notes
+FUEL-BASE,TRF-RESTORE-2026-05,FUEL,,,,,,2026-05-07,,true,Fill amount_mmk or percent if fuel surcharge applies
+REMOTE-BASE,TRF-RESTORE-2026-05,REMOTE_AREA,,,,,,2026-05-07,,true,Fill for remote township surcharge amount
+HOLIDAY-BASE,TRF-RESTORE-2026-05,HOLIDAY,,,,,,2026-05-07,,false,Activate during holiday peak periods only

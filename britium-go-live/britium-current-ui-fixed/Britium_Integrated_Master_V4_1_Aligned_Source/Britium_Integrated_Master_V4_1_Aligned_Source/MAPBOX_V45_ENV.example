@@ -1,0 +1,2 @@
+# Public Mapbox token only. Never place a secret token in VITE_* variables.
+VITE_MAPBOX_ACCESS_TOKEN=pk.replace_with_your_public_mapbox_token

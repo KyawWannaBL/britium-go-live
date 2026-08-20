@@ -1,0 +1,8 @@
+SUPABASE SQL EDITOR INSTRUCTION
+
+Do not paste a file path into SQL Editor. PostgreSQL executes SQL text, not local paths.
+
+1. Open sql/20260802_financial_v2_weight_surcharge_all_merchants_v61_3_2.sql in a text editor.
+2. Select all and copy the complete SQL contents.
+3. Paste the contents into Supabase SQL Editor and run once.
+4. Then open and run the complete contents of sql/verify_financial_v2_weight_surcharge_all_merchants_v61_3_2.sql.

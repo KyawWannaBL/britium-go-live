@@ -1,0 +1,7 @@
+﻿STAMP="$(date -u +%Y%m%d%H%M%S)"
+SQL_FILE="supabase/migrations/${STAMP}_deliveryway_correct_model.sql"
+
+powershell.exe -NoProfile -Command \
+  "Get-Clipboard | Set-Content -Encoding UTF8 '$SQL_FILE'"
+
+echo "CREATED: $SQL_FILE"

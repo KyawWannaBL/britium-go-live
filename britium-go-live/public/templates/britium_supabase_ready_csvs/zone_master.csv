@@ -1,0 +1,15 @@
+state_region_code,state_region_name_en,state_region_name_mm,suggested_zone_group,zone_label_final,notes
+MMR017,Ayeyarwady,ဧရာဝတီတိုင်းဒေသကြီး,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import
+MMR111,Bago,ပဲခူးတိုင်းဒေသကြီး,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import
+MMR004,Chin,ချင်းပြည်နယ်,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR001,Kachin,ကချင်ပြည်နယ်,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR002,Kayah,ကယားပြည်နယ်,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR003,Kayin,ကရင်ပြည်နယ်,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR009,Magway,မကွေးတိုင်းဒေသကြီး,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import
+MMR010,Mandalay,မန္တလေးတိုင်းဒေသကြီး,MDY_METRO_REVIEW,,Review/approve final zone before import
+MMR011,Mon,မွန်ပြည်နယ်,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import
+MMR018,Nay Pyi Taw,နေပြည်တော်,NPT_REVIEW,,Review/approve final zone before import
+MMR012,Rakhine,ရခိုင်ပြည်နယ်,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import
+MMR005,Sagaing,စစ်ကိုင်းတိုင်းဒေသကြီး,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR222,Shan,ရှမ်းပြည်နယ်,UPPER_BORDER_REVIEW,,Review/approve final zone before import
+MMR006,Tanintharyi,တနင်္သာရီတိုင်းဒေသကြီး,LOWER_MYANMAR_REVIEW,,Review/approve final zone before import

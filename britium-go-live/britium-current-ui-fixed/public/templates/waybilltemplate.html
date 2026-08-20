@@ -1,0 +1,40 @@
+Administrator@DESKTOP-HJREAI3 MINGW64 /d/britium-go-live/rider_app (recreate-rider-app-systematic-uxui-complete)
+$ grep -R "be_rider_pickup_verification_queue\|be_rider_live_map_snapshot\|be_update_rider_live_location\|be_save_pickup_parcel_verification\|be_submit_pickup_parcel_verification" -n src
+
+grep -R "/rider/dashboard\|/rider/pickups\|/rider/pickup/:pickupId\|/rider/delivery\|/rider/delivery-routes\|/rider/delivery-proof\|/rider/live-map\|/rider/settlement\|/rider/offline-sync\|/rider/support" -n src/App.tsx
+
+grep -R "Offline Sync\|Routes\|Pickups\|Delivery\|Live Map\|Settlement\|Support" -n src/components/rider/RiderAppShell.tsx
+src/lib/gpsCapture.ts:139:      name: "be_update_rider_live_location",
+src/lib/gpsCapture.ts:301:    "be_rider_live_map_snapshot",
+src/lib/riderAssignmentApi.ts:178:  const { data, error } = await (supabase as any).rpc("be_rider_live_map_snapshot", {
+src/lib/riderAssignmentApi.ts:246:  const { data, error } = await (supabase as any).rpc("be_update_rider_live_location", {
+src/lib/riderCoreApi.ts:182:  const { data, error } = await (supabase as any).rpc("be_rider_pickup_verification_queue", {
+src/lib/riderCoreApi.ts:194:  const { data, error } = await (supabase as any).rpc("be_rider_live_map_snapshot", {
+src/lib/riderCoreApi.ts:276:  const { data, error } = await (supabase as any).rpc("be_update_rider_live_location", {
+src/lib/riderOfflineSync.ts:116:      const { error } = await (supabase as any).rpc("be_update_rider_live_location", {
+src/lib/riderOfflineSync.ts:148:      const { error } = await (supabase as any).rpc("be_save_pickup_parcel_verification", {
+src/lib/riderOfflineSync.ts:163:      const { error } = await (supabase as any).rpc("be_submit_pickup_parcel_verification", {
+src/pages/PickupDetailPage.parcel_level_verification.tsx:194:      const { data, error } = await supabase.rpc("be_submit_pickup_parcel_verification", {
+src/pages/PickupDetailPage.tsx:194:      const { data, error } = await supabase.rpc("be_submit_pickup_parcel_verification", {
+src/pages/PickupDetailPage1.tsx:291:      const { data, error } = await supabase.rpc("be_save_pickup_parcel_verification", {
+src/pages/PickupDetailPage1.tsx:365:      const { data, error } = await supabase.rpc("be_submit_pickup_parcel_verification", {
+src/pages/rider/PickupDetailPage.tsx:267:      const { data, error } = await supabase.rpc("be_save_pickup_parcel_verification", {
+src/pages/rider/PickupDetailPage.tsx:333:      const { data, error } = await supabase.rpc("be_submit_pickup_parcel_verification", {
+src/pages/RiderPickupDetailPage.tsx:185:      const { data, error } = await (supabase as any).rpc("be_save_pickup_parcel_verification", {
+src/pages/RiderPickupDetailPage.tsx:228:      const { data, error } = await (supabase as any).rpc("be_submit_pickup_parcel_verification", {
+src/README_RIDER_LIVE_MAP_GPS_SYNC.md:98:- `be_rider_live_map_snapshot(...)`
+28:          <Route path="/" element={<Navigate to="/rider/dashboard" replace />} />
+29:          <Route path="/rider" element={<Navigate to="/rider/dashboard" replace />} />
+30:          <Route path="/rider/dashboard" element={<RiderDashboardPage />} />
+31:          <Route path="/rider/pickups" element={<RiderPickupsPage />} />
+32:          <Route path="/rider/pickup/:pickupId" element={<RiderPickupDetailPage />} />
+33:          <Route path="/rider/delivery" element={<RiderDeliveryPage />} />
+34:          <Route path="/rider/live-map" element={<RiderLiveMapPage />} />
+35:          <Route path="/rider/settlement" element={<RiderSettlementPage />} />
+37:          <Route path="/rider/support" element={<RiderSupportPage />} />
+38:          <Route path="*" element={<Navigate to="/rider/dashboard" replace />} />
+16:  { to: "/rider/pickups", label: "Pickups", icon: PackageCheck },
+17:  { to: "/rider/delivery", label: "Delivery", icon: Truck },
+18:  { to: "/rider/live-map", label: "Live Map", icon: MapPinned },
+19:  { to: "/rider/settlement", label: "Settlement", icon: WalletCards },
+20:  { to: "/rider/support", label: "Support", icon: Headphones },

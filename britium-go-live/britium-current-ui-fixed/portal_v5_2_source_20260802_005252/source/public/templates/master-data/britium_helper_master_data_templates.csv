@@ -1,0 +1,8 @@
+﻿Helper_Master (EN),,,,,
+Helper master data used for delivery/warehouse manpower assignment.,,,,,
+helper_id,helper_name,phone_primary,assigned_zone,employment_type,status
+HLP001,U Moe Sat Zin Htun,09-975 135 311,"Hlaing Thar Yar,Insein",Permanent,Active
+HLP002,U Pyae Phyo Kyaw ,09-750 629 255,"Hlaing , Mayangon, Kamayut",Permanent,Active
+HLP003,U Htut Khaung Win,09-693 057 638,"Thaketa,Mingalartaung Nyunt,Tamwe",Contract,Active
+HLP004,U John Toe Lwin,09-979 796 688,"Shwe Pyi Thar , Mingalardon , North Okkalapa",Contract,Active
+HLP005,U Zaw Thet Paing,09-798 775 120,Downtown,Contract,Active

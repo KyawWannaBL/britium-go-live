@@ -1,0 +1,39 @@
+CODE REVIEW — DATA ENTRY MINIMAL PAYMENT MATRIX V61.5
+
+FILES
+- DataEntryFinancialV2Page.tsx
+- sql/20260803_financial_v2_all_payment_types_v61_5.sql
+- sql/verify_financial_v2_all_payment_types_v61_5.sql
+- sql/rollback_financial_v2_all_payment_types_v61_5.sql
+- apply_data_entry_minimal_payment_matrix_v61_5.mjs
+- verify_data_entry_minimal_payment_matrix_v61_5.mjs
+- verify_dist_data_entry_minimal_payment_matrix_v61_5.mjs
+
+FRONTEND REVIEW
+PASS: TypeScript/TSX syntax transpilation using TypeScript 5.8.3.
+PASS: Installer tested against a mock repository and creates a timestamped backup.
+PASS: Source verifier passed 22/22 markers.
+PASS: Main card does not render customer_id, merchant_id, status, CBM, other surcharge, merchant charges or credits.
+PASS: Weight formula appears before the final summary.
+PASS: Review sheet hides system columns by default and can show all 50.
+PASS: No direct financial-table upsert detected.
+PASS: Financial write environment default remains false.
+
+BACKEND REVIEW
+- Replaces only be_calculate_parcel_financial_v2.
+- Backs up the previous function definition before replacement.
+- Preserves V61.4.1 township alias resolution.
+- Supports all six canonical amount-entry types, including OPAQUE_COD_COLLECTION.
+- Uses backend-calculated weight/CBM/other surcharge once.
+- Keeps merchant-paid delivery out of receiver COD and recovers it from merchant settlement.
+- Self-tests six payment types using North Dagon STANDARD, 10 kg.
+- Preserves MUTATION_SHADOW.
+- Does not update tariff rows or historical financial rows.
+
+NOT YET EXECUTED IN THE USER'S ENVIRONMENT
+- V61.5 production SQL migration
+- V61.5 production SQL verifier
+- Actual portal npm build
+- Actual compiled-dist verifier
+- Vercel production deployment
+- Browser acceptance test

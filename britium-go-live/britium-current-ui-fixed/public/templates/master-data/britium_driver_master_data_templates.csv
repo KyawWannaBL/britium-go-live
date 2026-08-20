@@ -1,0 +1,9 @@
+﻿Driver_Master (EN),,,,,,
+Driver master data used for dispatch and fleet assignment.,,,,,,
+driver_id,driver_name,phone_primary,license_no,license_expiry_date,assigned_fleet_id,status
+DRV001,Ko Wai Phyo Lwin,09-260 741 691,D/00138/12,07.05.2027,"Hlaing Thar Yar , Insein",Active
+DRV002,Ko Tun Min Aung,09-942 540 630,E/01923/25,23.06.2028,"Thaketa,Mingalartaung Nyunt,Tamwe",Active
+DRV003,Aung Zaw Moe ,09-750 099 581,B/06711/23,16.02.2028,Downtown,Active
+DRV004,Ko Wai Yan Phyo ,09-757 052 761,B/08656/19,05.12.2029,"Shwe Pyi Thar , Mingalardon , North Okkalapa",Active
+DRV005,Ko Kyaw Myo Aung ,09-770 696 670,B/05214/18,25.5.2028,"Mayangone, Hlaing , Kamayut",Active
+DRV006,Win Naing Tun,09-679 874 786,B/19817/22,22.4.2027,"Dagon Seinkkan, South Dagon",Active

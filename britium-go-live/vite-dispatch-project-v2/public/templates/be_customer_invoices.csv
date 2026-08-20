@@ -1,0 +1,2 @@
+updated_at,invoice_date,invoice_amount,delivery_fee,cod_amount,payload,created_at,merchant_code,merchant_name,pickup_way_id,delivery_way_id,invoice_status,invoice_id
+2026-06-19 03:00:00+06:30,6/19/2026,5000,500,1000,{},2026-06-19 03:00:00+06:30,BBG,BBG Merchant,P0619-BBG-0001,D0619-BBG-0001,pending,INV0619-BBG-0001

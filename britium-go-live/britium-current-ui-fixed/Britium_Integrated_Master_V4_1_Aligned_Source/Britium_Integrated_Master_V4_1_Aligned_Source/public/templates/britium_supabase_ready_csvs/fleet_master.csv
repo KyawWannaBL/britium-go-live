@@ -1,0 +1,6 @@
+fleet_id,vehicle_no,vehicle_type,capacity_kg,capacity_cbm,assigned_driver_id,ownership_type,insurance_expiry_date,status,zone_note
+FLT001,6H-7397,Van,700,4.5,,Owned,2025-09-11,Assigned,Aungmingalar highway bus stop — nearby cargo pickup
+FLT002,4S-1626,Mini Truck,850,4,,Owned,2025-06-19,Assigned,Zone 1
+FLT003,2Q-6524,Mini Truck,850,4,,Owned,2025-08-01,Assigned,Zone 2
+FLT004,7R-1473,Mini Truck,780,1.2,,Owned,2025-07-05,Assigned,Dagonthiri highway bus stop — nearby cargo pickup
+FLT005,9R-4431,Van,300,3,,Owned,2026-07-05,Assigned,Zone 3

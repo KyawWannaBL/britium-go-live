@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+*.apk
+*.mp4
+*.zip
+.*.bak
+.env
+.env*
+backups/
+.env.admin
+.env.production
+.env.uat
+
+.vercel
+.env*.local
+# Development backups
+_archive_phase_history/
+*.bak*
+*.backup*
+*.before*
+
+# Development backups
+_archive_old_versions/
+*.bak*
+*.backup*
+*.before*

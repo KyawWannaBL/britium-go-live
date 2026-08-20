@@ -1,0 +1,9 @@
+Package: Britium Integrated Master V4.1 Aligned Source
+Build: BRITIUM_INTEGRATED_MASTER_V4_1_2026_07_31
+Created UTC: 2026-07-31T12:25:09Z
+Source archive: britium-current-ui-fixed(2).zip
+Conformance checks: 50 passed, 0 failed, 3 deployment warnings
+Full production build: requires clean Linux npm install and staging Supabase deployment
+
+Files: 894
+Uncompressed size: 29M

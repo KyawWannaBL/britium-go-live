@@ -1,0 +1,35 @@
+{
+  "build": "PORTAL_DATA_ENTRY_WEIGHT_SURCHARGE_PASS_THROUGH_V61_3_INSTALL_2026_08_02",
+  "patch_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "6a4b3b907354d4de779856ac7da4b864a1b7892fb3ba289bfb2cc61abac8ade2"
+  },
+  "accepted_current_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": [
+      "460c5be4f2b1c4ec6bda0ebc6d1099c2c518dd4a5f8da28285d7980bb231b61d"
+    ]
+  },
+  "required_existing_files": [
+    "package.json",
+    "src/App.tsx",
+    "src/lib/dataEntryFinancialV2Api.ts",
+    "src/data/townshipTariffDirectory.ts"
+  ],
+  "confirmed_business_rule": {
+    "amount_type": "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
+    "receiver_collection": "item_price + merchant_declared_delivery + weight_surcharge + cbm_surcharge + other_surcharge + additional_customer_charge",
+    "britium_entitlement": "base_tariff + weight_surcharge + cbm_surcharge + other_surcharge - commitment_refund",
+    "merchant_settlement": "item_price + (customer_delivery_component - britium_net_entitlement) + other_merchant_credits - merchant_payable_charges",
+    "example": {
+      "item_price": 50000,
+      "merchant_declared_delivery": 6000,
+      "weight_kg": 10,
+      "weight_surcharge": 3500,
+      "receiver_cod": 59500,
+      "britium_entitlement": 8000,
+      "merchant_settlement": 51500
+    }
+  },
+  "township_record_count": 356,
+  "backend_sql_required": true,
+  "financial_writes_enabled_by_patch": false
+}

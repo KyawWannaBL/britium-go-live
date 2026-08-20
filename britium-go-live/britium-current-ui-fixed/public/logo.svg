@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 40" width="120" height="40">
+  <rect width="120" height="40" rx="6" fill="#0A1628"/>
+  <text x="10" y="26" font-family="Arial, sans-serif" font-size="15" font-weight="800" fill="#F5C842" letter-spacing="1">BRITIUM</text>
+  <text x="79" y="26" font-family="Arial, sans-serif" font-size="8" font-weight="500" fill="rgba(255,255,255,0.55)" letter-spacing="0.5">EXPRESS</text>
+  <rect x="75" y="10" width="1" height="20" fill="rgba(245,200,66,0.3)"/>
+</svg>

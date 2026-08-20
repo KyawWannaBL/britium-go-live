@@ -1,0 +1,98 @@
+{
+  "version": "testing-frontend-fallback",
+  "description": "Fallback logistics rules for testing build. Production dropdowns should load from public.be_master_dropdown_snapshot.",
+  "dropdowns": {
+    "severity": [
+      "low",
+      "medium",
+      "high",
+      "critical"
+    ],
+    "process_type": [
+      "PICKUP",
+      "WAREHOUSE",
+      "DELIVERY",
+      "FINANCE"
+    ],
+    "vehicle_type": [
+      "bike",
+      "car",
+      "van",
+      "truck"
+    ],
+    "payment_terms": [
+      "prepaid",
+      "cod",
+      "monthly_credit"
+    ],
+    "business_type": [
+      "B2C",
+      "B2B",
+      "Marketplace",
+      "Retail"
+    ]
+  },
+  "processStatuses": [
+    {
+      "process_type": "PICKUP",
+      "status_code": "REQUESTED",
+      "status_name_en": "Requested"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "ASSIGNED",
+      "status_name_en": "Assigned"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKED_UP",
+      "status_name_en": "Picked Up"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "RECEIVED",
+      "status_name_en": "Received"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "HANDOVER_READY",
+      "status_name_en": "Handover Ready"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "WAYPLANNED",
+      "status_name_en": "Wayplanned"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERED",
+      "status_name_en": "Delivered"
+    }
+  ],
+  "exceptionRules": [
+    {
+      "process_type": "PICKUP",
+      "exception_code": "CUSTOMER_NOT_AVAILABLE",
+      "exception_name_en": "Customer not available",
+      "severity": "medium"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "exception_code": "DAMAGED_PARCEL",
+      "exception_name_en": "Damaged parcel",
+      "severity": "high"
+    },
+    {
+      "process_type": "DELIVERY",
+      "exception_code": "ADDRESS_NOT_FOUND",
+      "exception_name_en": "Address not found",
+      "severity": "medium"
+    },
+    {
+      "process_type": "DELIVERY",
+      "exception_code": "CUSTOMER_REJECTED",
+      "exception_name_en": "Customer rejected",
+      "severity": "high"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+file_name,suggested_table_name,source_sheet,data_rows,columns,primary_key_candidate,blank_primary_key_values,notes
+merchant_master.csv,merchant_master,Merchant_Master (EN),53,20,merchant_code,0,Dropped the unnamed duplicate column U; default_pickup_address is retained in column M.
+rider_master.csv,rider_master,Rider_Master (EN),9,7,rider_id,0,
+driver_master.csv,driver_master,Driver_Master (EN),4,7,driver_id,0,
+helper_master.csv,helper_master,Helper_Master (EN),3,6,helper_id,0,
+employee_master.csv,employee_master,Employee_Master (EN),18,8,employee_id,3,Blank employee_id values are preserved because the workbook says system-generated IDs may be left blank.
+fleet_master.csv,fleet_master,Fleet_Master (EN),5,10,fleet_id,0,
+service_types.csv,service_types,Service_Types (EN),4,5,service_type,0,
+weight_brackets.csv,weight_brackets,Weight_Brackets (EN),5,4,weight_bracket_code,0,
+vehicle_capacity.csv,vehicle_capacity,Vehicle_Capacity (EN),5,6,vehicle_code,0,
+zone_master.csv,zone_master,Zone_Master (EN),14,6,state_region_code,0,
+cod_fee_rules.csv,cod_fee_rules,COD_Fee_Rules (EN),2,13,rule_code,0,
+surcharge_rules.csv,surcharge_rules,Surcharge_Rules (EN),3,12,surcharge_code,0,
+township_master.csv,township_master,Township_Master,356,7,township_code,0,This sheet already used row 1 as the header; it was exported without title rows.
+cargo_dropoff_rate.csv,cargo_dropoff_rate,Cargo_Dropoff_Rate (EN),1,8,dropoff_code,0,

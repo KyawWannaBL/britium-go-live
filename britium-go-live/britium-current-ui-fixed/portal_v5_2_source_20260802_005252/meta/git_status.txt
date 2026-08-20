@@ -1,0 +1,1 @@
+fatal: not a git repository: D:/britium-go-live/.git/worktrees/enterprise_portal_clean_202606240619

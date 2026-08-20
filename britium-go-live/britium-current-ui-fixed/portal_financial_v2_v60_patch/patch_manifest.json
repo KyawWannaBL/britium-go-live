@@ -1,0 +1,43 @@
+{
+  "build": "PORTAL_FINANCIAL_V2_V60_2026_08_02",
+  "source_snapshot_sha256": "095fbedb3b60882a812b2410c77628c23de4615e597d41e2c61de67fc3690541",
+  "patch_hashes": {
+    "public/templates/Britium_Data_Entry_Production_Template.csv": "b7348b98e8e9b7611757d4aed3e423fd38253c659831a463250db9cc7d4c21e0",
+    "public/templates/Britium_Data_Entry_Production_Template.xlsx": "59c59395ec7409d83bfeb0401cb82dec23a8d2df86f0cb6bfdf9f6fb381b13c4",
+    "public/templates/Britium_Merchant_Customer_Production_Template.csv": "3790b97c2b05942b0610a0b29f7cfeedbc7cdeab5155d1c0b89ebda891f4bfca",
+    "public/templates/Britium_Merchant_Customer_Production_Template.xlsx": "b421a7f286817c258637600d31bee2771c7b764241c4de321a0d4c1984378f3d",
+    "public/templates/Britium_Warehouse_Scan_Production_Template.csv": "e729caff862761cb138bbb818fdac31d0948749f73551a831420554056e62b93",
+    "public/templates/Britium_Warehouse_Scan_Production_Template.xlsx": "52b3b080510f5ed941dfbe99b7f80cfb52caa14a64d0bc38d7dad946aee80aa7",
+    "public/templates/parcel.xlsx": "59c59395ec7409d83bfeb0401cb82dec23a8d2df86f0cb6bfdf9f6fb381b13c4",
+    "src/App.tsx": "74acd9c11a75c2eb73f8fe5f3133533f8edefad6cdaa528cfddd66d6ca79c3e4",
+    "src/components/system/EnvironmentBadge.tsx": "962c15f5c56fbfc6bc9feb8b2c9829202cbb5473f230b8e44864012cbacbad8e",
+    "src/lib/britiumGoLiveTemplateSchemas.ts": "5e6d72cf1fb62ce3219d73f9adcda06522147c1d98e38ec6b96b13d1171b0468",
+    "src/lib/dataEntryFinancialV2Api.ts": "3b51bc1376323864bca5f12fbefd2c61503fd5447489894b8b9b915058f215be",
+    "src/main.tsx": "5ba7bca1cb3f2a1e613426dd0c86fd0abacc64814192992afb28172467db656c",
+    "src/pages/DataEntryFinancialV2Page.tsx": "9f5820feff8769989cf82883c490da9a1d371c496289befea3680b30095afe0d",
+    "src/pages/GoLiveTemplateCenterPage.tsx": "9de8c65c8656d624840c5fec4e967edc517aec3e1e42b5d05e7be8908fe337ee",
+    "src/pages/Login.tsx": "15b2c654bde9184dcf14c811d2f857b0692a1ab6a9a1b0e9f75bac244307ace4",
+    "src/pages/WaybillStudioPage.tsx": "15a5368d8fb1578ba09ddfab3c56073791c70153a4a26f4bfd0635bedcf3f2a5"
+  },
+  "original_hashes": {
+    "src/App.tsx": "4b8c8410769026d7ca59e6f0920a28c2ddf269df2b0f68ba812b3ca866cfba93",
+    "src/main.tsx": "5045e469d4ae3ae935e511971d04867e73c2fb0e8170b0380a4aaf6e4b6957bf",
+    "src/components/system/EnvironmentBadge.tsx": "59d4c4f8b359d71a080054fadb6f87b7ebc95756cab18573fb5b8177efb9f84f",
+    "src/pages/Login.tsx": "817529b273500cdfffab3213bf3a2dba85a4deffaa038f8e28f8a2096ac83c70",
+    "src/pages/GoLiveTemplateCenterPage.tsx": "b4dc3b659a416beda06d6dd512dcc90f4a61e53c6b127a1affb0edb89be7c99c",
+    "src/lib/britiumGoLiveTemplateSchemas.ts": "3dc662683cfc247900183614c06fb622802f6d4587a45cf760060c87b063bc3c",
+    "src/pages/WaybillStudioPage.tsx": "31ca6b76272aa4a29de6744ba8b5525cef7dccc97e0f8a6f15448b87d73e7f92",
+    "public/templates/parcel.xlsx": "8936ba05b81d711f890ed59ec03e958b39efae63aaa09d477996ea3c4221a869"
+  },
+  "retired_paths": [
+    "public/uat.html",
+    "public/uat-build-check.txt",
+    "public/templates/uat_accounts.csv",
+    "public/templates/Britium_Data_Entry_UAT_GoLive_Template.csv",
+    "public/templates/Britium_Data_Entry_UAT_GoLive_Template.xlsx",
+    "public/templates/Britium_Merchant_Customer_Upload_UAT_Template.csv",
+    "public/templates/Britium_Merchant_Customer_Upload_UAT_Template.xlsx",
+    "public/templates/Britium_Warehouse_Scan_UAT_GoLive_Template.csv",
+    "public/templates/Britium_Warehouse_Scan_UAT_GoLive_Template.xlsx"
+  ]
+}

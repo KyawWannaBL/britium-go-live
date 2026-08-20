@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">britium-express-delivery</string>
+    <string name="title_activity_main">britium-express-delivery</string>
+    <string name="package_name">com.britium.express</string>
+    <string name="custom_url_scheme">com.britium.express</string>
+</resources>

@@ -1,0 +1,17 @@
+Role,Email,Role ID,Authority Level,User Type,Default Landing Path,Must Change Password,Password
+Super Admin,testadmin@britiumexpress.com,superadmin,100,internal,/admin/master-data,false,P@ssw0rd1
+Marketing,testmarketing@britiumexpress.com,marketing,45,internal,/marketing,false,P@ssw0rd1
+Bus. Dev. Manager,testbusiness_development_manager@britiumexpress.com,business_development_manager,75,internal,/business-development,false,P@ssw0rd1
+Branch Manager,testbranch_office_manager@britiumexpress.com,branch_office_manager,72,internal,/branch-office,false,P@ssw0rd1
+Staff,teststaff@britiumexpress.com,staff,30,internal,/staff,false,P@ssw0rd1
+Customer Service,testcustomer_service@britiumexpress.com,customer_service,60,internal,/customer-service,false,P@ssw0rd1
+Data Entry,testdata_entry@britiumexpress.com,data_entry,55,internal,/data-entry,false,P@ssw0rd1
+Supervisor,testsupervisor@britiumexpress.com,supervisor,70,internal,/supervisor-pickup,false,P@ssw0rd1
+Warehouse,testwarehouse@britiumexpress.com,warehouse,62,internal,/warehouse,false,P@ssw0rd1
+Dispatch,testdispatch@britiumexpress.com,dispatch,68,internal,/dispatch,false,P@ssw0rd1
+Finance,testfinance@britiumexpress.com,finance,62,internal,/finance,false,P@ssw0rd1
+Merchant,testmerchant@britiumexpress.com,merchant,35,external,/merchant,false,P@ssw0rd1
+Customer,testcustomer@britiumexpress.com,customer,15,external,/customer,false,P@ssw0rd1
+Rider,testrider@britiumexpress.com,rider,25,mobile,/rider/jobs,false,P@ssw0rd1
+Driver,testdriver@britiumexpress.com,driver,25,mobile,/rider/jobs,false,P@ssw0rd1
+Helper,testhelper@britiumexpress.com,helper,20,mobile,/rider/jobs,false,P@ssw0rd1

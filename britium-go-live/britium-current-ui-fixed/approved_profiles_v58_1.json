@@ -1,0 +1,53 @@
+{
+  "build": "MERCHANT_FINANCIAL_PROFILES_V58_1_2026_07_31",
+  "approval_reference": "MANAGEMENT-APPROVAL-2026-07-31",
+  "approved_by": "Kyaw Wanna (md@britiumexpress.com)",
+  "effective_from": "2026-07-31",
+  "profiles": [
+    {
+      "merchant_id": "BBW",
+      "merchant_name": "Baby World",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "LOS",
+      "merchant_name": "Lady OS",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "UQD",
+      "merchant_name": "Unique/Diva",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "FFU",
+      "merchant_name": "Food For U",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "MEL",
+      "merchant_name": "Mee Lay",
+      "customer_tier": "ROYAL"
+    },
+    {
+      "merchant_id": "HMS",
+      "merchant_name": "Hla Myittar Shin",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "HAM",
+      "merchant_name": "HAIM",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "MBO",
+      "merchant_name": "MaBel OS",
+      "customer_tier": "STANDARD"
+    },
+    {
+      "merchant_id": "PRE",
+      "merchant_name": "PREMIER",
+      "customer_tier": "STANDARD"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+.git
+node_modules
+dist
+build
+.vercel
+.env
+.env.*
+*.zip
+*.7z
+*.rar
+*.log
+*.backup.*
+*.backup.tsx
+*.backup.ts

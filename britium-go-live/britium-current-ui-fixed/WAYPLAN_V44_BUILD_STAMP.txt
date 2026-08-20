@@ -1,0 +1,6 @@
+WAYPLAN_V44_EXCLUSIVE_ASSIGNMENT_MODES_FULL_FLEET_VISIBILITY_2026-07-30
+installed_at=2026-07-30T05:21:11.046Z
+assignment_mode_1=RIDER
+assignment_mode_2=VEHICLE_CREW
+expected_options_rpc=be_wayplan_assignment_options_v44
+expected_create_rpc=be_generate_wayplan_from_warehouse_v44

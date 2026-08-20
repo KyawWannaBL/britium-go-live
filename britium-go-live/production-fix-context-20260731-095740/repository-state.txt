@@ -1,0 +1,18 @@
+Repository: /e/D27072026/britium-go-live/britium-go-live/britium-current-ui-fixed
+
+.git pointer:
+
+Current production routes:
+183:            <Route path="/data-entry" element={<DataEntryPage />} />
+184:            <Route path="/accounts" element={<AccountsPage />} />
+185:            <Route path="/admin-hr" element={<AdminHRPage />} />
+188:            <Route path="/biz-dev" element={<BizDevPage />} />
+203:            <Route path="/marketing" element={<MarketingPage />} />
+204:            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
+210:            <Route path="/rider-app" element={<RiderAppPage />} />
+225:            <Route path="/ops-workflow" element={<UnifiedOperationsWorkflowPage />} />
+229:            <Route path="/data-entry-excel" element={<DataEntryExcelRegisterPage />} />
+230:            <Route path="/data-entry-photo" element={<DataEntryPhotoCheckPage />} />
+231:            <Route path="/data-entry-sync" element={<DataEntrySynchronizedPage />} />
+232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+233:            <Route path="/data-entry-waybill" element={<DataEntryWaybillStudio />} />

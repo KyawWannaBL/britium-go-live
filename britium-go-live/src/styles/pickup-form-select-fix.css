@@ -1,0 +1,39 @@
+/*
+ * Britium Pickup Form native SELECT visibility fix.
+ * Windows/Chrome can render the popup menu with a white OS background.
+ * Force dark text so options remain readable without hover.
+ */
+
+select[data-pickup-select-fix="20260814"] {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+  color-scheme: light !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+select[data-pickup-select-fix="20260814"] option {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+  font-weight: 600 !important;
+}
+
+select[data-pickup-select-fix="20260814"] option:checked {
+  background-color: #f6b84b !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
+
+select[data-pickup-select-fix="20260814"]:focus {
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
+
+select[data-pickup-select-fix="20260814"]:disabled {
+  background-color: #eef2f5 !important;
+  color: #526273 !important;
+  -webkit-text-fill-color: #526273 !important;
+  opacity: 1 !important;
+}

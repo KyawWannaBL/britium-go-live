@@ -1,0 +1,798 @@
+import { supabase } from "@/integrations/supabase/client";
+import "./styles/dataEntryFinalRegistration.css";
+
+type ProofRow = {
+  pickup_id?: string;
+  delivery_way_id?: string;
+  waybill_no?: string;
+  parcel_sequence?: number;
+  proof_photo_url?: string;
+  proof_photo_path?: string;
+  verification_status?: string;
+  proof_check_status?: string;
+  has_rider_photo?: boolean;
+  is_pickup_verified?: boolean;
+  pickup_date?: string;
+  merchant_name?: string;
+  merchant?: string;
+  [key: string]: any;
+};
+
+type TownshipSuggestion = {
+  township?: string;
+  township_name?: string;
+  township_mm?: string;
+  city?: string;
+  region?: string;
+  zone_code?: string;
+};
+
+type FeeResult = {
+  ok?: boolean;
+  delivery_fee?: number | string;
+  base_fee?: number | string;
+  cod_fee?: number | string;
+  tariff_code?: string;
+  tariff_name?: string;
+  message?: string;
+  township?: string;
+  city?: string;
+  zone_code?: string;
+};
+
+const STORAGE_KEY = "be_dataentry_golive_active";
+
+function ensureTownshipDatalist() {
+  let list = document.getElementById("be-township-master-list") as HTMLDataListElement | null;
+  if (!list) {
+    list = document.createElement("datalist");
+    list.id = "be-township-master-list";
+    document.body.appendChild(list);
+  }
+
+  list.innerHTML = "";
+  FALLBACK_TOWNSHIPS.forEach((item) => {
+    const en = item.township || item.township_name || "";
+    const mm = item.township_mm || "";
+    [en, mm].filter(Boolean).forEach((value) => {
+      const opt = document.createElement("option");
+      opt.value = value;
+      opt.label = townshipLabel(item);
+      list!.appendChild(opt);
+    });
+  });
+}
+
+
+const FALLBACK_TOWNSHIPS: TownshipSuggestion[] = [
+  { township: "Ahlone", township_mm: "အလုံ", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Bahan", township_mm: "ဗဟန်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Dagon", township_mm: "ဒဂုံ", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "East Dagon", township_mm: "ဒဂုံအရှေ့ပိုင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_OUTER" },
+  { township: "North Dagon", township_mm: "ဒဂုံမြောက်ပိုင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_OUTER" },
+  { township: "South Dagon", township_mm: "ဒဂုံတောင်ပိုင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_OUTER" },
+  { township: "Hlaing", township_mm: "လှိုင်", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Insein", township_mm: "အင်းစိန်", city: "Yangon", region: "Yangon Region", zone_code: "YGN_OUTER" },
+  { township: "Kamayut", township_mm: "ကမာရွတ်", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Mingala Taung Nyunt", township_mm: "မင်္ဂလာတောင်ညွန့်", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "North Okkalapa", township_mm: "ဥက္ကလာပမြောက်ပိုင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "South Okkalapa", township_mm: "ဥက္ကလာပတောင်ပိုင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Tamwe", township_mm: "တာမွေ", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Thaketa", township_mm: "သာကေတ", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Thingangyun", township_mm: "သင်္ဃန်းကျွန်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Yankin", township_mm: "ရန်ကင်း", city: "Yangon", region: "Yangon Region", zone_code: "YGN_LOCAL" },
+  { township: "Mandalay", township_mm: "မန္တလေး", city: "Mandalay", region: "Mandalay", zone_code: "MDY_LOCAL" },
+  { township: "Naypyidaw", township_mm: "နေပြည်တော်", city: "Naypyidaw", region: "Naypyidaw", zone_code: "NPT_LOCAL" },
+];
+
+function isDataEntryRoute() {
+  return window.location.hash.includes("/data-entry") || window.location.pathname.includes("/data-entry");
+}
+
+function normalizePickup(raw: string) {
+  const text = (raw || "").trim();
+  const m = text.match(/P\d{4}-[A-Z0-9]+-\d+/i);
+  return m ? m[0].toUpperCase() : "";
+}
+
+function readSelectedPickup() {
+  const selects = Array.from(document.querySelectorAll("select")) as HTMLSelectElement[];
+  for (const select of selects) {
+    const value = normalizePickup(select.value || select.selectedOptions?.[0]?.textContent || "");
+    if (value) return value;
+  }
+
+  const candidates = Array.from(document.querySelectorAll("button,input,div,span,p")).slice(0, 1200);
+  for (const el of candidates) {
+    const value = normalizePickup((el as HTMLElement).innerText || (el as HTMLInputElement).value || "");
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function readParcelCount() {
+  const pickupSelect = Array.from(document.querySelectorAll("select")).find((s) => normalizePickup((s as HTMLSelectElement).value || (s as HTMLSelectElement).selectedOptions?.[0]?.textContent || ""));
+  const text = pickupSelect?.selectedOptions?.[0]?.textContent || document.body.innerText || "";
+  const m = text.match(/(\d+)\s*\/\s*(\d+)\s*Parcels/i);
+  if (m) return Number(m[2] || m[1]) || 0;
+
+  const inputCandidates = Array.from(document.querySelectorAll("input")) as HTMLInputElement[];
+  for (const input of inputCandidates) {
+    const n = Number(input.value);
+    if (Number.isFinite(n) && n > 0 && n <= 300) return n;
+  }
+
+  return 10;
+}
+
+function publicPhotoUrl(row: ProofRow) {
+  if (row.proof_photo_url && String(row.proof_photo_url).startsWith("http")) return row.proof_photo_url;
+  const path = row.proof_photo_path || "";
+  if (!path) return "";
+  try {
+    const { data } = supabase.storage.from("pickup-parcel-proofs").getPublicUrl(path);
+    return data?.publicUrl || "";
+  } catch {
+    return "";
+  }
+}
+
+async function loadProofRows(pickupId: string, expectedCount: number): Promise<ProofRow[]> {
+  if (!pickupId) return [];
+  const { data, error } = await (supabase as any)
+    .from("be_v_data_entry_parcel_proofs")
+    .select("*")
+    .eq("pickup_id", pickupId)
+    .order("parcel_sequence", { ascending: true });
+
+  if (error) {
+    console.warn("be_v_data_entry_parcel_proofs load failed", error);
+    return Array.from({ length: expectedCount }).map((_, idx) => ({
+      pickup_id: pickupId,
+      delivery_way_id: "",
+      parcel_sequence: idx + 1,
+      verification_status: "PENDING",
+      proof_check_status: "RIDER_PROOF_PENDING",
+      has_rider_photo: false,
+    }));
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length >= expectedCount) return rows;
+
+  const bySeq = new Map<number, ProofRow>();
+  rows.forEach((r: ProofRow) => bySeq.set(Number(r.parcel_sequence || 0), r));
+
+  return Array.from({ length: expectedCount }).map((_, idx) => {
+    const seq = idx + 1;
+    return bySeq.get(seq) || {
+      pickup_id: pickupId,
+      delivery_way_id: "",
+      parcel_sequence: seq,
+      verification_status: "PENDING",
+      proof_check_status: "RIDER_PROOF_PENDING",
+      has_rider_photo: false,
+    };
+  });
+}
+
+function normalizeSuggestions(data: any): TownshipSuggestion[] {
+  if (!data) return [];
+  if (typeof data === "string") {
+    try {
+      return normalizeSuggestions(JSON.parse(data));
+    } catch {
+      return [];
+    }
+  }
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data.items)) return data.items;
+  if (Array.isArray(data.townships)) return data.townships;
+  if (Array.isArray(data.data)) return data.data;
+  return [];
+}
+
+async function fetchTownshipSuggestions(query: string) {
+  const q = query.trim();
+  try {
+    const { data, error } = await (supabase as any).rpc("be_data_entry_township_suggest", {
+      p_query: q,
+      p_limit: 20,
+    });
+    if (!error) {
+      const rows = normalizeSuggestions(data);
+      if (rows.length) return rows;
+    }
+  } catch (error) {
+    console.warn("Township suggestion RPC unavailable; using fallback", error);
+  }
+
+  const lower = q.toLowerCase();
+  return FALLBACK_TOWNSHIPS.filter((item) => {
+    const text = `${item.township || ""} ${item.township_name || ""} ${item.township_mm || ""} ${item.city || ""}`.toLowerCase();
+    return !lower || text.includes(lower);
+  }).slice(0, 20);
+}
+
+function townshipLabel(item: TownshipSuggestion) {
+  const en = item.township || item.township_name || "";
+  const mm = item.township_mm ? ` / ${item.township_mm}` : "";
+  const city = item.city ? ` · ${item.city}` : "";
+  const zone = item.zone_code ? ` · ${item.zone_code}` : "";
+  return `${en}${mm}${city}${zone}`;
+}
+
+function createInput(name: string, value = "", asTextArea = false) {
+  const el = document.createElement(asTextArea ? "textarea" : "input") as HTMLInputElement | HTMLTextAreaElement;
+  el.name = name;
+  el.value = value || "";
+  return el;
+}
+
+function createSelect(name: string, values: string[], selected = "") {
+  const select = document.createElement("select");
+  select.name = name;
+  values.forEach((value) => {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = value;
+    if (value === selected) opt.selected = true;
+    select.appendChild(opt);
+  });
+  return select;
+}
+
+function formatMoney(n: any) {
+  const num = Number(String(n || "0").replace(/,/g, ""));
+  return new Intl.NumberFormat("en-US").format(Number.isFinite(num) ? num : 0);
+}
+
+function numberValue(el: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null) {
+  if (!el) return 0;
+  const n = Number(String(el.value || "").replace(/,/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function findInput(row: HTMLTableRowElement, name: string) {
+  return row.querySelector(`[name="${name}"]`) as HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement | null;
+}
+
+async function calculateFee(row: HTMLTableRowElement) {
+  const townshipInput = findInput(row, "township") as HTMLInputElement | null;
+  const feeInput = findInput(row, "total_deli_fee") as HTMLInputElement | null;
+  const surchargeInput = findInput(row, "surcharge") as HTMLInputElement | null;
+  const weightInput = findInput(row, "weight_kg") as HTMLInputElement | null;
+  const codInput = findInput(row, "cod") as HTMLInputElement | null;
+  const badge = row.querySelector(".be-fee-badge") as HTMLElement | null;
+  if (!townshipInput || !feeInput) return;
+
+  const township = townshipInput.value.trim();
+  if (!township) {
+    if (badge) badge.textContent = "Type township";
+    return;
+  }
+
+  if (badge) {
+    badge.className = "be-fee-badge warn";
+    badge.textContent = "Calculating...";
+  }
+
+  try {
+    const { data, error } = await (supabase as any).rpc("be_data_entry_calculate_delivery_charge", {
+      p_township: township,
+      p_service_type: "STANDARD",
+      p_parcel_type: "NORMAL",
+      p_cod_amount: numberValue(codInput),
+      p_weight: numberValue(weightInput) || 1,
+    });
+    if (error) throw error;
+
+    const result = (Array.isArray(data) ? data[0] : data) as FeeResult;
+    if (result?.ok) {
+      const total = Number(result.delivery_fee || 0) + numberValue(surchargeInput);
+      feeInput.value = String(total);
+      row.dataset.tariffCode = result.tariff_code || "";
+      row.dataset.normalizedTownship = result.township || township;
+      if (badge) {
+        badge.className = "be-fee-badge";
+        badge.textContent = `${formatMoney(total)} Ks · ${result.tariff_code || result.zone_code || "tariff"}`;
+      }
+    } else {
+      if (badge) {
+        badge.className = "be-fee-badge warn";
+        badge.textContent = result?.message || "No tariff found";
+      }
+    }
+  } catch (error: any) {
+    console.warn("Delivery fee calculation failed", error);
+    if (badge) {
+      badge.className = "be-fee-badge warn";
+      badge.textContent = "Tariff RPC failed";
+    }
+  }
+
+  updateActualCollect(row);
+}
+
+function updateActualCollect(row: HTMLTableRowElement) {
+  const fee = numberValue(findInput(row, "total_deli_fee"));
+  const cod = numberValue(findInput(row, "cod"));
+  const actual = findInput(row, "actual_collect") as HTMLInputElement | null;
+  if (actual) actual.value = String(fee + cod);
+}
+
+async function handleTownshipInput(input: HTMLInputElement, row: HTMLTableRowElement) {
+  const wrapper = input.closest(".be-township-cell") as HTMLElement | null;
+  const menu = wrapper?.querySelector(".be-township-menu") as HTMLElement | null;
+  const hint = wrapper?.querySelector(".be-township-hint") as HTMLElement | null;
+  const rows = await fetchTownshipSuggestions(input.value);
+
+  if (menu) {
+    menu.innerHTML = "";
+    rows.slice(0, 8).forEach((item) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = townshipLabel(item);
+      btn.addEventListener("click", () => {
+        input.value = item.township || item.township_name || "";
+        row.dataset.townshipMm = item.township_mm || "";
+        row.dataset.zoneCode = item.zone_code || "";
+        row.dataset.city = item.city || "";
+        syncTownshipInputs(row, input);
+        if (hint) hint.textContent = townshipLabel(item);
+        menu.classList.remove("open");
+        void calculateFee(row);
+      });
+      menu.appendChild(btn);
+    });
+    menu.classList.toggle("open", rows.length > 0 && document.activeElement === input);
+  }
+
+  const best = rows[0];
+  if (hint) hint.textContent = best ? `Suggestion: ${townshipLabel(best)}` : "No township suggestion found";
+  if (input.value.trim().length >= 2) void calculateFee(row);
+}
+
+function syncTownshipInputs(row: HTMLTableRowElement, source: HTMLInputElement) {
+  const main = findInput(row, "township") as HTMLInputElement | null;
+  const quick = findInput(row, "township_quick") as HTMLInputElement | null;
+  if (main && source !== main) main.value = source.value;
+  if (quick && source !== quick) quick.value = source.value;
+}
+
+function bindTownshipInput(input: HTMLInputElement, row: HTMLTableRowElement) {
+  if ((input as any).dataset.beBound) return;
+  (input as any).dataset.beBound = "true";
+  let timer = 0;
+
+  input.addEventListener("focus", () => void handleTownshipInput(input, row));
+  input.addEventListener("input", () => {
+    syncTownshipInputs(row, input);
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => void handleTownshipInput(input, row), 220);
+  });
+  input.addEventListener("change", () => {
+    syncTownshipInputs(row, input);
+    void calculateFee(row);
+  });
+  input.addEventListener("blur", () => {
+    syncTownshipInputs(row, input);
+    window.setTimeout(() => {
+      const menu = row.querySelector(".be-township-menu") as HTMLElement | null;
+      menu?.classList.remove("open");
+    }, 180);
+    void calculateFee(row);
+  });
+}
+
+function attachRowEvents(row: HTMLTableRowElement) {
+  const township = findInput(row, "township") as HTMLInputElement | null;
+  const quickTownship = findInput(row, "township_quick") as HTMLInputElement | null;
+  const feeDrivers = ["township", "township_quick", "item_price", "weight_kg", "surcharge", "cod", "customer_tier"];
+
+  if (township) bindTownshipInput(township, row);
+  if (quickTownship) bindTownshipInput(quickTownship, row);
+
+  feeDrivers.forEach((name) => {
+    const el = findInput(row, name);
+    if (!el || (el as any).dataset.beFeeBound) return;
+    (el as any).dataset.beFeeBound = "true";
+    el.addEventListener("input", () => {
+      if (name === "township_quick" && quickTownship) syncTownshipInputs(row, quickTownship);
+      if (name !== "township" && name !== "township_quick") void calculateFee(row);
+      updateActualCollect(row);
+    });
+    el.addEventListener("change", () => {
+      if (name === "township_quick" && quickTownship) syncTownshipInputs(row, quickTownship);
+      if (name !== "township" && name !== "township_quick") void calculateFee(row);
+      updateActualCollect(row);
+    });
+  });
+}
+
+function rowHtmlContainer(row: ProofRow) {
+  const tr = document.createElement("tr");
+  const seq = Number(row.parcel_sequence || 0);
+  const deliveryWayId = row.delivery_way_id || row.waybill_no || "";
+  tr.dataset.deliveryWayId = deliveryWayId;
+  tr.dataset.pickupId = row.pickup_id || "";
+  tr.dataset.pickupDate = row.pickup_date || "";
+  tr.dataset.merchant = row.merchant_name || row.merchant || "";
+
+  function td(child: HTMLElement | string, className = "") {
+    const c = document.createElement("td");
+    if (className) c.className = className;
+    if (typeof child === "string") c.textContent = child;
+    else c.appendChild(child);
+    tr.appendChild(c);
+  }
+
+  td(createInput("recipient_name"));
+  td(createInput("contact_no_1"));
+  td(createInput("contact_no_2"));
+
+  const townshipCell = document.createElement("div");
+  townshipCell.className = "be-township-cell";
+  const townshipInput = createInput("township") as HTMLInputElement;
+  townshipInput.placeholder = "Type EN/MM township...";
+  townshipInput.setAttribute("list", "be-township-master-list");
+  townshipInput.autocomplete = "off";
+  const hint = document.createElement("div");
+  hint.className = "be-township-hint";
+  hint.textContent = "English/Myanmar supported";
+  const menu = document.createElement("div");
+  menu.className = "be-township-menu";
+  townshipCell.append(townshipInput, hint, menu);
+  td(townshipCell, "be-township-td be-sticky-township");
+
+  td(createInput("recipient_address", "", true));
+  td(createSelect("customer_tier", ["STANDARD", "VIP", "CORPORATE", "MARKETPLACE", "BRANCH"]));
+  td(createInput("item_price"));
+  td(createInput("weight_kg", "1"));
+  td(createInput("surcharge", "0"));
+
+  const feeCell = document.createElement("div");
+  feeCell.className = "be-fee-cell";
+  const quickTownship = createInput("township_quick") as HTMLInputElement;
+  quickTownship.className = "be-quick-township";
+  quickTownship.placeholder = "Township EN/MM";
+  quickTownship.setAttribute("list", "be-township-master-list");
+  quickTownship.autocomplete = "off";
+  const totalFee = createInput("total_deli_fee", "0") as HTMLInputElement;
+  totalFee.readOnly = true;
+  const feeBadge = document.createElement("div");
+  feeBadge.className = "be-fee-badge warn";
+  feeBadge.textContent = "Type township";
+  feeCell.append(quickTownship, totalFee, feeBadge);
+  td(feeCell);
+
+  td(createInput("cod", "0"));
+
+  const actual = createInput("actual_collect", "0") as HTMLInputElement;
+  actual.readOnly = true;
+  td(actual);
+
+  td(createInput("remark_special_instruction", "", true));
+
+  setTimeout(() => attachRowEvents(tr), 0);
+  return tr;
+}
+
+function openImageModal(row: ProofRow, url: string) {
+  let modal = document.getElementById("be-proof-modal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "be-proof-modal";
+    modal.className = "be-proof-modal";
+    document.body.appendChild(modal);
+  }
+
+  modal.innerHTML = `
+    <div class="be-proof-modal-backdrop"></div>
+    <div class="be-proof-modal-card">
+      <button type="button" class="be-proof-modal-close">×</button>
+      <img src="${url}" alt="Rider proof enlarged" />
+      <div class="be-proof-modal-meta">
+        <strong>${row.delivery_way_id || row.waybill_no || "Delivery Way"}</strong>
+        <span>Parcel ${row.parcel_sequence || "-"}</span>
+        <span>${row.verification_status || row.proof_check_status || "PENDING"}</span>
+      </div>
+    </div>
+  `;
+
+  modal.classList.add("open");
+  modal.querySelector(".be-proof-modal-close")?.addEventListener("click", () => modal?.classList.remove("open"));
+  modal.querySelector(".be-proof-modal-backdrop")?.addEventListener("click", () => modal?.classList.remove("open"));
+}
+
+function renderProofStrip(container: HTMLElement, rows: ProofRow[]) {
+  const strip = document.createElement("section");
+  strip.className = "be-de-proof-strip";
+  strip.setAttribute("data-be-horizontal-proof-strip", "true");
+
+  rows.forEach((row) => {
+    const card = document.createElement("article");
+    card.className = "be-de-proof-card";
+
+    const url = publicPhotoUrl(row);
+    if (url) {
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = row.delivery_way_id || `Parcel ${row.parcel_sequence || ""}`;
+      img.title = "Click to enlarge rider proof";
+      img.addEventListener("click", () => openImageModal(row, url));
+      card.appendChild(img);
+    } else {
+      const ph = document.createElement("div");
+      ph.className = "be-proof-empty";
+      ph.textContent = "Rider proof pending";
+      card.appendChild(ph);
+    }
+
+    const meta = document.createElement("div");
+    meta.className = "be-de-proof-meta";
+    meta.innerHTML = `
+      <div><strong>${row.delivery_way_id || row.waybill_no || "Delivery Way"}</strong></div>
+      <div>Parcel: ${row.parcel_sequence || "-"}</div>
+      <div class="be-de-proof-status">${row.verification_status || row.proof_check_status || "PENDING"}</div>
+    `;
+    card.appendChild(meta);
+    strip.appendChild(card);
+  });
+
+  container.appendChild(strip);
+}
+
+function collectRegistrationRows() {
+  const trs = Array.from(document.querySelectorAll("#be-dataentry-golive-mount tbody tr")) as HTMLTableRowElement[];
+  return trs.map((tr) => {
+    const data: Record<string, any> = {
+      delivery_way_id: tr.dataset.deliveryWayId || "",
+      pickup_id: tr.dataset.pickupId || "",
+      pickup_date: tr.dataset.pickupDate || "",
+      merchant: tr.dataset.merchant || "",
+      township_mm: tr.dataset.townshipMm || "",
+      city: tr.dataset.city || "",
+      zone_code: tr.dataset.zoneCode || "",
+      tariff_code: tr.dataset.tariffCode || "",
+    };
+    tr.querySelectorAll("input,textarea,select").forEach((el: any) => {
+      data[el.name] = el.value;
+    });
+    return data;
+  });
+}
+
+async function saveRegistrationDraft() {
+  const rows = collectRegistrationRows();
+  localStorage.setItem("be_dataentry_registration_draft", JSON.stringify({
+    saved_at: new Date().toISOString(),
+    rows,
+  }));
+
+  try {
+    const { error } = await (supabase as any).rpc("be_save_data_entry_registration_draft", {
+      p_rows: rows,
+    });
+    if (error) throw error;
+    alert("Registration draft saved to backend.");
+  } catch {
+    alert("Registration draft saved locally. Backend draft RPC is not installed yet.");
+  }
+}
+
+function exportCurrentTableCsv() {
+  const rows = collectRegistrationRows();
+  const headers = [
+    "Recipient Name",
+    "Contact No. (1)",
+    "Contact No. (2)",
+    "Township (EN/MM)",
+    "Recipient Address",
+    "Customer Tier",
+    "Item Price",
+    "Weight KG",
+    "Surcharge",
+    "Total Deli Fee",
+    "COD",
+    "Actual Collect",
+    "Remark / Special Instruction",
+    "DeliveryWay ID",
+    "Pickup Date",
+    "Merchant",
+  ];
+
+  const keys = [
+    "recipient_name",
+    "contact_no_1",
+    "contact_no_2",
+    "township",
+    "recipient_address",
+    "customer_tier",
+    "item_price",
+    "weight_kg",
+    "surcharge",
+    "total_deli_fee",
+    "cod",
+    "actual_collect",
+    "remark_special_instruction",
+    "delivery_way_id",
+    "pickup_date",
+    "merchant",
+  ];
+
+  const csv = [
+    headers.map((h) => `"${h}"`).join(","),
+    ...rows.map((row) => keys.map((k) => `"${String(row[k] ?? "").replace(/"/g, '""')}"`).join(",")),
+  ].join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "britium-data-entry-registration.csv";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderFullScreen(pickupId: string, expectedCount: number, proofRows: ProofRow[]) {
+  let mount = document.getElementById("be-dataentry-golive-mount");
+  if (!mount) {
+    mount = document.createElement("div");
+    mount.id = "be-dataentry-golive-mount";
+    document.body.appendChild(mount);
+  }
+
+  mount.innerHTML = "";
+
+  const shell = document.createElement("div");
+  shell.className = "be-de-shell";
+
+  const toolbar = document.createElement("section");
+  toolbar.className = "be-de-toolbar";
+
+  const titleWrap = document.createElement("div");
+  titleWrap.innerHTML = `
+    <div class="be-de-title">Data Entry Registration Full Screen</div>
+    <div class="be-de-subtitle">Pickup: <strong>${pickupId || "-"}</strong> · Lines: <strong>${expectedCount}</strong> · Rider proof strip is horizontal only. Click photo to enlarge.</div>
+  `;
+
+  const actions = document.createElement("div");
+  actions.className = "be-de-actions";
+
+  const refreshBtn = document.createElement("button");
+  refreshBtn.textContent = "Refresh Rider Proofs";
+  refreshBtn.onclick = async () => activateDataEntry(true);
+
+  const exportBtn = document.createElement("button");
+  exportBtn.textContent = "Export CSV";
+  exportBtn.onclick = exportCurrentTableCsv;
+
+  const saveBtn = document.createElement("button");
+  saveBtn.className = "green";
+  saveBtn.textContent = "Save Registration Draft";
+  saveBtn.onclick = () => void saveRegistrationDraft();
+
+  const exitBtn = document.createElement("button");
+  exitBtn.className = "primary";
+  exitBtn.textContent = "Exit Full Screen";
+  exitBtn.onclick = deactivateDataEntry;
+
+  actions.append(refreshBtn, exportBtn, saveBtn, exitBtn);
+  toolbar.append(titleWrap, actions);
+  shell.appendChild(toolbar);
+
+  renderProofStrip(shell, proofRows);
+
+  const instruction = document.createElement("section");
+  instruction.className = "be-de-instruction";
+  instruction.innerHTML = `
+    <strong>Registration columns only:</strong>
+    Recipient Name · Contact No. (1) · Contact No. (2) · Township (EN/MM) · Recipient Address · Customer Tier · Item Price · Weight KG · Surcharge · Total Deli Fee · COD · Actual Collect · Remark / Special Instruction.
+    <span>System-generated fields such as DeliveryWay ID, Pickup Date and Merchant are hidden during registration and included only in export/report/print.</span>
+  `;
+  shell.appendChild(instruction);
+
+  const wrap = document.createElement("section");
+  wrap.className = "be-de-table-wrap";
+
+  const table = document.createElement("table");
+  table.className = "be-de-table";
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>RECIPIENT NAME</th>
+        <th>CONTACT NO. (1)</th>
+        <th>CONTACT NO. (2)</th>
+        <th>TOWNSHIP (EN/MM)</th>
+        <th>RECIPIENT ADDRESS</th>
+        <th>CUSTOMER TIER</th>
+        <th>ITEM PRICE</th>
+        <th>WEIGHT KG</th>
+        <th>SURCHARGE</th>
+        <th>TOTAL DELI FEE</th>
+        <th>COD</th>
+        <th>ACTUAL COLLECT</th>
+        <th>REMARK / SPECIAL INSTRUCTION</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+  const tbody = table.querySelector("tbody")!;
+  proofRows.forEach((row) => tbody.appendChild(rowHtmlContainer(row)));
+
+  wrap.appendChild(table);
+  shell.appendChild(wrap);
+  mount.appendChild(shell);
+  const tableWrap = shell.querySelector(".be-de-table-wrap") as HTMLElement | null;
+  if (tableWrap) tableWrap.scrollLeft = 0;
+}
+
+async function activateDataEntry(forceReload = false) {
+  if (!isDataEntryRoute()) return;
+
+  const pickupId = readSelectedPickup();
+  const expectedCount = readParcelCount();
+
+  if (!pickupId) {
+    alert("Please select a pickup before REGISTER NOW.");
+    return;
+  }
+
+  sessionStorage.setItem(STORAGE_KEY, "1");
+  document.documentElement.classList.add("be-dataentry-golive-active");
+  document.body.classList.add("be-de-hidden-page");
+
+  const rows = await loadProofRows(pickupId, expectedCount || 10);
+  renderFullScreen(pickupId, expectedCount || rows.length || 10, rows);
+}
+
+function deactivateDataEntry() {
+  sessionStorage.removeItem(STORAGE_KEY);
+  document.documentElement.classList.remove("be-dataentry-golive-active");
+  document.body.classList.remove("be-de-hidden-page");
+  const mount = document.getElementById("be-dataentry-golive-mount");
+  if (mount) mount.innerHTML = "";
+}
+
+function bindRegisterButtons() {
+  if (!isDataEntryRoute()) return;
+
+  const buttons = Array.from(document.querySelectorAll("button"));
+  buttons.forEach((btn) => {
+    const text = (btn.textContent || "").toLowerCase();
+    const isRegister = text.includes("register now") || text.includes("full screen data entry") || text.includes("exit full screen");
+    if (!isRegister || (btn as any).dataset.beGoLiveBound === "true") return;
+
+    (btn as any).dataset.beGoLiveBound = "true";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void activateDataEntry(true);
+    }, true);
+  });
+}
+
+function routeTick() {
+  ensureTownshipDatalist();
+  if (!isDataEntryRoute()) {
+    deactivateDataEntry();
+    return;
+  }
+  bindRegisterButtons();
+  if (sessionStorage.getItem(STORAGE_KEY) === "1") {
+    void activateDataEntry(false);
+  }
+}
+
+window.addEventListener("hashchange", routeTick);
+window.addEventListener("popstate", routeTick);
+window.setInterval(bindRegisterButtons, 800);
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", routeTick);
+} else {
+  routeTick();
+}

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Britium Express Waybills</title>
+    <!-- Include QR Code and Barcode libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.5/JsBarcode.all.min.js"></script>
+    <style>
+        /* Base styling */
+        body { margin: 0; padding: 20px; font-family: Arial, sans-serif; background: #e0e0e0; display: flex; flex-direction: column; align-items: center; }
+        * { box-sizing: border-box; }
+        
+        /* Print directives */
+        @page { size: 4in 6in; margin: 0; }
+        @media print {
+            body { padding: 0; background: white; display: block; }
+            .no-print { display: none; }
+            .page { margin: 0; box-shadow: none; border: none; }
+        }
+
+        /* Page container */
+        .page {
+            width: 4in; height: 6in; background: white; margin-bottom: 20px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            page-break-after: always; display: flex; flex-wrap: wrap; overflow: hidden;
+        }
+
+        /* Utilities */
+        .flex { display: flex; }
+        .space-between { justify-content: space-between; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .bold { font-weight: bold; }
+        .bg-grey { background-color: #d0d0d0 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .border-bottom { border-bottom: 1px solid #000; }
+        svg { width: 100% !important; height: 100% !important; } /* Force SVG scaling */
+
+        /* Format 1 (4 units of 2x3) */
+        .f1 { width: 50%; height: 50%; padding: 4px; border: 1px solid #000; font-size: 8px; display: flex; flex-direction: column; line-height: 1.2; }
+        .f1-cod { border: 1px solid #000; border-radius: 2px; text-align: right; font-size: 11px; font-weight: bold; padding: 4px; position: relative; width: 75px; }
+        .f1-cod span { position: absolute; top: 2px; left: 2px; font-size: 6px; font-weight: normal; }
+
+        /* Format 2 (3 units of 4x2) */
+        .f2 { width: 100%; height: 33.333%; display: flex; border: 1px solid #000; font-size: 9px; line-height: 1.2; }
+        .f2-side { width: 20px; writing-mode: vertical-rl; transform: rotate(180deg); text-align: center; font-weight: bold; border-right: 1px solid #000; font-size: 10px; padding: 4px 0; }
+        .f2-main { flex: 1; display: flex; flex-direction: column; padding: 3px; }
+        .f2-cod { border: 1px solid #000; text-align: right; font-size: 14px; font-weight: bold; padding: 4px; margin-top: auto; }
+
+        /* Format 3 (1 unit of 4x6) */
+        .f3 { width: 100%; height: 100%; padding: 12px; border: 1px solid #000; font-size: 12px; display: flex; flex-direction: column; }
+        .f3-cod { border: 1px solid #000; border-radius: 4px; text-align: right; font-size: 24px; font-weight: bold; padding: 15px 10px; position: relative; }
+        .f3-cod span { position: absolute; top: 5px; left: 5px; font-size: 10px; font-weight: normal; }
+
+        /* Format 4 (2 units of 4x3) */
+        .f4 { width: 100%; height: 50%; padding: 8px; border: 1px solid #000; font-size: 10px; display: flex; flex-direction: column; line-height: 1.3; }
+        .f4-cod { border: 1px solid #000; border-radius: 3px; text-align: right; font-size: 18px; font-weight: bold; padding: 10px 5px 5px 5px; position: relative; margin-top: auto; }
+        .f4-cod span { position: absolute; top: 2px; left: 4px; font-size: 8px; font-weight: normal; }
+    </style>
+</head>
+<body>
+
+    <div class="no-print" style="margin-bottom: 20px; text-align: center; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1);">
+        <h2 style="margin-top: 0;">Britium Express - Waybill Generator</h2>
+        <p>Ensure your printer is set to <strong>4x6 inches (100x150mm)</strong> and Margins are set to <strong>None</strong>.<br>Also, enable <strong>Background graphics</strong> to print the COD boxes.</p>
+        <button onclick="window.print()" style="padding: 10px 20px; font-size: 16px; font-weight: bold; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px;">Print Waybills</button>
+    </div>
+
+    <!-- Container for dynamically generated pages -->
+    <div id="pages-container"></div>
+
+<script>
+window.onload = function() {
+    
+    // --- DELIVERY WAY ID GENERATION LOGIC ---
+    function generateID(dateStr, mName, seq) {
+        let mCode = "XXX";
+        
+        // Match specific requirements like "Baby Genius" -> "BBG"
+        if (mName.toLowerCase().includes("baby genius")) mCode = "BBG";
+        else if (mName.toLowerCase().includes("beauty cos") || mName.toLowerCase().includes("bca")) mCode = "BCA";
+        else {
+            // Standardize 3 Capital letter algorithm
+            let alpha = mName.replace(/[^a-zA-Z]/g, '');
+            if (alpha.length >= 3) mCode = alpha.substring(0,3).toUpperCase();
+            else mCode = alpha.toUpperCase().padEnd(3, 'X');
+        }
+        
+        let s = seq.toString().padStart(3, '0');
+        return `D${dateStr}-${mCode}-${s}`; // Output Example: D0627-BBG-015
+    }
+
+    // Mock Payload Data Based on your Images
+    const p1 = { merchant: "Baby Genius", date: "0627", seq: 15, recipient: "Ma Htet Htet", phone: "09794665120", address: "အမှတ် ၁၁၅/ဒုတိယထပ်, မဂ်လာသီရိလမ်း, မြို့သစ်ရပ်ကွက်, ဒေါပုံ", itemPrice: "76,000", deliFee: "3,000", total: "79,000" };
+    const p2 = { merchant: "Beauty Cos", date: "0625", seq: 100, recipient: "Phyu Thwe", phone: "09-790210771", address: "Royal Rosy အိမ်ဆောက်ပစ္စည်းဆိုင်၊ (၆၂) လမ်း၊ ၁၂၀ x ၁၂၁ လမ်းကြား၊ မန္တလေးမြို့", itemPrice: "160,000", deliFee: "-", total: "180,000", sidebar: "(1) - မန္တလေး" };
+    const p3 = { merchant: "Beauty Cos", date: "0625", seq: 112, recipient: "ချစ်ချစ်အိမ်", phone: "09-972219164", address: "(၁၁၄) လမ်း၊ ၅၅ x ၅၆ လမ်းကြား၊ ချမ်းမြသာစည်မြို့နယ်၊ မန္တလေးမြို့", itemPrice: "95,000", deliFee: "-", total: "107,000", sidebar: "(17) - မန္တလေး" };
+    const p4 = { merchant: "Beauty Cos", date: "0625", seq: 117, recipient: "Khin Win Mar", phone: "09-797490446", address: "(၆၂) လမ်း၊ ၂၉ x ၃၀ လမ်းကြား၊ ချမ်းအေးသာစံမြို့နယ်၊ မန္တလေးမြို့", itemPrice: "199,000", deliFee: "0", total: "215,000", sidebar: "မန္တလေး" };
+
+    let container = document.getElementById('pages-container');
+    let qrRenderTasks = [];
+    let bcRenderTasks = [];
+
+    function addQR(id, type, size) { qrRenderTasks.push({id: `qr-${id}-${type}`, text: id, size: size}); }
+    function addBC(id, type) { bcRenderTasks.push({id: `bc-${id}-${type}`, text: id}); }
+
+    // --- PAGE 1 (Four 2x3 Formats) ---
+    let page1 = document.createElement('div');
+    page1.className = 'page';
+    let html1 = '';
+    for(let i=1; i<=4; i++) {
+        let id = generateID(p1.date, p1.merchant, i);
+        html1 += `
+        <div class="f1">
+            <div class="flex space-between border-bottom" style="padding-bottom:2px; margin-bottom:4px;">
+                <div class="flex" style="align-items:center; gap:2px;">
+                    <div style="width:14px; height:14px; border-radius:50%; background:#2c3e50; color:white; font-size:9px; text-align:center; line-height:14px; font-weight:bold;">B</div>
+                    <div>
+                        <div class="bold" style="font-size:7px;">BRITIUM EXPRESS</div>
+                        <div style="font-size:6px;">DELIVERY SERVICE</div>
+                        <div class="bold" style="font-size:7px;">09-897447744</div>
+                    </div>
+                </div>
+                <div id="qr-${id}-1" style="width: 32px; height: 32px;"></div>
+            </div>
+            <div style="flex:1;">
+                <div>Merchant : ${p1.merchant}</div>
+                <div style="margin-top: 6px;">Recipient : ${p1.recipient}</div>
+                <div style="margin-top: 10px;">Remarks :</div>
+            </div>
+            <div class="flex space-between" style="align-items: flex-end; margin-bottom: 4px;">
+                <div style="line-height:1.4;">
+                    <div>Item Price : ${p1.itemPrice}</div>
+                    <div>Deli Fee : ${p1.deliFee}</div>
+                </div>
+                <div class="f1-cod bg-grey">
+                    <span>COD</span><br>
+                    <div style="margin-top:2px;">${p1.total}</div>
+                </div>
+            </div>
+            <div style="text-align: center; border-top: 1px solid #000; padding-top: 2px;">
+                <div style="width: 100%; height: 18px;"><svg id="bc-${id}-1"></svg></div>
+                <div style="font-size:6px; margin-top:1px;">2026-06-27 14:26:41</div>
+            </div>
+        </div>`;
+        addQR(id, 1, 32);
+        addBC(id, 1);
+    }
+    page1.innerHTML = html1;
+    container.appendChild(page1);
+
+    // --- PAGE 2 (Three 4x2 Formats) ---
+    let page2 = document.createElement('div');
+    page2.className = 'page';
+    let html2 = '';
+    [p2, p3, p4].forEach((p, idx) => {
+        let id = generateID(p.date, p.merchant, p.seq);
+        html2 += `
+        <div class="f2">
+            <div class="f2-side">${p.sidebar}</div>
+            <div class="f2-main">
+                <div class="flex space-between border-bottom" style="padding-bottom:3px; margin-bottom:3px; align-items:flex-start;">
+                    <div class="flex" style="gap:4px;">
+                        <div class="bold" style="font-size:12px;">4D</div>
+                        <div style="width:14px; height:14px; border-radius:50%; background:#2c3e50; color:white; font-size:9px; text-align:center; line-height:14px; font-weight:bold; margin-top:2px;">B</div>
+                        <div>
+                            <div class="bold" style="font-size:9px;">BRITIUM EXPRESS DELIVERY SERVICE</div>
+                            <div style="font-size:8px;">09 - 897447744</div>
+                            <div style="font-size:8px; margin-top:3px;">OS : BC လူသုံးကုန်</div>
+                        </div>
+                    </div>
+                    <div class="flex" style="gap:4px; text-align:right; align-items:center;">
+                        <div>
+                            <div style="width: 90px; height: 18px;"><svg id="bc-${id}-2"></svg></div>
+                            <div class="bold" style="font-size:8px; margin-top:1px;">${id}</div>
+                        </div>
+                        <div id="qr-${id}-2" style="width: 32px; height: 32px;"></div>
+                    </div>
+                </div>
+                <div class="flex" style="flex:1;">
+                    <div style="width: 14px; writing-mode: vertical-rl; transform: rotate(180deg); font-size:7px;">Recipient :</div>
+                    <div style="flex: 1.5; border-right: 1px solid #000; padding-right: 4px;">
+                        <div class="bold" style="font-size:11px;">${p.recipient}</div>
+                        <div class="bold" style="font-size:9px;">${p.phone}</div>
+                        <div style="font-size:8px; margin-top:2px; line-height:1.4;">${p.address}</div>
+                    </div>
+                    <div style="flex: 1; padding-left: 4px; display: flex; flex-direction: column;">
+                        <div class="flex space-between"><span>Item Price :</span> <span>${p.itemPrice}</span></div>
+                        <div class="flex space-between"><span>Deli Fee :</span> <span>${p.deliFee}</span></div>
+                        <div class="flex space-between"><span>Surcharge :</span> <span>20,000</span></div>
+                        <div style="font-size:7px; margin-top:2px;">CBM/wt. (Kg) :</div>
+                        <div class="f2-cod bg-grey">${p.total}</div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        addQR(id, 2, 32);
+        addBC(id, 2);
+    });
+    page2.innerHTML = html2;
+    container.appendChild(page2);
+
+    // --- PAGE 3 (One 4x6 Format) ---
+    let page3 = document.createElement('div');
+    page3.className = 'page';
+    let id3 = generateID("0627", "Baby Genius", 15);
+    page3.innerHTML = `
+    <div class="f3">
+        <div class="flex space-between border-bottom" style="padding-bottom:12px; margin-bottom:12px;">
+            <div class="flex" style="gap:10px; align-items:center;">
+                <div style="width:45px; height:45px; border-radius:50%; background:#2c3e50; color:white; font-size:24px; text-align:center; line-height:45px; font-weight:bold;">B</div>
+                <div>
+                    <div class="bold" style="font-size:20px;">BRITIUM EXPRESS</div>
+                    <div style="font-size:15px; margin-top:2px;">DELIVERY SERVICE</div>
+                    <div class="bold" style="font-size:13px; margin-top:4px;">HotLine: 09 - 897 44 77 44</div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div style="font-size:12px;">2026-06-27 14:28:13</div>
+                <div id="qr-${id3}-3" style="width:80px; height:80px; margin:6px 0 6px auto;"></div>
+                <div style="font-size:12px; font-weight:bold;">${id3}</div>
+            </div>
+        </div>
+        <div class="border-bottom" style="padding-bottom:12px; margin-bottom:12px;">
+            <table style="width:100%; font-size:13px; line-height:1.5;">
+                <tr><td style="width:90px; vertical-align:top;">Merchant :</td><td>${p1.merchant} Os<br><br>09796239153<br>ဒဂုံမြို့သစ်အရှေ့ပိုင်း</td></tr>
+            </table>
+        </div>
+        <div class="border-bottom" style="padding-bottom:12px; margin-bottom:12px; flex:1;">
+            <table style="width:100%; font-size:13px;">
+                <tr><td style="width:90px; vertical-align:top;">Recipient :</td><td><b style="font-size:20px;">${p1.recipient}</b><br><br><b style="font-size:15px;">${p1.phone}, ${p1.phone}</b><br><br><span style="line-height:1.5;">${p1.address}</span></td></tr>
+            </table>
+        </div>
+        <div class="flex border-bottom" style="padding-bottom:12px; margin-bottom:12px;">
+            <div style="flex:1; border-right:1px solid #000;">
+                <div>CBM :<br><b style="font-size:14px;">1</b></div>
+                <div style="margin-top:12px;">Weight (kg) :<br><b style="font-size:14px;">5</b></div>
+                <div style="margin-top:12px;">Delivery :<br><b style="font-size:14px;">Normal</b></div>
+            </div>
+            <div style="flex:1.2; padding-left:12px;">
+                <div>Item Price :<br><span style="font-size:14px;">${p1.itemPrice}</span></div>
+                <div style="margin-top:12px;">Delivery Fees :<br><span style="font-size:14px;">${p1.deliFee}</span></div>
+                <div style="margin-top:12px;">Prepaid to OS :<br><span style="font-size:14px;">0</span></div>
+            </div>
+            <div style="flex:1.5; padding-left:12px; display:flex; align-items:center;">
+                <div class="f3-cod bg-grey" style="width:100%;">
+                    <span>COD</span><br>${p1.total}
+                </div>
+            </div>
+        </div>
+        <div style="margin-bottom:20px;">Remarks :</div>
+        <div class="text-center bold" style="font-size:12px; padding-top:12px; border-top:1px dashed #000; line-height:1.5;">
+            အောက်ချာပါ ငွေပမာဏထက် ပိုမိုတောင်းခံပါက အထက်ပါ<br>Hotline သို့ ဆက်သွယ် တိုင်ကြားနိုင်ပါသည်။
+        </div>
+    </div>`;
+    addQR(id3, 3, 80);
+    container.appendChild(page3);
+
+    // --- PAGE 4 (Two 4x3 Formats) ---
+    let page4 = document.createElement('div');
+    page4.className = 'page';
+    let html4 = '';
+    for(let i=1; i<=2; i++) {
+        let id = generateID("0627", "Baby Genius", i+20);
+        html4 += `
+        <div class="f4">
+            <div class="flex space-between border-bottom" style="padding-bottom:8px; margin-bottom:8px;">
+                <div class="flex" style="gap:8px; align-items:center;">
+                    <div style="width:30px; height:30px; border-radius:50%; background:#2c3e50; color:white; font-size:16px; text-align:center; line-height:30px; font-weight:bold;">B</div>
+                    <div>
+                        <div class="bold" style="font-size:14px;">BRITIUM EXPRESS</div>
+                        <div style="font-size:10px;">Hotline: 09-897447744</div>
+                    </div>
+                </div>
+                <div class="flex" style="gap:10px; text-align:right; align-items:center;">
+                    <div>
+                        <div style="width: 120px; height: 24px;"><svg id="bc-${id}-4"></svg></div>
+                        <div class="bold" style="font-size:10px; margin-top:2px;">${id}</div>
+                    </div>
+                    <div id="qr-${id}-4" style="width:40px; height:40px;"></div>
+                </div>
+            </div>
+            <div class="flex" style="flex:1;">
+                <div style="flex:1.5; border-right:1px solid #000; padding-right:8px;">
+                    <div><span class="bold">Merchant:</span> ${p1.merchant} Os<br>09796239153</div>
+                    <div style="margin-top:8px;"><span class="bold">Recipient:</span> <span class="bold" style="font-size:14px;">${p1.recipient}</span></div>
+                    <div>${p1.phone}</div>
+                    <div style="margin-top:4px; line-height:1.4;">${p1.address}</div>
+                </div>
+                <div style="flex:1; padding-left:8px; display:flex; flex-direction:column;">
+                    <div class="flex space-between" style="margin-bottom:4px;"><span>Item Price:</span> <span>${p1.itemPrice}</span></div>
+                    <div class="flex space-between" style="margin-bottom:4px;"><span>Deli Fee:</span> <span>${p1.deliFee}</span></div>
+                    <div class="flex space-between" style="margin-bottom:4px;"><span>Prepaid:</span> <span>0</span></div>
+                    <div class="f4-cod bg-grey">
+                        <span>COD</span><br>${p1.total}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        addQR(id, 4, 40);
+        addBC(id, 4);
+    }
+    page4.innerHTML = html4;
+    container.appendChild(page4);
+
+    // --- Execute Triggers & Render Codes ---
+    setTimeout(() => {
+        qrRenderTasks.forEach(task => {
+            new QRCode(document.getElementById(task.id), {
+                text: task.text,
+                width: task.size,
+                height: task.size,
+                colorDark: "#000000",
+                colorLight: "#ffffff",
+                correctLevel: QRCode.CorrectLevel.L
+            });
+        });
+        bcRenderTasks.forEach(task => {
+            JsBarcode("#" + task.id, task.text, {
+                format: "CODE128",
+                displayValue: false, // Hidden standard text to allow cleaner custom layout placement 
+                margin: 0
+            });
+        });
+    }, 150);
+}
+</script>
+</body>
+</html>

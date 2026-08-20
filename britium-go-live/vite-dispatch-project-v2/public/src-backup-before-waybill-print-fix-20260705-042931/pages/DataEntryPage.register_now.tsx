@@ -1,0 +1,1380 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useLanguage } from '@/contexts/LanguageContext';
+import * as XLSX from 'xlsx';
+import {
+  Download,
+  UploadCloud,
+  Plus,
+  Filter,
+  Send,
+  Layers,
+  Camera,
+  Image as ImageIcon,
+  RefreshCw,
+  ExternalLink,
+  CheckCircle2,
+  AlertTriangle,
+} from 'lucide-react';
+
+const FALLBACK_TOWNSHIPS = [
+  "Ahlone", "Bahan", "Botataung", "Cocokyun", "Dagon", "Dagon Myothit East", "Dagon Myothit North",
+  "Dagon Myothit Seikkan", "Dagon Myothit South", "Dala", "Dawbon", "East Dagon", "Hlaing",
+  "Hlaing Thar Yar", "Hlaingthaya", "Insein", "Kamayut", "Kyauktada", "Kyimyindaing",
+  "Lanmadaw", "Latha", "Mayangon", "Mingaladon", "Mingala Taung Nyunt", "North Dagon",
+  "North Okkalapa", "Pabedan", "Pazundaung", "Sanchaung", "Seikkan", "Shwe Pyi Thar",
+  "Shwepyitha", "South Dagon", "South Okkalapa", "Tamwe", "Thaketa", "Thingangyun",
+  "Yankin", "Mandalay", "Naypyidaw"
+];
+
+type TownshipOption = {
+  township: string;
+  township_mm?: string | null;
+  city?: string | null;
+  region_state?: string | null;
+  zone?: string | null;
+  branch_code?: string | null;
+  is_out_of_reach?: boolean | null;
+  service_status?: string | null;
+  service_alert_message?: string | null;
+  label?: string | null;
+  search_text?: string | null;
+};
+
+function normalizeTownship(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s\-_()]+/g, "");
+}
+
+type PickupQueueRow = {
+  pickup_id: string;
+  pickup_way_id?: string | null;
+  merchant_code?: string | null;
+  merchant_name?: string | null;
+  pickup_date?: string | null;
+  pickup_address?: string | null;
+  township?: string | null;
+  city?: string | null;
+  expected_parcels?: number | null;
+  verified_parcels?: number | null;
+  photo_parcels?: number | null;
+  total_weight_kg?: number | null;
+  pickup_status?: string | null;
+  workflow_stage?: string | null;
+  created_at?: string | null;
+};
+
+type ParcelProofRow = {
+  id?: string | number | null;
+  pickup_id: string;
+  parcel_sequence: number;
+  delivery_way_id: string;
+  parcel_weight_kg?: number | null;
+  proof_photo_path?: string | null;
+  photo_url?: string | null;
+  status?: string | null;
+  verified_at?: string | null;
+  photo_taken_at?: string | null;
+  qr_payload?: string | null;
+  merchant_code?: string | null;
+  merchant_name?: string | null;
+  pickup_date?: string | null;
+  township?: string | null;
+  city?: string | null;
+  recipient_name?: string | null;
+  contact_no_1?: string | null;
+  contact_no_2?: string | null;
+  recipient_address?: string | null;
+  customer_tier?: string | null;
+  item_price?: number | null;
+  weight?: number | null;
+  surcharge?: number | null;
+  delivery_fee?: number | null;
+  cod_amount?: number | null;
+  actual_collect?: number | null;
+  destination?: string | null;
+  pickup_by?: string | null;
+  data_entry_remark?: string | null;
+};
+
+type DataEntryRow = {
+  id: number;
+  status: string;
+  date: string;
+  way_id: string;
+  merchant: string;
+  recipient_name: string;
+  recipient_phone: string;
+  recipient_phone_2: string;
+  town: string;
+  tier: string;
+  address: string;
+  item_price: number;
+  weight: number;
+  base_fee: number;
+  surcharge: number;
+  deli_fee: number;
+  cod: number;
+  actual_collect: number;
+  destination: string;
+  pickup_by: string;
+  remarks: string;
+  proof_photo_path?: string | null;
+  photo_url?: string | null;
+  saved?: boolean;
+};
+
+
+const REGISTER_NOW_TEMPLATE_HEADERS = [
+  'Recipient Name',
+  'Contact No. (1)',
+  'Contact No. (2)',
+  'Township',
+  'Recipient Address',
+  'Customer Tier',
+  'Item Price',
+  'Weight',
+  'Remark / Special Instruction',
+];
+
+function toDateInput(value?: string | null) {
+  if (!value) return new Date().toISOString().slice(0, 10);
+  return String(value).slice(0, 10);
+}
+
+function proofStatus(row: ParcelProofRow) {
+  if (row.proof_photo_path && Number(row.parcel_weight_kg || 0) > 0) return 'RIDER_VERIFIED';
+  if (row.proof_photo_path) return 'PHOTO_ONLY';
+  if (Number(row.parcel_weight_kg || 0) > 0) return 'WEIGHT_ONLY';
+  return 'MISSING_PROOF';
+}
+
+export default function DataEntryPage() {
+  const { t } = useLanguage();
+  const sb = supabase as any;
+
+  const [loading, setLoading] = useState(false);
+  const [pickupQueue, setPickupQueue] = useState<PickupQueueRow[]>([]);
+  const [selectedPickupId, setSelectedPickupId] = useState('');
+  const selectedPickupIdRef = useRef('');
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+  const tableMinWidth = 1480;
+
+  const [parcelProofs, setParcelProofs] = useState<ParcelProofRow[]>([]);
+  const [rows, setRows] = useState<DataEntryRow[]>([]);
+  const [message, setMessage] = useState<string>('');
+  const [townshipOptions, setTownshipOptions] = useState<TownshipOption[]>(
+    FALLBACK_TOWNSHIPS.map((township) => ({ township, city: "Yangon", region_state: "Yangon Region" }))
+  );
+
+  function selectPickup(pickupId: string) {
+    selectedPickupIdRef.current = pickupId;
+    setSelectedPickupId(pickupId);
+  }
+
+  const selectedPickup = useMemo(
+    () => pickupQueue.find((p) => p.pickup_id === selectedPickupId) || null,
+    [pickupQueue, selectedPickupId]
+  );
+
+  const townshipDisplayOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return townshipOptions.filter((opt) => {
+      const key = normalizeTownship(opt.township);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [townshipOptions]);
+
+  function findTownshipOption(input?: string | null) {
+    const key = normalizeTownship(input);
+    if (!key) return null;
+
+    return townshipDisplayOptions.find((opt) => {
+      const townshipKey = normalizeTownship(opt.township);
+      const mmKey = normalizeTownship(opt.township_mm);
+      const labelKey = normalizeTownship(opt.label);
+      const searchKey = normalizeTownship(opt.search_text);
+      return townshipKey === key || mmKey === key || labelKey === key || searchKey.includes(key);
+    }) || null;
+  }
+
+  const money = (value: any, fallback = 0) => {
+    const n = Number(String(value ?? '').replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const roundMoney = (value: number) => Math.round((Number(value) || 0) * 100) / 100;
+
+  function calculateLocalAmounts(row: DataEntryRow, option?: TownshipOption | null): DataEntryRow {
+    const townshipOption = option ?? findTownshipOption(row.town);
+    const town = townshipOption?.township || row.town || '';
+    const destination = townshipOption?.city || row.destination || selectedPickup?.city || 'Yangon';
+    const branchCode = String(townshipOption?.branch_code || '').toUpperCase();
+    const regionState = String(townshipOption?.region_state || '').toLowerCase();
+
+    const tier = String(row.tier || 'Standard');
+    const normalizedTier = tier.trim().toLowerCase();
+    const itemPrice = money(row.item_price, 0);
+    const weight = Math.max(0, money(row.weight, 0));
+
+    // Current go-live tariff rule:
+    // Yangon/YGN base = 4,000 MMK. Mandalay/MDY and Naypyitaw/NPT base = 6,000 MMK.
+    // Standard includes 3 kg. Royal includes 5 kg. Extra kg surcharge = 500 MMK per rounded-up kg.
+    const isUpperMyanmar =
+      branchCode === 'MDY' ||
+      branchCode === 'NPT' ||
+      /mandalay/.test(regionState) ||
+      /naypyitaw|nay pyi taw/.test(`${regionState} ${destination}`.toLowerCase());
+
+    const baseFee = isUpperMyanmar ? 6000 : 4000;
+    const includedKg = normalizedTier === 'royal' ? 5 : 3;
+    const chargeableExtraKg = Math.max(0, Math.ceil(weight) - includedKg);
+    const surcharge = chargeableExtraKg * 500;
+    const deliveryFee = baseFee + surcharge;
+    const cod = itemPrice;
+    const actualCollect = itemPrice + deliveryFee;
+
+    return {
+      ...row,
+      town,
+      destination,
+      base_fee: roundMoney(baseFee),
+      surcharge: roundMoney(surcharge),
+      deli_fee: roundMoney(deliveryFee),
+      cod: roundMoney(cod),
+      actual_collect: roundMoney(actualCollect),
+    };
+  }
+
+  async function calculateAmounts(row: DataEntryRow): Promise<DataEntryRow> {
+    const townshipOption = findTownshipOption(row.town);
+    const local = calculateLocalAmounts(row, townshipOption);
+
+    try {
+      let response = await sb.rpc('be_calculate_tariff', {
+        p_township: local.town,
+        p_customer_tier: local.tier || 'Standard',
+        p_weight_kg: Number(local.weight || 0),
+        p_item_price: Number(local.item_price || 0),
+      });
+
+      // Backward-compatible fallback for older SQL deployments.
+      if (response.error) {
+        response = await sb.rpc('be_calculate_tariff', {
+          p_township: local.town,
+          p_tier: local.tier || 'Standard',
+          p_weight: Number(local.weight || 0),
+          p_item_price: Number(local.item_price || 0),
+        });
+      }
+
+      const { data, error } = response;
+
+      if (!error && data) {
+        return {
+          ...local,
+          base_fee: roundMoney(data.base_fee ?? local.base_fee),
+          surcharge: roundMoney(data.surcharge ?? local.surcharge),
+          deli_fee: roundMoney(data.delivery_fee ?? local.deli_fee),
+          cod: roundMoney(data.cod_amount ?? data.cod ?? local.cod),
+          actual_collect: roundMoney(data.actual_collect ?? local.actual_collect),
+          destination: data.city || data.destination || local.destination,
+        };
+      }
+    } catch (err) {
+      // Local calculation remains the fallback so staff can continue data entry even if RPC is unavailable.
+      console.warn('be_calculate_tariff unavailable; using local tariff calculation.', err);
+    }
+
+    return local;
+  }
+
+  function syncTopScroll(source: "top" | "table") {
+    const top = topScrollRef.current;
+    const table = tableScrollRef.current;
+    if (!top || !table) return;
+
+    if (source === "top" && table.scrollLeft !== top.scrollLeft) {
+      table.scrollLeft = top.scrollLeft;
+    }
+
+    if (source === "table" && top.scrollLeft !== table.scrollLeft) {
+      top.scrollLeft = table.scrollLeft;
+    }
+  }
+
+  async function loadTownshipOptions() {
+    try {
+      const { data, error } = await sb
+        .from('be_v_township_search_options')
+        .select('township,township_mm,city,region_state,label,search_text')
+        .order('township', { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setTownshipOptions(data as TownshipOption[]);
+        return;
+      }
+    } catch (error) {
+      console.warn('be_v_township_search_options unavailable, using fallback township list', error);
+    }
+
+    try {
+      const { data } = await sb
+        .from('v_address_township_options')
+        .select('township,city,region_state')
+        .order('township', { ascending: true });
+
+      if (data && data.length > 0) {
+        setTownshipOptions(data as TownshipOption[]);
+      }
+    } catch (error) {
+      console.warn('v_address_township_options unavailable, using fallback township list', error);
+    }
+  }
+
+  async function signPhotoUrl(path?: string | null) {
+    if (!path) return null;
+
+    const normalized = String(path).replace(/^pickup-parcel-proofs\//, '');
+
+    try {
+      const { data, error } = await supabase.storage
+        .from('pickup-parcel-proofs')
+        .createSignedUrl(normalized, 60 * 60);
+
+      if (!error && data?.signedUrl) return data.signedUrl;
+    } catch (error) {
+      console.warn('Signed URL failed, trying public URL', error);
+    }
+
+    try {
+      const { data } = supabase.storage
+        .from('pickup-parcel-proofs')
+        .getPublicUrl(normalized);
+
+      return data?.publicUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadPickupQueue() {
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const { data, error } = await sb
+        .from('be_v_data_entry_pickup_verification_queue')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+
+      const queue = (data || []) as PickupQueueRow[];
+      setPickupQueue(queue);
+
+      // Keep the pickup selected by the user during refresh/realtime updates.
+      // The previous version used the initial selectedPickupId from a stale closure,
+      // so every proof refresh could auto-select the newest/first pickup and the screen flashed.
+      const currentPickupId = selectedPickupIdRef.current;
+      const currentStillExists = currentPickupId
+        ? queue.some((item) => item.pickup_id === currentPickupId)
+        : false;
+
+      if (currentStillExists) {
+        return;
+      }
+
+      if (!currentPickupId && queue.length > 0) {
+        selectPickup(queue[0].pickup_id);
+        return;
+      }
+
+      if (currentPickupId && !currentStillExists) {
+        selectPickup(queue[0]?.pickup_id || '');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error.message || 'Failed to load Data Entry pickup queue.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadParcelProofs(pickupId: string) {
+    if (!pickupId) {
+      setParcelProofs([]);
+      setRows([]);
+      return;
+    }
+
+    setLoading(true);
+    setMessage('');
+
+    try {
+      // Ensure the parcel rows exist. Safe to call many times.
+      await sb.rpc('be_seed_pickup_parcel_verifications', {
+        p_pickup_id: pickupId,
+      });
+
+      let { data, error } = await sb
+        .from('be_v_data_entry_parcel_template')
+        .select('*')
+        .eq('pickup_id', pickupId)
+        .order('parcel_sequence', { ascending: true });
+
+      if (error) {
+        const fallback = await sb
+          .from('be_v_data_entry_parcel_proofs')
+          .select('*')
+          .eq('pickup_id', pickupId)
+          .order('parcel_sequence', { ascending: true });
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      if (error) throw error;
+
+      const proofs = await Promise.all(
+        ((data || []) as ParcelProofRow[]).map(async (proof) => ({
+          ...proof,
+          photo_url: await signPhotoUrl(proof.proof_photo_path),
+        }))
+      );
+
+      setParcelProofs(proofs);
+      setRows(
+        proofs.map((proof, index) => calculateLocalAmounts({
+          id: proof.parcel_sequence || index + 1,
+          status: proofStatus(proof),
+          date: toDateInput(proof.pickup_date),
+          way_id: proof.delivery_way_id || '',
+          merchant: `${proof.merchant_code || ''}${proof.merchant_name ? ` - ${proof.merchant_name}` : ''}`.trim(),
+          recipient_name: proof.recipient_name || '',
+          recipient_phone: proof.contact_no_1 || '',
+          recipient_phone_2: proof.contact_no_2 || '',
+          town: proof.township || selectedPickup?.township || 'North Dagon',
+          tier: proof.customer_tier || 'Standard',
+          address: proof.recipient_address || '',
+          item_price: Number(proof.item_price || 0),
+          weight: Number(proof.parcel_weight_kg || proof.weight || 0),
+          base_fee: Number(proof.delivery_fee || 0) > 0 ? Number(proof.delivery_fee || 0) - Number(proof.surcharge || 0) : 0,
+          surcharge: Number(proof.surcharge || 0),
+          deli_fee: Number(proof.delivery_fee || 0),
+          cod: Number(proof.cod_amount || 0),
+          actual_collect: Number(proof.actual_collect || 0),
+          destination: proof.destination || proof.city || selectedPickup?.city || 'Yangon',
+          pickup_by: proof.pickup_by || 'RIDER',
+          remarks: proof.data_entry_remark || (proof.proof_photo_path ? 'Rider photo verified' : 'Missing rider photo'),
+          proof_photo_path: proof.proof_photo_path,
+          photo_url: proof.photo_url,
+          saved: Boolean(proof.recipient_name || proof.contact_no_1 || proof.recipient_address || proof.data_entry_remark),
+        }))
+      );
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error.message || 'Failed to load rider parcel photos.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadTownshipOptions();
+    loadPickupQueue();
+
+    const channel = supabase
+      .channel('data-entry-rider-proof-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'be_pickup_parcel_verifications' },
+        () => {
+          const currentPickupId = selectedPickupIdRef.current;
+          loadPickupQueue();
+          if (currentPickupId) loadParcelProofs(currentPickupId);
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'be_portal_pickup_requests' },
+        () => loadPickupQueue()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+    // selectedPickupId intentionally omitted to avoid duplicate channels.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    selectedPickupIdRef.current = selectedPickupId;
+
+    if (selectedPickupId) {
+      loadParcelProofs(selectedPickupId);
+    } else {
+      setParcelProofs([]);
+      setRows([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPickupId]);
+
+  const handleGenerate = () => {
+    if (!selectedPickupId) {
+      setMessage('Please select a pickup first.');
+      return;
+    }
+    loadParcelProofs(selectedPickupId);
+  };
+
+  const handleRegisterNow = async () => {
+    if (!selectedPickupId) {
+      setMessage('Please select a pickup first.');
+      return;
+    }
+
+    if (rows.length === 0) {
+      await loadParcelProofs(selectedPickupId);
+    }
+
+    setMessage('REGISTER NOW mode enabled. Only required data-entry columns are shown. COD is removed from the screen and template; the system calculates it internally from Item Price.');
+  };
+
+
+  const downloadRegisterNowTemplate = () => {
+    const sampleRows = Array.from({ length: Math.max(rows.length, selectedPickup?.expected_parcels || 30) }, () => ({
+      'Recipient Name': '',
+      'Contact No. (1)': '',
+      'Contact No. (2)': '',
+      Township: selectedPickup?.township || '',
+      'Recipient Address': '',
+      'Customer Tier': 'Standard',
+      'Item Price': '',
+      Weight: '',
+      'Remark / Special Instruction': '',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(sampleRows, {
+      header: REGISTER_NOW_TEMPLATE_HEADERS,
+      skipHeader: false,
+    });
+
+    worksheet['!cols'] = [
+      { wch: 24 },
+      { wch: 18 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 44 },
+      { wch: 16 },
+      { wch: 14 },
+      { wch: 10 },
+      { wch: 36 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Register Now');
+    XLSX.writeFile(workbook, 'Britium_DataEntry_Register_Now_Template.xlsx');
+  };
+
+  const normalizeHeader = (value: unknown) =>
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[\s\-_().:/]+/g, '');
+
+  const firstNonEmpty = (...values: any[]) => {
+    for (const value of values) {
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        return value;
+      }
+    }
+    return '';
+  };
+
+  const toNumber = (value: any, fallback = 0) => {
+    if (value === undefined || value === null || value === '') return fallback;
+    const n = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(n) ? n : fallback;
+  };
+
+  const handleUploadClick = () => {
+    uploadInputRef.current?.click();
+  };
+
+  const handleTemplateUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    try {
+      setLoading(true);
+      setMessage('');
+
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const sheetName = workbook.SheetNames[0];
+
+      if (!sheetName) {
+        throw new Error('No worksheet found in uploaded file.');
+      }
+
+      const sheet = workbook.Sheets[sheetName];
+      const matrix = XLSX.utils.sheet_to_json<any[]>(sheet, {
+        header: 1,
+        defval: '',
+        blankrows: false,
+      });
+
+      const headerRowIndex = matrix.findIndex((row) => {
+        const joined = row.map(normalizeHeader).join('|');
+        return (
+          joined.includes('deliveryway') ||
+          joined.includes('wayid') ||
+          joined.includes('recipientname') ||
+          joined.includes('contactno') ||
+          joined.includes('township')
+        );
+      });
+
+      if (headerRowIndex < 0) {
+        throw new Error('Template header row was not found. Please use the Britium Data Entry template.');
+      }
+
+      const headers = matrix[headerRowIndex].map(normalizeHeader);
+      const getCell = (row: any[], aliases: string[]) => {
+        for (const alias of aliases.map(normalizeHeader)) {
+          const idx = headers.findIndex((h) => h === alias || h.includes(alias) || alias.includes(h));
+          if (idx >= 0) return row[idx];
+        }
+        return '';
+      };
+
+      const uploadedRows: DataEntryRow[] = matrix
+        .slice(headerRowIndex + 1)
+        .filter((row) => row.some((cell) => String(cell || '').trim() !== ''))
+        .map((row, index) => {
+          const wayId = String(firstNonEmpty(
+            getCell(row, ['deliverywayid', 'deliveryway id', 'wayid', 'way id']),
+            rows[index]?.way_id,
+            `UPLOAD-${index + 1}`
+          )).trim();
+
+          const sequenceFromWayId = Number((wayId.match(/-(\d+)$/)?.[1] || '').replace(/^0+/, ''));
+          const sequence = toNumber(firstNonEmpty(
+            getCell(row, ['#', 'no', 'parcelno', 'parcelsequence', 'sequence']),
+            sequenceFromWayId,
+            rows[index]?.id,
+            index + 1
+          ), index + 1);
+
+          const dateValue = firstNonEmpty(
+            getCell(row, ['pickupdate', 'pickup date', 'date']),
+            rows[index]?.date,
+            selectedPickup?.pickup_date
+          );
+
+          const townValue = String(firstNonEmpty(
+            getCell(row, ['township', 'townshipenmm', 'township en/mm', 'town']),
+            rows[index]?.town,
+            selectedPickup?.township,
+            ''
+          )).trim();
+
+          const townshipOption = findTownshipOption(townValue);
+          const canonicalTown = townshipOption?.township || townValue;
+
+          const baseFee = toNumber(firstNonEmpty(
+            getCell(row, ['basefee', 'base fee']),
+            rows[index]?.base_fee
+          ), rows[index]?.base_fee || 0);
+
+          const surcharge = toNumber(firstNonEmpty(
+            getCell(row, ['surcharge']),
+            rows[index]?.surcharge
+          ), rows[index]?.surcharge || 0);
+
+          const deliveryFee = toNumber(firstNonEmpty(
+            getCell(row, ['totaldelifee', 'deliveryfee', 'delfee', 'total deli fee']),
+            rows[index]?.deli_fee,
+            baseFee + surcharge
+          ), baseFee + surcharge);
+
+          return calculateLocalAmounts({
+            id: sequence || index + 1,
+            status: String(firstNonEmpty(getCell(row, ['status']), rows[index]?.status, 'DATA_ENTRY_UPLOADED')),
+            date: toDateInput(dateValue),
+            way_id: wayId,
+            merchant: String(firstNonEmpty(
+              getCell(row, ['merchant']),
+              rows[index]?.merchant,
+              selectedPickup ? `${selectedPickup.merchant_code || ''} - ${selectedPickup.merchant_name || ''}` : ''
+            )),
+            recipient_name: String(firstNonEmpty(getCell(row, ['recipientname', 'recipient name']), rows[index]?.recipient_name)),
+            recipient_phone: String(firstNonEmpty(getCell(row, ['contactno1', 'contact no 1', 'contactno', 'phone']), rows[index]?.recipient_phone)),
+            recipient_phone_2: String(firstNonEmpty(getCell(row, ['contactno2', 'contact no 2', 'phone2']), rows[index]?.recipient_phone_2)),
+            town: canonicalTown,
+            tier: String(firstNonEmpty(getCell(row, ['customertier', 'customer tier', 'tier']), rows[index]?.tier, 'Standard')),
+            address: String(firstNonEmpty(getCell(row, ['recipientaddress', 'recipient address', 'address']), rows[index]?.address)),
+            item_price: toNumber(firstNonEmpty(getCell(row, ['itemprice', 'item price']), rows[index]?.item_price), rows[index]?.item_price || 0),
+            weight: toNumber(firstNonEmpty(getCell(row, ['weight', 'weightkg', 'weight kg']), rows[index]?.weight), rows[index]?.weight || 0),
+            base_fee: baseFee,
+            surcharge,
+            deli_fee: deliveryFee,
+            // COD column is intentionally removed from the user-facing template.
+            // System keeps cod_amount internally equal to Item Price for downstream finance/waybill sync.
+            cod: toNumber(firstNonEmpty(getCell(row, ['itemprice', 'item price']), rows[index]?.item_price), rows[index]?.item_price || 0),
+            actual_collect: toNumber(firstNonEmpty(getCell(row, ['actualcollect', 'actual collect']), rows[index]?.actual_collect), rows[index]?.actual_collect || 0),
+            destination: String(firstNonEmpty(getCell(row, ['destination', 'city']), townshipOption?.city, rows[index]?.destination, selectedPickup?.city, 'Yangon')),
+            pickup_by: String(firstNonEmpty(getCell(row, ['pickupby', 'pickup by']), rows[index]?.pickup_by, 'DATA_ENTRY')),
+            remarks: String(firstNonEmpty(getCell(row, ['remark', 'remarks', 'specialinstruction', 'special instruction']), rows[index]?.remarks)),
+            proof_photo_path: rows[index]?.proof_photo_path || null,
+            photo_url: rows[index]?.photo_url || null,
+            saved: false,
+          }, townshipOption);
+        });
+
+      if (uploadedRows.length === 0) {
+        throw new Error('No parcel rows found in uploaded file.');
+      }
+
+      setRows((currentRows) => {
+        const nextRows = [...currentRows];
+
+        uploadedRows.forEach((uploadedRow, index) => {
+          const byWayId = nextRows.findIndex((r) => r.way_id === uploadedRow.way_id);
+          const bySequence = nextRows.findIndex((r) => r.id === uploadedRow.id);
+          const targetIndex = byWayId >= 0 ? byWayId : bySequence >= 0 ? bySequence : index;
+
+          const existing = nextRows[targetIndex];
+          nextRows[targetIndex] = {
+            ...(existing || uploadedRow),
+            ...uploadedRow,
+            proof_photo_path: existing?.proof_photo_path || uploadedRow.proof_photo_path,
+            photo_url: existing?.photo_url || uploadedRow.photo_url,
+            saved: false,
+          };
+        });
+
+        return nextRows.filter(Boolean).sort((a, b) => a.id - b.id);
+      });
+
+      setMessage(`Uploaded ${uploadedRows.length} parcel row(s). Review and click Save for each parcel.`);
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error.message || 'Failed to upload template.');
+    } finally {
+      setLoading(false);
+      event.target.value = '';
+    }
+  };
+
+  const handleAddRow = () => {
+    const newId = rows.length + 1;
+    setRows([...rows, calculateLocalAmounts({
+      id: newId,
+      status: 'MANUAL_EXTRA',
+      date: new Date().toISOString().slice(0, 10),
+      way_id: `MANUAL-${newId}`,
+      merchant: selectedPickup ? `${selectedPickup.merchant_code || ''} - ${selectedPickup.merchant_name || ''}` : '',
+      recipient_name: '',
+      recipient_phone: '',
+      recipient_phone_2: '',
+      town: selectedPickup?.township || 'North Dagon',
+      tier: 'Standard',
+      address: '',
+      item_price: 0,
+      weight: 1,
+      base_fee: 0,
+      surcharge: 0,
+      deli_fee: 0,
+      cod: 0,
+      actual_collect: 0,
+      destination: selectedPickup?.city || 'Yangon',
+      pickup_by: 'DATA_ENTRY',
+      remarks: '',
+      saved: false,
+    })]);
+  };
+
+  const handleTownshipChange = async (index: number, value: string) => {
+    const option = findTownshipOption(value);
+    const canonicalTown = option?.township || value;
+    await handleUpdate(index, 'town', canonicalTown);
+  };
+
+  const handleSaveRow = async (index: number) => {
+    if (!selectedPickupId) {
+      setMessage('Please select a pickup first.');
+      return;
+    }
+
+    const row = rows[index];
+    const option = findTownshipOption(row.town);
+    const normalizedTownship = option?.township || row.town;
+
+    try {
+      setLoading(true);
+      const { error } = await sb.rpc('be_save_data_entry_parcel_detail', {
+        p_pickup_id: selectedPickupId,
+        p_parcel_sequence: row.id,
+        p_delivery_way_id: row.way_id,
+        p_recipient_name: row.recipient_name || null,
+        p_contact_no_1: row.recipient_phone || null,
+        p_contact_no_2: row.recipient_phone_2 || null,
+        p_township: normalizedTownship || null,
+        p_recipient_address: row.address || null,
+        p_customer_tier: row.tier || 'Standard',
+        p_item_price: Number(row.item_price || 0),
+        p_weight_kg: Number(row.weight || 0),
+        p_surcharge: Number(row.surcharge || 0),
+        p_delivery_fee: Number(row.deli_fee || 0),
+        p_cod_amount: Number(row.cod || 0),
+        p_actual_collect: Number(row.actual_collect || 0),
+        p_destination: row.destination || option?.city || null,
+        p_pickup_by: row.pickup_by || 'DATA_ENTRY',
+        p_remark: row.remarks || null,
+        p_actor_email: null,
+      });
+
+      if (error) throw error;
+
+      const newRows = [...rows];
+      newRows[index] = {
+        ...newRows[index],
+        town: normalizedTownship,
+        destination: option?.city || newRows[index].destination,
+        saved: true,
+      };
+      setRows(newRows);
+      setMessage(`Saved ${row.way_id}`);
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error.message || `Failed to save ${row.way_id}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdate = async (index: number, field: string, value: any) => {
+    const currentRow = rows[index];
+
+    if (!currentRow) return;
+
+    let updatedRow: DataEntryRow = {
+      ...currentRow,
+      [field]: value,
+      saved: false,
+    } as DataEntryRow;
+
+    if (field === 'town') {
+      const option = findTownshipOption(value);
+      if (option) {
+        updatedRow = {
+          ...updatedRow,
+          town: option.township,
+          destination: option.city || updatedRow.destination || 'Yangon',
+        };
+      }
+    }
+
+    if (field === 'destination') {
+      updatedRow.destination = String(value || '');
+    }
+
+    const shouldRecalculate = [
+      'weight',
+      'tier',
+      'town',
+      'item_price',
+      'destination',
+    ].includes(field);
+
+    if (shouldRecalculate) {
+      updatedRow = await calculateAmounts(updatedRow);
+    }
+
+    setRows((currentRows) => {
+      const nextRows = [...currentRows];
+      nextRows[index] = updatedRow;
+      return nextRows;
+    });
+  };
+
+  const handleSaveAndGenerate = async () => {
+    if (!selectedPickupId) {
+      setMessage('Please select a pickup first.');
+      return;
+    }
+
+    if (!rows.length) {
+      setMessage('No parcel rows are available for this pickup.');
+      return;
+    }
+
+    const missingProofs = rows.filter((r) => !r.photo_url && !r.proof_photo_path);
+    if (missingProofs.length > 0) {
+      setMessage(`Cannot generate waybill: ${missingProofs.length} parcel(s) still have no rider photo proof.`);
+      return;
+    }
+
+    const missingRequired = rows.filter((r) =>
+      !String(r.recipient_name || '').trim() ||
+      !String(r.recipient_phone || '').trim() ||
+      !String(r.town || '').trim() ||
+      !String(r.address || '').trim()
+    );
+
+    if (missingRequired.length > 0) {
+      setMessage(`Cannot generate waybill: ${missingRequired.length} parcel row(s) still need recipient name, phone, township, and address.`);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setMessage('Saving all parcel rows and creating waybill...');
+
+      const { data: userData } = await supabase.auth.getUser();
+      const actorEmail = userData?.user?.email || null;
+
+      const payloadRows = rows.map((row) => ({
+        parcel_sequence: row.id,
+        delivery_way_id: row.way_id,
+        recipient_name: row.recipient_name,
+        contact_no_1: row.recipient_phone,
+        contact_no_2: row.recipient_phone_2,
+        township: row.town,
+        recipient_address: row.address,
+        customer_tier: row.tier || 'Standard',
+        item_price: Number(row.item_price || 0),
+        weight_kg: Number(row.weight || 0),
+        surcharge: Number(row.surcharge || 0),
+        delivery_fee: Number(row.deli_fee || 0),
+        cod_amount: Number(row.cod || 0),
+        actual_collect: Number(row.actual_collect || 0),
+        destination: row.destination || selectedPickup?.city || 'Yangon',
+        pickup_by: row.pickup_by || 'DATA_ENTRY',
+        remark: row.remarks || '',
+        proof_photo_path: row.proof_photo_path || null,
+      }));
+
+      // FIXED5:
+      // Save the browser-visible rows directly first, then call the backend waybill RPC.
+      // This removes the previous failure mode where the UI showed rows but
+      // be_data_entry_parcel_details still stayed at 0.
+      const nowIso = new Date().toISOString();
+      const directRows = payloadRows.map((row) => ({
+        pickup_id: selectedPickupId,
+        parcel_sequence: row.parcel_sequence,
+        delivery_way_id: row.delivery_way_id,
+        recipient_name: row.recipient_name || null,
+        contact_no_1: row.contact_no_1 || null,
+        contact_no_2: row.contact_no_2 || null,
+        township: row.township || null,
+        recipient_address: row.recipient_address || null,
+        customer_tier: row.customer_tier || 'Standard',
+        item_price: Number(row.item_price || 0),
+        weight_kg: Number(row.weight_kg || 0),
+        surcharge: Number(row.surcharge || 0),
+        delivery_fee: Number(row.delivery_fee || 0),
+        cod_amount: Number(row.cod_amount || 0),
+        actual_collect: Number(row.actual_collect || 0),
+        destination: row.destination || null,
+        pickup_by: row.pickup_by || 'DATA_ENTRY',
+        remark: row.remark || null,
+        saved_by_email: actorEmail,
+        saved_at: nowIso,
+        updated_at: nowIso,
+      }));
+
+      const directSave = await sb
+        .from('be_data_entry_parcel_details')
+        .upsert(directRows, { onConflict: 'pickup_id,parcel_sequence' });
+
+      if (directSave.error) {
+        console.warn('Direct Data Entry row save failed, trying RPC fallback.', directSave.error);
+        setMessage(`Direct row save failed; trying backend RPC fallback: ${directSave.error.message}`);
+      } else {
+        const verifySave = await sb
+          .from('be_data_entry_parcel_details')
+          .select('pickup_id', { count: 'exact', head: true })
+          .eq('pickup_id', selectedPickupId);
+
+        if (verifySave.error) {
+          console.warn('Saved row verification failed.', verifySave.error);
+        } else if ((verifySave.count || 0) <= 0) {
+          throw new Error('Data Entry rows are still 0 after direct save. Check RLS/policies on be_data_entry_parcel_details.');
+        } else {
+          setMessage(`Saved ${verifySave.count} Data Entry rows. Creating waybill...`);
+        }
+      }
+
+      // Backend call:
+      // 1) upsert visible Data Entry rows into be_data_entry_parcel_details
+      // 2) create/sync pickup-level waybill
+      // 3) push parcel rows to Waybill Studio and Warehouse queue
+      let { data, error } = await sb.rpc('be_data_entry_create_waybill_from_rows', {
+        p_pickup_id: selectedPickupId,
+        p_rows: payloadRows,
+        p_actor_email: actorEmail,
+      });
+
+      // Compatibility fallback for environments where the fixed3/fixed5 RPC has not reloaded
+      // or when the RPC save path fails but the direct upsert above already saved the rows.
+      if (error) {
+        console.warn('be_data_entry_create_waybill_from_rows failed, trying legacy waybill RPC.', error);
+
+        const firstRow = rows[0];
+        const totalCod = rows.reduce((sum, row) => sum + Number(row.cod || row.item_price || 0), 0);
+        const legacy = await sb.rpc('be_data_entry_create_waybill', {
+          p_pickup_id: selectedPickupId,
+          p_waybill_no: null,
+          p_receiver_name: firstRow?.recipient_name || 'Receiver',
+          p_receiver_phone: firstRow?.recipient_phone || '',
+          p_receiver_address: firstRow?.address || '',
+          p_destination_city: firstRow?.destination || selectedPickup?.city || 'Yangon',
+          p_destination_township: firstRow?.town || selectedPickup?.township || '',
+          p_cod_amount: totalCod,
+          p_actor_email: actorEmail,
+        });
+
+        data = legacy.data;
+        error = legacy.error;
+      }
+
+      if (error) throw error;
+
+      const waybillNo = data?.waybill_no || data?.waybillNo || 'created';
+      const parcelCount = data?.parcel_count || rows.length;
+
+      setRows((currentRows) => currentRows.map((row) => ({ ...row, saved: true, status: 'WAYBILL_CREATED' })));
+      setMessage(`Waybill ${waybillNo} created successfully. ${parcelCount} parcel row(s) synced to Waybill Studio and Warehouse queue.`);
+
+      await loadPickupQueue();
+      await loadParcelProofs(selectedPickupId);
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error?.message || 'Waybill creation failed. Please check the fixed3 waybill RPC/backend patch.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const canGenerateWaybill =
+    Boolean(selectedPickupId) &&
+    rows.length > 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="border-b border-[#1a3a5c] pb-4 flex justify-between items-end flex-wrap gap-4">
+        <div>
+          <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px] tracking-widest">
+            {t('DATA ENTRY PARCEL REGISTRATION', 'ပါဆယ်စာရင်း သွင်းရန်')}
+          </h1>
+          <p className="text-[#4d7a9b] text-[13px]">
+            {t(
+              'Verify rider parcel photos and register waybills dynamically. Prices auto-calculate.',
+              'ရိုင်ဒါ၏ ပစ္စည်းဓာတ်ပုံများကို စစ်ဆေး၍ Waybill များသွင်းပါ။ ငွေပမာဏ အလိုအလျောက်တွက်ပေးမည်။'
+            )}
+          </p>
+        </div>
+
+        <button
+          onClick={() => {
+            loadPickupQueue();
+            if (selectedPickupId) loadParcelProofs(selectedPickupId);
+          }}
+          className="bg-[#1a3a5c] text-[#eef8ff] px-4 py-2 rounded-xl border border-[#1a3a5c] hover:border-[#f6b84b] flex items-center gap-2 text-[12px] uppercase tracking-wider"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          Refresh Proofs
+        </button>
+      </div>
+
+      {message && (
+        <div className="bg-[#061524] border border-[#f6b84b]/50 text-[#f6b84b] p-3 rounded-xl text-[13px] flex items-center gap-2">
+          <AlertTriangle size={16} />
+          {message}
+        </div>
+      )}
+
+      {/* FILTERS & REPORTS */}
+      <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-2xl flex flex-col lg:flex-row gap-6 items-end">
+        <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              <Filter size={12} className="inline mr-1" />
+              {t('From Date', 'မှ (ရက်စွဲ)')}
+            </label>
+            <input type="date" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]" />
+          </div>
+          <div>
+            <label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">
+              <Filter size={12} className="inline mr-1" />
+              {t('To Date', 'ထိ (ရက်စွဲ)')}
+            </label>
+            <input type="date" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]" />
+          </div>
+        </div>
+        <div className="w-full lg:w-auto flex gap-2 flex-wrap justify-end">
+          <button className="bg-[#1a3a5c] text-[#eef8ff] px-6 py-3 rounded-xl border border-[#1a3a5c] hover:border-[#f6b84b] flex justify-center items-center gap-2 text-[12px] uppercase tracking-wider transition-colors cursor-pointer">
+            <Download size={14} /> {t('Report', 'အစီရင်ခံစာ')}
+          </button>
+          <button onClick={downloadRegisterNowTemplate} className="bg-[#061524] text-[#4ea8de] px-6 py-3 rounded-xl border border-[#1a3a5c] hover:border-[#4ea8de] flex justify-center items-center gap-2 text-[12px] uppercase tracking-wider transition-colors cursor-pointer">
+            <Download size={14} /> Register Template.xlsx
+          </button>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            className="hidden"
+            onChange={handleTemplateUpload}
+          />
+          <button
+            type="button"
+            onClick={handleUploadClick}
+            disabled={loading}
+            className="bg-[#f6b84b] text-[#061524] px-6 py-3 rounded-xl flex justify-center items-center gap-2 hover:bg-[#e5a93a] text-[12px] uppercase tracking-wider transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <UploadCloud size={14} /> {loading ? t('Uploading...', 'တင်နေသည်...') : t('Upload', 'တင်မည်')}
+          </button>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+        {/* RIDER PHOTOS */}
+        <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-5 flex flex-col h-[600px]">
+          <h3 className="text-[#eef8ff] text-[13px] uppercase tracking-widest mb-4 flex items-center gap-2 border-b border-[#1a3a5c] pb-3">
+            <Camera size={14} className="text-[#4ea8de]" />
+            {t('Rider Photo Verification', 'Rider မှတ်တမ်းပုံများ')}
+          </h3>
+
+          <div className="mb-3 text-[11px] text-[#4d7a9b]">
+            {selectedPickup ? (
+              <>
+                <div className="text-[#eef8ff] font-semibold">{selectedPickup.pickup_id}</div>
+                <div>{selectedPickup.merchant_code} - {selectedPickup.merchant_name}</div>
+                <div>
+                  Photos: <span className="text-[#f6b84b]">{parcelProofs.filter((p) => p.proof_photo_path).length}</span> / {parcelProofs.length}
+                </div>
+              </>
+            ) : (
+              'Select pickup to view rider photos.'
+            )}
+          </div>
+
+          <div className="flex-1 overflow-auto space-y-3 custom-scrollbar pr-2">
+            {parcelProofs.length === 0 ? (
+              <div className="bg-[#061524] border border-[#1a3a5c] rounded-xl h-32 flex flex-col items-center justify-center text-[#4d7a9b] text-[12px]">
+                <ImageIcon size={24} className="mb-2" />
+                {t('No rider parcel photos loaded', 'ရိုင်ဒါပုံများ မရှိသေးပါ')}
+              </div>
+            ) : (
+              parcelProofs.map((proof) => (
+                <div key={`${proof.pickup_id}-${proof.parcel_sequence}`} className="bg-[#061524] border border-[#1a3a5c] rounded-xl overflow-hidden">
+                  <div className="p-3 flex items-center justify-between gap-2">
+                    <div>
+                      <div className="text-[#f6b84b] text-[12px] font-semibold">{proof.delivery_way_id}</div>
+                      <div className="text-[#4d7a9b] text-[11px]">
+                        #{String(proof.parcel_sequence).padStart(3, '0')} • {Number(proof.parcel_weight_kg || 0).toFixed(2)} KG
+                      </div>
+                    </div>
+                    {proof.proof_photo_path ? (
+                      <CheckCircle2 size={16} className="text-emerald-400" />
+                    ) : (
+                      <AlertTriangle size={16} className="text-rose-400" />
+                    )}
+                  </div>
+
+                  {proof.photo_url ? (
+                    <a href={proof.photo_url} target="_blank" rel="noreferrer" className="block group">
+                      <img src={proof.photo_url} alt={proof.delivery_way_id} className="w-full h-32 object-cover border-t border-[#1a3a5c] group-hover:opacity-90" />
+                      <div className="p-2 text-[11px] text-[#4ea8de] flex items-center gap-1">
+                        <ExternalLink size={12} />
+                        Open rider photo
+                      </div>
+                    </a>
+                  ) : (
+                    <div className="h-24 flex items-center justify-center text-[#4d7a9b] text-[11px] border-t border-[#1a3a5c]">
+                      No rider photo
+                    </div>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* AUTO-CALCULATING GRID */}
+        <div className="lg:col-span-3 bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col min-h-[600px] overflow-hidden">
+          <div className="p-4 border-b border-[#1a3a5c] bg-[#061524] flex flex-col md:flex-row gap-4 items-end">
+            <div className="flex-1 w-full">
+              <label className="block text-[#4ea8de] text-[11px] uppercase tracking-widest mb-2">
+                {t('1. Select Verified Pickup Request', '၁။ အတည်ပြုပြီးသော Pickup ရွေးပါ')}
+              </label>
+              <select
+                value={selectedPickupId}
+                onChange={(e) => selectPickup(e.target.value)}
+                className="w-full bg-[#0b2236] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b] text-[13px]"
+              >
+                {pickupQueue.length === 0 ? (
+                  <option value="">No rider verified pickups found</option>
+                ) : (
+                  pickupQueue.map((pickup) => (
+                    <option key={pickup.pickup_id} value={pickup.pickup_id}>
+                      {pickup.pickup_id} ({pickup.merchant_code} - {pickup.merchant_name} - {pickup.verified_parcels || 0}/{pickup.expected_parcels || 0} Parcels)
+                    </option>
+                  ))
+                )}
+              </select>
+            </div>
+            <div className="w-full md:w-28">
+              <label className="block text-[#4ea8de] text-[11px] uppercase tracking-widest mb-2">
+                {t('PARCELS', 'အရေအတွက်')}
+              </label>
+              <input
+                type="number"
+                value={rows.length || selectedPickup?.expected_parcels || 0}
+                readOnly
+                className="w-full bg-[#0b2236] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none text-[13px] text-center"
+              />
+            </div>
+            <button onClick={handleGenerate} className="w-full md:w-auto bg-[#1a3a5c] text-[#eef8ff] border border-[#1a3a5c] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:border-[#4ea8de] flex items-center justify-center gap-2 transition-colors cursor-pointer">
+              <Layers size={14} /> {t('2. Load Rider Proofs', '၂။ Rider ပုံများယူမည်')}
+            </button>
+            <button
+              type="button"
+              onClick={handleRegisterNow}
+              disabled={loading || !selectedPickupId}
+              className="w-full md:w-auto bg-[#f6b84b] text-[#061524] px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider hover:bg-[#e5a93a] flex items-center justify-center gap-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckCircle2 size={14} /> REGISTER NOW
+            </button>
+          </div>
+
+          <datalist id="data-entry-township-options">
+            {townshipDisplayOptions.map((option) => (
+              <option
+                key={`${option.township}-${option.township_mm || ''}`}
+                value={option.township}
+                label={option.township_mm ? `${option.township_mm} / ${option.city || ''}` : option.city || ''}
+              />
+            ))}
+          </datalist>
+
+          <div
+            ref={topScrollRef}
+            onScroll={() => syncTopScroll("top")}
+            className="overflow-x-auto overflow-y-hidden custom-scrollbar border-y border-[#1a3a5c] bg-[#061524]"
+          >
+            <div style={{ width: tableMinWidth, height: 12 }} />
+          </div>
+
+          <div
+            ref={tableScrollRef}
+            onScroll={() => syncTopScroll("table")}
+            className="flex-1 overflow-auto custom-scrollbar"
+          >
+            <table className="w-max min-w-full text-left whitespace-nowrap text-[12px] border-collapse" style={{ minWidth: tableMinWidth }}>
+              <thead className="bg-[#0b2236] sticky top-0 z-10 border-b border-[#1a3a5c]">
+                <tr className="text-[#061524] uppercase tracking-widest">
+                  <th className="p-3 min-w-[180px] bg-[#f6b84b]">Recipient name</th>
+                  <th className="p-3 min-w-[150px] bg-[#f6b84b]">Contact No. (1)</th>
+                  <th className="p-3 min-w-[150px] bg-[#f6b84b]">Contact No. (2)</th>
+                  <th className="p-3 min-w-[200px] bg-[#f6b84b]">Township</th>
+                  <th className="p-3 min-w-[280px] bg-[#f6b84b]">Recipient address</th>
+                  <th className="p-3 min-w-[130px] bg-[#f6b84b]">Customer Tier</th>
+                  <th className="p-3 min-w-[120px] bg-[#f6b84b]">Item price</th>
+                  <th className="p-3 min-w-[90px] bg-[#f6b84b]">Weight</th>
+                  <th className="p-3 min-w-[260px] bg-[#f6b84b]">Remark / Special Instruction</th>
+                  <th className="p-3 min-w-[100px] bg-[#f6b84b] text-center">Save</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="text-center p-12 text-[#4d7a9b] text-[14px]">
+                      {t('Select a pickup request and click REGISTER NOW.', 'Pickup ကိုရွေးချယ်ပြီး REGISTER NOW ကိုနှိပ်ပါ။')}
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map((row, i) => (
+                    <tr key={`${row.way_id}-${row.id}`} className="border-b border-[#1a3a5c]/50 hover:bg-[#061524] transition-colors group">
+                      <td className="p-2"><input placeholder="Name..." value={row.recipient_name} onChange={(e) => handleUpdate(i, 'recipient_name', e.target.value)} className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]" /></td>
+                      <td className="p-2"><input placeholder="09..." value={row.recipient_phone} onChange={(e) => handleUpdate(i, 'recipient_phone', e.target.value)} className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]" /></td>
+                      <td className="p-2"><input placeholder="09..." value={row.recipient_phone_2} onChange={(e) => handleUpdate(i, 'recipient_phone_2', e.target.value)} className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]" /></td>
+                      <td className="p-2">
+                        <input
+                          list="data-entry-township-options"
+                          placeholder="Township / မြို့နယ်"
+                          value={row.town}
+                          onChange={(e) => handleTownshipChange(i, e.target.value)}
+                          onBlur={(e) => handleTownshipChange(i, e.target.value)}
+                          className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]"
+                        />
+                      </td>
+                      <td className="p-2"><input placeholder="Full Address" value={row.address} onChange={(e) => handleUpdate(i, 'address', e.target.value)} className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]" /></td>
+                      <td className="p-2">
+                        <select value={row.tier} onChange={(e) => handleUpdate(i, 'tier', e.target.value)} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#f6b84b] p-2 rounded outline-none focus:border-[#f6b84b]">
+                          <option value="Standard">Standard</option>
+                          <option value="Royal">Royal</option>
+                        </select>
+                      </td>
+                      <td className="p-2"><input type="number" value={row.item_price} onChange={(e) => handleUpdate(i, 'item_price', e.target.value)} className="w-full bg-[#061524] text-emerald-400 border border-[#1a3a5c] p-2 rounded outline-none focus:border-emerald-400" /></td>
+                      <td className="p-2"><input type="number" value={row.weight} onChange={(e) => handleUpdate(i, 'weight', e.target.value)} className="w-full bg-[#061524] text-[#f6b84b] border border-[#1a3a5c] p-2 rounded outline-none text-center focus:border-[#f6b84b]" /></td>
+                      <td className="p-2"><input placeholder="Recipient / sender special instruction" value={row.remarks} onChange={(e) => handleUpdate(i, 'remarks', e.target.value)} className="w-full bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] p-2 rounded outline-none focus:border-[#f6b84b]" /></td>
+                      <td className="p-2 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleSaveRow(i)}
+                          disabled={loading}
+                          className={`px-3 py-2 rounded-lg text-[11px] border transition-colors ${row.saved ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-[#f6b84b] text-[#061524] border-[#f6b84b] hover:bg-[#e5a93a]'}`}
+                        >
+                          {row.saved ? 'Saved' : 'Save'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {rows.length > 0 && (
+            <div className="p-4 border-t border-[#1a3a5c] flex justify-between items-center bg-[#061524]">
+              <button onClick={handleAddRow} className="text-[#4ea8de] hover:text-[#eef8ff] flex items-center gap-1 text-[11px] uppercase tracking-widest transition-colors cursor-pointer">
+                <Plus size={14} /> {t('Add Extra Row', 'အကွက် ထပ်ထည့်မည်')}
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="text-[11px] text-[#4d7a9b]">
+                  {rows.filter((r) => r.photo_url || r.proof_photo_path).length}/{rows.length} rider photos checked
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveAndGenerate}
+                  disabled={loading || !canGenerateWaybill}
+                  title={!canGenerateWaybill ? 'Select a pickup and make sure all Rider parcel photos are checked.' : 'Save rows and create waybill'}
+                  className={`px-6 py-3 rounded-xl text-[12px] uppercase tracking-wider border transition-colors flex items-center gap-2 ${
+                    loading || !canGenerateWaybill
+                      ? 'bg-[#1a3a5c]/40 text-[#4d7a9b] border-[#1a3a5c] cursor-not-allowed'
+                      : 'bg-[#f6b84b] text-[#061524] border-[#f6b84b] hover:bg-[#e5a93a] cursor-pointer'
+                  }`}
+                >
+                  <Send size={14} /> {loading ? t('Creating...', 'ဖန်တီးနေသည်...') : t('Confirm & Create Waybill', 'အတည်ပြု၍ Waybill ဖန်တီးမည်')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

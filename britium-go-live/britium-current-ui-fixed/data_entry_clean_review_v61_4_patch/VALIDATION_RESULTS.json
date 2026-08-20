@@ -1,0 +1,14 @@
+{
+  "ok": true,
+  "build": "DATA_ENTRY_CLEAN_REVIEW_V61_4_GENERATION_VERIFY_2026_08_03",
+  "typescript_transpile_diagnostics": 0,
+  "installer_fixture_passed": true,
+  "source_verifier_fixture_passed": true,
+  "source_required_markers": "24/24",
+  "synthetic_dist_verifier_passed": true,
+  "synthetic_dist_required_markers": "11/11",
+  "backend_sql_executed": false,
+  "vite_build_performed": false,
+  "production_deploy_performed": false,
+  "financial_writes_enabled": false
+}

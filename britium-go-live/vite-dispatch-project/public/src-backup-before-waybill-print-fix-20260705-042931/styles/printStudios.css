@@ -1,0 +1,403 @@
+.print-studio-shell {
+  min-height: 100vh;
+  background: #f0f2f5;
+  color: #1f2937;
+  padding: 24px;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.print-controls {
+  background: #fff;
+  padding: 22px;
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+  max-width: 1180px;
+  margin: 0 auto 24px;
+}
+
+.print-controls h1,
+.print-controls h2 {
+  margin: 0 0 12px;
+  color: #003366;
+}
+
+.print-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.print-input,
+.print-select {
+  min-width: 220px;
+  flex: 1;
+  padding: 11px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-weight: 650;
+}
+
+.print-btn {
+  background: #003366;
+  color: #fff;
+  border: none;
+  padding: 11px 16px;
+  border-radius: 8px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.print-btn.secondary {
+  background: #475569;
+}
+
+.print-btn.warning {
+  background: #b45309;
+}
+
+.print-btn.danger {
+  background: #b91c1c;
+}
+
+.print-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 13px;
+}
+
+.print-table th {
+  background: #003366;
+  color: #fff;
+  text-align: left;
+  padding: 10px;
+}
+
+.print-table td {
+  padding: 9px 10px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.print-status {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 900;
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.print-status.locked {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.print-status.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+/* Waybill label: adjust size to match attached format */
+.waybill-print-area {
+  display: none;
+}
+
+.waybill-label {
+  width: 100mm;
+  height: 150mm;
+  padding: 6mm;
+  box-sizing: border-box;
+  background: #fff;
+  color: #111;
+  border: 1px solid #111;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 4mm;
+  page-break-after: always;
+}
+
+.wb-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 2px solid #111;
+  padding-bottom: 3mm;
+}
+
+.wb-brand {
+  font-weight: 900;
+  font-size: 16px;
+}
+
+.wb-code {
+  font-family: monospace;
+  font-weight: 900;
+  font-size: 17px;
+}
+
+.wb-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3mm;
+  font-size: 11px;
+}
+
+.wb-box {
+  border: 1px solid #111;
+  padding: 3mm;
+  min-height: 20mm;
+}
+
+.wb-box h4 {
+  margin: 0 0 2mm;
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.wb-address {
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.wb-footer {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4mm;
+  align-items: end;
+}
+
+.wb-qr {
+  width: 30mm;
+  height: 30mm;
+  border: 1px solid #111;
+}
+
+.wb-cod {
+  font-size: 18px;
+  font-weight: 900;
+}
+
+/* Invoice A4 */
+#invoice-area {
+  background: #fff;
+  max-width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 40px;
+  box-sizing: border-box;
+  box-shadow: 0 0 10px rgba(0,0,0,0.15);
+}
+
+.inv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 3px solid #003366;
+  padding-bottom: 20px;
+  margin-bottom: 30px;
+}
+
+.inv-logo-box {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.inv-logo-box img {
+  width: 80px;
+  height: 80px;
+  object-fit: contain;
+}
+
+.inv-company-details h1 {
+  margin: 0;
+  font-size: 24px;
+  color: #003366;
+}
+
+.inv-company-details p {
+  margin: 4px 0 0;
+  font-size: 14px;
+  color: #555;
+}
+
+.inv-meta {
+  text-align: right;
+}
+
+.inv-meta h2 {
+  margin: 0 0 10px;
+  font-size: 28px;
+  color: #333;
+  letter-spacing: 2px;
+}
+
+.inv-meta p {
+  margin: 4px 0;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.inv-parties {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 30px;
+}
+
+.party-box {
+  width: 45%;
+}
+
+.party-box h3 {
+  font-size: 16px;
+  color: #003366;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 5px;
+}
+
+.party-box p {
+  margin: 5px 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.invoice-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 30px;
+  font-size: 13px;
+}
+
+.invoice-table th {
+  background-color: #003366;
+  color: white;
+  text-align: left;
+  padding: 12px;
+  font-weight: bold;
+}
+
+.invoice-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #ddd;
+}
+
+.text-right {
+  text-align: right;
+}
+
+.text-center {
+  text-align: center;
+}
+
+.invoice-table tr:nth-child(even) {
+  background-color: #f9f9f9;
+}
+
+.inv-summary {
+  width: 50%;
+  float: right;
+  margin-bottom: 50px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 0;
+  font-size: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+.summary-row.total {
+  font-weight: bold;
+  font-size: 18px;
+  color: #003366;
+  border-bottom: 2px solid #003366;
+  border-top: 2px solid #003366;
+  padding: 12px 0;
+  background: #f4f8fc;
+}
+
+.clear {
+  clear: both;
+}
+
+.inv-footer {
+  margin-top: 50px;
+  text-align: center;
+  font-size: 12px;
+  color: #777;
+  border-top: 1px solid #ddd;
+  padding-top: 20px;
+}
+
+.signatures {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 60px;
+  margin-bottom: 20px;
+}
+
+.sig-line {
+  width: 250px;
+  border-top: 1px solid #000;
+  text-align: center;
+  padding-top: 8px;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+@media print {
+  body {
+    margin: 0;
+    padding: 0;
+    background: white;
+  }
+
+  .no-print,
+  .print-controls {
+    display: none !important;
+  }
+
+  .print-studio-shell {
+    padding: 0;
+    background: white;
+  }
+
+  .waybill-printing #invoice-area {
+    display: none !important;
+  }
+
+  .waybill-printing .waybill-print-area {
+    display: block !important;
+  }
+
+  .invoice-printing .waybill-print-area {
+    display: none !important;
+  }
+
+  .invoice-printing #invoice-area {
+    display: block !important;
+    box-shadow: none;
+    padding: 0;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 15mm;
+}
+
+/* Change this if your attached waybill size is different */
+@page waybillLabel {
+  size: 100mm 150mm;
+  margin: 0;
+}

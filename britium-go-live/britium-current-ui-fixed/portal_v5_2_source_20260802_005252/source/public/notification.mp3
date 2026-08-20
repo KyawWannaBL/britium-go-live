@@ -1,0 +1,37 @@
+const audio = new Audio("/sounds/notification.mp3");
+
+audio.preload = "auto";
+audio.volume = 0.8;
+
+let unlocked = false;
+
+export async function enableNotificationSound() {
+  audio.muted = true;
+
+  try {
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+    unlocked = true;
+    localStorage.setItem("notification-sound-enabled", "true");
+  } finally {
+    audio.muted = false;
+  }
+}
+
+export async function playNotificationSound() {
+  if (
+    !unlocked &&
+    localStorage.getItem("notification-sound-enabled") !== "true"
+  ) {
+    return;
+  }
+
+  audio.currentTime = 0;
+
+  try {
+    await audio.play();
+  } catch {
+    unlocked = false;
+  }
+}

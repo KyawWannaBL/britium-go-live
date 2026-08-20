@@ -1,0 +1,28 @@
+Repository: /e/D27072026/britium-go-live/britium-go-live/britium-current-ui-fixed
+
+Included files:
+package.json
+src/App.tsx
+src/components/Sidebar.tsx
+src/components/data-entry/ParcelFinancialV2Editor.tsx
+src/integrations/supabase/client.ts
+src/lib/financePortalApi.ts
+src/lib/riderSignatureFinanceApi.ts
+src/pages/CODSettlementPage.tsx
+src/pages/FinanceMerchantSettlementPage.V2_2_1.tsx
+src/pages/FinanceMerchantSettlementPage.tsx
+src/pages/FinancePortalPage.tsx
+src/pages/MerchantPortalPage.tsx
+src/pages/ParcelFinancialV2Editor.V2_2_1.tsx
+src/pages/ParcelFinancialV2Editor.tsx
+src/sql/SQL 0708/20260529d_finance_cod_ledger_snapshot_repair.sql
+src/sql/SQL 0708/20260529e_end_to_end_role_sync_bridge.sql
+src/sql/SQL 0708/britium_go_live_safe_sql_repair.sql
+src/sql/SQL 0708/full_go_live_finance_wireup.sql
+src/sql/SQL 0708/production_go_live_master.sql
+
+Settlement routes:
+190:            <Route path="/cod-settlement" element={<CODSettlementPage />} />
+197:            <Route path="/finance" element={<FinancePortalPage />} />
+198:            <Route path="/finance-merchant-settlement" element={<FinanceMerchantSettlementPage />} />
+199:            <Route path="/merchant-settlement" element={<Navigate to="/finance-merchant-settlement" replace />} />

@@ -1,0 +1,54 @@
+Template Sheet,Field / Column,Required?,Data Type / Validation,Myanmar Label,Notes / Rules
+Merchant_Master,merchant_code,No,"Text, 3 chars (auto)",မာကာသာ ကုဒ်,System-generated. Leave blank for new records.
+Merchant_Master,merchant_name,YES,"Text, max 150 chars",ဆိုင်အမည်,Required. Searchable/autocomplete in portal.
+Merchant_Master,business_type,YES,Dropdown: business_type,လုပ်ငန်းအမျိုးအစား,Select from dropdown. Online Shop / Branch Office etc.
+Merchant_Master,contact_person,YES,"Text, max 100 chars",ဆက်သွယ်ရမည့်သူ,Main contact name.
+Merchant_Master,phone_primary,YES,Phone format (09xxx),ဖုန်းနံပါတ် (မူလ),Unique check. Must start with 09.
+Merchant_Master,phone_secondary,No,Phone format (09xxx),ဖုန်းနံပါတ် (ဒုတိယ),Optional additional phone.
+Merchant_Master,email,No,Email format,အီးမေးလ်,Optional.
+Merchant_Master,address_line_1,YES,"Text, max 255 chars",လိပ်စာ (မူလ),Registered address line 1.
+Merchant_Master,address_line_2,No,"Text, max 255 chars",လိပ်စာ (ဒုတိယ),Optional address line.
+Merchant_Master,township,YES,Dropdown: township,မြို့နယ်,Linked to township master.
+Merchant_Master,city,YES,Dropdown: city,မြို့,Linked to city master.
+Merchant_Master,region_state,YES,Dropdown: region_state,တိုင်း/ပြည်နယ်,Linked to region/state master.
+Merchant_Master,default_pickup_address,YES,"Text, max 255 chars",ရုံးဆောင်ပို့ရမည့်လိပ်စာ,Used for pickup autofill.
+Merchant_Master,default_pickup_time_window,No,Format: HH:MM-HH:MM,ပိတ်/ဖွင့် အချိန်,Example: 09:00-18:00.
+Merchant_Master,payment_terms,No,Dropdown: payment_terms,ငွေပေးချေမှု သတ်မှတ်ချက်,COD/Prepaid/Monthly etc.
+Merchant_Master,contract_status,YES,Dropdown: contract_status,စာချုပ် အခြေအနေ,Draft → Submitted → Approved → Active.
+Merchant_Master,is_active,No,Yes / No,အသုံးပြုနေသည်,Auto-set from contract_status.
+Rider_Master,rider_id,No,System-generated,ရိုင်ဒါ ID,Leave blank for new.
+Rider_Master,rider_name,YES,"Text, max 100 chars",ရိုင်ဒါ အမည်,Full name.
+Rider_Master,phone_primary,YES,Phone format,ဖုန်းနံပါတ်,Required.
+Rider_Master,nrc_or_id_no,YES,NRC format,မှတ်ပုံတင်နံပါတ်,Identity document.
+Rider_Master,assigned_zone,YES,Dropdown: zone,သတ်မှတ်ဇုန်,Linked to zone master.
+Rider_Master,employment_type,YES,Dropdown: employment_type,အလုပ်အမျိုးအစား,Permanent/Contract etc.
+Rider_Master,status,YES,Dropdown: record_status,အခြေအနေ,Active/Inactive/Suspended.
+Driver_Master,driver_id,No,System-generated,ဒရိုင်ဘာ ID,Leave blank for new.
+Driver_Master,driver_name,YES,"Text, max 100",ဒရိုင်ဘာ အမည်,Full name.
+Driver_Master,phone_primary,YES,Phone format,ဖုန်းနံပါတ်,Required.
+Driver_Master,license_no,YES,License code format,လိုင်စင်နံပါတ်,Example: B/06711/23.
+Driver_Master,license_expiry_date,YES,DD.MM.YYYY,လိုင်စင် သက်တမ်းကုန်ဆုံးရက်,Must verify before assignment.
+Driver_Master,assigned_fleet_id,No,System-linked,ယာဉ် ID,Linked from Fleet_Master.
+Driver_Master,status,YES,Dropdown: record_status,အခြေအနေ,Active/Inactive/Suspended.
+Helper_Master,helper_id,No,System-generated,ကူညီသူ ID,Leave blank for new.
+Helper_Master,helper_name,YES,"Text, max 100",ကူညီသူ အမည်,Full name.
+Helper_Master,phone_primary,YES,Phone format,ဖုန်းနံပါတ်,Required.
+Helper_Master,assigned_zone,No,Dropdown: zone,သတ်မှတ်ဇုန်,Optional zone.
+Helper_Master,employment_type,YES,Dropdown: employment_type,အလုပ်အမျိုးအစား,Permanent/Contract.
+Helper_Master,status,YES,Dropdown: record_status,အခြေအနေ,Active/Inactive/Suspended.
+Employee_Master,employee_id,No,System-generated,ဝန်ထမ်း ID,Leave blank for new.
+Employee_Master,employee_name,YES,"Text, max 100",ဝန်ထမ်း အမည်,Full name.
+Employee_Master,role_id,YES,Dropdown: role_id,ရာထူး,Linked to role master.
+Employee_Master,department,YES,Dropdown: department,ဌာန,CS/Marketing/Finance etc.
+Employee_Master,phone_primary,YES,Phone format,ဖုန်းနံပါတ်,Required.
+Employee_Master,email,No,Email format,အီးမေးလ်,Optional.
+Employee_Master,supervisor_employee_id,No,System-linked,အကြီးအကဲ ID,Reporting line — linked from Employee_Master.
+Employee_Master,status,YES,Dropdown: record_status,အခြေအနေ,Active/Inactive/Suspended.
+Fleet_Master,fleet_id,No,System-generated,ယာဉ် ID,Leave blank for new.
+Fleet_Master,vehicle_no,YES,Plate number format,ယာဉ်နံပါတ်,e.g. 6H-7397.
+Fleet_Master,vehicle_type,YES,Dropdown: vehicle_type,ယာဉ်အမျိုးအစား,Van/Mini Truck/Bike etc.
+Fleet_Master,capacity_kg,YES,Integer (kg),တင်နိုင်သော ကီလိုဂရမ်,Safe payload.
+Fleet_Master,capacity_cbm,YES,Decimal (CBM),ထုထည် (CBM),Cubic metre capacity.
+Fleet_Master,ownership_type,YES,Dropdown: ownership_type,ပိုင်ဆိုင်မှု,Owned/Rented/Partner.
+Fleet_Master,insurance_expiry_date,YES,DD.MM.YYYY,အာမခံ သက်တမ်း,Must be renewed before expiry.
+Fleet_Master,status,YES,Dropdown: fleet_status,ယာဉ် အခြေအနေ,Available/Assigned/Maintenance.

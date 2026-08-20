@@ -1,0 +1,171 @@
+/*
+ * Final production layout boundary.
+ * This file is imported last so legacy screen-specific CSS cannot resize the
+ * application shell or leak portal styles into document previews.
+ */
+
+:root {
+  --be-font: "Poppins", "Noto Sans Myanmar", sans-serif;
+  font-family: var(--be-font);
+}
+
+html,
+body,
+#root,
+button,
+input,
+select,
+textarea {
+  font-family: var(--be-font) !important;
+}
+
+html body [data-be-app-shell="true"],
+html body [data-be-app-shell="true"] * {
+  font-family: var(--be-font) !important;
+}
+
+[data-be-app-shell="true"] {
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+[data-be-sidebar="true"] {
+  flex: 0 0 256px !important;
+  width: 256px !important;
+  min-width: 256px !important;
+  max-width: 256px !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  scrollbar-gutter: auto !important;
+}
+
+[data-be-main="true"] {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: auto !important;
+  overflow: auto !important;
+  scrollbar-gutter: auto !important;
+}
+
+[data-be-content="true"] {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  min-height: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+}
+
+/* CS Portal keeps all workflow controls visible instead of discarding columns. */
+[data-be-page="cs-portal"] {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+[data-be-page="cs-portal"] > section:last-child {
+  overflow-x: auto !important;
+}
+
+.be-cs-portal-table {
+  width: 100% !important;
+  min-width: 1120px !important;
+  table-layout: fixed !important;
+  font-size: 11px !important;
+}
+
+.be-cs-portal-table th,
+.be-cs-portal-table td {
+  padding: 6px !important;
+  line-height: 1.3 !important;
+  overflow-wrap: anywhere;
+}
+
+.be-cs-portal-table th:nth-child(1) { width: 3.5%; }
+.be-cs-portal-table th:nth-child(2) { width: 6%; }
+.be-cs-portal-table th:nth-child(3) { width: 7%; }
+.be-cs-portal-table th:nth-child(4) { width: 10%; }
+.be-cs-portal-table th:nth-child(5) { width: 6%; }
+.be-cs-portal-table th:nth-child(6) { width: 5%; }
+.be-cs-portal-table th:nth-child(7) { width: 7%; }
+.be-cs-portal-table th:nth-child(8) { width: 7%; }
+.be-cs-portal-table th:nth-child(9) { width: 17%; }
+.be-cs-portal-table th:nth-child(10) { width: 8%; }
+.be-cs-portal-table th:nth-child(11) { width: 7%; }
+.be-cs-portal-table th:nth-child(12) { width: 8.5%; }
+.be-cs-portal-table th:nth-child(13) { width: 8%; }
+
+.be-cs-portal-table textarea,
+.be-cs-portal-table select,
+.be-cs-portal-table button {
+  box-sizing: border-box;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-family: var(--be-font) !important;
+  font-size: 10px !important;
+}
+
+.be-cs-portal-table textarea {
+  height: 72px;
+  min-height: 72px;
+  padding: 7px !important;
+  resize: vertical;
+}
+
+/* Document content uses physical dimensions and is not recolored by portal CSS. */
+.be-label,
+.be-label * {
+  box-sizing: border-box;
+  font-family: var(--be-font) !important;
+  color: #050505;
+}
+
+.be-label {
+  background: #fff !important;
+  font-weight: 400 !important;
+  letter-spacing: normal !important;
+}
+
+.be-label .be-logo {
+  color: #fff !important;
+}
+
+.be-label b,
+.be-label strong {
+  font-weight: revert;
+}
+
+@media screen and (max-width: 1600px) {
+  html {
+    font-size: 14px;
+  }
+
+  [data-be-sidebar="true"] {
+    flex-basis: 224px !important;
+    width: 224px !important;
+    min-width: 224px !important;
+    max-width: 224px !important;
+  }
+
+  [data-be-content="true"] {
+    padding: 14px !important;
+  }
+}
+
+@media screen and (max-width: 1180px) {
+  [data-be-sidebar="true"] {
+    flex-basis: 208px !important;
+    width: 208px !important;
+    min-width: 208px !important;
+    max-width: 208px !important;
+  }
+}
+
+@media print {
+  .be-label,
+  .be-label * {
+    font-family: var(--be-font) !important;
+  }
+}

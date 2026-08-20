@@ -1,0 +1,6 @@
+rate_band,base_charge_mmk,description,status
+INNER_MANDALAY,2000,DK inner Mandalay last-mile band,ACTIVE
+OUTER_MANDALAY,2500,DK outer Mandalay last-mile band,ACTIVE
+EXTENDED_LISTED_AREA,3000,DK listed extended-area last-mile band,ACTIVE
+WEIGHT_SIZE_SURCHARGE_500,500,Conditional surcharge from DK document; exact trigger pending signed confirmation,PENDING_CONFIRMATION
+WEIGHT_SIZE_SURCHARGE_1000,1000,Conditional surcharge from DK document; exact trigger pending signed confirmation,PENDING_CONFIRMATION

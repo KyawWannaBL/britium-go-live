@@ -1,0 +1,8 @@
+Extract every file in this ZIP directly into the repository root: the folder that contains package.json and src/.
+Do not leave the files inside a nested data_entry_v18_* directory.
+
+Git Bash:
+  ./deploy_data_entry_v18.sh
+
+Windows Command Prompt:
+  deploy_data_entry_v18.cmd

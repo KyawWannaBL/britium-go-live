@@ -1,0 +1,44 @@
+/* Data Entry township autocomplete + backend tariff calculation */
+.be-township-hint {
+  margin-top: 5px;
+  font-size: 11px;
+  color: #9fc3dc;
+  line-height: 1.3;
+}
+
+.be-township-hint strong {
+  color: #f6b84b;
+}
+
+.be-auto-fee-badge {
+  margin-top: 5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(16, 199, 132, .35);
+  background: rgba(16, 199, 132, .12);
+  color: #7dffc9;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.be-auto-fee-badge.warn {
+  border-color: rgba(246, 184, 75, .35);
+  background: rgba(246, 184, 75, .12);
+  color: #f6b84b;
+}
+
+input[list="be-township-suggestions"] {
+  border-color: #4ea8de !important;
+}
+
+td:has(input[name="township"]) {
+  min-width: 220px;
+}
+
+td:has(input[name="delivery_fee"]) {
+  min-width: 180px;
+}

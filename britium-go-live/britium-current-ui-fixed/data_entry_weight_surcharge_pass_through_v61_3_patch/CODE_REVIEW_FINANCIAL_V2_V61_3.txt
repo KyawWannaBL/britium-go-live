@@ -1,0 +1,71 @@
+BRITIUM EXPRESS FINANCIAL V2 V61.3 CODE REVIEW
+Build date: 2026-08-02
+
+CONFIRMED BUSINESS RULE
+For ITEM_PRICE_PLUS_DECLARED_DELIVERY:
+  Receiver COD = item price + merchant-declared delivery charge
+                 + backend weight surcharge + CBM surcharge + other delivery surcharge
+                 + approved additional customer charge.
+
+  Britium entitlement = base tariff + weight surcharge + CBM surcharge
+                        + other delivery surcharge - commitment refund.
+
+  Merchant settlement = item price
+                        + (customer delivery component - Britium net entitlement)
+                        + other merchant credits - merchant-payable charges.
+
+CONFIRMED EXAMPLE
+Township: Insein
+Tier: STANDARD
+Item price: 50,000 MMK
+Merchant-declared delivery: 6,000 MMK
+Actual weight: 10 kg
+Included weight: 3 kg
+Extra weight: 7 kg
+Extra per kg: 500 MMK
+Weight surcharge: 3,500 MMK
+Receiver COD: 59,500 MMK
+Britium base tariff: 4,500 MMK
+Britium total entitlement: 8,000 MMK
+Merchant delivery margin: 1,500 MMK
+Merchant final settlement: 51,500 MMK
+
+DEFECT IN PRE-V61.3 BACKEND
+The core function added weight surcharge to Britium entitlement but did not add it to receiver COD for ITEM_PRICE_PLUS_DECLARED_DELIVERY. The same 3,500 MMK was therefore deducted from merchant settlement even though the receiver had not been instructed to pay it.
+
+V61.3 BACKEND CORRECTION
+- Adds weight/CBM/other delivery surcharges to receiver COD for:
+  * ITEM_PRICE_PLUS_DECLARED_DELIVERY
+  * DELIVERY_CHARGE_ONLY
+- Includes the same surcharges in the customer delivery component used for delivery difference.
+- Keeps Britium net entitlement unchanged.
+- Prevents double-deducting customer-paid surcharges from the merchant.
+- Does not alter TOTAL_AMOUNT_INCLUDING_DELIVERY, EXACT_COLLECTION_AMOUNT, or ITEM_PRICE_ONLY_DELIVERY_PAID_BY_MERCHANT behavior.
+- Does not write or recalculate historical rows.
+- Does not enable Financial V2 production mutations.
+
+V61.3 FRONTEND CORRECTION
+- Merchant-stated subtotal remains editable and remains item price + merchant-declared delivery (56,000 MMK in the confirmed example).
+- Backend COD displays 59,500 MMK.
+- Adds a backend-authoritative financial-flow summary showing:
+  receiver collection, customer-paid system surcharges, Britium entitlement, and merchant settlement.
+- Displays formula components to reduce Data Entry mistakes.
+- Does not calculate or authorize tariffs locally.
+
+LOCAL PACKAGE VERIFICATION
+- TypeScript transpile diagnostics: 0
+- Installer fixture: passed
+- Source verifier: 32/32 passed
+- Township records: 356
+- Synthetic dist verifier: 12/12 passed
+- Financial writes enabled: false
+
+REQUIRED DEPLOYMENT ORDER
+1. Run SQL migration in Supabase SQL Editor.
+2. Confirm SQL result: 59,500 / 8,000 / 51,500 and MUTATION_SHADOW.
+3. Run SQL verifier.
+4. Apply frontend installer.
+5. Run source verifier.
+6. Build and run dist verifier.
+7. Deploy with npx vercel --prod.
+8. Browser-test the confirmed example.

@@ -1,0 +1,151 @@
+body[data-be-route="warehouse"] main,
+body[data-be-route="dispatch-command"] main,
+body[data-be-route="cod-settlement"] main {
+  width: 100%;
+  max-width: 1900px;
+  margin-inline: auto;
+  overflow-x: hidden;
+}
+
+[data-be-panel="warehouse-scan"],
+[data-be-panel="warehouse-close"],
+[data-be-panel="warehouse-rows"],
+[data-be-panel="parcel-pool"],
+[data-be-panel="fleet-board"],
+[data-be-panel="status-board"],
+[data-be-panel="live-records"] {
+  min-width: 0 !important;
+}
+
+/* Warehouse scan fields and actions must wrap instead of collapsing. */
+[data-be-panel="warehouse-scan"] div:has(input, select, button) {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: stretch !important;
+  gap: 12px !important;
+  overflow: visible !important;
+}
+
+[data-be-panel="warehouse-scan"] input,
+[data-be-panel="warehouse-scan"] select {
+  flex: 1 1 220px !important;
+  width: auto !important;
+  min-width: 180px !important;
+  max-width: none !important;
+}
+
+[data-be-panel="warehouse-scan"] button {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 112px !important;
+  padding-inline: 16px !important;
+  white-space: nowrap !important;
+}
+
+/* End-day action should stay aligned and readable. */
+[data-be-panel="warehouse-close"] div:has(input, button) {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1fr) auto !important;
+  gap: 14px !important;
+  align-items: center !important;
+}
+
+[data-be-panel="warehouse-close"] button {
+  min-width: 250px !important;
+  white-space: nowrap !important;
+}
+
+/* Warehouse records retain a clean horizontal scroll region. */
+[data-be-panel="warehouse-rows"] {
+  overflow: hidden !important;
+}
+
+[data-be-panel="warehouse-rows"] table {
+  min-width: 1250px !important;
+}
+
+[data-be-panel="warehouse-rows"] thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+/* Dispatch: give the centre board more usable width. */
+[data-be-layout="dispatch-board"] {
+  display: grid !important;
+  grid-template-columns:
+    minmax(290px, 0.9fr)
+    minmax(470px, 1.45fr)
+    minmax(310px, 0.95fr) !important;
+  gap: 16px !important;
+  align-items: stretch !important;
+  overflow-x: auto !important;
+  padding-bottom: 6px;
+}
+
+[data-be-panel="parcel-pool"],
+[data-be-panel="fleet-board"],
+[data-be-panel="status-board"] {
+  width: auto !important;
+  max-width: none !important;
+  overflow: hidden !important;
+}
+
+[data-be-panel="parcel-pool"] article,
+[data-be-panel="fleet-board"] article {
+  overflow-wrap: anywhere;
+}
+
+/* COD table usability. */
+[data-be-panel="live-records"] {
+  overflow: hidden !important;
+}
+
+[data-be-panel="live-records"] table {
+  width: 100% !important;
+  min-width: 1050px !important;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+[data-be-panel="live-records"] thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+[data-be-panel="live-records"] tbody tr:hover td {
+  background: rgba(31, 71, 112, 0.26) !important;
+}
+
+[data-be-panel="live-records"] td:first-child,
+[data-be-panel="live-records"] td:nth-child(2) {
+  font-family:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    monospace;
+  font-weight: 800;
+  color: #f6b84b;
+  white-space: nowrap;
+}
+
+@media (max-width: 1280px) {
+  [data-be-layout="dispatch-board"] {
+    grid-template-columns:
+      minmax(280px, 1fr)
+      minmax(430px, 1.4fr)
+      minmax(290px, 1fr) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  [data-be-panel="warehouse-close"] div:has(input, button) {
+    grid-template-columns: 1fr !important;
+  }
+
+  [data-be-panel="warehouse-close"] button {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}

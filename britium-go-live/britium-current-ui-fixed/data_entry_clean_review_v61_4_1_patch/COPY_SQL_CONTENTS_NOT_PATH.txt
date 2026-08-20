@@ -1,0 +1,5 @@
+In Supabase SQL Editor, copy and run the complete contents of the SQL file.
+Do not paste a file name or local path into SQL Editor.
+
+1. sql/20260803_financial_v2_township_alias_v61_4_1.sql
+2. sql/verify_financial_v2_township_alias_v61_4_1.sql

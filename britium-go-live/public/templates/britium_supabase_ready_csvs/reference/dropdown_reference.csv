@@ -1,0 +1,16 @@
+business_type,customer_type,payment_terms,contract_status,record_status,employment_type,department,role_id,vehicle_type,ownership_type,fleet_status,pickup_status,payment_type,city,region_state,zone,severity,yes_no
+Retail,Individual,COD,Draft,Draft,Permanent,Customer Service,customer_service,Bike,Owned,Available,Draft,COD,Yangon,Yangon Region,Yangon Central,Low,Yes
+Wholesale,Company,Prepaid,Submitted,Submitted,Contract,Marketing,marketing,Van,Rented,Assigned,Created,Prepaid,Mandalay,Mandalay Region,Yangon West,Medium,No
+E-commerce,VIP,Monthly Billing,Approved,Approved,Part-time,Business Development,business_development_manager,Truck,Partner,Maintenance,Assigned,Collect,Naypyidaw,Naypyidaw Union Territory,Yangon East,High,
+Marketplace,Wholesale,Merchant Credit,Active,Active,Temporary,Operation,supervisor,Mini Truck,Leased,Inactive,Picked Up,Credit,Mawlamyine,Mon State,Yangon North,Critical,
+Corporate,Retail,Bank Transfer,Rejected,Inactive,Partner,Warehouse,operation_manager,Car,,,Warehouse Received,Bank Transfer,Bago,Bago Region,Yangon South,,
+SME,Government,,Inactive,Suspended,,Finance,warehouse,Partner Vehicle,,,Completed,KBZ Pay,Pathein,Ayeyarwady Region,Mandalay Central,,
+Individual Seller,Partner,,,Blacklisted,,Admin,finance,,,,Cancelled,,Taunggyi,Shan State,Upper Myanmar,,
+Online Shop,,,,,,Management,finance_manager,,,,,,Sittwe,Rakhine State,Lower Myanmar,,
+Book Store,,,,,,,admin,,,,,,Myitkyina,Kachin State,,,
+Branch Office,,,,,,,superadmin,,,,,,Lashio,Sagaing Region,,,
+,,,,,,,data entry,,,,,,,Magway Region,,,
+,,,,,,,Sales & Marketing Assistant,,,,,,,Tanintharyi Region,,,
+,,,,,,,,,,,,,,Kayah State,,,
+,,,,,,,,,,,,,,Kayin State,,,
+,,,,,,,,,,,,,,Chin State,,,

@@ -1,0 +1,3 @@
+rule_code,version_code,service_type,cod_amount_from_mmk,cod_amount_to_mmk,cod_fee_fixed_mmk,cod_fee_percent,min_cod_fee_mmk,max_cod_fee_mmk,effective_from,effective_to,is_active,notes
+COD-STD-BASE,TRF-RESTORE-2026-05,STANDARD,0,999999999,,,,,2026-05-07,,true,Fill COD fee policy rate
+COD-EXP-BASE,TRF-RESTORE-2026-05,EXPRESS,0,999999999,,,,,2026-05-07,,true,Fill COD fee policy rate

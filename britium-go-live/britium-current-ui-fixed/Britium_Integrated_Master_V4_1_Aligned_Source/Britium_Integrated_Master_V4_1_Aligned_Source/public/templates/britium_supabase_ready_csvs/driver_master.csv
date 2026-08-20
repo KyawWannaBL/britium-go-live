@@ -1,0 +1,5 @@
+driver_id,driver_name,phone_primary,license_no,license_expiry_date,assigned_fleet_id,status
+DRV001,U Wai Phyo Lwin,09-260 741 691,D/00138/12,2027-05-07,,Active
+DRV002,U Tun Min Aung,09-942 540 630,E/01923/25,2028-06-23,,Active
+DRV003,U Aung Zaw Moe,09-750 099 581,B/06711/23,2028-02-16,,Active
+DRV004,U Wai Yan Phyo,09-757 052 761,B/08656/19,2029-12-05,,Active

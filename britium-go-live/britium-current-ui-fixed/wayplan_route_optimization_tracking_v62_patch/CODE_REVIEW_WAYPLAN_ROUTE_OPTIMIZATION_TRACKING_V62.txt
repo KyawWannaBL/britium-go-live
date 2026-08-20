@@ -1,0 +1,45 @@
+CODE REVIEW - WAYPLAN ROUTE OPTIMIZATION AND RIDER TRACKING V62
+
+FILES CHANGED
+- src/lib/mapboxHeadOfficeRoutingV45.ts
+- src/components/wayplan/MapboxWayplanPlannerV45.tsx
+- src/components/wayplan/WayplanRiderTrackingMapV62.tsx (new)
+- src/hooks/useRiderRouteLiveTrackingV62.ts (new)
+- src/components/wayplan/RiderMapboxRouteV45.tsx
+- src/components/wayplan/RiderRouteExecutionV46.tsx
+- src/pages/WayplanCommandCenterPage.tsx
+
+ROUTING
+- Mapbox Optimization determines stop order.
+- Mapbox Directions recalculates that order for road geometry and per-leg metrics.
+- Driving-traffic uses the selected departure time for Directions ETA calculation.
+- Rider/Bicycle uses the cycling profile.
+- Every saved stop contains sequence, leg distance, leg duration, cumulative metrics and ETA.
+- Manual move-up/move-down changes require fixed-order recalculation before save.
+
+MANIFEST
+- Preview and print order are derived from saved ordered_stops.
+- Original operational row data are merged by canonical delivery Way ID.
+- Unmatched legacy rows are preserved at the end rather than silently discarded.
+
+LIVE TRACKING
+- Command Center reads existing live-location snapshots and subscribes to existing GPS tables.
+- A 20-second poll provides continuity when Realtime is unavailable.
+- Rider-to-next-stop road distance/time/ETA is recalculated with Mapbox Directions.
+- Rider field tracking runs only when the route status is IN_PROGRESS.
+- GPS sync is throttled to 15 seconds or 25 metres of movement.
+- Authenticated account email is used as actor identity.
+- New GPS hook uses SECURITY DEFINER RPC flow and contains no direct table write fallback.
+
+SAFETY
+- No backend SQL mutation is included.
+- No route status is changed by the tracking map.
+- No synthetic production event, GPS point, delivery or proof is generated.
+- Existing review, dispatch, start-route and arrive-stop RPC flows are preserved.
+- Installer creates a timestamped production backup before replacing files.
+
+LOCAL VALIDATION
+- TypeScript transpile syntax diagnostics: 0 errors for all seven changed/new files.
+- Full Vite build was not completed in the isolated container because npm ci could not fetch
+  zustand@5.0.14 from the internal package mirror. The package therefore includes source and
+  compiled-dist verifiers that must pass in the user's existing repository before deployment.

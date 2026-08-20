@@ -1,0 +1,11 @@
+V61.2.1 code review
+
+Correction applied:
+- Positive delivery difference is explicitly presented as merchant credit.
+- Backend settlement adjustment and final merchant settlement are shown after calculation.
+- No local copy into additional_customer_charge.
+- No local copy into other_merchant_credits.
+- Positive difference therefore cannot be double credited.
+- Existing editable guided input behavior is preserved.
+- Backend calculation remains authoritative.
+- Production writes remain disabled.

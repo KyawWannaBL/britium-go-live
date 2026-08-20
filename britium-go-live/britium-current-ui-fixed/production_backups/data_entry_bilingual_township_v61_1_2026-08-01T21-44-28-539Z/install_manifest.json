@@ -1,0 +1,14 @@
+{
+  "build": "PORTAL_DATA_ENTRY_BILINGUAL_TOWNSHIP_V61_1_INSTALL_2026_08_02",
+  "installed_at": "2026-08-01T21:44:28.687Z",
+  "root": "E:\\D27072026\\britium-go-live\\britium-go-live\\britium-current-ui-fixed",
+  "previous_page_canonical_hash": "9f5820feff8769989cf82883c490da9a1d371c496289befea3680b30095afe0d",
+  "installed": [
+    "src/pages/DataEntryFinancialV2Page.tsx",
+    "src/data/townshipTariffDirectory.ts"
+  ],
+  "township_record_count": 356,
+  "financial_writes_enabled_by_patch": false,
+  "build_performed": false,
+  "deploy_performed": false
+}
