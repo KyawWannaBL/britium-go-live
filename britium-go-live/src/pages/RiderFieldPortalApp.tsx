@@ -1,4 +1,5 @@
 // @ts-nocheck
+// BRITIUM_PRIMARY_FIELD_VERIFICATION_GUARD_V10_1
 import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -1372,12 +1373,14 @@ function JobCard({
   onModal,
   busy,
   screen,
+  workerRole,
 }: {
   job: RiderJob;
   onAction: (job: RiderJob, action: string, remark?: string) => void;
   onModal: (job: RiderJob, mode: ModalMode) => void;
   busy: boolean;
   screen: JobScreen;
+  workerRole: string;
 }) {
   const id = pickupId(job);
   const status = statusLabel(job);
@@ -1385,6 +1388,7 @@ function JobCard({
   const delivered = isDelivered(job);
   const exception = isException(job);
   const stage = pickupActionStage(job);
+  const helperMode = inferWorkforceRole(workerRole) === "helper";
 
   const deliveryMode =
     screen === "delivery" ||
@@ -1467,6 +1471,7 @@ function JobCard({
         </div>
       )}
 
+      {helperMode && <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.10)",color:C.blue,borderRadius:12,padding:10,fontWeight:800 }}>Helper assist mode: accept assignment, upload pickup evidence, and report exceptions. Final verification requires the assigned rider or driver.</div>}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {pickupMode && stage === "assigned" && (
           <button
@@ -1479,7 +1484,7 @@ function JobCard({
           </button>
         )}
 
-        {pickupMode && stage === "accepted" && (
+        {pickupMode && stage === "accepted" && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1490,18 +1495,18 @@ function JobCard({
           </button>
         )}
 
-        {pickupMode && stage === "arrived" && (
+        {pickupMode && (stage === "arrived" || (helperMode && stage === "accepted")) && (
           <button
             type="button"
             disabled={busy}
             style={buttonStyle("gold")}
             onClick={() => onModal(job, "pickup")}
           >
-            Verify Pickup
+            {helperMode ? "Upload Pickup Evidence" : "Verify Pickup"}
           </button>
         )}
 
-        {pickupMode && stage === "verified" && (
+        {pickupMode && stage === "verified" && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1512,7 +1517,7 @@ function JobCard({
           </button>
         )}
 
-        {pickupMode && stage === "collected" && (
+        {pickupMode && stage === "collected" && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1540,7 +1545,7 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && !isOutForDelivery(job) && (
+        {deliveryMode && !delivered && !exception && !isOutForDelivery(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1551,7 +1556,7 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && isOutForDelivery(job) && (
+        {deliveryMode && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -2313,6 +2318,7 @@ function FieldPortal() {
             onModal={openModal}
             busy={busy}
             screen={screen}
+            workerRole={session?.role || identity?.role || "rider"}
           />
         ))
       ) : (
