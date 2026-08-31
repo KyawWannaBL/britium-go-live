@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
-import { mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
+import { mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 
 export default function DataEntryLocationEditor({ deliveryWayId, address, township }: { deliveryWayId: string; address: string; township: string }) {
@@ -21,6 +21,28 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
 
   async function load() {
     if (!deliveryWayId) return;
+    const verified = verifiedAddressLocation(address, township);
+    if (verified) {
+      const corrected: DeliveryLocation = {
+        deliveryWayId,
+        ...verified,
+        originalAddress: address,
+        englishAddress: convertMyanmarAddressToEnglish(address, township),
+        township: "South Okkalapa Township",
+        postalCode: "1109001",
+        postalMatchLevel: "EXACT_QUARTER",
+        matchLevel: "ADDRESS_EXACT",
+        confidence: 1,
+        coordinateSource: "MANAGEMENT_POSTAL_VALIDATED_ADDRESS",
+        reviewStatus: "ACCEPTED",
+      };
+      setCandidate(corrected);
+      setLat(String(corrected.latitude));
+      setLng(String(corrected.longitude));
+      setMessage("Verified South Okkalapa Ward 3 location restored; stale provider coordinates were ignored.");
+      try { await saveDeliveryLocation(supabase, corrected); } catch { /* Display the verified pin even if persistence is temporarily unavailable. */ }
+      return;
+    }
     const { data } = await supabase.rpc("be_delivery_location_get_v10", { p_delivery_way_id: deliveryWayId });
     const row = data?.location;
     if (!row) return;
@@ -37,7 +59,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     setMessage("");
     lastAutoKey.current = "";
     void load();
-  }, [deliveryWayId]);
+  }, [deliveryWayId, address, township]);
 
   useEffect(() => {
     const key = `${deliveryWayId}|${address}|${township}`;
@@ -55,6 +77,16 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         setCandidate(null);
         setManualOpen(true);
         setMessage("No reliable address, POI, street, ward or neighborhood match. Manual review is required.");
+        return;
+      }
+      if (found.reviewStatus === "MANUAL_REVIEW" || found.matchLevel === "WARD_APPROXIMATE") {
+        // A review-only provider result is evidence, not a delivery coordinate.
+        // Never place its pin or prefill it for accidental manual acceptance.
+        setCandidate(null);
+        setLat("");
+        setLng("");
+        setManualOpen(true);
+        setMessage(`${found.matchLevel.replaceAll("_", " ")} was rejected because its township/postal evidence conflicts with the delivery address. No pin was placed or shared with Wayplan.`);
         return;
       }
       await saveDeliveryLocation(supabase, found);
@@ -78,6 +110,14 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     }
     setBusy(true);
     try {
+      const verified = verifiedAddressLocation(query || address, township);
+      if (verified) {
+        const distance = Math.hypot((Number(lat) - verified.latitude) * 111_320, (Number(lng) - verified.longitude) * 106_000);
+        if (distance > 750) {
+          setMessage("These coordinates are outside the verified South Okkalapa Ward 3 area and were not saved.");
+          return;
+        }
+      }
       const next: DeliveryLocation = {
         ...(candidate || { deliveryWayId, label: query || address, originalAddress: address, englishAddress: english, township, postalCode: postal.postalCode, postalMatchLevel: postal.matchLevel, matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED" }),
         latitude: Number(lat), longitude: Number(lng), matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED",
@@ -96,14 +136,14 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   return <div className="mt-3 rounded-xl border border-cyan-500/30 bg-[#061524] p-3 md:col-span-2 xl:col-span-4">
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2 text-xs font-black text-cyan-300"><MapPin size={15}/> Drop-off location</div>
-      {candidate && <span className="rounded-full bg-emerald-950 px-3 py-1 text-[11px] font-black text-emerald-300">{candidate.matchLevel.replaceAll("_", " ")}</span>}
+      {candidate && <span className={`rounded-full px-3 py-1 text-[11px] font-black ${candidate.reviewStatus === "ACCEPTED" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"}`}>{candidate.matchLevel.replaceAll("_", " ")}{candidate.reviewStatus === "MANUAL_REVIEW" ? " · REVIEW" : ""}</span>}
     </div>
     <div className="grid gap-3 xl:grid-cols-[.9fr_1.1fr]">
       <div>
         <div className="grid gap-2 lg:grid-cols-[1fr_auto]"><input value={query} onChange={(event)=>setQuery(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"){event.preventDefault();void find();}}} placeholder="Myanmar/English address, landmark, street, or coordinates" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void find()} disabled={busy} className="rounded-lg bg-cyan-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-50">{busy?<Loader2 className="mr-1 inline animate-spin" size={14}/>:<Search className="mr-1 inline" size={14}/>} Check location</button></div>
         <div className="mt-2 rounded-lg border border-fuchsia-700/40 bg-fuchsia-950/20 p-2 text-xs text-fuchsia-100"><b>English:</b> {english || "—"}</div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal code:</b> {postal.postalCode || "Not published for this ward"}</div><div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replaceAll("_", " ")}</div></div>
-        {message && <div className={`mt-2 text-xs ${candidate ? "text-emerald-300" : "text-amber-200"}`}>{candidate?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
+        {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200"><span>{candidate ? "Review or correct coordinates" : "Manual location review"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>setLat(event.target.value)} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>setLng(event.target.value)} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
