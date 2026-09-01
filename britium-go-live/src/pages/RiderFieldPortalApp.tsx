@@ -1601,6 +1601,7 @@ function FieldPortal() {
   const [source, setSource] = useState("not synced");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [uploadingAll, setUploadingAll] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [selectedJob, setSelectedJob] = useState<RiderJob | null>(null);
@@ -1901,23 +1902,30 @@ function FieldPortal() {
     setParcelRows((prev) => prev.map((row) => (row.id === rowId ? { ...row, ...patch } : row)));
   }
 
-  async function verifyParcelRow(rowId: string) {
-    if (!selectedJob) return;
+  async function verifyParcelRow(
+    rowId: string,
+    options: { silent?: boolean; reloadAfter?: boolean; manageBusy?: boolean } = {}
+  ): Promise<boolean> {
+    if (!selectedJob) return false;
 
     const row = parcelRows.find((r) => r.id === rowId);
-    if (!row) return;
+    if (!row) return false;
+
+    const silent = Boolean(options.silent);
+    const reloadAfter = options.reloadAfter !== false;
+    const manageBusy = options.manageBusy !== false;
 
     const weight = Number(row.weightKg || 0);
     if (!Number.isFinite(weight) || weight <= 0) {
-      alert("Actual weight is required before verification.");
+      if (!silent) alert("Actual weight is required before verification.");
       setError("Actual weight is required before verification.");
-      return;
+      return false;
     }
 
     if (!row.photoFile && !row.photoUrl) {
-      alert("Please Attach Photo or Capture photo before verification.");
+      if (!silent) alert("Please Attach Photo or Capture photo before verification.");
       setError("Please Attach Photo or Capture photo before verification.");
-      return;
+      return false;
     }
 
     const currentPickupId = pickupId(selectedJob);
@@ -1926,7 +1934,7 @@ function FieldPortal() {
       Number(String(row.parcelId || row.id).match(/-(\d+)$/)?.[1] || 1);
 
     try {
-      setBusy(true);
+      if (manageBusy) setBusy(true);
       setError("");
       setMessage(`Uploading parcel ${itemNo} photo...`);
       updateParcelRow(rowId, { uploadStatus: "uploading", uploadError: "" } as any);
@@ -1997,8 +2005,9 @@ function FieldPortal() {
       } as any);
 
       setMessage(`Parcel ${itemNo} photo uploaded and sent to Data Entry for review.`);
-      alert(`Parcel ${itemNo} photo uploaded. Data Entry review is pending.`);
-      await load(session, true);
+      if (!silent) alert(`Parcel ${itemNo} photo uploaded. Data Entry review is pending.`);
+      if (reloadAfter) await load(session, true);
+      return true;
     } catch (err: any) {
       updateParcelRow(rowId, {
         verified: false,
@@ -2006,8 +2015,85 @@ function FieldPortal() {
         uploadError: err?.message || "Upload failed",
       } as any);
       setError(err?.message || "Photo upload failed.");
-      alert(err?.message || "Photo upload failed.");
+      if (!silent) alert(err?.message || "Photo upload failed.");
+      return false;
     } finally {
+      if (manageBusy) setBusy(false);
+    }
+  }
+
+  async function uploadAllParcelPhotos() {
+    if (!selectedJob || uploadingAll) return;
+
+    const rowsToUpload = parcelRows.filter((row) => {
+      const reviewStatus = upper(row.reviewStatus);
+      const alreadySubmitted =
+        row.uploadStatus === "uploaded" ||
+        ["PENDING_REVIEW", "APPROVED", "APPROVED_AFTER_REUPLOAD"].includes(reviewStatus);
+      return row.reuploadRequired || !alreadySubmitted;
+    });
+
+    if (!rowsToUpload.length) {
+      setError("");
+      setMessage("All parcel photos have already been uploaded for review.");
+      return;
+    }
+
+    const incompleteRows = rowsToUpload.filter((row) => {
+      const weight = Number(row.weightKg || 0);
+      return !Number.isFinite(weight) || weight <= 0 || (!row.photoFile && !row.photoUrl);
+    });
+
+    if (incompleteRows.length) {
+      const parcelNumbers = incompleteRows
+        .map((row) => row.index || row.id)
+        .join(", ");
+      const validationMessage =
+        `Complete the photo and actual weight for parcel(s) ${parcelNumbers} before using Upload all.`;
+      setError(validationMessage);
+      setMessage(validationMessage);
+      alert(validationMessage);
+      return;
+    }
+
+    setUploadingAll(true);
+    setBusy(true);
+    setError("");
+
+    let uploadedCount = 0;
+    const failedRows: Array<string | number> = [];
+
+    try {
+      for (let index = 0; index < rowsToUpload.length; index += 1) {
+        const row = rowsToUpload[index];
+        setMessage(
+          `Uploading ${index + 1}/${rowsToUpload.length}: parcel ${row.index || row.id}...`
+        );
+        const uploaded = await verifyParcelRow(row.id, {
+          silent: true,
+          reloadAfter: false,
+          manageBusy: false,
+        });
+        if (uploaded) uploadedCount += 1;
+        else failedRows.push(row.index || row.id);
+      }
+
+      await load(session, true);
+
+      if (failedRows.length) {
+        const summary =
+          `Uploaded ${uploadedCount}/${rowsToUpload.length} parcel photo(s). Failed: ${failedRows.join(", ")}.`;
+        setError(summary);
+        setMessage(summary);
+        alert(summary);
+      } else {
+        const summary =
+          `All ${uploadedCount} parcel photo(s) were uploaded and sent to Data Entry for review.`;
+        setMessage(summary);
+        alert(summary);
+      }
+    } finally {
+      setUploadingAll(false);
       setBusy(false);
     }
   }
@@ -2607,6 +2693,19 @@ function FieldPortal() {
                         <Badge color={C.blue}>{verifiedCount(parcelRows)} / {parcelRows.length} verified</Badge>
                         <Badge color={C.gold}>Photo required for verification</Badge>
                         <Badge color={C.green}>Weight required</Badge>
+                        <button
+                          type="button"
+                          onClick={uploadAllParcelPhotos}
+                          disabled={busy || uploadingAll || parcelRows.length === 0}
+                          style={{
+                            ...buttonStyle("gold"),
+                            marginLeft: "auto",
+                            minWidth: 150,
+                            opacity: busy || uploadingAll || parcelRows.length === 0 ? 0.58 : 1,
+                          }}
+                        >
+                          {uploadingAll ? "UPLOADING ALL..." : "UPLOAD ALL"}
+                        </button>
                       </div>
                       <div style={{ display: "grid", gap: 12, maxHeight: "54vh", overflowY: "auto", paddingRight: 4 }}>
                         {parcelRows.map((row) => (
@@ -2643,7 +2742,7 @@ function FieldPortal() {
                                 {row.uploadStatus === "failed" && <div style={{ color: C.red, fontSize: 11, marginTop: 6 }}>{row.uploadError || "Upload failed"}</div>}
                                 {row.reuploadRequired && <div style={{ color: C.red, fontSize: 12, marginTop: 6, fontWeight: 700 }}>Rejected: {row.rejectionReason || "Photo is unclear or required information is missing."}</div>}
                               </div>
-                              <button type="button" onClick={() => verifyParcelRow(row.id)} style={buttonStyle(row.reuploadRequired ? "red" : row.verified ? "green" : "gold")}>{row.uploadStatus === "uploading" ? "UPLOADING..." : row.reuploadRequired ? "RE-UPLOAD" : row.verified ? "APPROVED" : "UPLOAD FOR REVIEW"}</button>
+                              <button type="button" disabled={busy || uploadingAll} onClick={() => verifyParcelRow(row.id)} style={{ ...buttonStyle(row.reuploadRequired ? "red" : row.verified ? "green" : "gold"), opacity: busy || uploadingAll ? 0.58 : 1 }}>{row.uploadStatus === "uploading" ? "UPLOADING..." : row.reuploadRequired ? "RE-UPLOAD" : row.verified ? "APPROVED" : "UPLOAD FOR REVIEW"}</button>
                             </div>
                             <div><label>Remarks</label><input value={row.remarks} onChange={(e) => updateParcelRow(row.id, { remarks: e.target.value })} placeholder="Fragile / special handling note..." style={inputStyle()} /></div>
                           </div>
