@@ -32,6 +32,108 @@ export async function tableV33(name: string, limit = 200) {
   return Array.isArray(data) ? data : [];
 }
 
+function hasLiveValue(value: unknown) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim() !== "";
+  return true;
+}
+
+function liveValue(detail: AnyRow, detailKey: string, row: AnyRow, rowKey = detailKey) {
+  return hasLiveValue(detail?.[detailKey]) ? detail[detailKey] : row?.[rowKey];
+}
+
+async function overlayLiveDataEntryWaybillRows(rows: AnyRow[]) {
+  const pickupIds = [...new Set(rows.map((row) => String(row?.pickup_id || "").trim()).filter(Boolean))];
+  if (!pickupIds.length) return rows;
+
+  const { data, error } = await (supabase as any)
+    .from("be_data_entry_parcel_details")
+    .select("*")
+    .in("pickup_id", pickupIds)
+    .limit(Math.min(Math.max(rows.length * 10, 500), 5000));
+  if (error) throw error;
+
+  const details = Array.isArray(data) ? data : [];
+  const byWayId = new Map<string, AnyRow>();
+  const byPickupSequence = new Map<string, AnyRow>();
+  for (const detail of details) {
+    const wayId = String(detail?.delivery_way_id || "").trim().toUpperCase();
+    const pickupId = String(detail?.pickup_id || "").trim();
+    const sequence = Number(detail?.parcel_sequence || 0);
+    if (wayId) byWayId.set(wayId, detail);
+    if (pickupId && sequence > 0) byPickupSequence.set(`${pickupId}::${sequence}`, detail);
+  }
+
+  return rows.map((row) => {
+    const wayId = String(row?.waybill_no || row?.delivery_way_id || row?.tracking_no || "").trim().toUpperCase();
+    const pickupId = String(row?.pickup_id || "").trim();
+    const sequence = Number(row?.parcel_sequence || 0);
+    const detail = (wayId ? byWayId.get(wayId) : undefined) ||
+      (pickupId && sequence > 0 ? byPickupSequence.get(`${pickupId}::${sequence}`) : undefined);
+    if (!detail) return row;
+
+    return {
+      ...row,
+      recipient_name: liveValue(detail, "recipient_name", row),
+      recipient_phone: liveValue(detail, "contact_no_1", row, "recipient_phone"),
+      recipient_phone_2: liveValue(detail, "contact_no_2", row, "recipient_phone_2"),
+      township: liveValue(detail, "township", row),
+      township_key: liveValue(detail, "township_key", row),
+      city: liveValue(detail, "city", row),
+      region_state: liveValue(detail, "region_state", row),
+      recipient_address: liveValue(detail, "recipient_address", row),
+      customer_tier: liveValue(detail, "customer_tier", row),
+      item_price: liveValue(detail, "item_price", row),
+      weight_kg: liveValue(detail, "weight_kg", row),
+      surcharge: liveValue(detail, "surcharge", row),
+      delivery_fee: liveValue(detail, "delivery_fee", row),
+      cod_amount: liveValue(detail, "cod_amount", row),
+      actual_collect: liveValue(detail, "actual_collect", row),
+      destination: liveValue(detail, "destination", row),
+      remarks: liveValue(detail, "remark", row, "remarks"),
+      data_entry_saved_at: liveValue(detail, "saved_at", row, "data_entry_saved_at"),
+      waybill_data_source: "DATA_ENTRY_LIVE_OVERLAY_V12_5",
+    };
+  });
+}
+
+export async function waybillStudioSnapshotV125(limit = 500) {
+  let rows: AnyRow[] = [];
+  try {
+    const data = await rpcV33("be_waybill_studio_snapshot_v12_5", { p_limit: limit });
+    if (!data?.ok) throw new Error(data?.error || "Waybill Studio v12.5 snapshot failed.");
+    rows = Array.isArray(data?.rows) ? data.rows : [];
+  } catch (primaryError) {
+    const data = await rpcV33("be_waybill_studio_snapshot_v12_2", { p_limit: limit });
+    if (!data?.ok) throw primaryError instanceof Error ? primaryError : new Error("Waybill Studio snapshot failed.");
+    rows = Array.isArray(data?.rows) ? data.rows : [];
+  }
+
+  try { return await overlayLiveDataEntryWaybillRows(rows); }
+  catch (overlayError) {
+    console.warn("Waybill Studio live Data Entry overlay unavailable; using backend snapshot.", overlayError);
+    return rows;
+  }
+}
+
+export async function waybillStudioSnapshotV122(limit = 500) {
+  return waybillStudioSnapshotV125(limit);
+}
+
+export async function syncWaybillStudioV122(input: {
+  pickupId: string;
+  merchantCode?: string;
+  merchantName?: string;
+}) {
+  const data = await rpcV33("be_data_entry_waybill_sync_v12_2", {
+    p_pickup_id: input.pickupId,
+    p_merchant_code: input.merchantCode || null,
+    p_merchant_name: input.merchantName || null,
+  });
+  if (!data?.ok) throw new Error(data?.error || "Waybill Studio synchronization failed.");
+  return data;
+}
+
 export async function snapshotV33() {
   return rpcV33("be_v32_snapshot", {});
 }

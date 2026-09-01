@@ -1,5 +1,68 @@
-import React, { useMemo, useState } from "react";
-import { authorizePrintV33, tableV33 } from "@/lib/britiumCompleteWireupApiV33";
+import React, { useEffect, useMemo, useState } from "react";
+export const WAYBILL_TOWNSHIP_ONLY_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_ONLY_V3_20260826";
+export const WAYBILL_DESTINATION_RAIL_BUILD = "BRITIUM_WAYBILL_DESTINATION_RAIL_V1_20260826";
+import { authorizePrintV33, waybillStudioSnapshotV125 } from "@/lib/britiumCompleteWireupApiV33";
+
+export const WAYBILL_DATA_ENTRY_LIVE_BUILD = "BRITIUM_WAYBILL_DATA_ENTRY_LIVE_V12_5_20260901";
+export const WAYBILL_TOWNSHIP_PRINT_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_MM_V12_5_20260901";
+const WAYBILL_CONTEXT_STORAGE_KEY = "britium:last-created-waybill";
+
+const TOWNSHIP_MM_ALIASES: Record<string, string> = {
+  ahlone: "အလုံ", alone: "အလုံ", bahan: "ဗဟန်း", botahtaung: "ဗိုလ်တထောင်", botataung: "ဗိုလ်တထောင်",
+  dagon: "ဒဂုံ", "north dagon": "ဒဂုံမြို့သစ်မြောက်ပိုင်း", "dagon myothit north": "ဒဂုံမြို့သစ်မြောက်ပိုင်း",
+  "south dagon": "ဒဂုံမြို့သစ်တောင်ပိုင်း", "dagon myothit south": "ဒဂုံမြို့သစ်တောင်ပိုင်း",
+  "east dagon": "ဒဂုံမြို့သစ်အရှေ့ပိုင်း", "dagon myothit east": "ဒဂုံမြို့သစ်အရှေ့ပိုင်း",
+  "dagon seikkan": "ဒဂုံမြို့သစ်ဆိပ်ကမ်း", "dagon myothit seikkan": "ဒဂုံမြို့သစ်ဆိပ်ကမ်း",
+  dala: "ဒလ", dawbon: "ဒေါပုံ", "daw bon": "ဒေါပုံ", "da bon": "ဒေါပုံ", dawbone: "ဒေါပုံ",
+  hlaing: "လှိုင်", "hlaing thar yar": "လှိုင်သာယာ", hlaingthaya: "လှိုင်သာယာ", hlaingtharya: "လှိုင်သာယာ",
+  insein: "အင်းစိန်", kamayut: "ကမာရွတ်", kamaryut: "ကမာရွတ်", kyauktada: "ကျောက်တံတား",
+  kyimyindaing: "ကြည့်မြင်တိုင်", kyeemyindaing: "ကြည့်မြင်တိုင်", lanmadaw: "လမ်းမတော်", latha: "လသာ",
+  mayangon: "မရမ်းကုန်း", mayangone: "မရမ်းကုန်း", mingaladon: "မင်္ဂလာဒုံ",
+  "mingala taung nyunt": "မင်္ဂလာတောင်ညွန့်", mingalartaungnyunt: "မင်္ဂလာတောင်ညွန့်",
+  "north okkalapa": "မြောက်ဥက္ကလာပ", "south okkalapa": "တောင်ဥက္ကလာပ", pabedan: "ပန်းဘဲတန်း",
+  pazundaung: "ပုဇွန်တောင်", sanchaung: "စမ်းချောင်း", seikkan: "ဆိပ်ကမ်း", "shwe pyi thar": "ရွှေပြည်သာ", shwepyitha: "ရွှေပြည်သာ",
+  tamwe: "တာမွေ", thaketa: "သာကေတ", thingangyun: "သင်္ဃန်းကျွန်း", yankin: "ရန်ကင်း",
+};
+
+const NON_TOWNSHIP_VALUES = new Set([
+  "yangon", "yangon city", "yangon region", "ရန်ကုန်", "ရန်ကုန်တိုင်း", "ရန်ကုန်တိုင်းဒေသကြီး",
+  "mandalay", "mandalay region", "မန္တလေး", "မန္တလေးတိုင်းဒေသကြီး",
+  "naypyidaw", "nay pyi taw", "နေပြည်တော်", "myanmar", "မြန်မာ",
+]);
+
+function normalizedLocationKey(value: unknown) {
+  return String(value ?? "").normalize("NFKC").trim().toLowerCase()
+    .replace(/township/gi, "").replace(/မြို့နယ်/g, "")
+    .replace(/[()'’.,/\\\-–—·၊_]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function townshipPrintLabel(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "";
+  const key = normalizedLocationKey(raw);
+  if (!key || NON_TOWNSHIP_VALUES.has(key) || /^mmr\d+$/i.test(key)) return "";
+  if (/(?:\b(?:state|division|region)\b|တိုင်း(?:ဒေသကြီး)?|ပြည်နယ်)/i.test(raw)) return "";
+  return TOWNSHIP_MM_ALIASES[key] || raw.replace(/\s+Township$/i, "").trim();
+}
+
+function readWaybillPickupContext() {
+  try {
+    const hashQuery = window.location.hash.includes("?") ? window.location.hash.split("?").slice(1).join("?") : "";
+    const params = new URLSearchParams(hashQuery || window.location.search.slice(1));
+    const fromUrl = params.get("pickup_id") || "";
+    if (fromUrl) return fromUrl;
+  } catch {}
+  for (const storage of [window.sessionStorage, window.localStorage]) {
+    try {
+      const raw = storage.getItem(WAYBILL_CONTEXT_STORAGE_KEY);
+      if (!raw) continue;
+      const saved = JSON.parse(raw);
+      const pickupId = String(saved?.pickupId || saved?.pickup_id || "").trim();
+      if (pickupId) return pickupId;
+    } catch {}
+  }
+  return "";
+}
 
 type DocType = "WAYBILL" | "INVOICE" | "DOCUMENT";
 type Paper = "4x6" | "A5" | "A4";
@@ -136,6 +199,30 @@ function barcodeUrl(value: string) {
   return `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(value)}&scale=2&height=10&includetext=false&backgroundcolor=FFFFFF`;
 }
 
+function waybillTownshipOnly(row: PrintRow): string {
+  const candidates = [
+    row?.township_mm, row?.recipient_township_mm, row?.recipient_township,
+    row?.delivery_township, row?.receiver_township, row?.township_name,
+    row?.destination_township, row?.township, row?.township_key,
+  ];
+  for (const value of candidates) {
+    const township = townshipPrintLabel(value);
+    if (township) return township;
+  }
+  return "";
+}
+
+function recipientLocation(row: PrintRow, type: DocType) {
+  const d = normalized(row, type);
+  const address = String(d.recipientAddress || "").trim();
+  const township = String(d.township || "").trim();
+  if (!township) return address;
+  if (!address) return township;
+  const addressKey = normalizedLocationKey(address);
+  const townshipKey = normalizedLocationKey(township);
+  return townshipKey && addressKey.includes(townshipKey) ? address : `${address}, ${township}`;
+}
+
 function normalized(row: PrintRow, type: DocType) {
   const itemPrice = amount(row, "item_price", "itemPrice", "declared_value", "product_value");
   const deliveryFee = amount(row, "delivery_fee", "deliveryFee", "printed_waybill_delivery_charge", "deli_fee");
@@ -152,9 +239,9 @@ function normalized(row: PrintRow, type: DocType) {
     recipient: text(row, "recipient_name", "receiver_name", "recipientName") || "Recipient",
     recipientPhone: text(row, "recipient_phone", "receiver_phone", "contact_no_1", "phone"),
     recipientAddress: text(row, "recipient_address", "receiver_address", "delivery_address", "address"),
-    township: text(row, "township", "receiver_township", "destination_township"),
+    township: waybillTownshipOnly(row),
     remarks: text(row, "remarks", "remark", "notes", "special_instructions"),
-    region: text(row, "region", "city", "destination_city", "sidebar"),
+    region: text(row, "destination_township", "recipient_township", "township", "receiver_township", "destination_city", "city", "region", "sidebar"),
     service: text(row, "service_type", "delivery_type", "service_tier") || "Normal",
     cbm: text(row, "cbm", "volume_cbm") || "1",
     weight: text(row, "weight_kg", "weight", "actual_weight") || "-",
@@ -185,7 +272,7 @@ function render4x3(row: PrintRow, type: DocType) {
         <p class="phone">${esc(d.merchantPhone)}</p>
         <p class="recipient"><b>Recipient:</b> <strong>${esc(d.recipient)}</strong></p>
         <p class="phone">${esc(d.recipientPhone)}</p>
-        <p class="address">${esc([d.recipientAddress, d.township].filter(Boolean).join(", "))}</p>
+        <p class="address">${esc(recipientLocation(row, type))}</p>
       </section>
       <section class="w43-money">
         <div class="money-row"><span>Item Price:</span><b>${money(d.itemPrice)}</b></div>
@@ -200,7 +287,7 @@ function render4x3(row: PrintRow, type: DocType) {
 function render4x2(row: PrintRow, type: DocType) {
   const d = normalized(row, type);
   return `<article class="be-label be-4x2">
-    <aside class="w42-side">${esc(d.region || "Delivery")}</aside>
+    <aside class="w42-side w42-destination">${esc(d.township || "မြို့နယ်မသတ်မှတ်ရသေး")}</aside>
     <div class="w42-main">
       <header class="w42-head">
         <div class="w42-brand"><b>4D</b>${brandMark()}<div><strong>BRITIUM EXPRESS DELIVERY SERVICE</strong><small>09 - 897447744</small><small>OS : ${esc(d.merchant)}</small></div></div>
@@ -209,7 +296,7 @@ function render4x2(row: PrintRow, type: DocType) {
       </header>
       <div class="w42-body">
         <div class="vertical-label">Recipient :</div>
-        <section class="w42-person"><strong>${esc(d.recipient)}</strong><b>${esc(d.recipientPhone)}</b><p>${esc([d.recipientAddress, d.township].filter(Boolean).join(", "))}</p></section>
+        <section class="w42-person"><strong>${esc(d.recipient)}</strong><b>${esc(d.recipientPhone)}</b><p>${esc(recipientLocation(row, type))}</p></section>
         <section class="w42-money">
           <div class="money-row"><span>Item Price :</span><b>${money(d.itemPrice)}</b></div>
           <div class="money-row"><span>Deli Fee :</span><b>${money(d.deliveryFee)}</b></div>
@@ -242,21 +329,67 @@ function renderMicro(row: PrintRow, type: DocType) {
   </article>`;
 }
 
+// BRITIUM_WAYBILL_4X6_LAYOUT_V6
 function render4x6(row: PrintRow, type: DocType) {
   const d = normalized(row, type);
+  const locationLine = recipientLocation(row, type);
+
   return `<article class="be-label be-4x6">
     <header class="full-head">
-      <div class="full-brand">${brandMark()}<div><strong>BRITIUM EXPRESS</strong><span>${type === "WAYBILL" ? "DELIVERY SERVICE" : esc(type)}</span><b>HotLine: 09 - 897 44 77 44</b></div></div>
-      <div class="full-code"><time>${esc(d.createdAt)}</time><img class="qr" src="${qrUrl(d.no)}" alt="QR code"><strong>${esc(d.no)}</strong></div>
+      <div class="full-brand">
+        ${brandMark()}
+        <div class="full-brand-copy">
+          <strong>BRITIUM EXPRESS</strong>
+          <span>${type === "WAYBILL" ? "DELIVERY SERVICE" : esc(type)}</span>
+          <small>Hotline: 09-897447744</small>
+        </div>
+      </div>
+      <div class="full-code">
+        <time>${esc(d.createdAt)}</time>
+        <img class="qr" src="${qrUrl(d.no)}" alt="QR code">
+        <strong>${esc(d.no)}</strong>
+      </div>
     </header>
-    <section class="full-merchant"><span>Merchant :</span><div><b>${esc(d.merchant)}</b><p>${esc(d.merchantPhone)}</p><p>${esc(d.merchantAddress)}</p></div></section>
-    <section class="full-recipient"><span>Recipient :</span><div><strong>${esc(d.recipient)}</strong><b>${esc(d.recipientPhone)}</b><p>${esc([d.recipientAddress, d.township].filter(Boolean).join(", "))}</p></div></section>
-    <section class="full-finance">
-      <div><p>CBM :<b>${esc(d.cbm)}</b></p><p>Weight (kg) :<b>${esc(d.weight)}</b></p><p>Delivery :<b>${esc(d.service)}</b></p></div>
-      <div><p>Item Price :<b>${money(d.itemPrice)}</b></p><p>Delivery Fees :<b>${money(d.deliveryFee)}</b></p><p>Prepaid to OS :<b>${money(d.prepaid)}</b></p></div>
-      <div class="cod-box"><small>COD</small><strong>${money(d.cod)}</strong></div>
+
+    <section class="full-merchant">
+      <span class="section-label">Merchant</span>
+      <div class="section-copy">
+        <strong>${esc(d.merchant)}</strong>
+        <b>${esc(d.merchantPhone || "-")}</b>
+        <p>${esc(d.merchantAddress || "-")}</p>
+      </div>
     </section>
-    <section class="full-remarks">Remarks : <span>${esc(d.remarks)}</span></section>
+
+    <section class="full-recipient">
+      <span class="section-label">Recipient</span>
+      <div class="section-copy">
+        <strong>${esc(d.recipient)}</strong>
+        <b>${esc(d.recipientPhone || "-")}</b>
+        <p>${esc(locationLine || "-")}</p>
+      </div>
+    </section>
+
+    <section class="full-finance">
+      <div class="finance-column">
+        <p><span>CBM</span><b>${esc(d.cbm)}</b></p>
+        <p><span>Weight (kg)</span><b>${esc(d.weight)}</b></p>
+        <p><span>Service</span><b>${esc(d.service)}</b></p>
+      </div>
+      <div class="finance-column">
+        <p><span>Item Price</span><b>${money(d.itemPrice)}</b></p>
+        <p><span>Delivery Fee</span><b>${money(d.deliveryFee)}</b></p>
+        <p><span>Prepaid</span><b>${money(d.prepaid)}</b></p>
+      </div>
+      <div class="cod-box">
+        <small>COD</small>
+        <strong>${money(d.cod)}</strong>
+      </div>
+    </section>
+
+    <section class="full-remarks">
+      <b>Remarks</b>
+      <span>${esc(d.remarks || "-")}</span>
+    </section>
   </article>`;
 }
 
@@ -306,6 +439,7 @@ function sharedLabelCss() {
 
     .be-4x2 { display: grid; grid-template-columns: 9mm minmax(0,1fr); font-size: 8.5pt; }
     .w42-side { display: flex; align-items: center; justify-content: center; border-right: .3mm solid #111; font-weight: 900; writing-mode: vertical-rl; transform: rotate(180deg); overflow: hidden; }
+    .w42-destination { font-family: "Noto Sans Myanmar", "Pyidaungsu", Arial, sans-serif; font-size: 9pt; font-weight: 900; line-height: 1.05; letter-spacing: .1mm; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .w42-main { min-width: 0; display: flex; flex-direction: column; padding: 1.3mm 1.7mm; }
     .w42-head { height: 25%; display: grid; grid-template-columns: minmax(0,1fr) 30mm 12mm; gap: 1.5mm; align-items: start; border-bottom: .3mm solid #111; padding-bottom: 1mm; }
     .w42-brand { display: flex; gap: 1.2mm; min-width: 0; align-items: flex-start; }
@@ -388,7 +522,105 @@ function sharedLabelCss() {
     .full-finance .cod-box strong { align-self: flex-end; font-size: 24pt; }
     .full-remarks { flex: 1; padding-top: 4mm; }
     .full-remarks span { margin-left: 3mm; }
-  `;
+  
+    /* BRITIUM_WAYBILL_4X6_LAYOUT_V6: exact 4in x 6in thermal layout */
+    .be-4x6 {
+      width: 101.6mm;
+      height: 152.4mm;
+      display: grid;
+      grid-template-rows: 29mm 24mm 39mm 32mm minmax(0, 1fr);
+      padding: 3.2mm;
+      font-size: 8.4pt;
+      line-height: 1.2;
+      overflow: hidden;
+    }
+    .be-4x6 p, .be-4x6 time { margin: 0; }
+    .be-4x6 .full-head {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 29mm;
+      gap: 2.4mm;
+      align-items: center;
+      border-bottom: .35mm solid #111;
+      padding-bottom: 2mm;
+      overflow: hidden;
+    }
+    .be-4x6 .full-brand { min-width: 0; display: flex; align-items: center; gap: 2.3mm; }
+    .be-4x6 .full-brand .be-logo { width: 12mm; height: 12mm; font-size: 15pt; }
+    .be-4x6 .full-brand-copy { min-width: 0; }
+    .be-4x6 .full-brand-copy strong,
+    .be-4x6 .full-brand-copy span,
+    .be-4x6 .full-brand-copy small { display: block; max-width: 100%; overflow: hidden; }
+    .be-4x6 .full-brand-copy strong { font-size: 14pt; line-height: 1.02; letter-spacing: .2mm; }
+    .be-4x6 .full-brand-copy span { margin-top: 1mm; font-size: 9.5pt; font-weight: 800; }
+    .be-4x6 .full-brand-copy small { margin-top: .8mm; font-size: 7.2pt; white-space: nowrap; }
+    .be-4x6 .full-code { min-width: 0; display: grid; justify-items: center; align-content: center; }
+    .be-4x6 .full-code time { width: 100%; overflow: hidden; text-align: center; font-size: 6.2pt; white-space: nowrap; }
+    .be-4x6 .full-code .qr { width: 18mm; height: 18mm; margin: .5mm 0; }
+    .be-4x6 .full-code strong { width: 100%; overflow: hidden; text-align: center; font-size: 7.2pt; white-space: nowrap; }
+    .be-4x6 .full-merchant,
+    .be-4x6 .full-recipient {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 20mm minmax(0, 1fr);
+      gap: 2mm;
+      padding: 2.4mm 0;
+      border-bottom: .35mm solid #111;
+      overflow: hidden;
+    }
+    .be-4x6 .section-label { padding-top: .4mm; font-size: 8pt; font-weight: 900; }
+    .be-4x6 .section-copy { min-width: 0; overflow: hidden; }
+    .be-4x6 .section-copy strong { display: block; font-size: 12.5pt; line-height: 1.18; overflow-wrap: anywhere; }
+    .be-4x6 .section-copy b { display: block; margin-top: 1.2mm; font-size: 9.5pt; }
+    .be-4x6 .section-copy p {
+      margin-top: 1.2mm;
+      font-size: 8pt;
+      line-height: 1.32;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 3;
+      overflow: hidden;
+    }
+    .be-4x6 .full-finance {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: minmax(0, .86fr) minmax(0, 1.08fr) 30mm;
+      align-items: stretch;
+      border-bottom: .35mm solid #111;
+      overflow: hidden;
+    }
+    .be-4x6 .finance-column { min-width: 0; padding: 2.3mm 2mm 1.8mm 0; }
+    .be-4x6 .finance-column + .finance-column { padding-left: 2mm; border-left: .3mm solid #111; }
+    .be-4x6 .finance-column p { margin-bottom: 1.5mm; }
+    .be-4x6 .finance-column span,
+    .be-4x6 .finance-column b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .be-4x6 .finance-column span { font-size: 6.8pt; font-weight: 700; }
+    .be-4x6 .finance-column b { margin-top: .5mm; font-size: 9pt; }
+    .be-4x6 .full-finance .cod-box {
+      min-width: 0;
+      margin: 2.2mm 0 2.2mm 2mm;
+      padding: 2mm;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      overflow: hidden;
+    }
+    .be-4x6 .full-finance .cod-box small { font-size: 7pt; font-weight: 900; }
+    .be-4x6 .full-finance .cod-box strong { align-self: flex-end; max-width: 100%; font-size: 14pt; line-height: 1; overflow: hidden; text-overflow: ellipsis; }
+    .be-4x6 .full-remarks {
+      min-width: 0;
+      display: grid;
+      grid-template-columns: 18mm minmax(0, 1fr);
+      gap: 2mm;
+      padding-top: 2mm;
+      overflow: hidden;
+      font-size: 7.2pt;
+      line-height: 1.25;
+    }
+    .be-4x6 .full-remarks span { overflow-wrap: anywhere; word-break: break-word; overflow: hidden; }
+`;
 }
 
 export default function BritiumUnifiedPrintStudioV33() {
@@ -399,41 +631,42 @@ export default function BritiumUnifiedPrintStudioV33() {
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("Waybill Print Studio is ready.");
   const [loading, setLoading] = useState(false);
+  const [activePickupId, setActivePickupId] = useState(() => readWaybillPickupContext());
 
   const layout = useMemo(() => layoutFor(paper, label), [paper, label]);
   const page = paperSize(paper);
 
-  async function loadRows() {
+  async function loadRows(preferredPickupId = "") {
     setLoading(true);
     try {
-      const data = await tableV33("be_v32_parcels", 500);
-      const next = Array.isArray(data) ? data : [];
+      const data = await waybillStudioSnapshotV125(500);
+      const allRows = Array.isArray(data) ? data : [];
+      const contextPickupId = preferredPickupId || readWaybillPickupContext() || activePickupId;
+      const scopedRows = contextPickupId ? allRows.filter((row: PrintRow) => text(row, "pickup_id") === contextPickupId) : [];
+      const next = scopedRows.length ? scopedRows : allRows;
+      const resolvedPickupId = scopedRows.length ? contextPickupId : text(next[0] || {}, "pickup_id");
+      setActivePickupId(resolvedPickupId || "");
       setRows(next);
       setSelected(next.map((row: PrintRow) => docNo(row, docType)));
-      setMessage(`${next.length} live print row(s) loaded from be_v32_parcels.`);
+      setMessage(`${next.length} live Data Entry-authoritative print row(s) loaded${resolvedPickupId ? ` for pickup ${resolvedPickupId}` : ""}. ${WAYBILL_DATA_ENTRY_LIVE_BUILD} · ${WAYBILL_TOWNSHIP_PRINT_BUILD}`);
     } catch (error) {
-      const fallback: PrintRow[] = [
-        {
-          waybill_no: "D0627-BBG-015",
-          merchant_name: "Baby Genius Os",
-          merchant_phone: "09796239153",
-          recipient_name: "Ma Htet Htet",
-          recipient_phone: "09794665120",
-          recipient_address: "အမှတ် ၁၁၅/ဒုတိယထပ်၊ မင်္ဂလာသီရိလမ်း၊ မြို့သစ်ရပ်ကွက်၊ ဒေါပုံ",
-          township: "Yangon",
-          item_price: 76000,
-          delivery_fee: 3000,
-          cod_amount: 79000,
-          weight_kg: 5,
-        },
-      ];
-      setRows(fallback);
-      setSelected(fallback.map((row) => docNo(row, docType)));
-      setMessage(error instanceof Error ? `Preview data only: ${error.message}` : "Preview data only because the live parcel view is unavailable.");
-    } finally {
-      setLoading(false);
-    }
+      setRows([]); setSelected([]);
+      setMessage(error instanceof Error ? `Live waybill data unavailable: ${error.message}` : "Live waybill data unavailable.");
+    } finally { setLoading(false); }
   }
+
+  useEffect(() => {
+    void loadRows();
+    const onWaybillCreated = (event: Event) => {
+      const detail = (event as CustomEvent)?.detail || {};
+      const pickupId = String(detail?.pickupId || detail?.pickup_id || "").trim();
+      if (pickupId) setActivePickupId(pickupId);
+      void loadRows(pickupId);
+    };
+    window.addEventListener("britium:waybill-created", onWaybillCreated as EventListener);
+    return () => window.removeEventListener("britium:waybill-created", onWaybillCreated as EventListener);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function guardedPrint(targetRows: PrintRow[]) {
     if (!targetRows.length) {
@@ -527,23 +760,9 @@ export default function BritiumUnifiedPrintStudioV33() {
     </style></head><body>${sheets}</body></html>`;
   }
 
-  const fallbackRow: PrintRow = {
-    waybill_no: "D0627-BBG-015",
-    merchant_name: "Baby Genius Os",
-    merchant_phone: "09796239153",
-    recipient_name: "Ma Htet Htet",
-    recipient_phone: "09794665120",
-    recipient_address: "အမှတ် ၁၁၅/ဒုတိယထပ်၊ မင်္ဂလာသီရိလမ်း၊ မြို့သစ်ရပ်ကွက်၊ ဒေါပုံ",
-    township: "Yangon",
-    item_price: 76000,
-    delivery_fee: 3000,
-    cod_amount: 79000,
-    weight_kg: 5,
-  };
-
-  const visibleRows = rows.length ? rows : [fallbackRow];
+  const visibleRows = rows;
   const selectedRows = visibleRows.filter((row) => selected.includes(docNo(row, docType)));
-  const previewRows = Array.from({ length: layout.perSheet }, (_, index) => visibleRows[index % visibleRows.length]);
+  const previewRows = visibleRows.slice(0, layout.perSheet);
   const previewScale = paper === "A4" ? 0.68 : paper === "A5" ? 0.8 : 1;
   const previewHeight = paper === "A4" ? 1123 * previewScale : paper === "A5" ? 794 * previewScale : 576;
 
@@ -605,17 +824,18 @@ export default function BritiumUnifiedPrintStudioV33() {
 
             <div className="flex flex-wrap items-end gap-2">
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
-              <Button tone="green" onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
+              <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
               <Button tone="gold" onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
-              <Button tone="gold" onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
+              <Button tone="gold" disabled={!visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-2 text-sm md:grid-cols-3">
+          <div className="mt-4 grid gap-2 text-sm md:grid-cols-4">
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Paper:</b> {PAPER_LABELS[paper]}</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Per sheet:</b> {layout.perSheet} ({layout.columns} × {layout.rows})</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Selected:</b> {selected.length}</div>
+            <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Pickup:</b> {activePickupId || "All live rows"}</div>
           </div>
           <p className="mt-3 rounded-xl border border-amber-700/50 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{message} {layout.description}</p>
         </section>
@@ -639,11 +859,16 @@ export default function BritiumUnifiedPrintStudioV33() {
                     />
                     <span className="min-w-0">
                       <b className="block truncate text-amber-300">{no}</b>
-                      <small className="block truncate text-sky-100">{text(row, "recipient_name", "receiver_name") || "-"} · {text(row, "township", "destination_township") || "-"}</small>
+                      <small className="block truncate text-sky-100">{text(row, "recipient_name", "receiver_name") || "-"} · {waybillTownshipOnly(row) || "မြို့နယ်မသတ်မှတ်ရသေး"}</small>
                     </span>
                   </label>
                 );
               })}
+              {!visibleRows.length ? (
+                <div className="rounded-2xl border border-dashed border-sky-800 bg-slate-950/60 p-5 text-center text-sm text-sky-200">
+                  No live waybill rows are available. Click Refresh live rows after completing Data Entry registration.
+                </div>
+              ) : null}
             </div>
           </aside>
 
@@ -651,7 +876,7 @@ export default function BritiumUnifiedPrintStudioV33() {
             <h2 className="mb-3 rounded-xl border-b-4 border-amber-700 bg-amber-400 px-3 py-2 font-black text-slate-950">Live print preview</h2>
             <div className="overflow-auto rounded-2xl bg-slate-950 p-3 md:p-6">
               <div className="mx-auto flex justify-center" style={{ minHeight: previewHeight }}>
-                <div
+                {previewRows.length ? <div
                   className="sheet bg-white text-black shadow-2xl"
                   style={
                     {
@@ -675,7 +900,11 @@ export default function BritiumUnifiedPrintStudioV33() {
                       dangerouslySetInnerHTML={{ __html: renderStaticLabel(row, docType, label) }}
                     />
                   ))}
-                </div>
+                </div> : (
+                  <div className="flex min-h-[260px] w-full items-center justify-center rounded-xl border border-dashed border-sky-800 bg-slate-900/70 px-6 text-center text-sm text-sky-200">
+                    Live preview will appear after an authenticated waybill row is loaded.
+                  </div>
+                )}
               </div>
             </div>
           </section>
