@@ -14,6 +14,7 @@ export const DATA_ENTRY_PHOTO_URL_REFRESH_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_URL_
 export const DATA_ENTRY_FINANCE_GOVERNANCE_BUILD = "DATA_ENTRY_FINANCE_GOVERNANCE_V4_20260817";
 export const PAYMENT_SETTLEMENT_RULE = "EXACT_AND_OPAQUE_GROSS_MINUS_BRITIUM";
 export const DATA_ENTRY_TARIFF_AUTOCOMPLETE_BUILD = "BRITIUM_DATA_ENTRY_TARIFF_AUTOCOMPLETE_V1_20260826";
+export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRATION_EXPORT_TIMELINE_V12_9";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -478,6 +479,11 @@ export default function DataEntryFinancialV2Page() {
   const [waybillBusy,setWaybillBusy]=useState(false);
   const [waybillMessage,setWaybillMessage]=useState("");
   const [tariffOptions,setTariffOptions]=useState<TariffOption[]>([]);
+  const [downloadFrom,setDownloadFrom]=useState("");
+  const [downloadTo,setDownloadTo]=useState("");
+  const [downloadScope,setDownloadScope]=useState<"ALL"|"CURRENT_PICKUP">("ALL");
+  const [downloadBusy,setDownloadBusy]=useState(false);
+  const [downloadMessage,setDownloadMessage]=useState("");
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
 
@@ -745,6 +751,164 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
+
+  function toDateTimeLocalValue(date:Date):string{
+    const shifted=new Date(date.getTime()-date.getTimezoneOffset()*60_000);
+    return shifted.toISOString().slice(0,16);
+  }
+
+  function applyDownloadRange(range:"ALL"|"TODAY"|"LAST_24_HOURS"|"THIS_WEEK"|"THIS_MONTH"){
+    if(range==="ALL"){
+      setDownloadFrom("");
+      setDownloadTo("");
+      return;
+    }
+    const now=new Date();
+    let from=new Date(now);
+    if(range==="TODAY"){
+      from.setHours(0,0,0,0);
+    }else if(range==="LAST_24_HOURS"){
+      from=new Date(now.getTime()-24*60*60*1000);
+    }else if(range==="THIS_MONTH"){
+      from=new Date(now.getFullYear(),now.getMonth(),1,0,0,0,0);
+    }else{
+      const day=(now.getDay()+6)%7;
+      from.setDate(now.getDate()-day);
+      from.setHours(0,0,0,0);
+    }
+    setDownloadFrom(toDateTimeLocalValue(from));
+    setDownloadTo(toDateTimeLocalValue(now));
+  }
+
+  function exportDateTime(value:unknown):string{
+    const raw=text(value).trim();
+    if(!raw) return "";
+    const date=new Date(raw);
+    if(Number.isNaN(date.getTime())) return raw;
+    return date.toLocaleString("en-GB",{
+      year:"numeric",month:"2-digit",day:"2-digit",
+      hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
+    });
+  }
+
+  async function downloadDataEntryRegistration(){
+    setDownloadBusy(true);
+    setDownloadMessage("");
+    try{
+      const fromDate=downloadFrom?new Date(downloadFrom):null;
+      const toDate=downloadTo?new Date(downloadTo):null;
+      if(fromDate && Number.isNaN(fromDate.getTime())) throw new Error("Invalid From date/time.");
+      if(toDate && Number.isNaN(toDate.getTime())) throw new Error("Invalid To date/time.");
+      if(fromDate && toDate && fromDate.getTime()>toDate.getTime()) throw new Error("From date/time must be earlier than To date/time.");
+      if(downloadScope==="CURRENT_PICKUP" && !selectedPickupId) throw new Error("Select a pickup before using Current pickup only.");
+
+      const columns=[
+        "saved_at","saved_by_email","pickup_id","parcel_sequence","delivery_way_id",
+        "recipient_name","contact_no_1","contact_no_2","township","city","region_state","recipient_address",
+        "customer_tier","weight_kg","amount_entry_type","item_price","delivery_charges","delivery_fee","cod_amount","actual_collect",
+        "additional_customer_charge","cbm_surcharge","other_surcharge","merchant_payable_charges","merchant_final_settlement_amount",
+        "financial_validation_status","parcel_status","print_status","warehouse_status","way_management_status","finance_status",
+        "assigned_rider_name","supervisor_status","remark","proof_photo_path","created_at","updated_at"
+      ].join(",");
+
+      const pageSize=1000;
+      let offset=0;
+      const records:any[]=[];
+      while(true){
+        let query:any=(supabase as any)
+          .from("be_data_entry_parcel_details")
+          .select(columns)
+          .order("saved_at",{ascending:true})
+          .range(offset,offset+pageSize-1);
+        if(fromDate) query=query.gte("saved_at",fromDate.toISOString());
+        if(toDate) query=query.lte("saved_at",toDate.toISOString());
+        if(downloadScope==="CURRENT_PICKUP") query=query.eq("pickup_id",selectedPickupId);
+        const response=await query;
+        if(response.error) throw response.error;
+        const batch=Array.isArray(response.data)?response.data:[];
+        records.push(...batch);
+        if(batch.length<pageSize) break;
+        offset+=pageSize;
+      }
+
+      if(!records.length){
+        setDownloadMessage("No Data Entry registration records matched the selected timeline.");
+        return;
+      }
+
+      const exportRows=records.map((row:any)=>({
+        "Registration Saved Time":exportDateTime(row.saved_at),
+        "Saved By":text(row.saved_by_email),
+        "Pickup ID":text(row.pickup_id),
+        "Parcel Sequence":row.parcel_sequence??"",
+        "Delivery Way ID":text(row.delivery_way_id),
+        "Recipient Name":text(row.recipient_name),
+        "Contact 1":text(row.contact_no_1),
+        "Contact 2":text(row.contact_no_2),
+        "Township":text(row.township),
+        "City":text(row.city),
+        "State / Region":text(row.region_state),
+        "Recipient Address":text(row.recipient_address),
+        "Customer Tier":text(row.customer_tier),
+        "Weight (kg)":row.weight_kg??"",
+        "Amount Entry Type":text(row.amount_entry_type),
+        "Item Price":row.item_price??"",
+        "Delivery Charges":row.delivery_charges??row.delivery_fee??"",
+        "COD Amount":row.cod_amount??"",
+        "Actual Collect":row.actual_collect??"",
+        "Additional Customer Charge":row.additional_customer_charge??"",
+        "CBM Surcharge":row.cbm_surcharge??"",
+        "Other Surcharge":row.other_surcharge??"",
+        "Merchant Payable Charges":row.merchant_payable_charges??"",
+        "Merchant Final Settlement":row.merchant_final_settlement_amount??"",
+        "Financial Validation":text(row.financial_validation_status),
+        "Parcel Status":text(row.parcel_status),
+        "Print Status":text(row.print_status),
+        "Warehouse Status":text(row.warehouse_status),
+        "Way Management Status":text(row.way_management_status),
+        "Finance Status":text(row.finance_status),
+        "Assigned Rider":text(row.assigned_rider_name),
+        "Supervisor Status":text(row.supervisor_status),
+        "Remark":text(row.remark),
+        "Proof Photo":text(row.proof_photo_path),
+        "Created At":exportDateTime(row.created_at),
+        "Updated At":exportDateTime(row.updated_at),
+      }));
+
+      const XLSX:any=await import("xlsx");
+      const workbook=XLSX.utils.book_new();
+      const worksheet=XLSX.utils.json_to_sheet(exportRows);
+      const keys=Object.keys(exportRows[0]||{});
+      worksheet["!cols"]=keys.map((key)=>{
+        let width=Math.max(12,key.length+2);
+        for(const item of exportRows.slice(0,250)) width=Math.max(width,String(item[key]??"").length+2);
+        return {wch:Math.min(width,42)};
+      });
+      XLSX.utils.book_append_sheet(workbook,worksheet,"Data Entry Registration");
+
+      const summaryRows=[
+        {Field:"Report",Value:"Data Entry Registration Timeline Export"},
+        {Field:"Generated At",Value:exportDateTime(new Date().toISOString())},
+        {Field:"From",Value:downloadFrom||"All available history"},
+        {Field:"To",Value:downloadTo||"Latest available"},
+        {Field:"Scope",Value:downloadScope==="CURRENT_PICKUP"?("Current pickup: "+selectedPickupId):"All accessible Data Entry registrations"},
+        {Field:"Record Count",Value:records.length},
+      ];
+      const summarySheet=XLSX.utils.json_to_sheet(summaryRows);
+      summarySheet["!cols"]=[{wch:22},{wch:48}];
+      XLSX.utils.book_append_sheet(workbook,summarySheet,"Export Summary");
+
+      const stamp=new Date().toISOString().replace(/[:T]/g,"-").slice(0,16);
+      const scopePart=downloadScope==="CURRENT_PICKUP"?("_"+selectedPickupId.replace(/[^a-zA-Z0-9_-]/g,"-")):"";
+      XLSX.writeFile(workbook,"Britium_Data_Entry_Registration"+scopePart+"_"+stamp+".xlsx",{compression:true});
+      setDownloadMessage("Downloaded "+records.length.toLocaleString("en-US")+" Data Entry registration record(s).");
+    }catch(error:any){
+      setDownloadMessage(error?.message||"Unable to download Data Entry registration information.");
+    }finally{
+      setDownloadBusy(false);
+    }
+  }
+
   useEffect(()=>{void loadStartup();},[]);
   useEffect(()=>{if(selectedPickup) void loadPickupRows(selectedPickup); else setRows([]);},[selectedPickupId]);
 
@@ -811,6 +975,44 @@ export default function DataEntryFinancialV2Page() {
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
+
+          <div data-data-entry-registration-export-v12-9="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Data Entry Registration Download</div>
+                <div className="mt-1 text-[12px] font-bold text-[#eef8ff]">Download registration records by timeline</div>
+                <div className="mt-1 text-[10px] text-[#7aa7c6]">Timeline uses Data Entry Saved Time. Export follows the signed-in account's existing Data Entry permissions.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={()=>applyDownloadRange("TODAY")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">TODAY</button>
+                <button type="button" onClick={()=>applyDownloadRange("LAST_24_HOURS")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">LAST 24 HOURS</button>
+                <button type="button" onClick={()=>applyDownloadRange("THIS_WEEK")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS WEEK</button>
+                <button type="button" onClick={()=>applyDownloadRange("THIS_MONTH")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS MONTH</button>
+                <button type="button" onClick={()=>applyDownloadRange("ALL")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">ALL TIME</button>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
+              <Field label="From date & time">
+                <input type="datetime-local" className={inputClass} value={downloadFrom} onChange={(e)=>setDownloadFrom(e.target.value)}/>
+              </Field>
+              <Field label="To date & time">
+                <input type="datetime-local" className={inputClass} value={downloadTo} onChange={(e)=>setDownloadTo(e.target.value)}/>
+              </Field>
+              <Field label="Registration scope">
+                <select className={inputClass} value={downloadScope} onChange={(e)=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}>
+                  <option value="ALL">All accessible registration records</option>
+                  <option value="CURRENT_PICKUP">Current pickup only</option>
+                </select>
+              </Field>
+              <div className="flex items-end">
+                <button type="button" onClick={()=>void downloadDataEntryRegistration()} disabled={downloadBusy} className="w-full rounded-lg bg-[#21c7e8] px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50 xl:w-auto">
+                  {downloadBusy?"PREPARING...":"DOWNLOAD REGISTRATION EXCEL"}
+                </button>
+              </div>
+            </div>
+            {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
+          </div>
         </section>
         {workspace}
       </div>
