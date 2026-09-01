@@ -45,11 +45,5 @@
         }
       ]
     }
-  ],
-  "env": {
-    "VITE_SUPABASE_URL": "@britium_supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@britium_supabase_anon_key",
-    "VITE_API_BASE_URL": "@britium_api_base_url",
-    "VITE_APP_VERSION": "@britium_app_version"
-  }
+  ]
 }
