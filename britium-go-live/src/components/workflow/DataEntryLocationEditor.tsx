@@ -1,3 +1,4 @@
+// BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
@@ -80,13 +81,21 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         return;
       }
       if (found.reviewStatus === "MANUAL_REVIEW" || found.matchLevel === "WARD_APPROXIMATE") {
-        // A review-only provider result is evidence, not a delivery coordinate.
-        // Never place its pin or prefill it for accidental manual acceptance.
-        setCandidate(null);
-        setLat("");
-        setLng("");
+        // v12.6: review-only results must remain unshared, but hiding the pin made every
+        // ward/street fallback look broken. Show the candidate and prefill coordinates so
+        // an operator can visually review it, then require explicit Apply coordinates.
+        setCandidate(found);
+        setLat(String(found.latitude));
+        setLng(String(found.longitude));
         setManualOpen(true);
-        setMessage(`${found.matchLevel.replaceAll("_", " ")} was rejected because its township/postal evidence conflicts with the delivery address. No pin was placed or shared with Wayplan.`);
+        const reason=String((found as any).reviewReason||"");
+        if(reason==="TOWNSHIP_MISMATCH") {
+          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but its township does not match ${township || "the selected township"}. The pin is shown for review only and has NOT been shared with Wayplan.`);
+        } else if(reason==="POSTAL_EVIDENCE_MISMATCH") {
+          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but postal/ward evidence is incomplete. Review the pin and click Apply coordinates only if it is correct. It has NOT been shared with Wayplan.`);
+        } else {
+          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found. Review the map and coordinates, then click Apply coordinates only if the pin is correct. It has NOT been shared with Wayplan yet.`);
+        }
         return;
       }
       await saveDeliveryLocation(supabase, found);
@@ -147,7 +156,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200"><span>{candidate ? "Review or correct coordinates" : "Manual location review"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>setLat(event.target.value)} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>setLng(event.target.value)} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
-      <div>{mapUrl ? <img src={mapUrl} alt={`Mapbox drop-off location for ${deliveryWayId}`} className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 object-cover"/> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically…" : "The map appears automatically after a reliable address, street, ward, landmark, or coordinate is found."}</div>}</div>
+      <div>{mapUrl ? <img src={mapUrl} alt={`Mapbox drop-off location for ${deliveryWayId}`} className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 object-cover"/> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically…" : "Accepted and review-only candidates appear here. Review-only pins are never shared with Wayplan until Apply coordinates is clicked."}</div>}</div>
     </div>
   </div>;
 }
