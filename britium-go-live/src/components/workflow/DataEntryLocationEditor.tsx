@@ -7,7 +7,7 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
-import { mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
+import { coordinateMatchesTownship, mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 
 export default function DataEntryLocationEditor({ deliveryWayId, address, township }: { deliveryWayId: string; address: string; township: string }) {
@@ -203,6 +203,10 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
           setMessage("These coordinates are outside the verified South Okkalapa Ward 3 area and were not saved.");
           return;
         }
+      }
+      if (!coordinateMatchesTownship(township, lat, lng)) {
+        setMessage(`The selected point is outside ${township || "the selected township"} and was not saved. Choose an exact point inside the correct township.`);
+        return;
       }
       const next: DeliveryLocation = {
         ...(candidate || { deliveryWayId, label: query || address, originalAddress: address, englishAddress: english, township, postalCode: postal.postalCode, postalMatchLevel: postal.matchLevel, matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED" }),

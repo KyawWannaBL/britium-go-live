@@ -67,6 +67,7 @@ function readWaybillPickupContext() {
 type DocType = "WAYBILL" | "INVOICE" | "DOCUMENT";
 type Paper = "4x6" | "A5" | "A4";
 type Label = "4x6" | "4x3" | "4x2" | "2x3" | "2x1.5";
+type PrinterProfile = "NIPPON_POS_4X6" | "BROWSER_DEFAULT";
 
 type PrintRow = Record<string, any> & {
   waybill_no?: string;
@@ -627,6 +628,7 @@ export default function BritiumUnifiedPrintStudioV33() {
   const [docType, setDocType] = useState<DocType>("WAYBILL");
   const [paper, setPaper] = useState<Paper>("4x6");
   const [label, setLabel] = useState<Label>("4x6");
+  const [printerProfile, setPrinterProfile] = useState<PrinterProfile>("NIPPON_POS_4X6");
   const [rows, setRows] = useState<PrintRow[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("Waybill Print Studio is ready.");
@@ -779,7 +781,7 @@ export default function BritiumUnifiedPrintStudioV33() {
             Select the document paper and label layout. The 4 × 6 thermal combinations follow the four supplied reference designs, while A5 and A4 arrange the same labels at their physical print dimensions.
           </p>
 
-          <div className="mt-4 grid gap-3 xl:grid-cols-[180px_260px_340px_1fr]">
+          <div className="mt-4 grid gap-3 xl:grid-cols-[180px_240px_270px_300px_1fr]">
             <label className="text-xs font-black uppercase tracking-wider text-sky-200">
               Document type
               <select
@@ -810,6 +812,22 @@ export default function BritiumUnifiedPrintStudioV33() {
             </label>
 
             <label className="text-xs font-black uppercase tracking-wider text-sky-200">
+              Printer profile
+              <select
+                value={printerProfile}
+                onChange={(event) => {
+                  const profile=event.target.value as PrinterProfile;
+                  setPrinterProfile(profile);
+                  if(profile==="NIPPON_POS_4X6"){setPaper("4x6");setLabel("4x6");}
+                }}
+                className="mt-1 h-11 w-full rounded-xl border border-sky-800 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-amber-400"
+              >
+                <option value="NIPPON_POS_4X6">NIPPON POS — 4in × 6in</option>
+                <option value="BROWSER_DEFAULT">Other installed printer</option>
+              </select>
+            </label>
+
+            <label className="text-xs font-black uppercase tracking-wider text-sky-200">
               Waybill layout
               <select
                 value={label}
@@ -830,6 +848,8 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="gold" disabled={!visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
             </div>
           </div>
+
+          {printerProfile==="NIPPON_POS_4X6" ? <p className="mt-3 rounded-xl border border-emerald-700/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">NIPPON POS setup: select the installed NIPPON POS printer in the Windows print dialog, paper 4 × 6 inches (101.6 × 152.4 mm), portrait, scale 100%, margins None, headers/footers Off. Browser security requires the printer to be selected in the print dialog.</p> : null}
 
           <div className="mt-4 grid gap-2 text-sm md:grid-cols-4">
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Paper:</b> {PAPER_LABELS[paper]}</div>

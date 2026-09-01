@@ -676,6 +676,16 @@ export default function DataEntryFinancialV2Page() {
     setWaybillMessage("");
 
     try{
+      for (let index=0; index<rows.length; index+=1) {
+        const row=rows[index];
+        if (!row.photoReviewed) throw new Error(`Parcel ${index+1}: approve the pickup photo before saving.`);
+        const saveRequestId=requestId(`FINANCIAL_V2_SAVE_${index+1}`);
+        const saveResult=await (supabase as any).rpc("be_data_entry_financial_v2_save",{p_payload:{...payload(row,selectedPickup),request_id:saveRequestId,dry_run:false,source_file_name:"PORTAL_FINANCIAL_V2_LIVE",reason:"SAVE_AND_GENERATE_WAYBILL",destination:selectedPickup?.city||null}});
+        if(saveResult.error) throw saveResult.error;
+        const saved=envelope(saveResult.data);
+        if(!saved.ok || saveResult.data?.persisted===false) throw new Error(`Parcel ${index+1}: ${envelopeMessage(saved)||"live save was not confirmed."}`);
+      }
+
       const requestId =
         "WAYBILL:" +
         selectedPickupId +
@@ -742,6 +752,9 @@ export default function DataEntryFinancialV2Page() {
         `Waybill created, live-synced and verified in Waybill Studio: ${printable} parcel(s) · ` +
         (data?.waybill_no || selectedPickupId)
       );
+      window.setTimeout(()=>{
+        window.location.hash=`#/waybill-studio?pickup_id=${encodeURIComponent(selectedPickupId)}&paper=4x6&printer=NIPPON_POS`;
+      },350);
     }catch(error:any){
       setWaybillMessage(
         error?.message || "Waybill creation failed."
