@@ -1,0 +1,5 @@
+-- HISTORY-ONLY PLACEHOLDER
+-- Version 20260901192455 was already applied directly to Production.
+-- The original migration SQL is not present in Git history.
+-- Production contains the Finance V4 canonical projection objects and Finance
+-- remains MUTATION_SHADOW. Do not add executable SQL to this history marker.

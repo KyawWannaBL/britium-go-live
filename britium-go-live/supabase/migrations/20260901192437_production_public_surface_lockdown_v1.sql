@@ -1,0 +1,6 @@
+-- HISTORY-ONLY PLACEHOLDER
+-- Version 20260901192437 was already applied directly to Production.
+-- The original migration SQL is not present in Git history.
+-- Production verification shows that anonymous SECURITY DEFINER execution is
+-- now limited to the intentional customer snapshot and field-team login
+-- resolver endpoints. Do not add executable SQL to this history marker.
