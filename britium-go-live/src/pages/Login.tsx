@@ -62,23 +62,22 @@ const MFA_REQUIRED_ROLES = new Set([
 ]);
 
 async function loadProfile(userId: string) {
-  const trySelect = async (sel: string) =>
-    supabase.from("profiles").select(sel).eq("id", userId).maybeSingle();
-
-  let { data, error } = await trySelect(
-    "id, role, role_code, app_role, user_role, must_change_password, requires_password_change"
-  );
-
-  if (error && (error as any).code === "42703") {
-    ({ data, error } = await trySelect("id, role, must_change_password"));
-  }
+  const { data, error } = await supabase
+    .from("be_user_account_registry")
+    .select(
+      "auth_user_id, role, role_code, app_role, user_role, must_change_password, force_password_change, password_change_required"
+    )
+    .eq("auth_user_id", userId)
+    .maybeSingle();
 
   if (error) return { role: "GUEST", mustChange: false };
 
   const row: any = data || {};
   const rawRole = row.role ?? row.app_role ?? row.user_role ?? row.role_code ?? "GUEST";
   const mustChange =
-    Boolean(row.must_change_password) || Boolean(row.requires_password_change);
+    Boolean(row.must_change_password) ||
+    Boolean(row.force_password_change) ||
+    Boolean(row.password_change_required);
 
   return { role: normalizeRole(rawRole), mustChange };
 }
@@ -404,13 +403,16 @@ export default function Login() {
       } = await supabase.auth.getUser();
 
       if (user?.id) {
-        await supabase
-          .from("profiles")
+        const { error: profileError } = await supabase
+          .from("be_user_account_registry")
           .update({
             must_change_password: false,
-            requires_password_change: false,
+            force_password_change: false,
+            password_change_required: false,
           })
-          .eq("id", user.id);
+          .eq("auth_user_id", user.id);
+
+        if (profileError) throw profileError;
       }
 
       setSuccessMsg(

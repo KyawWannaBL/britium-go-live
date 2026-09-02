@@ -8,6 +8,7 @@
     "build": "vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
+    "verify:login-profile-contract": "node scripts/verify-login-profile-contract.cjs",
     "verify:supabase-proxy": "node scripts/verify-supabase-proxy.cjs"
   },
   "dependencies": {
