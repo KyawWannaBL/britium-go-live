@@ -915,7 +915,7 @@ export default function DataEntryFinancialV2Page() {
         "saved_at","saved_by_email","pickup_id","parcel_sequence","delivery_way_id",
         "recipient_name","contact_no_1","contact_no_2","township","city","region_state","recipient_address",
         "customer_tier","weight_kg","amount_entry_type","item_price","delivery_charges","delivery_fee","cod_amount","actual_collect",
-        "additional_customer_charge","cbm_surcharge","other_surcharge","merchant_payable_charges","merchant_final_settlement_amount",
+        "cbm_surcharge","other_surcharge","merchant_payable_charges","merchant_final_settlement_amount",
         "financial_validation_status","parcel_status","print_status","warehouse_status","way_management_status","finance_status",
         "assigned_rider_name","supervisor_status","remark","proof_photo_path","created_at","updated_at"
       ].join(",");
@@ -965,7 +965,6 @@ export default function DataEntryFinancialV2Page() {
         "Delivery Charges":row.delivery_charges??row.delivery_fee??"",
         "COD Amount":row.cod_amount??"",
         "Actual Collect":row.actual_collect??"",
-        "Additional Customer Charge":row.additional_customer_charge??"",
         "CBM Surcharge":row.cbm_surcharge??"",
         "Other Surcharge":row.other_surcharge??"",
         "Merchant Payable Charges":row.merchant_payable_charges??"",
