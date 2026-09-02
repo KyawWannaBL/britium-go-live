@@ -54,6 +54,17 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     const { data } = await supabase.rpc("be_delivery_location_get_v10", { p_delivery_way_id: deliveryWayId });
     const row = data?.location;
     if (!row) return;
+    if (!coordinateMatchesTownship(township, row.latitude, row.longitude)) {
+      setCandidate(null);
+      setLat("");
+      setLng("");
+      setManualOpen(true);
+      setMessage(`The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with township and postal boundaries…`);
+      const key = `${deliveryWayId}|${address}|${township}`;
+      lastAutoKey.current = key;
+      void find(address, true);
+      return;
+    }
     setCandidate({ deliveryWayId, latitude: Number(row.latitude), longitude: Number(row.longitude), label: row.provider_label || row.address_english || row.address_original, originalAddress: row.address_original || address, englishAddress: row.address_english || "", township: row.township || township, postalCode: row.postal_code || "", postalMatchLevel: row.postal_match_level || "UNRESOLVED", matchLevel: row.match_level, confidence: Number(row.confidence || 0), coordinateSource: row.coordinate_source, reviewStatus: row.review_status });
     setLat(String(row.latitude));
     setLng(String(row.longitude));
