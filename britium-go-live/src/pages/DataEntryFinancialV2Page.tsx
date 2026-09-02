@@ -12,22 +12,21 @@ export const DATA_ENTRY_WHITE_CONTROLS_BUILD = "BRITIUM_DATA_ENTRY_WHITE_CONTROL
 export const DATA_ENTRY_PHOTO_REVIEW_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_REVIEW_V2_20260825";
 export const DATA_ENTRY_PHOTO_URL_REFRESH_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_URL_REFRESH_V1_20260825";
 export const DATA_ENTRY_FINANCE_GOVERNANCE_BUILD = "DATA_ENTRY_FINANCE_GOVERNANCE_V4_20260817";
-export const PAYMENT_SETTLEMENT_RULE = "EXACT_AND_OPAQUE_GROSS_MINUS_BRITIUM";
+export const PAYMENT_SETTLEMENT_RULE = "DECLARED_DELIVERY_PLUS_BACKEND_SURCHARGES_V61_9_1";
 export const DATA_ENTRY_TARIFF_AUTOCOMPLETE_BUILD = "BRITIUM_DATA_ENTRY_TARIFF_AUTOCOMPLETE_V1_20260826";
 export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRATION_EXPORT_TIMELINE_V12_9";
+export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECONCILIATION_V13_2_20260902";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
   "DELIVERY_CHARGE_ONLY",
   "EXACT_COLLECTION_AMOUNT",
-  "OPAQUE_COD_COLLECTION",
 ] as const;
 
 const COLLECTION_METHOD_MY: Record<AmountType,string> = {
   ITEM_PRICE_PLUS_DECLARED_DELIVERY:"ပစ္စည်းတန်ဖိုး + သတ်မှတ်ထားသော ပို့ဆောင်ခ",
   DELIVERY_CHARGE_ONLY:"ပို့ဆောင်ခသာ",
   EXACT_COLLECTION_AMOUNT:"အတိအကျ ကောက်ခံမည့်ငွေ",
-  OPAQUE_COD_COLLECTION:"ခွဲခြမ်းမထားသော COD ကောက်ခံငွေ (ယာယီ)",
 };
 
 type AmountType = typeof AMOUNT_TYPES[number];
@@ -40,6 +39,23 @@ type TariffOption = {
   rack_code: string | null;
   provider_code: string;
   provider_name: string;
+};
+
+type ProviderOption = {
+  provider_code: string;
+  display_name: string;
+  provider_type: string;
+  active_tariff_count: number;
+};
+
+type MerchantTierAccess = {
+  merchant_id: string;
+  registered: boolean;
+  profile_tier: string;
+  resolved_customer_tier: string;
+  can_select_tier: boolean;
+  can_override_profile_tier: boolean;
+  tier_rules: Record<string, any>;
 };
 
 function tariffRate(option: TariffOption, tier: string): number {
@@ -74,11 +90,12 @@ type ParcelRow = {
   delivery_address: string;
   weight_kg: number | "";
   customer_tier: string;
+  tier_override: boolean;
+  service_provider_code: string;
   amount_entry_type: AmountType;
   item_price: number | "";
   delivery_charges: number | "";
   merchant_stated_total_amount: number | "";
-  additional_customer_charge: number | "";
   cbm_surcharge: number | "";
   other_surcharge: number | "";
   merchant_payable_charges: number | "";
@@ -180,7 +197,7 @@ function dataEntryProofDisplayUrl(value: unknown): string {
 }
 
 function isExact(type: AmountType) {
-  return type === "EXACT_COLLECTION_AMOUNT" || type === "OPAQUE_COD_COLLECTION";
+  return type === "EXACT_COLLECTION_AMOUNT";
 }
 function envelope(data: any) {
   if (data && typeof data === "object" && "data" in data) {
@@ -204,11 +221,13 @@ function payload(row: ParcelRow, pickup: Pickup) {
     delivery_address: row.delivery_address || null,
     weight_kg: row.weight_kg === "" ? null : Number(row.weight_kg),
     customer_tier: row.customer_tier || "STANDARD",
+    customer_tier_override: row.tier_override,
+    service_provider_code: row.service_provider_code || null,
     amount_entry_type: row.amount_entry_type,
     item_price: row.item_price === "" ? null : Number(row.item_price),
     delivery_charges: row.delivery_charges === "" ? null : Number(row.delivery_charges),
     merchant_stated_total_amount: row.merchant_stated_total_amount === "" ? null : Number(row.merchant_stated_total_amount),
-    additional_customer_charge: row.additional_customer_charge === "" ? 0 : Number(row.additional_customer_charge),
+    additional_customer_charge: 0,
     cbm_surcharge: row.cbm_surcharge === "" ? 0 : Number(row.cbm_surcharge),
     other_surcharge: row.other_surcharge === "" ? 0 : Number(row.other_surcharge),
     merchant_payable_charges: row.merchant_payable_charges === "" ? 0 : Number(row.merchant_payable_charges),
@@ -234,16 +253,21 @@ function MoneyBox({ label, value, highlight = false }: { label: string; value: u
   );
 }
 
-function TownshipTariffField({ row, index, updateRow, tariffOptions }: any) {
+function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOptions }: any) {
   const [open, setOpen] = useState(false);
+  const [providerFilter, setProviderFilter] = useState("ALL");
   const query = text(row.township).trim().toLowerCase();
   const matches = (tariffOptions as TariffOption[])
+    .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
     .filter((option) => !query || option.destination_name.toLowerCase().includes(query) || option.provider_name.toLowerCase().includes(query))
     .slice(0, 18);
-  const selected = (tariffOptions as TariffOption[]).find((option) => option.destination_name === row.township);
+  const selected = (tariffOptions as TariffOption[]).find((option) =>
+    option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
+  );
   const choose = (option: TariffOption) => {
     updateRow(index, {
       township: option.destination_name,
+      service_provider_code: option.provider_code,
       delivery_charges: tariffRate(option, row.customer_tier),
       message: `Tariff selected: ${option.provider_name} · Rack ${option.rack_code || "—"}. Delivery charge filled automatically.`,
     });
@@ -252,6 +276,14 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions }: any) {
   return (
     <Field label="မြို့နယ် / ဝန်ဆောင်မှုပေးသူ">
       <div className="relative">
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
+          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","GRS"].includes(provider.provider_code)).map((provider) => (
+            <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
+              {provider.display_name} · {provider.active_tariff_count}
+            </button>
+          ))}
+        </div>
         <input
           className={inputClass}
           value={row.township}
@@ -273,6 +305,10 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions }: any) {
               </button>
             ))}
           </div>
+        ) : open && providerFilter !== "ALL" ? (
+          <div className="absolute z-50 mt-1 w-full min-w-[360px] rounded-xl border border-amber-400/40 bg-[#071b2b] p-3 text-[11px] text-amber-200 shadow-2xl">
+            No active tariff is configured for this provider and destination. Add its approved rate card before saving a provider-specific route.
+          </div>
         ) : null}
         {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{selected.provider_name} · Rack {selected.rack_code || "—"} · Applied {money(tariffRate(selected, row.customer_tier))}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Select a suggestion to apply the authoritative tariff.</div>}
       </div>
@@ -280,9 +316,10 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions }: any) {
   );
 }
 
-function ParcelEditor({ row, index, updateRow, calculate, dryRun, reviewPhoto, tariffOptions }: any) {
+function ParcelEditor({ row, index, updateRow, calculate, dryRun, reviewPhoto, tariffOptions, providerOptions, tierAccess }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
+  const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
@@ -405,18 +442,23 @@ function ParcelEditor({ row, index, updateRow, calculate, dryRun, reviewPhoto, t
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Field label="လက်ခံသူအမည်"><input className={inputClass} value={row.recipient_name} onChange={(e) => updateRow(index,{recipient_name:e.target.value})}/></Field>
         <Field label="လက်ခံသူဖုန်း"><input className={inputClass} value={row.recipient_phone} onChange={(e) => updateRow(index,{recipient_phone:e.target.value})}/></Field>
-        <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} />
+        <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
         <Field label="အမှန်တကယ်အလေးချိန် (kg)"><input type="number" step="0.01" className={inputClass} value={row.weight_kg} onChange={(e)=>updateRow(index,{weight_kg:e.target.value===""?"":Number(e.target.value)})}/></Field>
         <Field label="လက်ခံသူလိပ်စာ"><textarea rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>updateRow(index,{delivery_address:e.target.value})}/></Field>
-        <DataEntryLocationEditor deliveryWayId={row.delivery_way_id} address={row.delivery_address} township={row.township} />
         <Field label="ကုန်သည်အဆင့်">
-          <select className={`${inputClass} !bg-white !text-black`} value={row.customer_tier} onChange={(e)=>{
+          <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
             const customer_tier=e.target.value;
             const option=(tariffOptions as TariffOption[]).find((item)=>item.destination_name===row.township);
-            updateRow(index,{customer_tier,...(option?{delivery_charges:tariffRate(option,customer_tier)}:{})});
+            const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
+            updateRow(index,{customer_tier,tier_override,...(option?{delivery_charges:tariffRate(option,customer_tier)}:{})});
           }}>
             <option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option>
           </select>
+          <span className="mt-1 block text-[9px] leading-4 text-[#8db4ce]">
+            {row.customer_tier === "STANDARD" ? `Standard · ${tierRule.included_kg ?? 3} kg included` : row.customer_tier === "ROYAL" ? `Royal · ${tierRule.included_kg ?? 5} kg included` : `Commitment · ${tierRule.included_kg ?? 5} kg included · ${tierRule.commitment_min_ways ?? 1500} ways target`}
+            {tierRule.extra_per_kg != null ? ` · ${money(tierRule.extra_per_kg)} per started extra kg` : ""}
+            {row.tier_override ? " · Authorized parcel override" : tierAccess?.registered ? " · Merchant profile" : " · Operator selection"}
+          </span>
         </Field>
         <Field label="ငွေကောက်ခံပုံ">
           <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
@@ -433,13 +475,14 @@ function ParcelEditor({ row, index, updateRow, calculate, dryRun, reviewPhoto, t
         </Field>
       </div>
 
+      <DataEntryLocationEditor deliveryWayId={row.delivery_way_id} address={row.delivery_address} township={row.township} />
+
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>updateRow(index,{item_price:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           {!isExact(type) && type!=="ITEM_PRICE_ONLY_DELIVERY_PAID_BY_MERCHANT" ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           {isExact(type) ? <Field label="အတိအကျ / COD စုစုပေါင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          <Field label="ဖောက်သည်ထပ်ဆောင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.additional_customer_charge} onChange={(e)=>updateRow(index,{additional_customer_charge:e.target.value===""?"":Number(e.target.value)})}/></Field>
           <Field label="CBM ထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
           <Field label="အခြားထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
         </div>
@@ -447,18 +490,26 @@ function ParcelEditor({ row, index, updateRow, calculate, dryRun, reviewPhoto, t
 
       <div className="mt-4 rounded-xl border border-[#3aa7de]/25 bg-[#071b2b] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">နောက်ခံစနစ် ငွေရှင်းတမ်း</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <MoneyBox label="လက်ခံသူထံမှ ကောက်ခံငွေ / COD" value={c.cod_amount} highlight />
+          <MoneyBox label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ" value={c.delivery_charges ?? row.delivery_charges} />
+          <MoneyBox label="နောက်ခံစနစ် ထပ်ဆောင်းပို့ဆောင်ခ" value={c.backend_calculated_delivery_surcharges} />
+          <MoneyBox label="လက်ခံသူ၏ ပို့ဆောင်ခအစိတ်အပိုင်း" value={c.customer_payable_delivery_component ?? c.effective_declared_delivery_charge} highlight />
           <MoneyBox label="အခြေခံပို့ဆောင်ခ" value={c.base_tariff} />
           <MoneyBox label="အလေးချိန်ထပ်ဆောင်းခ" value={c.weight_surcharge} />
           <MoneyBox label="Britium ရပိုင်ခွင့်" value={c.net_system_delivery_charge} highlight />
           <MoneyBox label="ပို့ဆောင်ခကွာခြားချက်" value={c.delivery_difference} />
           <MoneyBox label="ကုန်သည်နောက်ဆုံးရှင်းတမ်း" value={c.merchant_final_settlement_amount} highlight />
         </div>
+        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-[10px] leading-5 text-cyan-100">
+          {isExact(type)
+            ? "Exact collection: customer COD is the entered exact total. Merchant settlement = exact total − Britium entitlement − merchant charges + merchant credits."
+            : "Receiver delivery = merchant-declared delivery + weight/CBM/other delivery surcharges. Merchant settlement = item value + (receiver delivery − Britium entitlement) − merchant charges + merchant credits. A negative difference is deducted from the merchant, never added to the receiver."}
+        </div>
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className={serverClass}>ငွေရှင်းတမ်းဦးတည်ချက်: <b>{text(c.settlement_direction)||"—"}</b></div>
           <div className={serverClass}>ကုန်သည်ပြင်ဆင်ငွေ: <b>{money(c.merchant_settlement_adjustment)}</b></div>
-          <div className={serverClass}>စစ်ဆေးမှု: <b>{text(c.validation_status)||"NOT တွက်ချက်ရန်D"}</b></div>
+          <div className={serverClass}>စစ်ဆေးမှု: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
         </div>
       </div>
 
@@ -479,6 +530,11 @@ export default function DataEntryFinancialV2Page() {
   const [waybillBusy,setWaybillBusy]=useState(false);
   const [waybillMessage,setWaybillMessage]=useState("");
   const [tariffOptions,setTariffOptions]=useState<TariffOption[]>([]);
+  const [providerOptions,setProviderOptions]=useState<ProviderOption[]>([]);
+  const [tierAccess,setTierAccess]=useState<MerchantTierAccess>({
+    merchant_id:"",registered:false,profile_tier:"",resolved_customer_tier:"STANDARD",
+    can_select_tier:true,can_override_profile_tier:false,tier_rules:{}
+  });
   const [downloadFrom,setDownloadFrom]=useState("");
   const [downloadTo,setDownloadTo]=useState("");
   const [downloadScope,setDownloadScope]=useState<"ALL"|"CURRENT_PICKUP">("ALL");
@@ -502,6 +558,9 @@ export default function DataEntryFinancialV2Page() {
       const tariffResponse=await (supabase as any).rpc("be_data_entry_tariff_options");
       if(tariffResponse.error) throw tariffResponse.error;
       setTariffOptions(Array.isArray(tariffResponse.data)?tariffResponse.data:[]);
+      const providerResponse=await (supabase as any).rpc("be_data_entry_service_provider_options_v13");
+      if(providerResponse.error) throw providerResponse.error;
+      setProviderOptions(Array.isArray(providerResponse.data)?providerResponse.data:[]);
 
       let p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16",{p_limit:200});
       if(p.error) p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16");
@@ -517,6 +576,20 @@ export default function DataEntryFinancialV2Page() {
   async function loadPickupRows(pickup:Pickup){
     setLoadingRows(true); setMessage("");
     try{
+      const tierResponse=await (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id});
+      if(tierResponse.error) throw tierResponse.error;
+      if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
+      const nextTierAccess:MerchantTierAccess={
+        merchant_id:text(tierResponse.data?.merchant_id||pickup.merchant_id),
+        registered:Boolean(tierResponse.data?.registered),
+        profile_tier:text(tierResponse.data?.profile_tier).toUpperCase(),
+        resolved_customer_tier:text(tierResponse.data?.resolved_customer_tier||"STANDARD").toUpperCase(),
+        can_select_tier:Boolean(tierResponse.data?.can_select_tier),
+        can_override_profile_tier:Boolean(tierResponse.data?.can_override_profile_tier),
+        tier_rules:tierResponse.data?.tier_rules||{},
+      };
+      setTierAccess(nextTierAccess);
+
       const proofSources = [
         "be_v_data_entry_parcel_proofs",
         "be_v_data_entry_parcel_rows",
@@ -560,6 +633,16 @@ export default function DataEntryFinancialV2Page() {
       setRows(Array.from({length:count},(_,offset)=>{
         const sequence=offset+1;
         const proof=resolvedProofs.find((x:any)=>positiveInt(x.parcel_sequence)===sequence)||{};
+        const rawAmountType=text(proof.amount_entry_type).toUpperCase();
+        const legacyOpaque=rawAmountType==="OPAQUE_COD_COLLECTION";
+        const editableAmountType=(legacyOpaque
+          ? "EXACT_COLLECTION_AMOUNT"
+          : AMOUNT_TYPES.includes(rawAmountType as AmountType)
+            ? rawAmountType
+            : "ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
+        const savedTier=text(proof.customer_tier).toUpperCase();
+        const customerTier=savedTier||nextTierAccess.resolved_customer_tier||"STANDARD";
+        const legacyAdditional=num(proof.additional_customer_charge);
         return {
           pickup_id:pickup.pickup_id,
           parcel_sequence:sequence,
@@ -572,18 +655,22 @@ export default function DataEntryFinancialV2Page() {
           township:text(proof.township||pickup.township),
           delivery_address:text(proof.delivery_address||proof.recipient_address),
           weight_kg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
-          customer_tier:text(proof.customer_tier||"STANDARD").toUpperCase(),
-          amount_entry_type:(text(proof.amount_entry_type) as AmountType)||"ITEM_PRICE_PLUS_DECLARED_DELIVERY",
+          customer_tier:customerTier,
+          tier_override:Boolean(nextTierAccess.registered && nextTierAccess.profile_tier && customerTier!==nextTierAccess.profile_tier && nextTierAccess.can_override_profile_tier),
+          service_provider_code:text(proof.service_provider_code||proof.financial_quote?.service_provider_code).toUpperCase(),
+          amount_entry_type:editableAmountType,
           item_price:proof.item_price??"",
           delivery_charges:proof.delivery_charges??proof.delivery_fee??"",
           merchant_stated_total_amount:proof.merchant_stated_total_amount??"",
-          additional_customer_charge:proof.additional_customer_charge??0,
           cbm_surcharge:proof.cbm_surcharge??0,
           other_surcharge:proof.other_surcharge??0,
           merchant_payable_charges:proof.merchant_payable_charges??0,
           other_merchant_credits:proof.other_merchant_credits??0,
           remarks:text(proof.remarks||proof.remark),
-          calculating:false,checking:false,calculation:{},message:"",
+          calculating:false,checking:false,calculation:{},message:[
+            legacyOpaque?"Legacy unclassified COD was converted to Exact Collection Amount; the total amount is unchanged.":"",
+            legacyAdditional>0?`Legacy additional customer charge ${money(legacyAdditional)} is retired and will be reset to 0 on the next save.`:"",
+          ].filter(Boolean).join(" "),
           photoReviewed:["APPROVED","VERIFIED"].includes(text(proof.proof_check_status||proof.verification_status).toUpperCase()),
           photoUnavailableAcknowledged:false,
           photoReviewStatus:text(proof.proof_check_status||proof.verification_status||"PENDING_REVIEW").toUpperCase(),
@@ -604,7 +691,16 @@ export default function DataEntryFinancialV2Page() {
       const r=await (supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
       if(r.error) throw r.error;
       const e=envelope(r.data);
-      updateRow(index,{calculating:false,calculation:e.data,message:e.ok?"Calculation completed.":(envelopeMessage(e)||"Calculation failed.")});
+      const resolution=e.raw?.server_resolution||{};
+      const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
+      updateRow(index,{
+        calculating:false,
+        calculation:{...e.data,server_resolution:resolution},
+        ...(resolvedTier?{customer_tier:resolvedTier}:{}),
+        message:e.ok
+          ? `Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`
+          :(envelopeMessage(e)||"Calculation failed.")
+      });
     }catch(error:any){updateRow(index,{calculating:false,message:error?.message||"Backend calculation failed."});}
   }
 
@@ -930,7 +1026,7 @@ export default function DataEntryFinancialV2Page() {
   const workspace=(
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
-      rows.map((row,index)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={index} updateRow={updateRow} calculate={calculateRow} dryRun={dryRunRow} reviewPhoto={reviewPhoto} tariffOptions={tariffOptions}/>)}
+      rows.map((row,index)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={index} updateRow={updateRow} calculate={calculateRow} dryRun={dryRunRow} reviewPhoto={reviewPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess}/>)}
     </div>
   );
 

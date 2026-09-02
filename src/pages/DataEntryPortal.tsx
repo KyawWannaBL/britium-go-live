@@ -10,6 +10,7 @@ import {
 import { useAuth } from "../contexts/AuthContext";
 import api from "../lib/apiClient";
 import { API_ROUTES } from "../lib/config";
+import { calculateDeliveryPricingMath } from "../lib/deliveryPricingMath";
 
 type Tab = "pickup" | "delivery" | "list" | "correct";
 type PaymentStatus = "PAID" | "UNPAID";
@@ -96,7 +97,14 @@ const CITY_TOWNSHIPS: Record<string, string[]> = {
 };
 
 const CITY_OPTIONS = Object.keys(CITY_TOWNSHIPS);
-const SERVICE_OPTIONS = ["standard", "express", "same_day", "cod", "cod_express"];
+const SERVICE_OPTIONS = ["standard", "next_day", "same_day", "scheduled"];
+
+const PORTAL_TARIFF_PREVIEW: Record<string, { baseWeightKg: number; baseDeliveryFee: number; overweightPerKg: number }> = {
+  standard: { baseWeightKg: 3, baseDeliveryFee: 4000, overweightPerKg: 2500 },
+  next_day: { baseWeightKg: 3, baseDeliveryFee: 3500, overweightPerKg: 2000 },
+  same_day: { baseWeightKg: 3, baseDeliveryFee: 6000, overweightPerKg: 3000 },
+  scheduled: { baseWeightKg: 3, baseDeliveryFee: 4500, overweightPerKg: 2500 },
+};
 
 const INITIAL_PICKUP: PickupForm = {
   existingPickupId: "",
@@ -210,19 +218,28 @@ function withCount(prev: DeliveryLine[], count: number) {
 }
 
 function computeCharges(line: DeliveryLine) {
-  const weight = Math.max(0, Number(line.weightKg || 0));
-  const itemPrice = Math.max(0, Number(line.itemPrice || 0));
-  const merchantDelivery = Math.max(0, Number(line.merchantCustomerDeliveryCharge || 0));
-  const baseWeight = 3;
-  const baseFee = line.serviceType === "same_day" ? 6000 : line.serviceType === "express" ? 5000 : 4000;
-  const overweight = Math.max(0, weight - baseWeight);
-  const overweightCharge = overweight * 2500;
-  const osCharge = baseFee + overweightCharge;
-  const printedCharge = Math.max(osCharge, merchantDelivery);
-  const osTotalCod = itemPrice + (line.deliveryPaymentStatus === "UNPAID" ? osCharge : 0);
-  const waybillTotal = itemPrice + (line.deliveryPaymentStatus === "UNPAID" ? printedCharge : 0);
-  const receivable = (line.itemPaymentStatus === "UNPAID" ? itemPrice : 0) + (line.deliveryPaymentStatus === "UNPAID" ? osCharge : 0);
-  return { osCharge, overweightCharge, printedCharge, receivable, osTotalCod, waybillTotal, baseFee };
+  const numberOrZero = (value: unknown) => {
+    const parsed = Number(value || 0);
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+  };
+  const tariff = PORTAL_TARIFF_PREVIEW[line.serviceType] || PORTAL_TARIFF_PREVIEW.standard;
+  const result = calculateDeliveryPricingMath({
+    ...tariff,
+    weightKg: numberOrZero(line.weightKg),
+    itemPrice: numberOrZero(line.itemPrice),
+    itemPaymentStatus: line.itemPaymentStatus,
+    merchantCustomerDeliveryCharge: numberOrZero(line.merchantCustomerDeliveryCharge),
+    deliveryPaymentStatus: line.deliveryPaymentStatus,
+  });
+  return {
+    osCharge: result.osDeliveryCharge,
+    overweightCharge: result.overweightSurcharge,
+    printedCharge: result.printedWaybillDeliveryCharge,
+    receivable: result.receivable,
+    osTotalCod: result.osTotalCod,
+    waybillTotal: result.waybillTotalCod,
+    baseFee: result.baseDeliveryFee,
+  };
 }
 
 function fileDownload(name: string, content: string, type = "text/csv;charset=utf-8") {
@@ -989,7 +1006,7 @@ export default function DataEntryPortal() {
                   <input style={S.input} value={activeLine.destination} onChange={(e) => patchLine(activeRow, { destination: e.target.value })} />
                 </Field>
                 <Field label="Weight (kg)">
-                  <input style={S.input} value={activeLine.weightKg} onChange={(e) => patchLine(activeRow, { weightKg: e.target.value })} />
+                  <input type="number" min={0} step="0.01" style={S.input} value={activeLine.weightKg} onChange={(e) => patchLine(activeRow, { weightKg: e.target.value })} />
                 </Field>
               </div>
 
@@ -1013,7 +1030,7 @@ export default function DataEntryPortal() {
                 </Field>
                 <Field label="Item Price (OS / Merchant)">
                   <div style={S.inlineInputRow}>
-                    <input style={S.input} value={activeLine.itemPrice} onChange={(e) => patchLine(activeRow, { itemPrice: e.target.value })} />
+                    <input type="number" min={0} step={1} style={S.input} value={activeLine.itemPrice} onChange={(e) => patchLine(activeRow, { itemPrice: e.target.value })} />
                     <select style={S.inputSmall} value={activeLine.itemPaymentStatus} onChange={(e) => patchLine(activeRow, { itemPaymentStatus: e.target.value as PaymentStatus })}>
                       <option value="PAID">Paid</option>
                       <option value="UNPAID">Unpaid</option>
@@ -1022,7 +1039,7 @@ export default function DataEntryPortal() {
                 </Field>
                 <Field label="Delivery Charge agreed with Customer">
                   <div style={S.inlineInputRow}>
-                    <input style={S.input} value={activeLine.merchantCustomerDeliveryCharge} onChange={(e) => patchLine(activeRow, { merchantCustomerDeliveryCharge: e.target.value })} />
+                    <input type="number" min={0} step={1} style={S.input} value={activeLine.merchantCustomerDeliveryCharge} onChange={(e) => patchLine(activeRow, { merchantCustomerDeliveryCharge: e.target.value })} />
                     <select style={S.inputSmall} value={activeLine.deliveryPaymentStatus} onChange={(e) => patchLine(activeRow, { deliveryPaymentStatus: e.target.value as PaymentStatus })}>
                       <option value="PAID">Paid</option>
                       <option value="UNPAID">Unpaid</option>

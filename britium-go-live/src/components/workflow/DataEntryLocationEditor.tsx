@@ -19,6 +19,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   const [message, setMessage] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const lastAutoKey = useRef("");
+  const requestSequence = useRef(0);
   const interactiveMapContainer = useRef<HTMLDivElement | null>(null);
   const interactiveMap = useRef<mapboxgl.Map | null>(null);
   const draggableMarker = useRef<mapboxgl.Marker | null>(null);
@@ -28,7 +29,11 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   const mapUrl = candidate ? mapboxStaticLocationUrl(candidate) : "";
 
   async function load() {
-    if (!deliveryWayId) return;
+    const requestId = ++requestSequence.current;
+    if (!deliveryWayId) {
+      setMessage("Location details are ready for review. The location can be saved after the Delivery Way ID is allocated.");
+      return;
+    }
     const verified = verifiedAddressLocation(address, township);
     if (verified) {
       const corrected: DeliveryLocation = {
@@ -44,6 +49,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         coordinateSource: "MANAGEMENT_POSTAL_VALIDATED_ADDRESS",
         reviewStatus: "ACCEPTED",
       };
+      if (requestId !== requestSequence.current) return;
       setCandidate(corrected);
       setLat(String(corrected.latitude));
       setLng(String(corrected.longitude));
@@ -51,9 +57,23 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       try { await saveDeliveryLocation(supabase, corrected); } catch { /* Display the verified pin even if persistence is temporarily unavailable. */ }
       return;
     }
-    const { data } = await supabase.rpc("be_delivery_location_get_v10", { p_delivery_way_id: deliveryWayId });
+    const { data, error } = await supabase.rpc("be_delivery_location_get_v10", { p_delivery_way_id: deliveryWayId });
+    if (requestId !== requestSequence.current) return;
+    if (error) {
+      setManualOpen(true);
+      setMessage(`Saved location could not be loaded: ${error.message}`);
+      return;
+    }
+    if (data?.ok === false) {
+      setManualOpen(true);
+      setMessage(data?.message || "Saved location could not be loaded.");
+      return;
+    }
     const row = data?.location;
-    if (!row) return;
+    if (!row) {
+      setMessage("No saved location exists yet. Check the address to create Location Details.");
+      return;
+    }
     if (!coordinateMatchesTownship(township, row.latitude, row.longitude)) {
       setCandidate(null);
       setLat("");
@@ -71,14 +91,19 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   }
 
   useEffect(() => {
-    setQuery(address || "");
+    requestSequence.current += 1;
+    setBusy(false);
     setCandidate(null);
     setLat("");
     setLng("");
     setMessage("");
     lastAutoKey.current = "";
     void load();
-  }, [deliveryWayId, address, township]);
+  }, [deliveryWayId]);
+
+  useEffect(() => {
+    setQuery(address || "");
+  }, [deliveryWayId, address]);
 
   useEffect(() => {
     const key = `${deliveryWayId}|${address}|${township}`;
@@ -158,10 +183,12 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   }, [lat, lng]);
 
   async function find(value = query, automatic = false) {
+    const requestId = ++requestSequence.current;
     setBusy(true);
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
       const found = await resolveDeliveryLocation({ deliveryWayId, address: value || address, township });
+      if (requestId !== requestSequence.current) return;
       if (!found) {
         setCandidate(null);
         setManualOpen(true);
@@ -186,21 +213,28 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         }
         return;
       }
-      await saveDeliveryLocation(supabase, found);
+      if (deliveryWayId) await saveDeliveryLocation(supabase, found);
       setCandidate(found);
       setLat(String(found.latitude));
       setLng(String(found.longitude));
       setManualOpen(false);
-      setMessage(`${found.matchLevel.replaceAll("_", " ")} saved automatically and shared with Wayplan.`);
+      setMessage(deliveryWayId
+        ? `${found.matchLevel.replaceAll("_", " ")} saved automatically and shared with Wayplan.`
+        : `${found.matchLevel.replaceAll("_", " ")} found. Preview only until the Delivery Way ID is allocated.`);
     } catch (error: any) {
+      if (requestId !== requestSequence.current) return;
       setManualOpen(true);
       setMessage(error?.message || "Location search failed.");
     } finally {
-      setBusy(false);
+      if (requestId === requestSequence.current) setBusy(false);
     }
   }
 
   async function apply() {
+    if (!deliveryWayId) {
+      setMessage("The Delivery Way ID must be allocated before coordinates can be saved.");
+      return;
+    }
     if (!validMyanmarCoordinate(lng, lat)) {
       setMessage("Latitude/longitude is outside Myanmar or invalid.");
       return;
@@ -234,16 +268,23 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     }
   }
 
-  return <div className="mt-3 rounded-xl border border-cyan-500/30 bg-[#061524] p-3 md:col-span-2 xl:col-span-4">
+  return <div data-location-details="true" className="mt-4 rounded-xl border border-cyan-400/50 bg-[#061524] p-4">
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-      <div className="flex items-center gap-2 text-xs font-black text-cyan-300"><MapPin size={15}/> Drop-off location</div>
+      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-300"><MapPin size={15}/> Location Details / တည်နေရာအသေးစိတ်</div>
       {candidate && <span className={`rounded-full px-3 py-1 text-[11px] font-black ${candidate.reviewStatus === "ACCEPTED" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"}`}>{candidate.matchLevel.replaceAll("_", " ")}{candidate.reviewStatus === "MANUAL_REVIEW" ? " · REVIEW" : ""}</span>}
     </div>
     <div className="grid gap-3 xl:grid-cols-[.9fr_1.1fr]">
       <div>
         <div className="grid gap-2 lg:grid-cols-[1fr_auto]"><input value={query} onChange={(event)=>setQuery(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"){event.preventDefault();void find();}}} placeholder="Myanmar/English address, landmark, street, or coordinates" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void find()} disabled={busy} className="rounded-lg bg-cyan-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-50">{busy?<Loader2 className="mr-1 inline animate-spin" size={14}/>:<Search className="mr-1 inline" size={14}/>} Check location</button></div>
         <div className="mt-2 rounded-lg border border-fuchsia-700/40 bg-fuchsia-950/20 p-2 text-xs text-fuchsia-100"><b>English:</b> {english || "—"}</div>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal code:</b> {postal.postalCode || "Not published for this ward"}{postal.postalCode&&<div className="mt-1 text-[11px] text-slate-400">{[postal.quarter,postal.township,postal.region].filter(Boolean).join(", ")}<br/>{[postal.quarterMm,postal.townshipMm,postal.regionMm].filter(Boolean).join("၊ ")}</div>}</div><div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replaceAll("_", " ")}</div></div>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Original address:</b> {query || address || "—"}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Township:</b> {township || candidate?.township || "—"}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal code:</b> {postal.postalCode || "Not published for this ward"}{postal.postalCode&&<div className="mt-1 text-[11px] text-slate-400">{[postal.quarter,postal.township,postal.region].filter(Boolean).join(", ")}<br/>{[postal.quarterMm,postal.townshipMm,postal.regionMm].filter(Boolean).join("၊ ")}</div>}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replaceAll("_", " ")}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Coordinates:</b> {validMyanmarCoordinate(lng,lat) ? `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}` : "Not resolved"}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Source:</b> {candidate?.coordinateSource || "Not resolved"}</div>
+        </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200"><span>{candidate ? "Review or correct coordinates" : "Manual location review"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>setLat(event.target.value)} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>setLng(event.target.value)} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}

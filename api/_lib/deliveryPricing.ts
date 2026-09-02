@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "./supabaseAdmin";
+import { calculateDeliveryPricingMath } from "../../src/lib/deliveryPricingMath";
 
 export type DeliveryPricingInput = {
   township?: string | null;
@@ -23,9 +24,10 @@ export type DeliveryPricingOutput = {
   receivable: number;
 };
 
-function num(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
+function requiredNumber(value: unknown, field: string) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new RangeError(`${field} must be a non-negative finite number.`);
+  return n;
 }
 
 export async function loadTariff(serviceType: string, township?: string | null) {
@@ -38,6 +40,7 @@ export async function loadTariff(serviceType: string, township?: string | null) 
       .eq("township", township)
       .maybeSingle();
 
+    if (exact.error) throw new Error(exact.error.message);
     if (exact.data) return exact.data;
   }
 
@@ -65,39 +68,14 @@ export async function calculateDeliveryPricing(
 ): Promise<DeliveryPricingOutput> {
   const tariff = await loadTariff(input.serviceType || "standard", input.township);
 
-  const baseWeightKg = num(tariff.base_weight_kg);
-  const baseDeliveryFee = num(tariff.base_delivery_fee);
-  const overweightPerKg = num(tariff.overweight_per_kg);
-  const weightKg = num(input.weightKg);
-
-  const overweightKg = Math.max(0, weightKg - baseWeightKg);
-  const overweightSurcharge = overweightKg * overweightPerKg;
-  const osDeliveryCharge = baseDeliveryFee + overweightSurcharge;
-
-  const printedWaybillDeliveryCharge = Math.max(
-    osDeliveryCharge,
-    num(input.merchantCustomerDeliveryCharge)
-  );
-
-  const itemCollectable = input.itemPaymentStatus === "UNPAID" ? num(input.itemPrice) : 0;
-  const osDeliveryCollectable = input.deliveryPaymentStatus === "UNPAID" ? osDeliveryCharge : 0;
-  const waybillDeliveryCollectable =
-    input.deliveryPaymentStatus === "UNPAID" ? printedWaybillDeliveryCharge : 0;
-
-  const osTotalCod = itemCollectable + osDeliveryCollectable;
-  const waybillTotalCod = itemCollectable + waybillDeliveryCollectable;
-  const receivable = osTotalCod;
-
-  return {
-    baseWeightKg,
-    baseDeliveryFee,
-    overweightPerKg,
-    overweightKg,
-    overweightSurcharge,
-    osDeliveryCharge,
-    printedWaybillDeliveryCharge,
-    osTotalCod,
-    waybillTotalCod,
-    receivable,
-  };
+  return calculateDeliveryPricingMath({
+    baseWeightKg: requiredNumber(tariff.base_weight_kg, "tariff.base_weight_kg"),
+    baseDeliveryFee: requiredNumber(tariff.base_delivery_fee, "tariff.base_delivery_fee"),
+    overweightPerKg: requiredNumber(tariff.overweight_per_kg, "tariff.overweight_per_kg"),
+    weightKg: requiredNumber(input.weightKg, "weightKg"),
+    itemPrice: requiredNumber(input.itemPrice, "itemPrice"),
+    itemPaymentStatus: input.itemPaymentStatus,
+    merchantCustomerDeliveryCharge: requiredNumber(input.merchantCustomerDeliveryCharge, "merchantCustomerDeliveryCharge"),
+    deliveryPaymentStatus: input.deliveryPaymentStatus,
+  });
 }
