@@ -14,7 +14,17 @@ export default async function handler(request, response) {
   }
 
   const query = String(request.query?.q || "").trim();
-  if (query.length < 3 || query.length > 500) {
+  const longitudeText = String(request.query?.longitude || "").trim();
+  const latitudeText = String(request.query?.latitude || "").trim();
+  const reverseRequested = Boolean(longitudeText || latitudeText);
+  const longitude = Number(longitudeText);
+  const latitude = Number(latitudeText);
+
+  if (reverseRequested && (!Number.isFinite(longitude) || !Number.isFinite(latitude)
+    || longitude < 92 || longitude > 102 || latitude < 9 || latitude > 29)) {
+    return json(response, 400, { error: "Valid Myanmar longitude and latitude values are required." });
+  }
+  if (!reverseRequested && (query.length < 3 || query.length > 500)) {
     return json(response, 400, { error: "A valid delivery-location query is required." });
   }
 
@@ -30,7 +40,14 @@ export default async function handler(request, response) {
     });
   }
 
-  const parameters = new URLSearchParams({
+  const parameters = new URLSearchParams(reverseRequested ? {
+    longitude: String(longitude),
+    latitude: String(latitude),
+    country: "MM",
+    limit: "8",
+    language: "en,my",
+    access_token: token,
+  } : {
     q: query,
     country: "MM",
     limit: "8",
@@ -38,12 +55,13 @@ export default async function handler(request, response) {
     proximity: "96.199675,16.889554",
     access_token: token,
   });
+  const operation = reverseRequested ? "reverse" : "forward";
 
   try {
     const upstream = await fetch(
-      `https://api.mapbox.com/search/geocode/v6/forward?${parameters.toString()}`,
+      `https://api.mapbox.com/search/geocode/v6/${operation}?${parameters.toString()}`,
       {
-        headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/11.2" },
+        headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/13" },
         signal: AbortSignal.timeout(12000),
       },
     );
@@ -68,5 +86,4 @@ export default async function handler(request, response) {
     });
   }
 }
-
 

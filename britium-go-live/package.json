@@ -12,6 +12,7 @@
     "verify:auth-session-contract": "node scripts/verify-auth-session-contract.cjs",
     "verify:login-profile-contract": "node scripts/verify-login-profile-contract.cjs",
     "verify:postal-code-contract": "node scripts/verify-postal-code-contract.mjs",
+    "verify:data-entry-bulk-contract": "node scripts/verify-data-entry-bulk-contract.mjs",
     "verify:supabase-proxy": "node scripts/verify-supabase-proxy.cjs"
   },
   "dependencies": {

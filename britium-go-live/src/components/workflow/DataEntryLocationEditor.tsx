@@ -75,7 +75,9 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setMessage("No saved location exists yet. Check the address to create Location Details.");
       return;
     }
-    if (!coordinateMatchesTownship(township, row.latitude, row.longitude)) {
+    const savedCoordinateMatches = await coordinateMatchesTownship(township, row.latitude, row.longitude);
+    if (requestId !== requestSequence.current) return;
+    if (!savedCoordinateMatches) {
       setCandidate(null);
       setLat("");
       setLng("");
@@ -100,7 +102,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     setMessage("");
     lastAutoKey.current = "";
     void load();
-  }, [deliveryWayId]);
+  }, [deliveryWayId, address, township]);
 
   useEffect(() => {
     setQuery(address || "");
@@ -244,7 +246,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         setLat(String(found.latitude));
         setLng(String(found.longitude));
         setManualOpen(true);
-        const reason=String((found as any).reviewReason||"");
+        const reason=String(found.reviewReason||"");
         if(reason==="TOWNSHIP_MISMATCH") {
           setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but its township does not match ${township || "the selected township"}. The pin is shown for review only and has NOT been shared with Wayplan.`);
         } else if(reason==="POSTAL_EVIDENCE_MISMATCH") {
@@ -290,7 +292,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
           return;
         }
       }
-      if (!coordinateMatchesTownship(township, lat, lng)) {
+      if (!(await coordinateMatchesTownship(township, lat, lng))) {
         setMessage(`The selected point is outside ${township || "the selected township"} and was not saved. Choose an exact point inside the correct township.`);
         return;
       }
@@ -320,7 +322,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         <div className="mt-2 rounded-lg border border-fuchsia-700/40 bg-fuchsia-950/20 p-2 text-xs text-fuchsia-100"><b>English:</b> {english || "—"}</div>
         <div className="mt-2 grid gap-2 sm:grid-cols-2">
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Original address:</b> {query || address || "—"}</div>
-          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Township:</b> {township || candidate?.township || "—"}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Township:</b> {township || candidate?.township || "—"}{postal.matchLevel !== "UNRESOLVED" && postal.township && <div className="mt-1 text-[11px] text-slate-400">Postal directory: {postal.township}<br/>{postal.townshipMm}</div>}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal code:</b> {postal.postalCode || (postal.matchLevel === "TOWNSHIP_ONLY" ? "Enter a recognized ward / quarter" : "Township or ward not recognized")}{postal.postalCode&&<div className="mt-1 text-[11px] text-slate-400">{[postal.quarter,postal.township,postal.region].filter(Boolean).join(", ")}<br/>{[postal.quarterMm,postal.townshipMm,postal.regionMm].filter(Boolean).join("၊ ")}</div>}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replaceAll("_", " ")}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Coordinates:</b> {validMyanmarCoordinate(lng,lat) ? `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}` : "Not resolved"}</div>

@@ -35,10 +35,10 @@ const ADDRESS_REPLACEMENTS: Array<[RegExp, string]> = [
   [/မြောက်ဥက္ကလာပမြို့နယ်|မြောက်ဥက္ကလာပ/g, "North Okkalapa Township"],
   [/ဒေါပုံမြို့နယ်|ဒေါပုံ/g, "Dawbon Township"],
   [/သာကေတမြို့နယ်|သာကေတ/g, "Thaketa Township"],
-  [/တောင်ဒဂုံ(?:မြို့နယ်)?|ဒဂုံမြို့သစ်တောင်ပိုင်း/g, "South Dagon Township"],
-  [/မြောက်ဒဂုံ(?:မြို့နယ်)?|ဒဂုံမြို့သစ်မြောက်ပိုင်း/g, "North Dagon Township"],
-  [/အရှေ့ဒဂုံ(?:မြို့နယ်)?|ဒဂုံမြို့သစ်အရှေ့ပိုင်း/g, "East Dagon Township"],
-  [/ဒဂုံဆိပ်ကမ်းမြို့နယ်|ဒဂုံဆိပ်ကမ်း/g, "Dagon Seikkan Township"],
+  [/ဒဂုံ\s*မြို့သစ်\s*[（(]?\s*တောင်ပိုင်း\s*[)）]?\s*(?:မြို့နယ်)?|တောင်\s*ဒဂုံ\s*(?:မြို့နယ်)?/g, "South Dagon Township"],
+  [/ဒဂုံ\s*မြို့သစ်\s*[（(]?\s*မြောက်ပိုင်း\s*[)）]?\s*(?:မြို့နယ်)?|မြောက်\s*ဒဂုံ\s*(?:မြို့နယ်)?/g, "North Dagon Township"],
+  [/ဒဂုံ\s*မြို့သစ်\s*[（(]?\s*အရှေ့ပိုင်း\s*[)）]?\s*(?:မြို့နယ်)?|အရှေ့\s*ဒဂုံ\s*(?:မြို့နယ်)?/g, "East Dagon Township"],
+  [/ဒဂုံ\s*မြို့သစ်\s*[（(]?\s*ဆိပ်ကမ်း\s*[)）]?\s*(?:မြို့နယ်)?|ဒဂုံ\s*ဆိပ်ကမ်း\s*(?:မြို့နယ်)?/g, "Dagon Seikkan Township"],
   [/ဒဂုံမြို့နယ်|ဒဂုံ/g, "Dagon Township"],
   [/အင်းစိန်မြို့နယ်|အင်းစိန်/g, "Insein Township"],
   [/မင်္ဂလာဒုံမြို့နယ်|မင်္ဂလာဒုံ/g, "Mingaladon Township"],
@@ -80,6 +80,10 @@ function englishOrdinal(value: string | number) {
 
 export function normalizeEnglishAddressForGeocoding(value: unknown) {
   return String(value ?? "")
+    .replace(/\bdagon\s+myothit\s*[（(]?\s*north\s*[)）]?\s*(?:township)?\b/gi, "North Dagon Township")
+    .replace(/\bdagon\s+myothit\s*[（(]?\s*south\s*[)）]?\s*(?:township)?\b/gi, "South Dagon Township")
+    .replace(/\bdagon\s+myothit\s*[（(]?\s*east\s*[)）]?\s*(?:township)?\b/gi, "East Dagon Township")
+    .replace(/\bdagon\s+myothit\s*[（(]?\s*seikkan\s*[)）]?\s*(?:township)?\b/gi, "Dagon Seikkan Township")
     .replace(/\b(\d{1,3})(?:st|nd|rd|th)?\s+(?:road|street|st\.?)\b/gi, (_match, number) => `${englishOrdinal(number)} Street`)
     .replace(/\b(\d{1,3})\s+(?:ward|quarter)\b/gi, "Ward $1")
     .replace(/\bward\s*(?:no\.?\s*)?(\d{1,3})\b/gi, "Ward $1")
@@ -89,16 +93,38 @@ export function normalizeEnglishAddressForGeocoding(value: unknown) {
     .trim();
 }
 
+function replaceMyanmarAddressTerms(value: unknown) {
+  let converted = normalizeMyanmarAddress(value);
+  for (const [pattern, replacement] of ADDRESS_REPLACEMENTS) converted = converted.replace(pattern, replacement);
+  return normalizeEnglishAddressForGeocoding(converted);
+}
+
+function componentKey(value: unknown) {
+  return normalizeEnglishAddressForGeocoding(value)
+    .toLowerCase()
+    .replace(/\b(?:township|city|region|state|union territory)\b/g, " ")
+    .replace(/[^a-z0-9\u1000-\u109f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export function convertMyanmarTownshipToEnglish(township: unknown) {
+  return replaceMyanmarAddressTerms(township);
+}
+
 export function convertMyanmarAddressToEnglish(address: unknown, township?: unknown) {
-  let convertedAddress = normalizeMyanmarAddress(address);
-  for (const [pattern, replacement] of ADDRESS_REPLACEMENTS) convertedAddress = convertedAddress.replace(pattern, replacement);
+  const convertedAddress = replaceMyanmarAddressTerms(address);
+  const convertedTownship = convertMyanmarTownshipToEnglish(township);
+  const addressKey = componentKey(convertedAddress);
+  const townshipKey = componentKey(convertedTownship);
+  const parts = [convertedAddress];
 
-  let convertedTownship = normalizeMyanmarAddress(township);
-  for (const [pattern, replacement] of ADDRESS_REPLACEMENTS) convertedTownship = convertedTownship.replace(pattern, replacement);
+  if (convertedTownship && townshipKey && !addressKey.includes(townshipKey)) parts.push(convertedTownship);
+  if (!addressKey.includes("yangon")) parts.push("Yangon");
+  if (!addressKey.includes("myanmar")) parts.push("Myanmar");
 
-  const parts = [convertedAddress, convertedTownship, "Yangon", "Myanmar"].filter(Boolean);
   return normalizeEnglishAddressForGeocoding(
-    [...new Set(parts)].join(", ").replace(/(?:, Yangon){2,}/g, ", Yangon"),
+    [...new Set(parts.filter(Boolean))].join(", ").replace(/(?:, Yangon){2,}/g, ", Yangon"),
   );
 }
 
