@@ -810,10 +810,6 @@ export default function Login() {
             </div>
           </section>
         </div>
-
-        <div className="fixed bottom-5 right-5 z-30 rounded-full border border-[#63531f] bg-[#0b2234]/95 px-5 py-3 text-[12px] font-black uppercase tracking-[0.18em] text-[#f6b84b] shadow-xl backdrop-blur-xl">
-          Britium Go-Live UAT
-        </div>
       </div>
     );
   }

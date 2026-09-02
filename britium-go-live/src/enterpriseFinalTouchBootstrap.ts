@@ -1,13 +1,5 @@
 import "./styles/enterpriseFinalTouch.css";
 
-function addGoLiveWatermark() {
-  if (document.querySelector(".be-golive-watermark")) return;
-  const node = document.createElement("div");
-  node.className = "be-golive-watermark";
-  node.textContent = "Britium Go-Live UAT";
-  document.body.appendChild(node);
-}
-
 function normalizeSignOut() {
   document.addEventListener("click", (event) => {
     const target = event.target as HTMLElement | null;
@@ -22,7 +14,6 @@ function normalizeSignOut() {
 }
 
 function boot() {
-  addGoLiveWatermark();
   normalizeSignOut();
 }
 
