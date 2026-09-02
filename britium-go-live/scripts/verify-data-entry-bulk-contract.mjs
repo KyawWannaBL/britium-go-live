@@ -5,7 +5,7 @@ import { dirname, resolve } from "node:path";
 
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"utf8");
-const migration=readFileSync(resolve(root,"supabase/migrations/20260902212509_data_entry_extra_registration_bulk_actions.sql"),"utf8");
+const migration=readFileSync(resolve(root,"supabase/migrations/20260902220115_data_entry_extra_registration_bulk_actions.sql"),"utf8");
 const saveAllMigration=migration.match(/create or replace function public\.be_data_entry_financial_v2_save_all[\s\S]*?comment on function public\.be_data_entry_financial_v2_save_all/i)?.[0]||"";
 
 const checks=[
