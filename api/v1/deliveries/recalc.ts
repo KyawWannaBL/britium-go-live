@@ -1,103 +1,42 @@
-import { supabaseAdmin } from "./serverSupabase";
+import type { VercelRequest, VercelResponse } from "../../_lib/vercelTypes";
+import { calculateDeliveryPricing } from "../../_lib/deliveryPricing";
 
-export type DeliveryPricingInput = {
-  township?: string | null;
-  serviceType: string;
-  weightKg: number;
-  itemPrice: number;
-  itemPaymentStatus: "PAID" | "UNPAID";
-  merchantCustomerDeliveryCharge: number;
-  deliveryPaymentStatus: "PAID" | "UNPAID";
-};
-
-export type DeliveryPricingOutput = {
-  baseWeightKg: number;
-  baseDeliveryFee: number;
-  overweightPerKg: number;
-  overweightKg: number;
-  overweightSurcharge: number;
-  osDeliveryCharge: number;
-  printedWaybillDeliveryCharge: number;
-  osTotalCod: number;
-  waybillTotalCod: number;
-  receivable: number;
-};
-
-function num(value: unknown) {
-  const n = Number(value ?? 0);
-  return Number.isFinite(n) ? n : 0;
+function send(res: VercelResponse, status: number, payload: unknown) {
+  return res.status(status).json(payload);
 }
 
-export async function loadTariff(serviceType: string, township?: string | null) {
-  if (township) {
-    const exact = await supabaseAdmin
-      .from("tariff_rate_cards")
-      .select("*")
-      .eq("active", true)
-      .eq("service_type", serviceType)
-      .eq("township", township)
-      .maybeSingle();
-
-    if (exact.data) return exact.data;
+function parseBody(req: VercelRequest) {
+  if (!req.body) return {};
+  if (typeof req.body === "string") {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
   }
-
-  const fallback = await supabaseAdmin
-    .from("tariff_rate_cards")
-    .select("*")
-    .eq("active", true)
-    .eq("service_type", serviceType)
-    .is("township", null)
-    .maybeSingle();
-
-  if (fallback.error) {
-    throw new Error(fallback.error.message);
-  }
-
-  if (!fallback.data) {
-    throw new Error(`No tariff found for service_type=${serviceType}`);
-  }
-
-  return fallback.data;
+  return req.body;
 }
 
-export async function calculateDeliveryPricing(
-  input: DeliveryPricingInput
-): Promise<DeliveryPricingOutput> {
-  const tariff = await loadTariff(input.serviceType || "standard", input.township);
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== "POST") {
+    return send(res, 405, { error: "Method not allowed" });
+  }
 
-  const baseWeightKg = num(tariff.base_weight_kg);
-  const baseDeliveryFee = num(tariff.base_delivery_fee);
-  const overweightPerKg = num(tariff.overweight_per_kg);
-  const weightKg = num(input.weightKg);
+  try {
+    const body = parseBody(req);
+    const data = await calculateDeliveryPricing({
+      township: body?.township || null,
+      serviceType: body?.serviceType || "standard",
+      weightKg: Number(body?.weightKg || 0),
+      itemPrice: Number(body?.itemPrice || 0),
+      itemPaymentStatus: body?.itemPaymentStatus === "PAID" ? "PAID" : "UNPAID",
+      merchantCustomerDeliveryCharge: Number(body?.merchantCustomerDeliveryCharge || 0),
+      deliveryPaymentStatus: body?.deliveryPaymentStatus === "PAID" ? "PAID" : "UNPAID",
+    });
 
-  const overweightKg = Math.max(0, weightKg - baseWeightKg);
-  const overweightSurcharge = overweightKg * overweightPerKg;
-  const osDeliveryCharge = baseDeliveryFee + overweightSurcharge;
-
-  const printedWaybillDeliveryCharge = Math.max(
-    osDeliveryCharge,
-    num(input.merchantCustomerDeliveryCharge)
-  );
-
-  const itemCollectable = input.itemPaymentStatus === "UNPAID" ? num(input.itemPrice) : 0;
-  const osDeliveryCollectable = input.deliveryPaymentStatus === "UNPAID" ? osDeliveryCharge : 0;
-  const waybillDeliveryCollectable =
-    input.deliveryPaymentStatus === "UNPAID" ? printedWaybillDeliveryCharge : 0;
-
-  const osTotalCod = itemCollectable + osDeliveryCollectable;
-  const waybillTotalCod = itemCollectable + waybillDeliveryCollectable;
-  const receivable = osTotalCod;
-
-  return {
-    baseWeightKg,
-    baseDeliveryFee,
-    overweightPerKg,
-    overweightKg,
-    overweightSurcharge,
-    osDeliveryCharge,
-    printedWaybillDeliveryCharge,
-    osTotalCod,
-    waybillTotalCod,
-    receivable,
-  };
+    return send(res, 200, { ok: true, data });
+  } catch (error: any) {
+    console.error("[deliveries/recalc]", error);
+    return send(res, 500, { error: error?.message || "Failed to recalculate delivery" });
+  }
 }

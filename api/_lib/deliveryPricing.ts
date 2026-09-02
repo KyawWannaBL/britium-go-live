@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "./serverSupabase";
+import { supabaseAdmin } from "./supabaseAdmin";
 
 export type DeliveryPricingInput = {
   township?: string | null;

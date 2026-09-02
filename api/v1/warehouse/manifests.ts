@@ -1,5 +1,5 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { supabaseAdmin } from "../../_lib/serverSupabase";
+import type { VercelRequest, VercelResponse } from "../../_lib/vercelTypes";
+import { supabaseAdmin } from "../../_lib/supabaseAdmin";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);
@@ -105,7 +105,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           return send(res, 500, { error: storageRes.error.message });
         }
 
-        const storageMap = new Map((storageRes.data || []).map((row: any) => [row.tracking_no, row]));
+        const storageMap = new Map<string, any>(
+          (storageRes.data || []).map((row: any) => [String(row.tracking_no), row])
+        );
 
         const payload = trackingNos.map((trackingNo) => ({
           manifest_id: manifestId,

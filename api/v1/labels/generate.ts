@@ -1,6 +1,6 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import type { VercelRequest, VercelResponse } from "../../_lib/vercelTypes";
 import QRCode from "qrcode";
-import { supabaseAdmin } from "../../_lib/serverSupabase";
+import { supabaseAdmin } from "../../_lib/supabaseAdmin";
 
 function send(res: VercelResponse, status: number, payload: unknown) {
   return res.status(status).json(payload);
