@@ -28,62 +28,58 @@ export default async function handler(request, response) {
     return json(response, 400, { error: "A valid delivery-location query is required." });
   }
 
-  const token = String(
-    process.env.MAPBOX_ACCESS_TOKEN ||
-    process.env.VITE_MAPBOX_ACCESS_TOKEN ||
-    process.env.VITE_MAPBOX_TOKEN ||
-    "",
+  const key = String(
+    process.env.GOOGLE_MAPS_SERVER_API_KEY
+    || process.env.GOOGLE_MAPS_API_KEY
+    || process.env.VITE_GOOGLE_MAPS_API_KEY
+    || "",
   ).trim();
-  if (!token) {
+  if (!key) {
     return json(response, 503, {
-      error: "Mapbox is not configured on the server. Add MAPBOX_ACCESS_TOKEN in Vercel Production environment variables and redeploy.",
+      error: "Google Maps is not configured on the server. Add GOOGLE_MAPS_SERVER_API_KEY in Vercel and redeploy.",
     });
   }
 
   const parameters = new URLSearchParams(reverseRequested ? {
-    longitude: String(longitude),
-    latitude: String(latitude),
-    country: "MM",
-    limit: "8",
-    language: "en,my",
-    access_token: token,
+    latlng: `${latitude},${longitude}`,
+    language: "en",
+    region: "mm",
+    key,
   } : {
-    q: query,
-    country: "MM",
-    limit: "8",
-    language: "en,my",
-    proximity: "96.199675,16.889554",
-    access_token: token,
+    address: query,
+    language: "en",
+    region: "mm",
+    components: "country:MM",
+    bounds: "9,92|29,102",
+    key,
   });
-  const operation = reverseRequested ? "reverse" : "forward";
 
   try {
     const upstream = await fetch(
-      `https://api.mapbox.com/search/geocode/v6/${operation}?${parameters.toString()}`,
+      `https://maps.googleapis.com/maps/api/geocode/json?${parameters.toString()}`,
       {
-        headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/13" },
+        headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/14" },
         signal: AbortSignal.timeout(12000),
       },
     );
-    const body = await upstream.text();
-    if (!upstream.ok) {
-      let upstreamMessage = "";
-      try { upstreamMessage = String(JSON.parse(body)?.message || ""); } catch {}
-      return json(response, upstream.status, {
-        error: upstreamMessage || `Mapbox rejected the location request (${upstream.status}).`,
+    const body = await upstream.json().catch(() => null);
+    if (!upstream.ok || !body) {
+      return json(response, upstream.status || 502, {
+        error: body?.error_message || `Google Maps rejected the location request (${upstream.status}).`,
       });
     }
-    response.statusCode = 200;
-    response.setHeader("Content-Type", "application/json; charset=utf-8");
-    response.setHeader("Cache-Control", "no-store");
-    response.end(body);
+    if (!['OK', 'ZERO_RESULTS'].includes(String(body.status))) {
+      return json(response, 502, {
+        error: body.error_message || `Google Geocoding failed (${body.status || 'UNKNOWN_ERROR'}).`,
+      });
+    }
+    return json(response, 200, body);
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
     return json(response, 502, {
       error: timedOut
-        ? "Mapbox did not respond within 12 seconds. Please try again."
-        : "The server could not connect to Mapbox. Check Vercel runtime networking and the Mapbox token.",
+        ? "Google Maps did not respond within 12 seconds. Please try again."
+        : "The server could not connect to Google Maps.",
     });
   }
 }
-

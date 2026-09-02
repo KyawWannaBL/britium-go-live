@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createServer } from "vite";
-import mapboxGeocodeHandler from "../api/mapbox-geocode.mjs";
+import googleGeocodeHandler from "../api/google-geocode.mjs";
 
 const server = await createServer({
   appType: "custom",
@@ -127,7 +127,7 @@ try {
     longitude: 96.16738,
     matchLevel: "WARD_APPROXIMATE",
     confidence: 0.67,
-    provider: "MAPBOX",
+    provider: "GOOGLE",
   }, {
     address: "No. 77, Ward 32, North Dagon Township, Yangon",
     township: "မြောက်ဒဂုံ",
@@ -142,7 +142,7 @@ try {
     longitude: 96.21,
     matchLevel: "WARD_APPROXIMATE",
     confidence: 0.67,
-    provider: "MAPBOX",
+    provider: "GOOGLE",
   }, {
     address: "No. 77, Ward 32, North Dagon Township, Yangon",
     township: "မြောက်ဒဂုံ",
@@ -152,13 +152,13 @@ try {
   assert.equal(correctTownshipCandidate.reviewStatus, "MANUAL_REVIEW");
 
   const originalFetch = globalThis.fetch;
-  const originalMapboxToken = process.env.MAPBOX_ACCESS_TOKEN;
-  let requestedMapboxUrl = "";
+  const originalGoogleMapsKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  let requestedGoogleUrl = "";
   try {
-    process.env.MAPBOX_ACCESS_TOKEN = "contract-test-token";
+    process.env.GOOGLE_MAPS_SERVER_API_KEY = "contract-test-key";
     globalThis.fetch = async (url) => {
-      requestedMapboxUrl = String(url);
-      return new Response(JSON.stringify({ type: "FeatureCollection", features: [] }), {
+      requestedGoogleUrl = String(url);
+      return new Response(JSON.stringify({ status: "OK", results: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -169,20 +169,20 @@ try {
       setHeader() {},
       end(value) { responseBody = String(value ?? ""); },
     };
-    await mapboxGeocodeHandler({
+    await googleGeocodeHandler({
       method: "GET",
       headers: { "sec-fetch-site": "same-origin" },
       query: { latitude: "16.917583", longitude: "96.167380" },
     }, response);
     assert.equal(response.statusCode, 200);
     assert.doesNotThrow(() => JSON.parse(responseBody), "Reverse-geocode proxy must always return complete JSON");
-    assert.match(requestedMapboxUrl, /\/search\/geocode\/v6\/reverse\?/);
-    assert.match(requestedMapboxUrl, /latitude=16\.917583/);
-    assert.match(requestedMapboxUrl, /longitude=96\.16738/);
+    assert.match(requestedGoogleUrl, /maps\.googleapis\.com\/maps\/api\/geocode\/json\?/);
+    assert.match(requestedGoogleUrl, /latlng=16\.917583%2C96\.16738/);
+    assert.match(requestedGoogleUrl, /region=mm/);
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalMapboxToken == null) delete process.env.MAPBOX_ACCESS_TOKEN;
-    else process.env.MAPBOX_ACCESS_TOKEN = originalMapboxToken;
+    if (originalGoogleMapsKey == null) delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
+    else process.env.GOOGLE_MAPS_SERVER_API_KEY = originalGoogleMapsKey;
   }
 
   const cases = [];
