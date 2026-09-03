@@ -73,14 +73,20 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setMessage("No saved location exists yet. Check the address to create Location Details.");
       return;
     }
+    const savedMatchLevel = String(row.match_level || "").toUpperCase();
+    const savedSource = String(row.coordinate_source || "").toUpperCase();
+    const savedIsApproximate = ["WARD_APPROXIMATE", "STREET_APPROXIMATE"].includes(savedMatchLevel)
+      || /MAPBOX|WARD_APPROXIMATE|STREET_APPROXIMATE/.test(savedSource);
     const savedCoordinateMatches = await coordinateMatchesTownship(township, row.latitude, row.longitude);
     if (requestId !== requestSequence.current) return;
-    if (!savedCoordinateMatches) {
+    if (!savedCoordinateMatches || savedIsApproximate) {
       setCandidate(null);
       setLat("");
       setLng("");
       setManualOpen(true);
-      setMessage(`The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with township and postal boundaries…`);
+      setMessage(savedIsApproximate
+        ? "The previously saved Mapbox/approximate pin has been rejected. Searching again with Google Places…"
+        : `The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with Google Places…`);
       const key = `${deliveryWayId}|${address}|${township}`;
       lastAutoKey.current = key;
       void find(address, true);
