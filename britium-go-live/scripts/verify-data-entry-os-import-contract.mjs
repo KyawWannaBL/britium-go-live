@@ -7,7 +7,7 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"utf8");
 const importer=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBulkImport.tsx"),"utf8");
 const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
-const migration=readFileSync(resolve(root,"supabase/migrations/20260903031402_data_entry_os_softcopy_bulk_import_v15.sql"),"utf8");
+const migration=readFileSync(resolve(root,"supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
 const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
 
 const checks=[
@@ -22,7 +22,7 @@ const checks=[
   ["bulk rows route by Way ID and verify merchant",/function buildOsImportPlan/.test(importer)&&/does not belong to pickup/.test(importer)&&/Duplicate parcel sequence/.test(importer)],
   ["multi-pickup drafts remain separated for review",/Bulk upload pickup queue/.test(page)&&/bulkImportDrafts/.test(page)&&/bulkImportOrder/.test(page)],
   ["canonical delivery IDs exist before location checks",/delivery_way_id:canonicalWayId\(pickup\.pickup_id,sequence\)/.test(page)],
-  ["imported saves require synchronized location",/row\.importedFromOs\s*&&\s*row\.locationStatus\s*!==\s*"SYNCED"/.test(page)&&/IMPORTED_LOCATION_NOT_SYNCED/.test(migration)],
+  ["core imports require synchronized locations while external routes bypass maps",/route\.mapRequired\s*&&\s*row\.locationStatus!=="SYNCED"/.test(page)&&/CORE_LOCATION_NOT_SYNCED/.test(migration)&&/MAP_NOT_REQUIRED/.test(migration)],
   ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],
   ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
   ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],
@@ -43,4 +43,4 @@ for(const [name,ok] of checks){
   assert.equal(ok,true,`Contract check failed: ${name}`);
   console.log(`PASS ${name}`);
 }
-console.log(`PASS ${checks.length} Data Entry OS Import V16 contract checks`);
+console.log(`PASS ${checks.length} Data Entry OS Import V19 contract checks`);

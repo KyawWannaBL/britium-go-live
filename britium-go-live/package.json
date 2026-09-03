@@ -16,6 +16,7 @@
     "verify:data-entry-os-import-contract": "node scripts/verify-data-entry-os-import-contract.mjs",
     "verify:data-entry-provider-routing-contract": "node scripts/verify-data-entry-provider-routing-contract.mjs",
     "verify:data-entry-location-save-contract": "node scripts/verify-data-entry-location-save-contract.mjs",
+    "verify:data-entry-routing-wayplan-contract": "node scripts/verify-data-entry-routing-wayplan-contract.mjs",
     "verify:supabase-proxy": "node scripts/verify-supabase-proxy.cjs"
   },
   "dependencies": {

@@ -36,7 +36,7 @@ async function withAutomaticLocationSlot<T>(task: () => Promise<T>): Promise<T> 
   }
 }
 
-export type DataEntryLocationResolution = "PENDING" | "SEARCHING" | "REVIEW_REQUIRED" | "SYNCED";
+export type DataEntryLocationResolution = "PENDING" | "SEARCHING" | "REVIEW_REQUIRED" | "SYNCED" | "NOT_REQUIRED";
 
 type DataEntryLocationEditorProps = {
   deliveryWayId: string;
@@ -44,6 +44,8 @@ type DataEntryLocationEditorProps = {
   township: string;
   autoResolveDelayMs?: number;
   deferInteractiveMap?: boolean;
+  enabled?: boolean;
+  disabledReason?: string;
   reloadToken?: number;
   onResolutionChange?: (status: DataEntryLocationResolution) => void;
 };
@@ -63,6 +65,8 @@ export default function DataEntryLocationEditor({
   township,
   autoResolveDelayMs = 900,
   deferInteractiveMap = false,
+  enabled = true,
+  disabledReason = "Google Map is not required for this delivery route.",
   reloadToken = 0,
   onResolutionChange,
 }: DataEntryLocationEditorProps) {
@@ -97,6 +101,11 @@ export default function DataEntryLocationEditor({
 
   async function load() {
     const requestId = ++requestSequence.current;
+    if (!enabled) {
+      setMessage(disabledReason);
+      reportResolution("NOT_REQUIRED");
+      return;
+    }
     if (!deliveryWayId) {
       setMessage("Location details are ready for review. The location can be saved after the Delivery Way ID is allocated.");
       reportResolution("PENDING");
@@ -205,9 +214,9 @@ export default function DataEntryLocationEditor({
     setMessage("");
     setMapError("");
     lastAutoKey.current = "";
-    reportResolution("PENDING");
+    reportResolution(enabled ? "PENDING" : "NOT_REQUIRED");
     void load();
-  }, [deliveryWayId, address, township, reloadToken]);
+  }, [deliveryWayId, address, township, enabled, disabledReason, reloadToken]);
 
   useEffect(() => {
     setQuery(address || "");
@@ -215,10 +224,10 @@ export default function DataEntryLocationEditor({
 
   useEffect(() => {
     const key = `${deliveryWayId}|${address}|${township}`;
-    if (!deliveryWayId || address.trim().length < 5 || lastAutoKey.current === key || candidate) return;
+    if (!enabled || !deliveryWayId || address.trim().length < 5 || lastAutoKey.current === key || candidate) return;
     const timer = window.setTimeout(() => { lastAutoKey.current = key; void find(address, true); }, Math.max(0, autoResolveDelayMs));
     return () => window.clearTimeout(timer);
-  }, [deliveryWayId, address, township, candidate, autoResolveDelayMs]);
+  }, [deliveryWayId, address, township, candidate, autoResolveDelayMs, enabled]);
 
 
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
@@ -245,7 +254,7 @@ export default function DataEntryLocationEditor({
   }
 
   useEffect(() => {
-    if (!googleMapsConfigured || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
+    if (!enabled || !googleMapsConfigured || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
 
     let disposed = false;
     let map: any = null;
@@ -296,7 +305,7 @@ export default function DataEntryLocationEditor({
       interactiveMap.current = null;
       marker?.setMap?.(null);
     };
-  }, [deliveryWayId, Boolean(candidate), deferInteractiveMap, manualOpen, googleMapsConfigured]);
+  }, [deliveryWayId, Boolean(candidate), deferInteractiveMap, manualOpen, googleMapsConfigured, enabled]);
 
   useEffect(() => {
     if (!validMyanmarCoordinate(lng, lat)) return;
@@ -305,6 +314,11 @@ export default function DataEntryLocationEditor({
   }, [lat, lng]);
 
   async function find(value = query, automatic = false) {
+    if (!enabled) {
+      setMessage(disabledReason);
+      reportResolution("NOT_REQUIRED");
+      return;
+    }
     const requestId = ++requestSequence.current;
     setBusy(true);
     setMapError("");
@@ -363,6 +377,11 @@ export default function DataEntryLocationEditor({
   }
 
   async function apply() {
+    if (!enabled) {
+      setMessage(disabledReason);
+      reportResolution("NOT_REQUIRED");
+      return;
+    }
     if (!deliveryWayId) {
       setMessage("The Delivery Way ID must be allocated before coordinates can be saved.");
       reportResolution("REVIEW_REQUIRED");
@@ -405,6 +424,19 @@ export default function DataEntryLocationEditor({
     } finally {
       setBusy(false);
     }
+  }
+
+  if (!enabled) {
+    return <div data-location-details="true" data-location-not-required-v19="true" className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-4">
+      <div className="flex items-start gap-3">
+        <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-300" size={18}/>
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.14em] text-emerald-200">Location Details · Map not required</div>
+          <div className="mt-1 text-xs leading-5 text-emerald-100">{disabledReason}</div>
+          <div className="mt-1 text-[11px] text-slate-300">Township: {township||"—"} · No coordinates will be searched, saved, or sent to the current Wayplan queue.</div>
+        </div>
+      </div>
+    </div>;
   }
 
   return <div data-location-details="true" className="mt-4 rounded-xl border border-cyan-400/50 bg-[#061524] p-4">

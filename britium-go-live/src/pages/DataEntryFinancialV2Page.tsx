@@ -5,8 +5,12 @@ import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/com
 import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
+  DATA_ENTRY_HANDOFF_STATIONS,
   providerRoutingMessage,
   resolveDataEntryServiceProvider,
+  type DataEntryDeliveryMode,
+  type DataEntryProviderRouting,
+  type DataEntryRouteRegion,
 } from "@/lib/dataEntryServiceProviderRouting";
 export const BRITIUM_LOCATION_WORKFLOW_V10 = "DATA_ENTRY_BILINGUAL_LOCATION_V10";
 
@@ -22,7 +26,7 @@ export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRA
 export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECONCILIATION_V13_2_20260902";
 export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK_ACTIONS_V14_20260902";
 export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_IMPORT_V16_20260903";
-export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_PROVIDER_ROUTING_V17_20260903";
+export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -129,6 +133,10 @@ type ParcelRow = {
   sourceRowCount: number | null;
   photoEvidenceMode: "PICKER_PHOTO" | "OS_SOFTCOPY";
   photoBypassReason: string;
+  deliveryRegion: DataEntryRouteRegion;
+  deliveryMode: DataEntryDeliveryMode;
+  handoffStationCode: string;
+  handoffStationName: string;
   locationStatus: DataEntryLocationResolution;
   saved: boolean;
 };
@@ -169,8 +177,41 @@ function requestId(prefix: string): string {
 function canonicalWayId(pickupId: string, sequence: number): string {
   return `${pickupId}-${String(sequence).padStart(3,"0")}`;
 }
-function resolveImportedDestination(value: unknown,address: unknown,options: TariffOption[]) {
-  return resolveDataEntryServiceProvider(value,address,options,{fallbackUnknownToRoyal:true});
+function resolveImportedDestination(value: unknown,address: unknown,itemPrice: unknown,options: TariffOption[]) {
+  return resolveDataEntryServiceProvider(value,address,options,{fallbackUnknownToRoyal:true,itemPrice});
+}
+function routeForRow(row: ParcelRow, options: TariffOption[]): DataEntryProviderRouting {
+  return resolveDataEntryServiceProvider(row.township,row.delivery_address,options,{
+    fallbackUnknownToRoyal:true,
+    itemPrice:row.item_price,
+  });
+}
+function routingPatch(route: DataEntryProviderRouting,row: ParcelRow): Partial<ParcelRow> {
+  return {
+    township:route.township||row.township,
+    service_provider_code:route.providerCode,
+    deliveryRegion:route.routeRegion,
+    deliveryMode:route.deliveryMode,
+    locationStatus:route.routeRegion==="UNRESOLVED"
+      ?"PENDING"
+      :route.mapRequired
+      ?row.locationStatus==="NOT_REQUIRED"?"PENDING":row.locationStatus
+      :"NOT_REQUIRED",
+    ...(route.stationRequired
+      ?{}
+      :{handoffStationCode:"",handoffStationName:""}),
+  };
+}
+function handoffStationReady(row: ParcelRow,route: DataEntryProviderRouting): boolean {
+  if(!route.stationRequired) return true;
+  if(!DATA_ENTRY_HANDOFF_STATIONS.some((station)=>station.code===row.handoffStationCode)) return false;
+  return row.handoffStationCode!=="OTHER"||row.handoffStationName.trim().length>=3;
+}
+function routeReady(row: ParcelRow, options: TariffOption[]): boolean {
+  const route=routeForRow(row,options);
+  return Boolean(route.providerCode)
+    && handoffStationReady(row,route)
+    && (route.mapRequired?row.locationStatus==="SYNCED":row.locationStatus==="NOT_REQUIRED");
 }
 function normalizePickup(row: any): Pickup | null {
   const pickupId = text(row?.pickup_id || row?.pickup_way_id).trim();
@@ -272,6 +313,11 @@ function payload(row: ParcelRow, pickup: Pickup) {
     customer_tier: row.customer_tier || "STANDARD",
     customer_tier_override: row.tier_override,
     service_provider_code: row.service_provider_code || null,
+    delivery_region: row.deliveryRegion === "UNRESOLVED" ? null : row.deliveryRegion,
+    delivery_route_mode: row.deliveryMode === "UNRESOLVED" ? null : row.deliveryMode,
+    location_required: row.deliveryMode === "DOORSTEP_MAP",
+    handoff_station_code: row.handoffStationCode || null,
+    handoff_station_name: row.handoffStationName || null,
     service_type: row.service_type || "STANDARD",
     amount_entry_type: row.amount_entry_type,
     item_price: row.item_price === "" ? null : Number(row.item_price),
@@ -364,7 +410,11 @@ function parcelRowFromProof(
     sourceRowCount:positiveInt(proof.source_row_count||proof.financial_quote?.source_row_count)||null,
     photoEvidenceMode,
     photoBypassReason:text(proof.photo_bypass_reason||proof.financial_quote?.photo_bypass_reason),
-    locationStatus:"PENDING",
+    deliveryRegion:text(proof.delivery_region||proof.financial_quote?.delivery_region||"UNRESOLVED").toUpperCase() as DataEntryRouteRegion,
+    deliveryMode:text(proof.delivery_route_mode||proof.financial_quote?.delivery_route_mode||"UNRESOLVED").toUpperCase() as DataEntryDeliveryMode,
+    handoffStationCode:text(proof.handoff_station_code||proof.financial_quote?.handoff_station_code).toUpperCase(),
+    handoffStationName:text(proof.handoff_station_name||proof.financial_quote?.handoff_station_name),
+    locationStatus:proof.location_required===false||proof.financial_quote?.location_required===false?"NOT_REQUIRED":"PENDING",
     saved:Boolean(proof.saved_at||proof.delivery_way_id),
   };
 }
@@ -384,7 +434,10 @@ function MoneyBox({ label, value, highlight = false }: { label: string; value: u
 function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOptions }: any) {
   const [open, setOpen] = useState(false);
   const [providerFilter, setProviderFilter] = useState("ALL");
-  const route = resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions);
+  const route = resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
+    fallbackUnknownToRoyal:true,
+    itemPrice:row.item_price,
+  });
   const query = text(row.township).trim().toLowerCase();
   const matches = (tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
@@ -394,27 +447,32 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
   );
   const choose = (option: TariffOption) => {
+    const nextRoute=resolveDataEntryServiceProvider(option.destination_name,row.delivery_address,tariffOptions,{
+      fallbackUnknownToRoyal:true,
+      itemPrice:row.item_price,
+    });
     updateRow(index, {
-      township: option.destination_name,
-      service_provider_code: option.provider_code,
+      ...routingPatch(nextRoute,{...row,township:option.destination_name}),
       delivery_charges: tariffRate(option, row.customer_tier),
-      message: `Tariff selected: ${option.provider_name} · Rack ${option.rack_code || "—"}. Delivery charge filled automatically.`,
+      message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was applied.`,
     });
     setOpen(false);
   };
   const typeTownship = (township: string) => {
-    const nextRoute=resolveDataEntryServiceProvider(township,row.delivery_address,tariffOptions);
+    const nextRoute=resolveDataEntryServiceProvider(township,row.delivery_address,tariffOptions,{
+      fallbackUnknownToRoyal:true,
+      itemPrice:row.item_price,
+    });
     const option=nextRoute.option as TariffOption|null;
     updateRow(index,nextRoute.providerCode?{
-      township:nextRoute.township||township,
-      service_provider_code:nextRoute.providerCode,
+      ...routingPatch(nextRoute,{...row,township}),
       ...(option
         ?{delivery_charges:tariffRate(option,row.customer_tier)}
         :row.service_provider_code&&row.service_provider_code!==nextRoute.providerCode
           ?{delivery_charges:""}
           :{}),
       message:providerRoutingMessage(nextRoute),
-    }:{township});
+    }:{township,...routingPatch(nextRoute,{...row,township}),message:providerRoutingMessage(nextRoute)});
     setOpen(true);
   };
   return (
@@ -422,7 +480,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
       <div className="relative">
         <div className="mb-2 flex flex-wrap gap-1.5">
           <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
-          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","GRS"].includes(provider.provider_code)).map((provider) => (
+          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
               {provider.display_name} · {provider.active_tariff_count}
             </button>
@@ -454,7 +512,11 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
             No active tariff is configured for this provider and destination. Add its approved rate card before saving a provider-specific route.
           </div>
         ) : null}
-        {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{selected.provider_name} · Rack {selected.rack_code || "—"} · Applied {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Britium routes stay internal; other routes select Royal automatically.</div>}
+        {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {selected.provider_name} · Rack {selected.rack_code || "—"} · {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
+        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
+          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Provider: <b>{route.providerCode||"UNRESOLVED"}</b></div>
+          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replaceAll("_"," ")}</b></div>
+        </div>
       </div>
     </Field>
   );
@@ -463,6 +525,8 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
 function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
+  const route = routeForRow(row,tariffOptions);
+  const stationReady = handoffStationReady(row,route);
   const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
@@ -475,7 +539,8 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             <div className="text-[11px] font-black uppercase tracking-[0.15em] text-[#f6b84b]">Parcel {row.parcel_sequence}</div>
             {row.isAdditionalRegistration?<span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-1 text-[9px] font-black text-cyan-200">AUTHORIZED MERCHANT ADDITION</span>:null}
             {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY · ROW {row.sourceRowNumber||"—"}</span>:null}
-            {row.importedFromOs?<span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.locationStatus==="SYNCED"?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>:null}
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>
+            {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} · {route.deliveryMode.replaceAll("_"," ")}</span>:null}
             {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
           </div>
           <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
@@ -487,7 +552,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
           <button type="button" onClick={() => save(index)} disabled={
               row.checking ||
               (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
-              (row.importedFromOs && row.locationStatus !== "SYNCED")
+              !routeReady(row,tariffOptions)
             } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} သိမ်းဆည်းရန်
           </button>
@@ -605,15 +670,14 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         <Field label="အမှန်တကယ်အလေးချိန် (kg)"><input type="number" step="0.01" className={inputClass} value={row.weight_kg} onChange={(e)=>updateRow(index,{weight_kg:e.target.value===""?"":Number(e.target.value)})}/></Field>
         <Field label="လက်ခံသူလိပ်စာ"><textarea rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>{
           const delivery_address=e.target.value;
-          const route=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions);
-          const option=route.option as TariffOption|null;
-          updateRow(index,route.providerCode?{
+          const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+          const option=nextRoute.option as TariffOption|null;
+          updateRow(index,nextRoute.providerCode?{
             delivery_address,
-            township:route.township||row.township,
-            service_provider_code:route.providerCode,
+            ...routingPatch(nextRoute,{...row,delivery_address}),
             ...(option?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
-            message:providerRoutingMessage(route),
-          }:{delivery_address});
+            message:providerRoutingMessage(nextRoute),
+          }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
         }}/></Field>
         <Field label="ကုန်သည်အဆင့်">
           <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
@@ -646,12 +710,38 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             if(isExact(next)){patch.item_price="";patch.delivery_charges="";}
             else if(next==="DELIVERY_CHARGE_ONLY"){patch.item_price="";patch.merchant_stated_total_amount="";}
             else patch.merchant_stated_total_amount="";
-            updateRow(index,patch);
+            const nextRow={...row,...patch};
+            const nextRoute=routeForRow(nextRow,tariffOptions);
+            updateRow(index,{...patch,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
           }}>
             {AMOUNT_TYPES.map(v=><option key={v} value={v}>{COLLECTION_METHOD_MY[v]}</option>)}
           </select>
         </Field>
       </div>
+
+      {route.stationRequired?<div data-highway-station-selection-v19="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
+        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway bus-station handoff / အဝေးပြေးဂိတ်ချ</div>
+        <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
+          <Field label="Handoff station">
+            <select className={`${inputClass} !bg-white !text-black`} value={row.handoffStationCode} onChange={(event)=>{
+              const handoffStationCode=event.target.value;
+              const known=DATA_ENTRY_HANDOFF_STATIONS.find((station)=>station.code===handoffStationCode);
+              updateRow(index,{
+                handoffStationCode,
+                handoffStationName:handoffStationCode==="OTHER"?row.handoffStationName:(known?.name||""),
+                message:handoffStationCode?"Highway handoff station selected. Save will retain this audited station assignment.":"Choose the physical highway handoff station before saving.",
+              });
+            }}>
+              <option value="">Choose the physical station…</option>
+              {DATA_ENTRY_HANDOFF_STATIONS.map((station)=><option key={station.code} value={station.code}>{station.name}</option>)}
+            </select>
+          </Field>
+          {row.handoffStationCode==="OTHER"?<Field label="Other station name">
+            <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationName:event.target.value})} placeholder="Enter the exact station / gate name"/>
+          </Field>:<div className="rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[11px] text-amber-100">{row.handoffStationName||"A station must be selected because this outside-core parcel has no item price."}</div>}
+        </div>
+        {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Select Aung Mingalar, Dagon Ayar/Thiri, or enter another station name before Calculate/Save.</div>:null}
+      </div>:null}
 
       <DataEntryLocationEditor
         deliveryWayId={row.delivery_way_id}
@@ -659,6 +749,10 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         township={row.township}
         autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
         deferInteractiveMap={row.importedFromOs}
+        enabled={route.mapRequired}
+        disabledReason={route.stationRequired
+          ?"Google Map is temporarily disabled for outside-core highway-terminal handoffs. Select the physical bus station instead."
+          :"Google Map is temporarily disabled for outside-core Royal Express routes. No Britium Wayplan coordinate is required."}
         reloadToken={locationReloadToken}
         onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
       />
@@ -666,7 +760,12 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>updateRow(index,{item_price:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
+          {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
+            const item_price=e.target.value===""?"":Number(e.target.value);
+            const nextRow={...row,item_price};
+            const nextRoute=routeForRow(nextRow,tariffOptions);
+            updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
+          }}/></Field>:null}
           {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           {isExact(type) ? <Field label="အတိအကျ / COD စုစုပေါင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           <Field label="CBM ထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
@@ -741,11 +840,12 @@ export default function DataEntryFinancialV2Page() {
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
   const importedLocationSummary=useMemo(()=>{
-    const summary={total:0,synced:0,resolving:0,review:0};
+    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0};
     for(const row of rows){
       if(!row.importedFromOs) continue;
       summary.total+=1;
       if(row.locationStatus==="SYNCED") summary.synced+=1;
+      else if(row.locationStatus==="NOT_REQUIRED") summary.notRequired+=1;
       else if(row.locationStatus==="REVIEW_REQUIRED") summary.review+=1;
       else summary.resolving+=1;
     }
@@ -881,13 +981,12 @@ export default function DataEntryFinancialV2Page() {
           return merged;
         },{});
       const row=parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
-      const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true});
+      const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
       const option=route.option as TariffOption|null;
       if(!route.providerCode) return row;
       return {
         ...row,
-        township:route.township||row.township,
-        service_provider_code:route.providerCode,
+        ...routingPatch(route,row),
         ...(option&&row.delivery_charges===""?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
       };
     });
@@ -916,11 +1015,15 @@ export default function DataEntryFinancialV2Page() {
       const resolution=e.raw?.server_resolution||{};
       const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
       const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
+      const resolvedRegion=text(e.data?.delivery_region||resolution.delivery_region).toUpperCase() as DataEntryRouteRegion;
+      const resolvedMode=text(e.data?.delivery_route_mode||resolution.delivery_route_mode).toUpperCase() as DataEntryDeliveryMode;
       updateRow(index,{
         calculating:false,
         calculation:{...e.data,server_resolution:resolution},
         ...(resolvedTier?{customer_tier:resolvedTier}:{}),
         ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
+        ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
+        ...(resolvedMode?{deliveryMode:resolvedMode}:{}),
         message:e.ok
           ? `Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`
           :(envelopeMessage(e)||"Calculation failed.")
@@ -985,8 +1088,17 @@ export default function DataEntryFinancialV2Page() {
       updateRow(index,{message:"OS softcopy photo bypass requires an imported source file and a clear reason of at least 10 characters."});
       return;
     }
-    if(row.importedFromOs && row.locationStatus!=="SYNCED"){
-      updateRow(index,{message:"Review this imported drop point and apply coordinates when required. Save is enabled only after Location Details reports SYNCED."});
+    const route=routeForRow(row,tariffOptions);
+    if(!route.providerCode){
+      updateRow(index,{message:"Enter a recognized township before saving so the delivery route can be assigned."});
+      return;
+    }
+    if(!handoffStationReady(row,route)){
+      updateRow(index,{message:"Choose the physical highway bus station before saving this no-item-price outside-core parcel."});
+      return;
+    }
+    if(route.mapRequired && row.locationStatus!=="SYNCED"){
+      updateRow(index,{message:"This Yangon, Mandalay, or Naypyitaw drop point must be synchronized in Google Location Details before saving."});
       return;
     }
 
@@ -1031,14 +1143,22 @@ export default function DataEntryFinancialV2Page() {
     if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
     const invalidBypass=rows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
     if(invalidBypass) throw new Error(`Parcel ${invalidBypass.parcel_sequence}: OS softcopy photo bypass is missing its source file or audited reason.`);
-    const importedLocations=rows.filter((row)=>row.importedFromOs);
-    const unresolvedLocations=importedLocations.filter((row)=>row.locationStatus!=="SYNCED");
+    const unresolvedRoutes=rows.filter((row)=>!routeForRow(row,tariffOptions).providerCode);
+    if(unresolvedRoutes.length) throw new Error(`Parcel ${unresolvedRoutes[0].parcel_sequence}: enter a recognized township so the delivery provider can be assigned.`);
+    const missingStations=rows.filter((row)=>!handoffStationReady(row,routeForRow(row,tariffOptions)));
+    if(missingStations.length){
+      const first=missingStations[0];
+      window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
+      throw new Error(`Parcel ${first.parcel_sequence}: choose Aung Mingalar, Dagon Ayar/Thiri, or enter the other highway station before saving.`);
+    }
+    const mapLocations=rows.filter((row)=>routeForRow(row,tariffOptions).mapRequired);
+    const unresolvedLocations=mapLocations.filter((row)=>row.locationStatus!=="SYNCED");
     if(unresolvedLocations.length){
       const first=unresolvedLocations[0];
       const resolving=unresolvedLocations.filter((row)=>row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING").length;
       const review=unresolvedLocations.filter((row)=>row.locationStatus==="REVIEW_REQUIRED").length;
       window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
-      throw new Error(`Location sync incomplete: ${importedLocations.length-unresolvedLocations.length}/${importedLocations.length} synchronized, ${resolving} still resolving, ${review} need review. Parcel ${first.parcel_sequence} is the first unresolved row; use Retry Location Sync or Apply coordinates for a corrected pin.`);
+      throw new Error(`Core-region location sync incomplete: ${mapLocations.length-unresolvedLocations.length}/${mapLocations.length} synchronized, ${resolving} still resolving, ${review} need review. Parcel ${first.parcel_sequence} is the first unresolved row; use Retry Location Sync or Apply coordinates for a corrected pin.`);
     }
   }
 
@@ -1130,7 +1250,6 @@ export default function DataEntryFinancialV2Page() {
       const existing=existingBySequence.get(sequence)||parcelRowFromProof(pickup,pickupTierAccess,{},sequence);
       const sourceRow=sourceBySequence.get(sequence);
       if(!sourceRow) return existing;
-      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,tariffOptions);
       const requestedTier=text(sourceRow.merchantTier||"STANDARD").toUpperCase();
       const customerTier=pickupTierAccess.can_select_tier
         ? requestedTier
@@ -1138,6 +1257,8 @@ export default function DataEntryFinancialV2Page() {
       const amountType=(AMOUNT_TYPES.includes(sourceRow.paymentType as AmountType)
         ?sourceRow.paymentType
         :"ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
+      const routedItemPrice=amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"";
+      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions);
       const tariffOption=destination.option as TariffOption|null;
       const tariffDelivery:number|""=tariffOption?tariffRate(tariffOption,customerTier):"";
       const declaredDelivery:number|""=sourceRow.osSetPrice===""?tariffDelivery:sourceRow.osSetPrice;
@@ -1160,6 +1281,10 @@ export default function DataEntryFinancialV2Page() {
         customer_tier:customerTier,
         tier_override:Boolean(pickupTierAccess.registered&&pickupTierAccess.profile_tier&&customerTier!==pickupTierAccess.profile_tier&&pickupTierAccess.can_override_profile_tier),
         service_provider_code:destination.providerCode,
+        deliveryRegion:destination.routeRegion,
+        deliveryMode:destination.deliveryMode,
+        handoffStationCode:destination.stationRequired?existing.handoffStationCode:"",
+        handoffStationName:destination.stationRequired?existing.handoffStationName:"",
         service_type:sourceRow.serviceType||"STANDARD",
         amount_entry_type:amountType,
         item_price:amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"",
@@ -1169,7 +1294,7 @@ export default function DataEntryFinancialV2Page() {
         calculation:{},
         calculating:false,
         checking:false,
-        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} Review Location Details, then Calculate All and Save All.`,
+        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} ${destination.mapRequired?"Review the Google drop point.":destination.stationRequired?"Choose the highway handoff station.":"Google Map is not required for this route."} Then Calculate All and Save All.`,
         photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
         photoUnavailableAcknowledged:importPayload.skipPhotoReview,
         photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
@@ -1180,7 +1305,7 @@ export default function DataEntryFinancialV2Page() {
         sourceRowCount:importPayload.sourceRowCount,
         photoEvidenceMode:importPayload.skipPhotoReview?"OS_SOFTCOPY":"PICKER_PHOTO",
         photoBypassReason:importPayload.skipPhotoReview?importPayload.photoBypassReason:"",
-        locationStatus:"PENDING" as DataEntryLocationResolution,
+        locationStatus:(destination.mapRequired?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution,
         saved:false,
       };
     });
@@ -1237,8 +1362,8 @@ export default function DataEntryFinancialV2Page() {
       return draft?{...pickup,verified_parcels:Math.max(pickup.verified_parcels,draft.rows.length)}:pickup;
     }));
     setBulkMessage(importPayload.mode==="BULK_UPLOAD"
-      ?`Bulk upload staged ${importPayload.rows.length} row(s) across ${pickupOrder.length} pickup(s). Review and save each pickup batch from the queue; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}.`
-      :`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review every imported drop point; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}. Then use Calculate All and Save All.`
+      ?`Bulk upload staged ${importPayload.rows.length} row(s) across ${pickupOrder.length} pickup(s). Review core-region Google pins and choose highway stations where requested; outside-core Royal routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}.`
+      :`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review Yangon/Mandalay/Naypyitaw Google pins and choose any required highway handoff stations; other outside-core routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}. Then use Calculate All and Save All.`
     );
   }
 
@@ -1477,6 +1602,11 @@ export default function DataEntryFinancialV2Page() {
         "Recipient Address":text(row.recipient_address),
         "Customer Tier":text(row.customer_tier),
         "Service Provider":text(row.financial_quote?.service_provider_code),
+        "Delivery Region":text(row.delivery_region||row.financial_quote?.delivery_region),
+        "Delivery Route Mode":text(row.delivery_route_mode||row.financial_quote?.delivery_route_mode),
+        "Google Location Required":row.location_required??row.financial_quote?.location_required??"",
+        "Highway Handoff Station Code":text(row.handoff_station_code||row.financial_quote?.handoff_station_code),
+        "Highway Handoff Station Name":text(row.handoff_station_name||row.financial_quote?.handoff_station_name),
         "Service Type":text(row.service_type||row.financial_quote?.service_type),
         "Weight (kg)":row.weight_kg??"",
         "Chargeable Weight (kg)":row.chargeable_weight_kg??"",
@@ -1674,18 +1804,18 @@ export default function DataEntryFinancialV2Page() {
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
 
-          {importedLocationSummary.total?<div data-bulk-location-readiness-v18="true" className={`mt-4 rounded-xl border p-4 ${importedLocationSummary.synced===importedLocationSummary.total?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
+          {importedLocationSummary.total?<div data-bulk-location-readiness-v19="true" className={`mt-4 rounded-xl border p-4 ${importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Bulk location readiness</div>
-                <div className="mt-1 text-[13px] font-black text-white">{importedLocationSummary.synced} / {importedLocationSummary.total} synchronized</div>
+                <div className="mt-1 text-[13px] font-black text-white">{importedLocationSummary.synced} synchronized · {importedLocationSummary.notRequired} map not required · {importedLocationSummary.total} total</div>
                 <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
-                  {importedLocationSummary.synced===importedLocationSummary.total
-                    ?"All imported exact locations are ready for Save All and Create & Generate Waybill."
-                    :`${importedLocationSummary.resolving} automatically resolving · ${importedLocationSummary.review} require operator review. Exact Google results are auto-synchronized only after township validation; approximate pins still require Apply coordinates.`}
+                  {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
+                    ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
+                    :`${importedLocationSummary.resolving} core-region locations automatically resolving · ${importedLocationSummary.review} require operator review. Outside-core rows do not enter Google location review.`}
                 </div>
               </div>
-              {importedLocationSummary.synced<importedLocationSummary.total?<button type="button" onClick={()=>{setBulkMessage("Retrying unresolved imported locations. Exact validated results will synchronize automatically; approximate rows remain review-only.");setLocationReloadToken((token)=>token+1);}} disabled={importedLocationSummary.resolving>0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-45"><RefreshCw size={14} className={importedLocationSummary.resolving>0?"animate-spin":""}/>RETRY LOCATION SYNC</button>:null}
+              {importedLocationSummary.synced+importedLocationSummary.notRequired<importedLocationSummary.total?<button type="button" onClick={()=>{setBulkMessage("Retrying unresolved Yangon, Mandalay, and Naypyitaw locations only. Outside-core rows remain map-not-required.");setLocationReloadToken((token)=>token+1);}} disabled={importedLocationSummary.resolving>0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-45"><RefreshCw size={14} className={importedLocationSummary.resolving>0?"animate-spin":""}/>RETRY LOCATION SYNC</button>:null}
             </div>
           </div>:null}
 

@@ -6,8 +6,28 @@ export type DataEntryProviderCode =
   | "DK DELIVERY"
   | "NPT BRANCH"
   | "ROYAL EXPRESS"
+  | "H.TERMINAL DROP-OFF"
   | "GRS"
   | "";
+
+export type DataEntryRouteRegion =
+  | "YANGON"
+  | "MANDALAY"
+  | "NAYPYITAW"
+  | "OUTSIDE_CORE"
+  | "UNRESOLVED";
+
+export type DataEntryDeliveryMode =
+  | "DOORSTEP_MAP"
+  | "ROYAL_EXPRESS"
+  | "HIGHWAY_BUS_STATION"
+  | "UNRESOLVED";
+
+export const DATA_ENTRY_HANDOFF_STATIONS = [
+  { code: "AUNG_MINGALAR", name: "Aung Mingalar Highway Bus Station / အောင်မင်္ဂလာအဝေးပြေး" },
+  { code: "DAGON_AYAR_THIRI", name: "Dagon Ayar / Dagon Thiri Highway Bus Station / ဒဂုံဧရာ-ဒဂုံသီရိအဝေးပြေး" },
+  { code: "OTHER", name: "Other highway station / အခြားအဝေးပြေးဂိတ်" },
+] as const;
 
 export type DataEntryProviderTariffOption = {
   destination_key: string;
@@ -19,19 +39,23 @@ export type DataEntryProviderTariffOption = {
 export type DataEntryProviderRouting = {
   township: string;
   providerCode: DataEntryProviderCode;
+  routeRegion: DataEntryRouteRegion;
+  deliveryMode: DataEntryDeliveryMode;
+  mapRequired: boolean;
+  stationRequired: boolean;
   reason:
-    | "NAYPYITAW_EXCEPTION_ROYAL"
+    | "NAYPYITAW_EXCEPTION_OUTSIDE_CORE"
     | "MANDALAY_DK_SERVICE_AREA"
     | "NAYPYITAW_BRANCH_SERVICE_AREA"
     | "EXACT_BRITIUM_ROUTE"
-    | "EXACT_CONFIGURED_ROUTE"
-    | "OUTSIDE_BRITIUM_SERVICE_AREA"
+    | "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE"
+    | "OUTSIDE_CORE_HIGHWAY_STATION"
     | "UNRESOLVED";
   option: DataEntryProviderTariffOption | null;
   postal: PostalMatch;
 };
 
-const PROVIDER_PRIORITY = ["BRITIUM", "NPT BRANCH", "DK DELIVERY", "ROYAL EXPRESS", "GRS"];
+const PROVIDER_PRIORITY = ["BRITIUM", "NPT BRANCH", "DK DELIVERY", "ROYAL EXPRESS", "H.TERMINAL DROP-OFF", "GRS"];
 
 function compactLocationKey(value: unknown): string {
   return convertMyanmarTownshipToEnglish(stripServiceProviderDecoration(value))
@@ -76,15 +100,16 @@ const NAYPYITAW_BRANCH_SERVICE_AREA = keySet([
 
 export function stripServiceProviderDecoration(value: unknown): string {
   return String(value ?? "")
-    .replace(/[（(]\s*(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs|npt(?:\s+branch)?)\s*[)）]/gi, " ")
-    .replace(/(?:^|[\s/|·,-])(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs|npt(?:\s+branch)?)(?=$|[\s/|·,-])/gi, " ")
-    .replace(/နေပြည်တော်\s*ရုံးခွဲ|မန္တလေး\s*ရုံးခွဲ|ရွိုင်ရယ်(?:\s*အိတ်စပရက်)?|ဒီကေ(?:\s*ဒီလီဗာရီ)?|ဂျီအာရ်အက်စ်/gi, " ")
+    .replace(/[（(]\s*(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs|npt(?:\s+branch)?|h\.?\s*terminal(?:\s+drop-?off)?)\s*[)）]/gi, " ")
+    .replace(/(?:^|[\s/|·,-])(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs|npt(?:\s+branch)?|h\.?\s*terminal(?:\s+drop-?off)?)(?=$|[\s/|·,-])/gi, " ")
+    .replace(/နေပြည်တော်\s*ရုံးခွဲ|မန္တလေး\s*ရုံးခွဲ|ရွိုင်ရယ်(?:\s*အိတ်စပရက်)?|ဒီကေ(?:\s*ဒီလီဗာရီ)?|ဂျီအာရ်အက်စ်|အဝေးပြေး\s*ဂိတ်ချ/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
 export function dataEntryProviderHint(value: unknown): DataEntryProviderCode {
   const source = String(value ?? "").normalize("NFC").toLowerCase();
+  if (/h\.?\s*terminal|terminal\s+drop|highway\s+(?:bus\s+)?station|အဝေးပြေး\s*ဂိတ်ချ/.test(source)) return "H.TERMINAL DROP-OFF";
   if (/royal|ရွိုင်ရယ်/.test(source)) return "ROYAL EXPRESS";
   if (/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ/.test(source)) return "DK DELIVERY";
   if (/(?:^|[^a-z])npt(?:\s+branch)?(?:[^a-z]|$)|နေပြည်တော်\s*ရုံးခွဲ/.test(source)) return "NPT BRANCH";
@@ -129,7 +154,7 @@ export function resolveDataEntryServiceProvider(
   townshipValue: unknown,
   deliveryAddress: unknown,
   tariffOptions: DataEntryProviderTariffOption[],
-  options: { fallbackUnknownToRoyal?: boolean } = {},
+  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown } = {},
 ): DataEntryProviderRouting {
   const raw = String(townshipValue ?? "").trim();
   const cleanTownship = stripServiceProviderDecoration(raw);
@@ -143,16 +168,31 @@ export function resolveDataEntryServiceProvider(
 
   let providerCode: DataEntryProviderCode = "";
   let reason: DataEntryProviderRouting["reason"] = "UNRESOLVED";
+  let routeRegion: DataEntryRouteRegion = "UNRESOLVED";
+  let deliveryMode: DataEntryDeliveryMode = "UNRESOLVED";
+  let mapRequired = false;
+  let stationRequired = false;
+  const itemPrice = Number(options.itemPrice);
+  const hasItemPrice = Number.isFinite(itemPrice) && itemPrice > 0;
+  const recognizedDestination = postal.matchLevel !== "UNRESOLVED"
+    || exactMatches.length > 0
+    || Boolean(options.fallbackUnknownToRoyal && cleanTownship);
 
   if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
-    providerCode = "ROYAL EXPRESS";
-    reason = "NAYPYITAW_EXCEPTION_ROYAL";
+    routeRegion = "OUTSIDE_CORE";
+    reason = "NAYPYITAW_EXCEPTION_OUTSIDE_CORE";
   } else if ([...candidateKeys].some((candidate) => MANDALAY_DK_SERVICE_AREA.has(candidate))) {
     providerCode = "DK DELIVERY";
     reason = "MANDALAY_DK_SERVICE_AREA";
+    routeRegion = "MANDALAY";
+    deliveryMode = "DOORSTEP_MAP";
+    mapRequired = true;
   } else if ([...candidateKeys].some((candidate) => NAYPYITAW_BRANCH_SERVICE_AREA.has(candidate))) {
     providerCode = "NPT BRANCH";
     reason = "NAYPYITAW_BRANCH_SERVICE_AREA";
+    routeRegion = "NAYPYITAW";
+    deliveryMode = "DOORSTEP_MAP";
+    mapRequired = true;
   } else {
     const hintedProvider = dataEntryProviderHint(raw);
     const exact = preferredTariff(exactMatches, hintedProvider);
@@ -160,12 +200,24 @@ export function resolveDataEntryServiceProvider(
     if (exactProvider === "BRITIUM") {
       providerCode = "BRITIUM";
       reason = "EXACT_BRITIUM_ROUTE";
-    } else if (exactProvider) {
-      providerCode = exactProvider;
-      reason = "EXACT_CONFIGURED_ROUTE";
-    } else if (postal.matchLevel !== "UNRESOLVED" || (options.fallbackUnknownToRoyal && cleanTownship)) {
+      routeRegion = "YANGON";
+      deliveryMode = "DOORSTEP_MAP";
+      mapRequired = true;
+    } else if (recognizedDestination) {
+      routeRegion = "OUTSIDE_CORE";
+    }
+  }
+
+  if (routeRegion === "OUTSIDE_CORE") {
+    if (hasItemPrice) {
       providerCode = "ROYAL EXPRESS";
-      reason = "OUTSIDE_BRITIUM_SERVICE_AREA";
+      deliveryMode = "ROYAL_EXPRESS";
+      reason = "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE";
+    } else {
+      providerCode = "H.TERMINAL DROP-OFF";
+      deliveryMode = "HIGHWAY_BUS_STATION";
+      stationRequired = true;
+      reason = "OUTSIDE_CORE_HIGHWAY_STATION";
     }
   }
 
@@ -175,17 +227,27 @@ export function resolveDataEntryServiceProvider(
     || (prefersMyanmar ? postal.townshipMm : postal.township)
     || cleanTownship;
 
-  return { township, providerCode, reason, option, postal };
+  return {
+    township,
+    providerCode,
+    routeRegion,
+    deliveryMode,
+    mapRequired,
+    stationRequired,
+    reason,
+    option,
+    postal,
+  };
 }
 
 export function providerRoutingMessage(route: DataEntryProviderRouting): string {
   switch (route.reason) {
     case "MANDALAY_DK_SERVICE_AREA": return "Mandalay service area · DK Delivery selected automatically.";
     case "NAYPYITAW_BRANCH_SERVICE_AREA": return "Naypyitaw service area · NPT Branch selected automatically.";
-    case "NAYPYITAW_EXCEPTION_ROYAL": return "Tatkon / Lewe exception · Royal Express selected automatically.";
+    case "NAYPYITAW_EXCEPTION_OUTSIDE_CORE": return "Tatkon / Lewe are outside the NPT Branch area; the item-price routing rule applies.";
     case "EXACT_BRITIUM_ROUTE": return "Britium service area · Britium Express selected automatically.";
-    case "EXACT_CONFIGURED_ROUTE": return "The configured service provider was selected automatically.";
-    case "OUTSIDE_BRITIUM_SERVICE_AREA": return "Outside Britium's service area · Royal Express selected automatically.";
+    case "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE": return "Outside the active core areas · item price present · Royal Express selected; Google Map is not required.";
+    case "OUTSIDE_CORE_HIGHWAY_STATION": return "Outside the active core areas · no item price · highway terminal drop-off selected; choose the handoff station.";
     default: return "Enter a recognized township to select its service provider automatically.";
   }
 }

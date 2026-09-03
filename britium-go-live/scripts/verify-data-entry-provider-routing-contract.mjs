@@ -50,12 +50,13 @@ try {
     "ဥတ္တရသီရိ", "Oke Ta Ra Thi Ri Township",
   ]) assert.equal(providerFor(township), "NPT BRANCH", township);
 
-  assert.equal(providerFor("တပ်ကုန်း"), "ROYAL EXPRESS");
-  assert.equal(providerFor("Lewe Township"), "ROYAL EXPRESS");
-  assert.equal(providerFor("Pyinoolwin Township"), "ROYAL EXPRESS");
-  assert.equal(providerFor("တောင်ကြီး"), "ROYAL EXPRESS");
+  assert.equal(providerFor("တပ်ကုန်း"), "H.TERMINAL DROP-OFF");
+  assert.equal(providerFor("Lewe Township", "", { itemPrice: 125000 }), "ROYAL EXPRESS");
+  assert.equal(providerFor("Pyinoolwin Township", "", { itemPrice: 125000 }), "ROYAL EXPRESS");
+  assert.equal(providerFor("တောင်ကြီး"), "H.TERMINAL DROP-OFF");
   assert.equal(providerFor("Some Unsupported Township"), "");
-  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true }), "ROYAL EXPRESS");
+  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true }), "H.TERMINAL DROP-OFF");
+  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true, itemPrice: 1 }), "ROYAL EXPRESS");
 
   assert.equal(providerFor("မြောက်ဒဂုံ"), "BRITIUM", "an exact Britium route must beat its Royal duplicate");
   assert.equal(
@@ -64,29 +65,29 @@ try {
   );
 
   assert.equal(dataEntryProviderHint("NPT Branch"), "NPT BRANCH");
+  assert.equal(dataEntryProviderHint("H.Terminal Drop-off"), "H.TERMINAL DROP-OFF");
   assert.equal(stripServiceProviderDecoration("ဇမ္ဗူသီရိ (NPT Branch)"), "ဇမ္ဗူသီရိ");
 
   const migration = await readFile(
-    new URL("../supabase/migrations/20260903113144_data_entry_service_provider_routing_v17.sql", import.meta.url),
+    new URL("../supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url),
     "utf8",
   );
   const page = await readFile(
     new URL("../src/pages/DataEntryFinancialV2Page.tsx", import.meta.url),
     "utf8",
   );
-  assert.match(page, /DATA_ENTRY_PROVIDER_ROUTING_V17_20260903/);
-  assert.match(page, /\["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","GRS"\]/);
+  assert.match(page, /DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903/);
+  assert.match(page, /\["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H\.TERMINAL DROP-OFF","GRS"\]/);
   assert.match(page, /fallbackUnknownToRoyal:true/);
   assert.match(page, /resolvedProvider=text\(e\.data\?\.service_provider_code/);
-  assert.match(migration, /'တပ်ကုန်း','ROYAL EXPRESS'/);
-  assert.match(migration, /'Lewe Township','ROYAL EXPRESS'/);
-  assert.match(migration, /'ချမ်းအေးသာစံ','DK DELIVERY'/);
-  assert.match(migration, /'ဇမ္ဗူသီရိ','NPT BRANCH'/);
-  assert.match(migration, /rename to be_data_entry_financial_v2_calculate_v13_2_legacy/);
-  assert.match(migration, /to_regprocedure\('public\.be_data_entry_financial_v2_calculate_v13_2_legacy\(jsonb\)'\) is null/);
-  assert.match(migration, /Data Entry calculator is unavailable; cannot install V17 provider routing/);
+  assert.match(migration, /OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE/);
+  assert.match(migration, /OUTSIDE_CORE_HIGHWAY_STATION/);
+  assert.match(migration, /'H\.TERMINAL DROP-OFF'/);
+  assert.match(migration, /v_legacy_reason='MANDALAY_DK_SERVICE_AREA'/);
+  assert.match(migration, /v_legacy_reason='NAYPYITAW_BRANCH_SERVICE_AREA'/);
+  assert.match(migration, /v_legacy_reason='EXACT_BRITIUM_ROUTE'/);
   assert.match(migration, /SERVICE_PROVIDER_AUTO_CORRECTED/);
-  assert.match(migration, /revoke all on function public\.be_data_entry_service_provider_route_v17\(text\)[\s\S]*from public, anon, authenticated/);
+  assert.match(migration, /revoke all on function public\.be_data_entry_delivery_route_v19\(text,numeric\)[\s\S]*from public, anon, authenticated/);
 
   console.log("Data Entry provider-routing contract verified.");
 } finally {

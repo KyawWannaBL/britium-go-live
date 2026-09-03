@@ -16,6 +16,15 @@ import { routeOrder } from "@/lib/dispatchAllocation";
 import { guardedBrowserPrint } from "@/lib/documentPrintGuard";
 
 type Row = Record<string, any>;
+type WayplanRegionCode = "YANGON" | "MANDALAY" | "NAYPYITAW";
+type WayplanRegionOption = {
+  region_code: WayplanRegionCode;
+  display_name: string;
+  branch_code: string;
+  is_active: boolean;
+  map_enabled: boolean;
+  updated_at?: string;
+};
 
 const C = {
   bg: "#061524",
@@ -120,6 +129,8 @@ export default function WayplanCommandCenterPage() {
   const [wayplans, setWayplans] = useState<Row[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [activeWayplan, setActiveWayplan] = useState<Row | null>(null);
+  const [regions, setRegions] = useState<WayplanRegionOption[]>([]);
+  const [selectedRegion, setSelectedRegion] = useState<WayplanRegionCode>("YANGON");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -135,6 +146,10 @@ export default function WayplanCommandCenterPage() {
   const selectedRows = useMemo(
     () => readyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
     [readyRows, selected]
+  );
+  const selectedRegionOption = useMemo(
+    () => regions.find((region) => region.region_code === selectedRegion) || null,
+    [regions, selectedRegion]
   );
 
   const manifestStops = useMemo(() => {
@@ -160,26 +175,67 @@ export default function WayplanCommandCenterPage() {
     setMessage("");
 
     try {
-      const [queueResult, wayplanResult] = await Promise.all([
-        supabase.rpc("be_dispatch_ready_queue", { p_limit: 300 }),
+      const [regionResult, queueResult, wayplanResult] = await Promise.all([
+        supabase.rpc("be_wayplan_region_options_v19"),
+        supabase.rpc("be_dispatch_ready_queue_v19", { p_limit: 300, p_region_code: selectedRegion }),
         supabase.rpc("be_wayplan_command_center", { p_limit: 100 }),
       ]);
 
+      if (regionResult.error) throw regionResult.error;
       if (queueResult.error) throw queueResult.error;
       if (wayplanResult.error) throw wayplanResult.error;
 
       const q = queueResult.data?.queue || queueResult.data?.data || [];
       const w = wayplanResult.data?.wayplans || wayplanResult.data?.data || [];
+      const regionRows = regionResult.data?.regions || regionResult.data?.data || [];
+      const filteredWayplans = (Array.isArray(w) ? w : []).filter((wayplan) => {
+        const code = text(wayplan?.metadata?.region_code || wayplan?.region_code || "YANGON").toUpperCase();
+        return code === selectedRegion;
+      });
 
+      setRegions(Array.isArray(regionRows) ? regionRows : []);
       setReadyRows(Array.isArray(q) ? q : []);
-      setWayplans(Array.isArray(w) ? w : []);
-      setActiveWayplan(Array.isArray(w) && w.length ? w[0] : null);
+      setSelected({});
+      setWayplans(filteredWayplans);
+      setActiveWayplan(filteredWayplans.length ? filteredWayplans[0] : null);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Could not load dispatch / wayplan data.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function toggleRegionActive(region: WayplanRegionOption) {
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const { data, error } = await supabase.rpc("be_wayplan_region_set_active_v19", {
+        p_payload: {
+          region_code: region.region_code,
+          is_active: !region.is_active,
+          reason: `Wayplan Command Center ${region.is_active ? "disable" : "activate"}`,
+        },
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.error || "Could not update the Wayplan region.");
+      setMessage(`${region.display_name} Wayplan is now ${region.is_active ? "disabled" : "active"}.`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Could not update the Wayplan region.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function focusRegion(region: WayplanRegionOption) {
+    if (!region.is_active) {
+      setError(`${region.display_name} Wayplan is disabled. Activate it before opening its queue.`);
+      return;
+    }
+    setError("");
+    setSelectedRegion(region.region_code);
   }
 
   function toggleOne(row: Row) {
@@ -213,13 +269,18 @@ export default function WayplanCommandCenterPage() {
       setError("Select at least one stop before generating wayplan.");
       return;
     }
+    if (!selectedRegionOption?.is_active) {
+      setError(`${selectedRegion} Wayplan is disabled. Activate it before generating a plan.`);
+      return;
+    }
 
     setLoading(true);
 
     try {
       const { data, error } = await supabase.rpc("be_generate_wayplan", {
         p_payload: {
-          branch_code: "YGN",
+          region_code: selectedRegion,
+          branch_code: selectedRegionOption.branch_code,
           delivery_way_ids: deliveryIds,
           vehicle_code: vehicleCode,
           vehicle_name: vehicleName,
@@ -327,7 +388,7 @@ export default function WayplanCommandCenterPage() {
 
   useEffect(() => {
     void loadAll();
-  }, []);
+  }, [selectedRegion]);
 
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
@@ -381,11 +442,36 @@ export default function WayplanCommandCenterPage() {
         {error && <div style={{ border: `1px solid ${C.red}`, background: "rgba(248,113,113,0.12)", color: C.red, borderRadius: 14, padding: 12 }}>{error}</div>}
         {message && <div style={{ border: `1px solid ${C.green}`, background: "rgba(52,211,153,0.12)", color: C.green, borderRadius: 14, padding: 12 }}>{message}</div>}
 
+        <Card>
+          <div style={{ marginBottom: 12 }}>
+            <h2 style={{ margin: 0, fontSize: 16 }}>Wayplan Region Control</h2>
+            <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>Only active regions can expose a queue or generate a wayplan. Yangon is the current operational focus.</p>
+          </div>
+          <div data-wayplan-region-control-v19="true" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+            {regions.map((region) => {
+              const focused = selectedRegion === region.region_code;
+              return <div key={region.region_code} style={{ border: `1px solid ${focused ? C.gold : C.border}`, background: focused ? "rgba(246,184,75,0.10)" : C.panel2, borderRadius: 14, padding: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                  <div>
+                    <strong style={{ display: "block", color: C.text }}>{region.display_name}</strong>
+                    <small style={{ color: C.sub }}>{region.branch_code} · Google Map {region.map_enabled ? "enabled" : "disabled"}</small>
+                  </div>
+                  <span style={{ borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 900, color: region.is_active ? C.green : C.red, border: `1px solid ${region.is_active ? C.green : C.red}` }}>{region.is_active ? "ACTIVE" : "DISABLED"}</span>
+                </div>
+                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                  <button type="button" onClick={() => focusRegion(region)} disabled={!region.is_active || loading} style={{ ...btn(focused ? "gold" : "plain"), flex: 1, opacity: region.is_active ? 1 : 0.45 }}>Open queue</button>
+                  <button type="button" onClick={() => void toggleRegionActive(region)} disabled={loading} style={btn(region.is_active ? "red" : "green")}>{region.is_active ? "Disable" : "Activate"}</button>
+                </div>
+              </div>;
+            })}
+          </div>
+        </Card>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }} className="wayplan-grid">
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <div>
-                <h2 style={{ margin: 0, fontSize: 16 }}>Ready for Wayplan Queue</h2>
+                <h2 style={{ margin: 0, fontSize: 16 }}>{selectedRegionOption?.display_name || selectedRegion} Ready for Wayplan Queue</h2>
                 <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>{readyRows.length} ready stops / {selectedRows.length} selected</p>
               </div>
 
@@ -407,6 +493,7 @@ export default function WayplanCommandCenterPage() {
                     <th style={{ padding: 10, textAlign: "left" }}>Waybill / Stage</th>
                     <th style={{ padding: 10, textAlign: "left" }}>Customer / Address</th>
                     <th style={{ padding: 10, textAlign: "left" }}>Township</th>
+                    <th style={{ padding: 10, textAlign: "left" }}>Provider / Route</th>
                     <th style={{ padding: 10, textAlign: "right" }}>COD</th>
                     <th style={{ padding: 10, textAlign: "right" }}>Weight</th>
                   </tr>
@@ -428,14 +515,15 @@ export default function WayplanCommandCenterPage() {
                           <div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div>
                         </td>
                         <td style={{ padding: 10 }}>{text(row.township, "-")}</td>
+                        <td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code,"-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode,"DOORSTEP_MAP")}</div></td>
                         <td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td>
                         <td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td>
                       </tr>
                     );
                   }) : (
                     <tr>
-                      <td colSpan={6} style={{ padding: 32, textAlign: "center", color: C.sub }}>
-                        No parcels ready for wayplan. Complete Data Entry / Warehouse ready status first.
+                      <td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>
+                        {selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. Complete Data Entry and Warehouse readiness first." : "This regional Wayplan queue is disabled."}
                       </td>
                     </tr>
                   )}
