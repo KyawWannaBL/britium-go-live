@@ -49,11 +49,24 @@ function parseCoordinate(value: string) {
 }
 
 function featureText(feature: any) {
+  const components = Array.isArray(feature?.address_components)
+    ? feature.address_components
+    : Array.isArray(feature?.addressComponents)
+      ? feature.addressComponents
+      : [];
+  const displayName = typeof feature?.displayName === "string"
+    ? feature.displayName
+    : feature?.displayName?.text;
   return [
     feature?.formatted_address,
-    ...(Array.isArray(feature?.address_components)
-      ? feature.address_components.flatMap((item: any) => [item?.long_name, item?.short_name])
-      : []),
+    feature?.formattedAddress,
+    displayName,
+    ...components.flatMap((item: any) => [
+      item?.long_name,
+      item?.short_name,
+      item?.longText,
+      item?.shortText,
+    ]),
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -194,38 +207,6 @@ export function buildDeliveryAddressQueries(
   return queries;
 }
 
-async function locationServiceRequest(parameters: URLSearchParams) {
-  let response: Response;
-  try {
-    response = await fetch(`/api/google-geocode?${parameters.toString()}`, { headers: { Accept: "application/json" } });
-  } catch {
-    throw new Error("The Britium location service could not be reached. Check the deployment and internet connection.");
-  }
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const payload = await response.json();
-      detail = String(payload?.error || payload?.message || "");
-    } catch {
-      // The status code below remains useful when an upstream service returns an empty body.
-    }
-    throw new Error(detail || `Britium location service failed (${response.status}).`);
-  }
-  try {
-    return await response.json();
-  } catch {
-    throw new Error("Britium location service returned an incomplete response. Please retry.");
-  }
-}
-
-async function reverseGeocode(latitude: number, longitude: number) {
-  const data = await locationServiceRequest(new URLSearchParams({
-    latitude: String(latitude),
-    longitude: String(longitude),
-  }));
-  return (data?.results || []).map(featureText).filter(Boolean);
-}
-
 let googleLoader: Promise<any> | null = null;
 export function loadGoogleMaps() {
   const existing = (globalThis as any).google?.maps;
@@ -241,7 +222,7 @@ export function loadGoogleMaps() {
     const script = document.createElement("script");
     script.async = true;
     script.defer = true;
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleKey())}&v=weekly&loading=async&callback=${callback}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(googleKey())}&v=weekly&loading=async&libraries=places&callback=${callback}`;
     script.onerror = () => {
       delete (globalThis as any)[callback];
       googleLoader = null;
@@ -250,6 +231,17 @@ export function loadGoogleMaps() {
     document.head.appendChild(script);
   });
   return googleLoader;
+}
+
+async function reverseGeocode(latitude: number, longitude: number) {
+  const maps = await loadGoogleMaps();
+  if (!maps?.Geocoder) throw new Error("Google Maps geocoding is not available.");
+  const response = await new maps.Geocoder().geocode({
+    location: { lat: latitude, lng: longitude },
+    language: "en",
+    region: "MM",
+  });
+  return (response?.results || []).map(featureText).filter(Boolean);
 }
 
 function googleClassification(result: any) {
@@ -264,11 +256,39 @@ function googleClassification(result: any) {
 
 async function googleGeocode(query: string) {
   try {
-    const response = await locationServiceRequest(new URLSearchParams({ q: query }));
-    const places = (response?.places || []).map((place: any, providerRank: number) => {
+    const maps = await loadGoogleMaps();
+    if (!maps) return [];
+
+    let placeResults: any[] = [];
+    try {
+      const placesLibrary = await maps.importLibrary?.("places");
+      const Place = placesLibrary?.Place;
+      if (Place?.searchByText) {
+        const response = await Place.searchByText({
+          textQuery: query,
+          fields: ["id", "displayName", "formattedAddress", "location", "types", "addressComponents"],
+          language: "en",
+          region: "MM",
+          maxResultCount: 8,
+          locationBias: { south: 9, west: 92, north: 29, east: 102 },
+        });
+        placeResults = response?.places || [];
+      }
+    } catch {
+      // Google Places may be disabled for an otherwise valid Maps browser key.
+      // The browser Geocoder below remains a precise Google-only fallback.
+    }
+
+    const places = placeResults.map((place: any, providerRank: number) => {
       const types: string[] = place?.types || [];
-      const latitude = Number(place?.location?.latitude);
-      const longitude = Number(place?.location?.longitude);
+      const rawLatitude = place?.location?.lat;
+      const rawLongitude = place?.location?.lng;
+      const latitude = Number(typeof rawLatitude === "function"
+        ? rawLatitude.call(place.location)
+        : rawLatitude ?? place?.location?.latitude);
+      const longitude = Number(typeof rawLongitude === "function"
+        ? rawLongitude.call(place.location)
+        : rawLongitude ?? place?.location?.longitude);
       if (!validMyanmarCoordinate(longitude, latitude)) return null;
       const isPoi = types.some((type) => ["establishment", "point_of_interest", "premise", "subpremise"].includes(type));
       const isAddress = types.includes("street_address");
@@ -277,7 +297,10 @@ async function googleGeocode(query: string) {
       const components = Array.isArray(place?.addressComponents)
         ? place.addressComponents.flatMap((item: any) => [item?.longText, item?.shortText])
         : [];
-      const label = [place?.displayName?.text, place?.formattedAddress].filter(Boolean).join(", ") || query;
+      const displayName = typeof place?.displayName === "string"
+        ? place.displayName
+        : place?.displayName?.text;
+      const label = [displayName, place?.formattedAddress].filter(Boolean).join(", ") || query;
       return {
         matchLevel,
         // Places results are ranked by relevance. POIs/premises can be precise,
@@ -290,16 +313,22 @@ async function googleGeocode(query: string) {
         provider: "GOOGLE_PLACES",
         providerRank,
         placeId: place?.id || "",
-        googleMapsUri: place?.googleMapsUri || "",
       };
     }).filter(Boolean);
     if (places.length) return places;
 
+    if (!maps.Geocoder) return [];
+    const response = await new maps.Geocoder().geocode({
+      address: query,
+      componentRestrictions: { country: "MM" },
+      language: "en",
+      region: "MM",
+    });
     return (response?.results || []).map((result: any, providerRank: number) => {
       const classification = googleClassification(result);
       const location = result?.geometry?.location;
-      const latitude = Number(location?.lat);
-      const longitude = Number(location?.lng);
+      const latitude = Number(typeof location?.lat === "function" ? location.lat() : location?.lat);
+      const longitude = Number(typeof location?.lng === "function" ? location.lng() : location?.lng);
       if (!classification || !validMyanmarCoordinate(longitude, latitude)) return null;
       return {
         ...classification,

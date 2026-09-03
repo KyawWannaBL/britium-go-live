@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { createServer } from "vite";
-import googleGeocodeHandler from "../api/google-geocode.mjs";
 
 const server = await createServer({
   appType: "custom",
@@ -174,78 +173,46 @@ try {
   assert.equal(approximateStreetCandidate.reviewStatus, "MANUAL_REVIEW", "A street/ward centroid must never auto-save");
 
   const originalFetch = globalThis.fetch;
-  const originalGoogleMapsKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
-  let requestedGoogleUrl = "";
-  let requestedGoogleOptions = null;
+  const originalGoogle = globalThis.google;
   let reverseTownshipEvidence = "North Dagon Township";
-  let responseBody = "";
-  const response = {
-    statusCode: 0,
-    setHeader() {},
-    end(value) { responseBody = String(value ?? ""); },
-  };
+  const searchRequests = [];
   try {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "contract-test-key";
-    globalThis.fetch = async (url, options) => {
-      requestedGoogleUrl = String(url);
-      requestedGoogleOptions = options || null;
-      const isBritiumReverse = requestedGoogleUrl.startsWith("/api/google-geocode?")
-        && requestedGoogleUrl.includes("latitude=");
-      const isBritiumForward = requestedGoogleUrl.startsWith("/api/google-geocode?")
-        && requestedGoogleUrl.includes("q=");
-      const payload = isBritiumReverse
-        ? {
-          status: "OK",
-          results: [{
-            formatted_address: `Ward 32, ${reverseTownshipEvidence}, Yangon`,
-            address_components: [{ long_name: reverseTownshipEvidence, short_name: reverseTownshipEvidence }],
-          }],
-        }
-        : isBritiumForward
-          ? {
-            status: "OK",
-            places: [{
+    globalThis.fetch = async () => {
+      throw new Error("Location resolution must not call a Vercel geocoding proxy.");
+    };
+    globalThis.google = {
+      maps: {
+        importLibrary: async (name) => {
+          assert.equal(name, "places");
+          return {
+            Place: {
+              searchByText: async (request) => {
+                searchRequests.push(request);
+                return { places: [{
               id: "places/north-dagon-contract",
-              displayName: { text: "No. 77, Pinlon Road" },
+              displayName: "No. 77, Pinlon Road",
               formattedAddress: "Ward 32, North Dagon Township, Yangon",
-              location: { latitude: 16.917583, longitude: 96.16738 },
+              location: { lat: () => 16.917583, lng: () => 96.16738 },
               types: ["point_of_interest", "establishment"],
               addressComponents: [{ longText: "North Dagon Township", shortText: "North Dagon" }],
-            }],
+                }] };
+              },
+            },
+          };
+        },
+        Geocoder: class {
+          async geocode(request) {
+            assert.ok(request?.location, "The candidate must be independently reverse-geocoded");
+            return {
+              results: [{
+                formatted_address: `Ward 32, ${reverseTownshipEvidence}, Yangon`,
+                address_components: [{ long_name: reverseTownshipEvidence, short_name: reverseTownshipEvidence }],
+              }],
+            };
           }
-          : requestedGoogleUrl.includes("places.googleapis.com")
-            ? { places: [] }
-            : { status: "OK", results: [] };
-      return new Response(JSON.stringify(payload), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+        },
+      },
     };
-    await googleGeocodeHandler({
-      method: "GET",
-      headers: { "sec-fetch-site": "same-origin" },
-      query: { q: "အမှတ် ၇၇၊ ပင်လုံလမ်း၊ အမှတ် (၃၂) ရပ်ကွက်၊ မြောက်ဒဂုံမြို့နယ်" },
-    }, response);
-    assert.equal(response.statusCode, 200);
-    assert.equal(requestedGoogleUrl, "https://places.googleapis.com/v1/places:searchText");
-    assert.equal(requestedGoogleOptions?.method, "POST");
-    assert.equal(requestedGoogleOptions?.headers?.["X-Goog-Api-Key"], "contract-test-key");
-    assert.match(requestedGoogleOptions?.headers?.["X-Goog-FieldMask"] || "", /places\.location/);
-    assert.match(String(requestedGoogleOptions?.body), /အမှတ် ၇၇/);
-
-    responseBody = "";
-    response.statusCode = 0;
-    response.end = (value) => { responseBody = String(value ?? ""); };
-    await googleGeocodeHandler({
-      method: "GET",
-      headers: { "sec-fetch-site": "same-origin" },
-      query: { latitude: "16.917583", longitude: "96.167380" },
-    }, response);
-    assert.equal(response.statusCode, 200);
-    assert.doesNotThrow(() => JSON.parse(responseBody), "Reverse-geocode proxy must always return complete JSON");
-    assert.match(requestedGoogleUrl, /maps\.googleapis\.com\/maps\/api\/geocode\/json\?/);
-    assert.match(requestedGoogleUrl, /latlng=16\.917583%2C96\.16738/);
-    assert.match(requestedGoogleUrl, /region=mm/);
 
     reverseTownshipEvidence = "North Okkalapa Township";
     assert.equal(
@@ -271,10 +238,14 @@ try {
     });
     assert.ok(reverseValidated, "Matching Google forward and reverse township evidence must produce a candidate");
     assert.equal(reverseValidated.coordinateSource, "GOOGLE_PLACES_POSTAL_VALIDATED_POI_EXACT");
+    assert.ok(searchRequests.length > 0, "Google Places browser search must be used");
+    assert.ok(searchRequests.some((request) => /No\. 77/.test(request.textQuery)), "The typed address must reach Google Places");
+    assert.ok(searchRequests.every((request) => request.region === "MM" && request.language === "en"));
+    assert.ok(searchRequests.every((request) => request.fields.includes("location") && request.fields.includes("addressComponents")));
   } finally {
     globalThis.fetch = originalFetch;
-    if (originalGoogleMapsKey == null) delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
-    else process.env.GOOGLE_MAPS_SERVER_API_KEY = originalGoogleMapsKey;
+    if (originalGoogle == null) delete globalThis.google;
+    else globalThis.google = originalGoogle;
   }
 
   const cases = [];
