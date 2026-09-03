@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calculator, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
+import { validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
@@ -138,6 +139,7 @@ type ParcelRow = {
   handoffStationCode: string;
   handoffStationName: string;
   locationStatus: DataEntryLocationResolution;
+  locationCandidate?: DeliveryLocation | null;
   saved: boolean;
 };
 
@@ -744,6 +746,8 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
       </div>:null}
 
       <DataEntryLocationEditor
+        pickupId={row.pickup_id}
+        parcelSequence={row.parcel_sequence}
         deliveryWayId={row.delivery_way_id}
         address={row.delivery_address}
         township={row.township}
@@ -755,6 +759,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
           :"Google Map is temporarily disabled for outside-core Royal Express routes. No Britium Wayplan coordinate is required."}
         reloadToken={locationReloadToken}
         onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
+        onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
       />
 
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
@@ -836,6 +841,8 @@ export default function DataEntryFinancialV2Page() {
   const [additionalCount,setAdditionalCount]=useState(1);
   const [additionalReason,setAdditionalReason]=useState("");
   const [addingRegistration,setAddingRegistration]=useState(false);
+  const [locationReviewBusy,setLocationReviewBusy]=useState(false);
+  const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
@@ -856,6 +863,14 @@ export default function DataEntryFinancialV2Page() {
     }
     return summary;
   },[rows]);
+  const consolidatedLocationReviewRows=useMemo(()=>{
+    const combined=[...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows];
+    const unique=new Map<string,ParcelRow>();
+    for(const row of combined) unique.set(`${row.pickup_id}:${row.parcel_sequence}`,row);
+    return [...unique.values()].filter((row)=>
+      routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="REVIEW_REQUIRED"
+    );
+  },[bulkImportDrafts,rows,tariffOptions]);
 
   function updateRow(index:number,patch:Partial<ParcelRow>){
     setRows(current=>current.map((row,i)=>i===index?{...row,...patch,message:patch.message??""}:row));
@@ -1713,6 +1728,173 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
+  async function downloadConsolidatedLocationReview(){
+    if(!consolidatedLocationReviewRows.length){
+      setBulkMessage("There are no location-review rows to download.");
+      return;
+    }
+    setLocationReviewBusy(true);
+    setBulkMessage("");
+    try{
+      const XLSX:any=await import("xlsx");
+      const exportRows=consolidatedLocationReviewRows.map((row)=>({
+        "Delivery Way ID":row.delivery_way_id,
+        "Pickup ID":row.pickup_id,
+        "Parcel Sequence":row.parcel_sequence,
+        "Recipient Name":row.recipient_name,
+        "Township":row.township,
+        "Delivery Address":row.delivery_address,
+        "Suggested Latitude":row.locationCandidate?.latitude??"",
+        "Suggested Longitude":row.locationCandidate?.longitude??"",
+        "Corrected Latitude":"",
+        "Corrected Longitude":"",
+        "Action":"APPLY_CORRECTION",
+        "Reason":"Location corrected through consolidated review workbook",
+      }));
+      const worksheet=XLSX.utils.json_to_sheet(exportRows);
+      worksheet["!cols"]=[18,18,14,22,24,48,18,18,18,18,20,46].map((wch)=>({wch}));
+      worksheet["!autofilter"]={ref:`A1:L${exportRows.length+1}`};
+      const instructions=XLSX.utils.aoa_to_sheet([
+        ["Britium Location Review Round-trip"],
+        ["1", "For each APPLY_CORRECTION row, enter Corrected Latitude and Corrected Longitude."],
+        ["2", "To accept the suggested pin without visual review, change Action to SKIP_REVIEW."],
+        ["3", "Do not change Delivery Way ID, Pickup ID, or Parcel Sequence."],
+        ["4", "Upload the completed workbook from the same Data Entry screen."],
+        ["5", "Every change or skip is permission-checked and written to the audit trail."],
+      ]);
+      instructions["!cols"]=[8,100].map((wch)=>({wch}));
+      const workbook=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook,worksheet,"Location Review");
+      XLSX.utils.book_append_sheet(workbook,instructions,"Instructions");
+      const stamp=new Date().toISOString().replace(/[:T]/g,"-").slice(0,16);
+      XLSX.writeFile(workbook,`Britium_Consolidated_Location_Review_${stamp}.xlsx`,{compression:true});
+      setBulkMessage(`Downloaded ${exportRows.length} location-review row(s) in one Excel workbook.`);
+    }catch(error:any){
+      setBulkMessage(error?.message||"Unable to download the consolidated location-review workbook.");
+    }finally{
+      setLocationReviewBusy(false);
+    }
+  }
+
+  function applyLocationReviewResults(results:any[]){
+    const resultById=new Map(results.map((result)=>[text(result.delivery_way_id),result]));
+    const applyToRows=(sourceRows:ParcelRow[])=>sourceRows.map((row)=>{
+      const result=resultById.get(row.delivery_way_id);
+      if(!result) return row;
+      const latitude=Number(result.latitude);
+      const longitude=Number(result.longitude);
+      const locationCandidate:DeliveryLocation={
+        ...(row.locationCandidate||{
+          deliveryWayId:row.delivery_way_id,label:row.delivery_address,originalAddress:row.delivery_address,
+          englishAddress:row.delivery_address,township:row.township,matchLevel:"MANUAL",confidence:1,
+        }),
+        deliveryWayId:row.delivery_way_id,latitude,longitude,matchLevel:"MANUAL",confidence:1,
+        coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
+      };
+      return {...row,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
+    });
+    setRows((current)=>applyToRows(current));
+    setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[
+      pickupId,{...draft,rows:applyToRows(draft.rows)},
+    ])));
+  }
+
+  async function skipAllLocationReviews(){
+    const skippable=consolidatedLocationReviewRows.filter((row)=>
+      row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude)
+    );
+    if(!skippable.length){
+      setBulkMessage("No review row currently has a valid suggested pin to accept. Retry location sync or use the correction workbook.");
+      return;
+    }
+    if(!window.confirm(`Accept ${skippable.length} currently suggested pin(s) without further visual review? Every decision will be recorded in the audit trail.`)) return;
+    setLocationReviewBusy(true);
+    setBulkMessage("");
+    try{
+      const allResults:any[]=[];
+      for(let offset=0;offset<skippable.length;offset+=200){
+        const batch=skippable.slice(offset,offset+200).map((row)=>({
+          delivery_way_id:row.delivery_way_id,pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,
+          township:row.township,delivery_address:row.delivery_address,
+          latitude:row.locationCandidate!.latitude,longitude:row.locationCandidate!.longitude,
+          action:"SKIP_REVIEW",reason:"Operator bulk-accepted the suggested pin without further visual map review.",
+        }));
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+          request_id:requestId("LOCATION_REVIEW_SKIP_ALL"),rows:batch,
+        }});
+        if(response.error) throw response.error;
+        if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||"Bulk location-review skip failed.");
+        allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
+      }
+      applyLocationReviewResults(allResults);
+      setLocationReloadToken((token)=>token+1);
+      const remaining=consolidatedLocationReviewRows.length-allResults.length;
+      setBulkMessage(`Accepted and audited ${allResults.length} suggested pin(s) without further review.${remaining>0?` ${remaining} row(s) still need corrected coordinates.`:" All location-review rows are now ready for way generation."}`);
+    }catch(error:any){
+      setBulkMessage(error?.message||"Unable to skip the location reviews.");
+    }finally{
+      setLocationReviewBusy(false);
+    }
+  }
+
+  async function uploadConsolidatedLocationReview(file?:File){
+    if(!file) return;
+    setLocationReviewBusy(true);
+    setBulkMessage("");
+    try{
+      if(!/\.xlsx$/i.test(file.name)) throw new Error("Choose the completed Britium location-review XLSX workbook.");
+      const XLSX:any=await import("xlsx");
+      const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true,raw:false});
+      const sheet=workbook.Sheets["Location Review"]||workbook.Sheets[workbook.SheetNames[0]];
+      const imported=XLSX.utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:"",raw:false});
+      if(!imported.length) throw new Error("The Location Review sheet contains no rows.");
+      const knownRows=new Map([...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows].map((row)=>[row.delivery_way_id,row]));
+      const payloadRows=imported.map((entry,index)=>{
+        const deliveryWayId=text(entry["Delivery Way ID"]).trim();
+        const current=knownRows.get(deliveryWayId);
+        if(!deliveryWayId||!current) throw new Error(`Excel row ${index+2}: Delivery Way ID is missing or is not in the current authorized review workspace.`);
+        const action=text(entry["Action"]||"APPLY_CORRECTION").trim().toUpperCase();
+        if(!["APPLY_CORRECTION","SKIP_REVIEW"].includes(action)) throw new Error(`Excel row ${index+2}: Action must be APPLY_CORRECTION or SKIP_REVIEW.`);
+        const correctedLat=Number(entry["Corrected Latitude"]);
+        const correctedLng=Number(entry["Corrected Longitude"]);
+        const suggestedLat=Number(entry["Suggested Latitude"]||current.locationCandidate?.latitude);
+        const suggestedLng=Number(entry["Suggested Longitude"]||current.locationCandidate?.longitude);
+        const latitude=action==="SKIP_REVIEW"?suggestedLat:correctedLat;
+        const longitude=action==="SKIP_REVIEW"?suggestedLng:correctedLng;
+        if(!validMyanmarCoordinate(longitude,latitude)) throw new Error(`Excel row ${index+2}: enter valid Myanmar latitude and longitude values for ${deliveryWayId}.`);
+        return {
+          delivery_way_id:deliveryWayId,
+          pickup_id:text(entry["Pickup ID"]),
+          parcel_sequence:positiveInt(entry["Parcel Sequence"]),
+          township:current.township,
+          delivery_address:current.delivery_address,
+          latitude,longitude,action,
+          reason:text(entry["Reason"]||"Location corrected through consolidated review workbook").trim(),
+          source_file_name:file.name,
+          source_row_number:index+2,
+        };
+      });
+      const allResults:any[]=[];
+      for(let offset=0;offset<payloadRows.length;offset+=200){
+        const batch=payloadRows.slice(offset,offset+200);
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+          request_id:requestId("LOCATION_REVIEW_XLSX"),source_file_name:file.name,rows:batch,
+        }});
+        if(response.error) throw response.error;
+        if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||`Location review batch ${Math.floor(offset/200)+1} failed.`);
+        allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
+      }
+      applyLocationReviewResults(allResults);
+      setLocationReloadToken((token)=>token+1);
+      setBulkMessage(`Applied and audited ${allResults.length} reviewed location(s). These rows are now ready for Calculate All, Save All, and way generation.`);
+    }catch(error:any){
+      setBulkMessage(error?.message||"Unable to apply the location-review workbook.");
+    }finally{
+      setLocationReviewBusy(false);
+      if(locationReviewInputRef.current) locationReviewInputRef.current.value="";
+    }
+  }
+
   useEffect(()=>{void loadStartup();},[]);
   useEffect(()=>{
     if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
@@ -1829,8 +2011,14 @@ export default function DataEntryFinancialV2Page() {
                     :`${importedLocationSummary.resolving} core-region locations automatically resolving · ${importedLocationSummary.review} require operator review. Outside-core rows do not enter Google location review.`}
                 </div>
               </div>
-              {importedLocationSummary.synced+importedLocationSummary.notRequired<importedLocationSummary.total?<button type="button" onClick={()=>{setBulkMessage("Retrying unresolved Yangon, Mandalay, and Naypyitaw locations only. Outside-core rows remain map-not-required.");setLocationReloadToken((token)=>token+1);}} disabled={importedLocationSummary.resolving>0} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-45"><RefreshCw size={14} className={importedLocationSummary.resolving>0?"animate-spin":""}/>RETRY LOCATION SYNC</button>:null}
+              <div className="flex flex-wrap gap-2">
+                {importedLocationSummary.synced+importedLocationSummary.notRequired<importedLocationSummary.total?<button type="button" onClick={()=>{setBulkMessage("Retrying unresolved Yangon, Mandalay, and Naypyitaw locations only. Outside-core rows remain map-not-required.");setLocationReloadToken((token)=>token+1);}} disabled={importedLocationSummary.resolving>0||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-45"><RefreshCw size={14} className={importedLocationSummary.resolving>0?"animate-spin":""}/>RETRY LOCATION SYNC</button>:null}
+                <button type="button" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some((row)=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/50 bg-rose-400/10 px-4 py-2.5 text-[10px] font-black text-rose-100 disabled:opacity-40">SKIP ALL REVIEWS</button>
+                <button type="button" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2.5 text-[10px] font-black text-amber-100 disabled:opacity-40"><Download size={14}/>DOWNLOAD REVIEW EXCEL ({consolidatedLocationReviewRows.length})</button>
+                <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
+              </div>
             </div>
+            <div className="mt-3 rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[10px] leading-5 text-amber-100">Download combines every current pickup row requiring location review into one workbook. Correct latitude/longitude and re-upload it here. Files above 200 rows are applied automatically in consecutive audited batches.</div>
           </div>:null}
 
           {selectedPickup?<div data-extra-registration-v14="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/5 p-4">

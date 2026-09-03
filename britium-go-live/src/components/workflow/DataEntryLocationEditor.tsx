@@ -2,7 +2,7 @@
 // BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, MousePointer2, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, MousePointer2, Search, SkipForward } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
 import {
@@ -38,6 +38,8 @@ async function withAutomaticLocationSlot<T>(task: () => Promise<T>): Promise<T> 
 export type DataEntryLocationResolution = "PENDING" | "SEARCHING" | "REVIEW_REQUIRED" | "SYNCED" | "NOT_REQUIRED";
 
 type DataEntryLocationEditorProps = {
+  pickupId: string;
+  parcelSequence: number;
   deliveryWayId: string;
   address: string;
   township: string;
@@ -47,6 +49,7 @@ type DataEntryLocationEditorProps = {
   disabledReason?: string;
   reloadToken?: number;
   onResolutionChange?: (status: DataEntryLocationResolution) => void;
+  onCandidateChange?: (candidate: DeliveryLocation | null) => void;
 };
 
 function addressKey(value: unknown) {
@@ -59,6 +62,8 @@ function addressKey(value: unknown) {
 }
 
 export default function DataEntryLocationEditor({
+  pickupId,
+  parcelSequence,
   deliveryWayId,
   address,
   township,
@@ -68,6 +73,7 @@ export default function DataEntryLocationEditor({
   disabledReason = "Google Map is not required for this delivery route.",
   reloadToken = 0,
   onResolutionChange,
+  onCandidateChange,
 }: DataEntryLocationEditorProps) {
   const [query, setQuery] = useState(address || "");
   const [candidate, setCandidate] = useState<DeliveryLocation | null>(null);
@@ -80,6 +86,7 @@ export default function DataEntryLocationEditor({
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
   const resolutionCallback = useRef(onResolutionChange);
+  const candidateCallback = useRef(onCandidateChange);
   const interactiveMapContainer = useRef<HTMLDivElement | null>(null);
   const interactiveMap = useRef<any>(null);
   const draggableMarker = useRef<any>(null);
@@ -92,6 +99,14 @@ export default function DataEntryLocationEditor({
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
   }, [onResolutionChange]);
+
+  useEffect(() => {
+    candidateCallback.current = onCandidateChange;
+  }, [onCandidateChange]);
+
+  useEffect(() => {
+    candidateCallback.current?.(candidate);
+  }, [candidate]);
 
   function reportResolution(status: DataEntryLocationResolution) {
     resolutionCallback.current?.(status);
@@ -471,6 +486,45 @@ export default function DataEntryLocationEditor({
     }
   }
 
+  async function skipReview() {
+    if (!candidate || !deliveryWayId || !validMyanmarCoordinate(candidate.longitude,candidate.latitude)) {
+      setMessage("A valid suggested pin is required before location review can be skipped.");
+      reportResolution("REVIEW_REQUIRED");
+      return;
+    }
+    if (!window.confirm("Accept the currently displayed pin without further visual review? This decision will be recorded in the audit trail.")) return;
+    setBusy(true);
+    setMessage("Recording the authorized location-review skip…");
+    try {
+      const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+        request_id:`LOCATION_REVIEW_SKIP:${deliveryWayId}:${Date.now()}`,
+        rows:[{
+          delivery_way_id:deliveryWayId,
+          pickup_id:pickupId,
+          parcel_sequence:parcelSequence,
+          action:"SKIP_REVIEW",
+          latitude:candidate.latitude,
+          longitude:candidate.longitude,
+          township,
+          delivery_address:query||address,
+          reason:"Operator explicitly accepted the suggested pin without further visual map review.",
+        }],
+      }});
+      if(response.error) throw response.error;
+      if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||"Location review could not be skipped.");
+      const accepted={...candidate,reviewStatus:"ACCEPTED" as const,matchLevel:"MANUAL" as const,coordinateSource:"DATA_ENTRY_MANUAL_REVIEW_SKIPPED"};
+      setCandidate(accepted);
+      setManualOpen(false);
+      setMessage("Suggested pin accepted without further review. The skip decision was audited and the coordinates are ready for Wayplan.");
+      reportResolution("SYNCED");
+    } catch(error:any) {
+      setMessage(error?.message||"Location review could not be skipped.");
+      reportResolution("REVIEW_REQUIRED");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!enabled) {
     return <div data-location-details="true" data-location-not-required-v19="true" className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-4">
       <div className="flex items-start gap-3">
@@ -502,7 +556,10 @@ export default function DataEntryLocationEditor({
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Source:</b> {candidate?.coordinateSource || "Not resolved"}</div>
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
-        <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="mt-3 flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
+        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
+          <button type="button" onClick={()=>void skipReview()} disabled={busy||!candidate||candidate.reviewStatus==="ACCEPTED"||!validMyanmarCoordinate(candidate.longitude,candidate.latitude)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
+        </div>
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
       <div>

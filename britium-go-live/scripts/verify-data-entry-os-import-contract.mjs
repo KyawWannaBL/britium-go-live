@@ -10,6 +10,7 @@ const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocat
 const migration=readFileSync(resolve(root,"supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
 const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
 const continuousBatchMigration=readFileSync(resolve(root,"supabase/migrations/20260904043000_continuous_data_entry_bulk_batches_v22.sql"),"utf8");
+const locationReviewMigration=readFileSync(resolve(root,"supabase/migrations/20260904053000_location_review_roundtrip_v23.sql"),"utf8");
 
 const checks=[
   ["all 12 bilingual OS columns",/Way ID \/ Pickup ID[\s\S]*Merchant Name \/ Merchant ID[\s\S]*Receiver Name[\s\S]*Receiver Phone[\s\S]*Township \/ Service Provider[\s\S]*Actual Weight[\s\S]*Receiver Address[\s\S]*Service Type[\s\S]*Payment Type[\s\S]*Item Price[\s\S]*OS Set Price[\s\S]*Merchant Tier/.test(importer)],
@@ -37,6 +38,11 @@ const checks=[
   ["Google Map click copies relocation coordinates into Data Entry",/map\.addListener\("click"/.test(location)&&/setLat\(nextLat\.toFixed\(6\)\)/.test(location)&&/setLng\(nextLng\.toFixed\(6\)\)/.test(location)&&/Coordinates copied from the/.test(location)],
   ["Data Entry exposes an explicit Google Map relocation control",/Relocate directly on Google Map/.test(location)&&/COORDINATES COPY AUTOMATICALLY/.test(location)],
   ["relocation creates a same-screen editable pin without a prior candidate",/async function openRelocationMap/.test(location)&&/new maps\.Geocoder\(\)/.test(location)&&/Show pin and select location on this map/.test(location)&&/without opening another tab/.test(location)],
+  ["operator can explicitly skip visual location review",/async function skipReview/.test(location)&&/SKIP REVIEW/.test(location)&&/be_delivery_location_review_batch_v23/.test(location)&&/DATA_ENTRY_MANUAL_REVIEW_SKIPPED/.test(locationReviewMigration)],
+  ["bulk operator can skip all currently suggested review pins",/async function skipAllLocationReviews/.test(page)&&/SKIP ALL REVIEWS/.test(page)&&/LOCATION_REVIEW_SKIP_ALL/.test(page)],
+  ["review locations round-trip through one consolidated XLSX",/downloadConsolidatedLocationReview/.test(page)&&/uploadConsolidatedLocationReview/.test(page)&&/Britium_Consolidated_Location_Review/.test(page)&&/Location Review/.test(page)],
+  ["large review workbooks apply in consecutive 200-row batches",/offset\+=200/.test(page)&&/slice\(offset,offset\+200\)/.test(page)&&/jsonb_array_length\(v_rows\)>200/.test(locationReviewMigration)],
+  ["location review changes are permission checked and audited",/be_data_entry_require_access_v57\('update',false\)/.test(locationReviewMigration)&&/DATA_ENTRY_LOCATION_REVIEW_SKIPPED/.test(locationReviewMigration)&&/DATA_ENTRY_LOCATION_BULK_CORRECTED/.test(locationReviewMigration)&&/revoke all on function public\.be_delivery_location_review_batch_v23\(jsonb\) from public,anon/.test(locationReviewMigration)],
   ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],
   ["photo bypass is explicit and reasoned",/skipPhotoReview/.test(importer)&&/at least 10 characters/.test(importer)&&/PHOTO_BYPASS_REASON_REQUIRED/.test(migration)],
   ["OS import requires upload permission",/be_data_entry_require_access_v57\('upload',false\)/.test(migration)],
