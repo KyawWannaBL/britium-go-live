@@ -5,7 +5,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
-import { coordinateMatchesTownship, googleMapsLocationUrl, loadGoogleMaps, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
+import {
+  coordinateMatchesTownship,
+  googleMapsAddressOpenUrl,
+  googleMapsAddressUrl,
+  googleMapsLocationUrl,
+  loadGoogleMaps,
+  resolveDeliveryLocation,
+  saveDeliveryLocation,
+  validMyanmarCoordinate,
+  verifiedAddressLocation,
+  type DeliveryLocation,
+} from "@/lib/deliveryLocationService";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 
 const AUTO_LOCATION_CONCURRENCY = 3;
@@ -71,6 +82,8 @@ export default function DataEntryLocationEditor({
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
+  const addressMapUrl = useMemo(() => googleMapsAddressUrl(query || address, township), [query, address, township]);
+  const openAddressMapUrl = useMemo(() => googleMapsAddressOpenUrl(query || address, township), [query, address, township]);
 
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
@@ -188,6 +201,7 @@ export default function DataEntryLocationEditor({
     setLat("");
     setLng("");
     setMessage("");
+    setMapError("");
     lastAutoKey.current = "";
     reportResolution("PENDING");
     void load();
@@ -291,6 +305,7 @@ export default function DataEntryLocationEditor({
   async function find(value = query, automatic = false) {
     const requestId = ++requestSequence.current;
     setBusy(true);
+    setMapError("");
     reportResolution("SEARCHING");
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
@@ -336,7 +351,9 @@ export default function DataEntryLocationEditor({
     } catch (error: any) {
       if (requestId !== requestSequence.current) return;
       setManualOpen(true);
-      setMessage(error?.message || "Location search failed.");
+      const failureMessage = error?.message || "Location search failed.";
+      setMessage(failureMessage);
+      setMapError(failureMessage);
       reportResolution("REVIEW_REQUIRED");
     } finally {
       if (requestId === requestSequence.current) setBusy(false);
@@ -417,7 +434,11 @@ export default function DataEntryLocationEditor({
             {validMyanmarCoordinate(lng, lat) && <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/40 bg-[#061524]/90 px-3 py-2 text-[11px] font-bold text-cyan-100">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</div>}
           </div>
           <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Manual map edits are draft-only. Drag the pin or click the exact gate/building, verify the coordinates, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
-        </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically..." : mapError || "Accepted and review-only candidates appear here. Review-only pins are never shared with Wayplan until Apply coordinates is clicked."}</div>}
+        </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : addressMapUrl ? <div>
+          <iframe src={addressMapUrl} title={`Google Maps address search for ${deliveryWayId || "new parcel"}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>
+          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>Address-search preview only: no coordinates are saved from this preview. Verify that Google shows the exact gate/building inside {township || "the selected township"}. If needed, open Google Maps, copy its latitude/longitude here, then click <b>Apply coordinates</b>. {openAddressMapUrl && <a href={openAddressMapUrl} target="_blank" rel="noreferrer" className="ml-1 font-black text-cyan-300 underline">Open in Google Maps</a>}</div>
+          {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
+        </div> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically..." : mapError || "Enter an address to preview it in Google Maps. No pin is shared with Wayplan until it is validated."}</div>}
       </div>
     </div>
   </div>;

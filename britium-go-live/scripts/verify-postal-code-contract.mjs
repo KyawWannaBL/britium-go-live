@@ -18,6 +18,8 @@ try {
   const {
     buildDeliveryAddressQueries,
     coordinateMatchesTownship,
+    googleMapsAddressOpenUrl,
+    googleMapsAddressUrl,
     resolveDeliveryLocation,
     townshipEvidenceMatches,
     validateDeliveryCandidate,
@@ -68,6 +70,8 @@ try {
     "မြောက်ဒဂုံ",
   );
   assert.match(converted, /North Dagon Township/, "North Dagon must translate completely");
+  assert.match(converted, /Pinlon Road/, "Pinlon Road must translate completely for Google");
+  assert.doesNotMatch(converted, /ပင်လုံ/, "The Google query must not retain the Myanmar Pinlon road name");
   assert.doesNotMatch(converted, /မြောက်Dagon/, "North Dagon must not be partially translated");
   assert.equal(
     (converted.match(/North Dagon Township/g) || []).length,
@@ -108,6 +112,15 @@ try {
   assert.ok(queries.every((query) => (query.match(/\bYangon\b/g) || []).length <= 1), "Geocoder query must not duplicate Yangon");
   assert.ok(queries.every((query) => (query.match(/\bMyanmar\b/g) || []).length <= 1), "Geocoder query must not duplicate Myanmar");
   assert.ok(queries.every((query) => (query.match(/North Dagon Township/g) || []).length <= 1), "Geocoder query must not duplicate North Dagon");
+  const addressPreviewUrl = googleMapsAddressUrl(
+    "အမှတ် ၇၇၊ ပင်လုံလမ်း၊ အမှတ် (၃၂) ရပ်ကွက်",
+    "မြောက်ဒဂုံ",
+  );
+  assert.match(decodeURIComponent(addressPreviewUrl), /Pinlon Road/);
+  assert.match(decodeURIComponent(addressPreviewUrl), /North Dagon Township/);
+  assert.match(addressPreviewUrl, /^https:\/\/www\.google\.com\/maps\?q=/);
+  assert.doesNotMatch(addressPreviewUrl, /key=/i, "The read-only address preview must not require a Google API key");
+  assert.match(googleMapsAddressOpenUrl("No. 77, Pinlon Road", "North Dagon"), /\/maps\/search\/\?api=1&query=/);
 
   assert.equal(
     townshipEvidenceMatches("Ward 32, North Dagon Township, Yangon", "မြောက်ဒဂုံ", northDagonPostal.township),
@@ -139,14 +152,14 @@ try {
     address: "No. 77, Ward 32, North Dagon Township, Yangon",
     township: "မြောက်ဒဂုံ",
   }, northDagonPostal, false);
-  assert.equal(wrongTownshipCandidate.areaMatch, true, "Regression coordinate demonstrates why the old rectangle was insufficient");
+  assert.equal(wrongTownshipCandidate.areaMatch, false, "The real North Dagon polygon must reject the old North Okkalapa pin");
   assert.equal(wrongTownshipCandidate.townshipMatch, false);
-  assert.equal(wrongTownshipCandidate.reviewReason, "TOWNSHIP_MISMATCH");
+  assert.equal(wrongTownshipCandidate.reviewReason, "OUTSIDE_TOWNSHIP_AREA");
 
   const correctTownshipCandidate = validateDeliveryCandidate({
     text: "Ward 32, North Dagon Township, Yangon",
-    latitude: 16.95,
-    longitude: 96.21,
+    latitude: 16.9,
+    longitude: 96.19,
     matchLevel: "WARD_APPROXIMATE",
     confidence: 0.67,
     provider: "GOOGLE",
@@ -160,8 +173,8 @@ try {
 
   const approximateStreetCandidate = validateDeliveryCandidate({
     text: "Pinlon Road, Ward 32, North Dagon Township, Yangon",
-    latitude: 16.95,
-    longitude: 96.21,
+    latitude: 16.9,
+    longitude: 96.19,
     matchLevel: "STREET_APPROXIMATE",
     confidence: 0.99,
     provider: "GOOGLE_PLACES",
@@ -192,7 +205,7 @@ try {
               id: "places/north-dagon-contract",
               displayName: "No. 77, Pinlon Road",
               formattedAddress: "Ward 32, North Dagon Township, Yangon",
-              location: { lat: () => 16.917583, lng: () => 96.16738 },
+              location: { lat: () => 16.9, lng: () => 96.19 },
               types: ["point_of_interest", "establishment"],
               addressComponents: [{ longText: "North Dagon Township", shortText: "North Dagon" }],
                 }] };
@@ -202,6 +215,7 @@ try {
         },
         Geocoder: class {
           async geocode(request) {
+            if (request?.address) return { results: [] };
             assert.ok(request?.location, "The candidate must be independently reverse-geocoded");
             return {
               results: [{
@@ -218,7 +232,12 @@ try {
     assert.equal(
       await coordinateMatchesTownship("မြောက်ဒဂုံ", 16.917583, 96.16738),
       false,
-      "Google reverse evidence for North Okkalapa must reject a North Dagon assignment",
+      "The audited polygon must reject the old North Okkalapa coordinate before provider evidence",
+    );
+    assert.equal(
+      await coordinateMatchesTownship("မြောက်ဒဂုံ", 16.9, 96.19),
+      false,
+      "Conflicting Google reverse evidence must reject an otherwise in-boundary North Dagon point",
     );
     assert.equal(
       await resolveDeliveryLocation({
@@ -246,6 +265,39 @@ try {
     globalThis.fetch = originalFetch;
     if (originalGoogle == null) delete globalThis.google;
     else globalThis.google = originalGoogle;
+  }
+
+  const googleBeforeFailure = globalThis.google;
+  try {
+    globalThis.google = {
+      maps: {
+        importLibrary: async () => {
+          throw new Error("REQUEST_DENIED: API key has an IP address restriction");
+        },
+        Geocoder: class {
+          async geocode() {
+            throw new Error("REQUEST_DENIED: API key has an IP address restriction");
+          }
+        },
+      },
+    };
+    assert.equal(
+      await coordinateMatchesTownship("မြောက်ဒဂုံ", 16.9, 96.19),
+      true,
+      "A point inside the audited polygon remains manually applicable if reverse geocoding is unavailable",
+    );
+    await assert.rejects(
+      resolveDeliveryLocation({
+        deliveryWayId: "POSTAL-CONTRACT-003",
+        address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
+        township: "မြောက်ဒဂုံ",
+      }),
+      /Application restriction to Websites.*www\.britiumexpress\.com.*No coordinates were saved/,
+      "Google browser-key failures must be shown to the operator instead of becoming an empty map",
+    );
+  } finally {
+    if (googleBeforeFailure == null) delete globalThis.google;
+    else globalThis.google = googleBeforeFailure;
   }
 
   const cases = [];

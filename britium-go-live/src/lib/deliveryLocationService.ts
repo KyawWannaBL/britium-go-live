@@ -6,6 +6,7 @@ import {
   normalizeEnglishAddressForGeocoding,
 } from "@/lib/myanmarAddressConverter";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
+import { pointInYangonTownship } from "@/lib/yangonTownshipBoundaries";
 
 export type DeliveryLocation = {
   deliveryWayId: string;
@@ -25,6 +26,34 @@ export type DeliveryLocation = {
 };
 
 const googleKey = () => String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+
+const GOOGLE_BROWSER_KEY_GUIDANCE = "Google Maps rejected the browser key. In Google Cloud, set the key's Application restriction to Websites, allow https://www.britiumexpress.com/*, and enable Maps JavaScript API, Places API (New), and Geocoding API. No coordinates were saved.";
+
+class GoogleLocationProviderError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GoogleLocationProviderError";
+  }
+}
+
+function providerErrorText(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    return String(record.message || record.status || record.code || "");
+  }
+  return "";
+}
+
+function googleLocationError(error: unknown, service: string) {
+  if (error instanceof GoogleLocationProviderError) return error;
+  const detail = providerErrorText(error);
+  if (/api.?key|request.?denied|referer|referrer|billing|not.?authorized|permission|forbidden|ip address|api.?not.?activated/i.test(detail)) {
+    return new GoogleLocationProviderError(GOOGLE_BROWSER_KEY_GUIDANCE);
+  }
+  return new GoogleLocationProviderError(`${service} failed${detail ? `: ${detail}` : ""}. No coordinates were saved.`);
+}
 
 export function validMyanmarCoordinate(lng: unknown, lat: unknown) {
   const longitude = Number(lng);
@@ -234,14 +263,18 @@ export function loadGoogleMaps() {
 }
 
 async function reverseGeocode(latitude: number, longitude: number) {
-  const maps = await loadGoogleMaps();
-  if (!maps?.Geocoder) throw new Error("Google Maps geocoding is not available.");
-  const response = await new maps.Geocoder().geocode({
-    location: { lat: latitude, lng: longitude },
-    language: "en",
-    region: "MM",
-  });
-  return (response?.results || []).map(featureText).filter(Boolean);
+  try {
+    const maps = await loadGoogleMaps();
+    if (!maps?.Geocoder) throw new Error("Google Maps Geocoder is unavailable");
+    const response = await new maps.Geocoder().geocode({
+      location: { lat: latitude, lng: longitude },
+      language: "en",
+      region: "MM",
+    });
+    return (response?.results || []).map(featureText).filter(Boolean);
+  } catch (error) {
+    throw googleLocationError(error, "Google reverse geocoding");
+  }
 }
 
 function googleClassification(result: any) {
@@ -255,31 +288,35 @@ function googleClassification(result: any) {
 }
 
 async function googleGeocode(query: string) {
+  let maps: any;
   try {
-    const maps = await loadGoogleMaps();
-    if (!maps) return [];
+    maps = await loadGoogleMaps();
+  } catch (error) {
+    throw googleLocationError(error, "Google Maps");
+  }
+  if (!maps) throw new GoogleLocationProviderError("Google Maps browser key is not configured. No coordinates were saved.");
 
-    let placeResults: any[] = [];
-    try {
-      const placesLibrary = await maps.importLibrary?.("places");
-      const Place = placesLibrary?.Place;
-      if (Place?.searchByText) {
-        const response = await Place.searchByText({
-          textQuery: query,
-          fields: ["id", "displayName", "formattedAddress", "location", "types", "addressComponents"],
-          language: "en",
-          region: "MM",
-          maxResultCount: 8,
-          locationBias: { south: 9, west: 92, north: 29, east: 102 },
-        });
-        placeResults = response?.places || [];
-      }
-    } catch {
-      // Google Places may be disabled for an otherwise valid Maps browser key.
-      // The browser Geocoder below remains a precise Google-only fallback.
+  const errors: unknown[] = [];
+  let placeResults: any[] = [];
+  try {
+    const placesLibrary = await maps.importLibrary?.("places");
+    const Place = placesLibrary?.Place;
+    if (Place?.searchByText) {
+      const response = await Place.searchByText({
+        textQuery: query,
+        fields: ["id", "displayName", "formattedAddress", "location", "types", "addressComponents"],
+        language: "en",
+        region: "MM",
+        maxResultCount: 8,
+        locationBias: { south: 9, west: 92, north: 29, east: 102 },
+      });
+      placeResults = response?.places || [];
     }
+  } catch (error) {
+    errors.push(error);
+  }
 
-    const places = placeResults.map((place: any, providerRank: number) => {
+  const places = placeResults.map((place: any, providerRank: number) => {
       const types: string[] = place?.types || [];
       const rawLatitude = place?.location?.lat;
       const rawLongitude = place?.location?.lng;
@@ -314,17 +351,23 @@ async function googleGeocode(query: string) {
         providerRank,
         placeId: place?.id || "",
       };
-    }).filter(Boolean);
-    if (places.length) return places;
+  }).filter(Boolean);
 
-    if (!maps.Geocoder) return [];
-    const response = await new maps.Geocoder().geocode({
-      address: query,
-      componentRestrictions: { country: "MM" },
-      language: "en",
-      region: "MM",
-    });
-    return (response?.results || []).map((result: any, providerRank: number) => {
+  let geocodingResults: any[] = [];
+  if (maps.Geocoder) {
+    try {
+      const response = await new maps.Geocoder().geocode({
+        address: query,
+        componentRestrictions: { country: "MM" },
+        language: "en",
+        region: "MM",
+      });
+      geocodingResults = response?.results || [];
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+  const geocoded = geocodingResults.map((result: any, providerRank: number) => {
       const classification = googleClassification(result);
       const location = result?.geometry?.location;
       const latitude = Number(typeof location?.lat === "function" ? location.lat() : location?.lat);
@@ -340,10 +383,19 @@ async function googleGeocode(query: string) {
         providerRank,
         placeId: result?.place_id || "",
       };
-    }).filter(Boolean);
-  } catch {
-    return [];
-  }
+  }).filter(Boolean);
+
+  const seen = new Set<string>();
+  const combined = [...places, ...geocoded].filter((candidate: any) => {
+    const key = candidate.placeId
+      ? `place:${candidate.placeId}`
+      : `${Number(candidate.latitude).toFixed(6)},${Number(candidate.longitude).toFixed(6)}:${normalizedEvidence(candidate.label)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  if (!combined.length && errors.length) throw googleLocationError(errors[0], "Google location search");
+  return combined;
 }
 
 function addressNumbers(value: string) {
@@ -367,8 +419,8 @@ function administrativeAreaNumbers(value: string) {
   return numbers;
 }
 
-// These are only coarse rejection envelopes. Full acceptance requires provider
-// township evidence (and reverse-geocoded township evidence for manual/saved pins).
+// Coarse rejection envelopes remain a fallback outside the audited Yangon
+// polygon subset. Dagon/Okkalapa validation uses the real administrative shape.
 const STRICT_TOWNSHIP_AREAS: Array<{ keys: string[]; minLat: number; maxLat: number; minLng: number; maxLng: number }> = [
   { keys: ["north dagon", "dagon myothit north", "dagon myothit (north)", "ဒဂုံမြို့သစ်မြောက်ပိုင်း", "မြောက်ဒဂုံ"], minLat: 16.865, maxLat: 17.015, minLng: 96.145, maxLng: 96.26 },
   { keys: ["south dagon", "dagon myothit south", "dagon myothit (south)", "ဒဂုံမြို့သစ်တောင်ပိုင်း", "တောင်ဒဂုံ"], minLat: 16.765, maxLat: 16.92, minLng: 96.175, maxLng: 96.31 },
@@ -377,6 +429,9 @@ const STRICT_TOWNSHIP_AREAS: Array<{ keys: string[]; minLat: number; maxLat: num
 ];
 
 function townshipAreaMatches(township: string, latitude: number, longitude: number) {
+  const canonicalTownship = canonicalTownshipForGeocoding(township);
+  const preciseMatch = pointInYangonTownship(canonicalTownship, longitude, latitude);
+  if (preciseMatch !== null) return preciseMatch;
   const expected = normalizedEvidence(township);
   const area = STRICT_TOWNSHIP_AREAS.find((item) => item.keys.some((key) => expected === normalizedEvidence(key)));
   return !area || (latitude >= area.minLat && latitude <= area.maxLat && longitude >= area.minLng && longitude <= area.maxLng);
@@ -385,14 +440,25 @@ function townshipAreaMatches(township: string, latitude: number, longitude: numb
 export async function coordinateMatchesTownship(township: string, latitude: unknown, longitude: unknown) {
   const lat = Number(latitude);
   const lng = Number(longitude);
-  if (!validMyanmarCoordinate(lng, lat) || !townshipAreaMatches(township, lat, lng)) return false;
+  if (!validMyanmarCoordinate(lng, lat)) return false;
+  const canonicalTownship = canonicalTownshipForGeocoding(township);
+  const boundaryMatch = pointInYangonTownship(canonicalTownship, lng, lat);
+  if (boundaryMatch === false || !townshipAreaMatches(township, lat, lng)) return false;
   try {
     const evidence = await reverseGeocode(lat, lng);
-    return evidence.some((text) => townshipEvidenceMatches(text, township));
+    if (evidence.some((text) => townshipEvidenceMatches(text, township))) return true;
+    const expectedGroup = townshipGroup(township);
+    const hasConflictingTownship = Boolean(expectedGroup && evidence.some((text) => {
+      const normalizedText = normalizedEvidence(text);
+      return TOWNSHIP_EVIDENCE_GROUPS.some((group) => group.id !== expectedGroup.id
+        && group.aliases.some((alias) => containsPhrase(normalizedText, normalizedEvidence(alias))));
+    }));
+    if (hasConflictingTownship) return false;
+    return boundaryMatch === true;
   } catch {
-    // Failing closed prevents a provider/network failure from silently assigning
-    // a drop-off to a neighboring township.
-    return false;
+    // The audited polygon is an independent fail-safe when Google reverse
+    // geocoding is unavailable. Unsupported townships still fail closed.
+    return boundaryMatch === true;
   }
 }
 
@@ -516,13 +582,21 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     postal.township,
   ).slice(0, 6);
   const candidates: any[] = [];
+  let providerFailure: Error | null = null;
 
   for (const query of queries) {
-    const google = await googleGeocode(query);
-    for (const result of google) candidates.push({ ...result, query });
+    try {
+      const google = await googleGeocode(query);
+      for (const result of google) candidates.push({ ...result, query });
+    } catch (error) {
+      providerFailure ||= error instanceof Error ? error : googleLocationError(error, "Google location search");
+    }
   }
 
-  if (!candidates.length) return null;
+  if (!candidates.length) {
+    if (providerFailure) throw providerFailure;
+    return null;
+  }
   const evaluated = candidates
     .map((candidate) => {
       return validateDeliveryCandidate(candidate, { address: originalAddress, township: input.township }, postal, false);
@@ -590,4 +664,19 @@ export function googleMapsLocationUrl(location: Pick<DeliveryLocation, "longitud
   const lng = Number(location.longitude).toFixed(6);
   const lat = Number(location.latitude).toFixed(6);
   return `https://www.google.com/maps?q=${lat},${lng}&z=${zoom}&output=embed`;
+}
+
+function googleMapsAddressQuery(address: string, township: string) {
+  const canonicalTownship = canonicalTownshipForGeocoding(township);
+  return normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(address, canonicalTownship));
+}
+
+export function googleMapsAddressUrl(address: string, township: string) {
+  const query = googleMapsAddressQuery(address, township);
+  return query ? `https://www.google.com/maps?q=${encodeURIComponent(query)}&output=embed` : "";
+}
+
+export function googleMapsAddressOpenUrl(address: string, township: string) {
+  const query = googleMapsAddressQuery(address, township);
+  return query ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}` : "";
 }
