@@ -36,6 +36,7 @@ const checks=[
   ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
   ["Google Map click copies relocation coordinates into Data Entry",/map\.addListener\("click"/.test(location)&&/setLat\(nextLat\.toFixed\(6\)\)/.test(location)&&/setLng\(nextLng\.toFixed\(6\)\)/.test(location)&&/Coordinates copied from the/.test(location)],
   ["Data Entry exposes an explicit Google Map relocation control",/Relocate directly on Google Map/.test(location)&&/COORDINATES COPY AUTOMATICALLY/.test(location)],
+  ["relocation creates a same-screen editable pin without a prior candidate",/async function openRelocationMap/.test(location)&&/new maps\.Geocoder\(\)/.test(location)&&/Show pin and select location on this map/.test(location)&&/without opening another tab/.test(location)],
   ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],
   ["photo bypass is explicit and reasoned",/skipPhotoReview/.test(importer)&&/at least 10 characters/.test(importer)&&/PHOTO_BYPASS_REASON_REQUIRED/.test(migration)],
   ["OS import requires upload permission",/be_data_entry_require_access_v57\('upload',false\)/.test(migration)],
