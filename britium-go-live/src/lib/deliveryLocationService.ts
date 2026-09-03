@@ -167,7 +167,10 @@ export function buildDeliveryAddressQueries(
 ) {
   const canonicalTownship = canonicalTownshipForGeocoding(township, postalTownship);
   const english = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(address, canonicalTownship));
-  const localityParts = [quarter, canonicalTownship, "Yangon", postalCode, "Myanmar"].filter(Boolean);
+  // The Britium postal directory is authoritative internal validation data, not
+  // necessarily a postal code understood by Google. Injecting it into Google's
+  // query caused otherwise valid Myanmar addresses to collapse to area centroids.
+  const localityParts = [quarter, canonicalTownship, "Yangon", "Myanmar"].filter(Boolean);
   const queries: string[] = [];
   const add = (query: string) => {
     const cleaned = appendMissingLocality(query, localityParts);
@@ -182,7 +185,9 @@ export function buildDeliveryAddressQueries(
     add(a);
     add(b);
   }
-  for (const query of [...bilingualAddressQueries(address, canonicalTownship), english]) {
+  // Search the operator's original spelling first. Google Maps/Places often has
+  // local Myanmar-script POIs that are lost during transliteration.
+  for (const query of [address, ...bilingualAddressQueries(address, canonicalTownship), english]) {
     add(query);
     add(stripHouseNumber(query));
   }
@@ -260,7 +265,37 @@ function googleClassification(result: any) {
 async function googleGeocode(query: string) {
   try {
     const response = await locationServiceRequest(new URLSearchParams({ q: query }));
-    return (response?.results || []).map((result: any) => {
+    const places = (response?.places || []).map((place: any, providerRank: number) => {
+      const types: string[] = place?.types || [];
+      const latitude = Number(place?.location?.latitude);
+      const longitude = Number(place?.location?.longitude);
+      if (!validMyanmarCoordinate(longitude, latitude)) return null;
+      const isPoi = types.some((type) => ["establishment", "point_of_interest", "premise", "subpremise"].includes(type));
+      const isAddress = types.includes("street_address");
+      const isRoute = types.includes("route");
+      const matchLevel = isPoi ? "POI_EXACT" : isAddress ? "STREET_APPROXIMATE" : isRoute ? "STREET_APPROXIMATE" : "WARD_APPROXIMATE";
+      const components = Array.isArray(place?.addressComponents)
+        ? place.addressComponents.flatMap((item: any) => [item?.longText, item?.shortText])
+        : [];
+      const label = [place?.displayName?.text, place?.formattedAddress].filter(Boolean).join(", ") || query;
+      return {
+        matchLevel,
+        // Places results are ranked by relevance. POIs/premises can be precise,
+        // while bare streets and administrative areas always require review.
+        confidence: isPoi ? 0.96 : isAddress ? 0.84 : isRoute ? 0.72 : 0.6,
+        latitude,
+        longitude,
+        label,
+        text: [label, ...components].filter(Boolean).join(" ").toLowerCase(),
+        provider: "GOOGLE_PLACES",
+        providerRank,
+        placeId: place?.id || "",
+        googleMapsUri: place?.googleMapsUri || "",
+      };
+    }).filter(Boolean);
+    if (places.length) return places;
+
+    return (response?.results || []).map((result: any, providerRank: number) => {
       const classification = googleClassification(result);
       const location = result?.geometry?.location;
       const latitude = Number(location?.lat);
@@ -272,7 +307,9 @@ async function googleGeocode(query: string) {
         longitude,
         label: result.formatted_address || query,
         text: featureText(result),
-        provider: "GOOGLE",
+        provider: "GOOGLE_GEOCODING",
+        providerRank,
+        placeId: result?.place_id || "",
       };
     }).filter(Boolean);
   } catch {
@@ -364,15 +401,16 @@ export function validateDeliveryCandidate(
   const postalValidated = postal.matchLevel === "EXACT_QUARTER" && (postalMatch || quarterMatch);
   const postalCompatible = postal.matchLevel !== "EXACT_QUARTER" || postalValidated;
   const areaMatch = townshipAreaMatches(input.township, Number(candidate.latitude), Number(candidate.longitude));
+  const rankBonus = Math.max(0, 0.08 - (Number(candidate.providerRank || 0) * 0.015));
   const score = Number(candidate.score || candidate.confidence || 0)
+    + rankBonus
     + (townshipMatch ? 0.08 : -0.4)
     + (postalMatch ? 0.12 : quarterMatch ? 0.09 : 0)
     + (houseStreetMatch ? 0.12 : 0)
     + (agreement ? 0.06 : 0);
   const autoAccept = areaMatch && (
-    (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && (postalCompatible || houseStreetMatch) && score >= 0.9)
-    || (candidate.matchLevel === "POI_EXACT" && townshipMatch && (postalCompatible || agreement) && score >= 0.9)
-    || (candidate.matchLevel === "STREET_APPROXIMATE" && townshipMatch && postalCompatible && agreement && score >= 0.9)
+    (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && houseStreetMatch && score >= 0.96)
+    || (candidate.matchLevel === "POI_EXACT" && townshipMatch && score >= 0.96)
   );
   const reviewReason = !areaMatch
     ? "OUTSIDE_TOWNSHIP_AREA"
@@ -392,6 +430,7 @@ export function validateDeliveryCandidate(
     townshipMatch,
     areaMatch,
     providerAgreement: agreement,
+    rankBonus,
     reviewReason,
     reviewStatus: autoAccept ? "ACCEPTED" as const : "MANUAL_REVIEW" as const,
   };

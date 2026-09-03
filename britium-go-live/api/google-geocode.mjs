@@ -55,25 +55,60 @@ export default async function handler(request, response) {
   });
 
   try {
-    const upstream = await fetch(
-      `https://maps.googleapis.com/maps/api/geocode/json?${parameters.toString()}`,
-      {
-        headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/14" },
+    const upstream = reverseRequested
+      ? await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?${parameters.toString()}`,
+        {
+          headers: { Accept: "application/json", "User-Agent": "Britium-Location-Service/15" },
+          signal: AbortSignal.timeout(12000),
+        },
+      )
+      : await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": key,
+          "X-Goog-FieldMask": [
+            "places.id",
+            "places.displayName",
+            "places.formattedAddress",
+            "places.location",
+            "places.types",
+            "places.addressComponents",
+            "places.plusCode",
+            "places.viewport",
+            "places.googleMapsUri",
+          ].join(","),
+          "User-Agent": "Britium-Location-Service/15",
+        },
+        body: JSON.stringify({
+          textQuery: query,
+          languageCode: "en",
+          regionCode: "MM",
+          pageSize: 8,
+          includePureServiceAreaBusinesses: false,
+          locationBias: {
+            rectangle: {
+              low: { latitude: 9, longitude: 92 },
+              high: { latitude: 29, longitude: 102 },
+            },
+          },
+        }),
         signal: AbortSignal.timeout(12000),
-      },
-    );
+      });
     const body = await upstream.json().catch(() => null);
     if (!upstream.ok || !body) {
       return json(response, upstream.status || 502, {
-        error: body?.error_message || `Google Maps rejected the location request (${upstream.status}).`,
+        error: body?.error?.message || body?.error_message || `Google Maps rejected the location request (${upstream.status}).`,
       });
     }
-    if (!['OK', 'ZERO_RESULTS'].includes(String(body.status))) {
+    if (reverseRequested && !['OK', 'ZERO_RESULTS'].includes(String(body.status))) {
       return json(response, 502, {
         error: body.error_message || `Google Geocoding failed (${body.status || 'UNKNOWN_ERROR'}).`,
       });
     }
-    return json(response, 200, body);
+    return json(response, 200, reverseRequested ? body : { status: "OK", places: body.places || [] });
   } catch (error) {
     const timedOut = error?.name === "TimeoutError" || error?.name === "AbortError";
     return json(response, 502, {

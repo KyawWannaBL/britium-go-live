@@ -97,6 +97,8 @@ try {
     northDagonPostal.township,
   );
   assert.ok(queries.some((query) => /North Dagon Township/.test(query)), "Geocoder query must use canonical North Dagon");
+  assert.ok(queries.some((query) => /အမှတ် ၇၇/.test(query)), "Google Places must receive the original Myanmar spelling");
+  assert.ok(queries.every((query) => !query.includes(northDagonPostal.postalCode)), "Internal postal identifiers must not distort Google Places searches");
   assert.ok(queries.every((query) => !/မြောက်Dagon|ဒဂုံမြို့သစ်/.test(query)), "Geocoder query must not mix Myanmar and partial English township names");
   assert.ok(queries.every((query) => (query.match(/\bYangon\b/g) || []).length <= 1), "Geocoder query must not duplicate Yangon");
   assert.ok(queries.every((query) => (query.match(/\bMyanmar\b/g) || []).length <= 1), "Geocoder query must not duplicate Myanmar");
@@ -151,24 +153,58 @@ try {
   assert.equal(correctTownshipCandidate.postalValidated, true);
   assert.equal(correctTownshipCandidate.reviewStatus, "MANUAL_REVIEW");
 
+  const approximateStreetCandidate = validateDeliveryCandidate({
+    text: "Pinlon Road, Ward 32, North Dagon Township, Yangon",
+    latitude: 16.95,
+    longitude: 96.21,
+    matchLevel: "STREET_APPROXIMATE",
+    confidence: 0.99,
+    provider: "GOOGLE_PLACES",
+    providerRank: 0,
+  }, {
+    address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
+    township: "မြောက်ဒဂုံ",
+  }, northDagonPostal, false);
+  assert.equal(approximateStreetCandidate.reviewStatus, "MANUAL_REVIEW", "A street/ward centroid must never auto-save");
+
   const originalFetch = globalThis.fetch;
   const originalGoogleMapsKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   let requestedGoogleUrl = "";
+  let requestedGoogleOptions = null;
+  let responseBody = "";
+  const response = {
+    statusCode: 0,
+    setHeader() {},
+    end(value) { responseBody = String(value ?? ""); },
+  };
   try {
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "contract-test-key";
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, options) => {
       requestedGoogleUrl = String(url);
-      return new Response(JSON.stringify({ status: "OK", results: [] }), {
+      requestedGoogleOptions = options || null;
+      const payload = requestedGoogleUrl.includes("places.googleapis.com")
+        ? { places: [] }
+        : { status: "OK", results: [] };
+      return new Response(JSON.stringify(payload), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
     };
-    let responseBody = "";
-    const response = {
-      statusCode: 0,
-      setHeader() {},
-      end(value) { responseBody = String(value ?? ""); },
-    };
+    await googleGeocodeHandler({
+      method: "GET",
+      headers: { "sec-fetch-site": "same-origin" },
+      query: { q: "အမှတ် ၇၇၊ ပင်လုံလမ်း၊ အမှတ် (၃၂) ရပ်ကွက်၊ မြောက်ဒဂုံမြို့နယ်" },
+    }, response);
+    assert.equal(response.statusCode, 200);
+    assert.equal(requestedGoogleUrl, "https://places.googleapis.com/v1/places:searchText");
+    assert.equal(requestedGoogleOptions?.method, "POST");
+    assert.equal(requestedGoogleOptions?.headers?.["X-Goog-Api-Key"], "contract-test-key");
+    assert.match(requestedGoogleOptions?.headers?.["X-Goog-FieldMask"] || "", /places\.location/);
+    assert.match(String(requestedGoogleOptions?.body), /အမှတ် ၇၇/);
+
+    responseBody = "";
+    response.statusCode = 0;
+    response.end = (value) => { responseBody = String(value ?? ""); };
     await googleGeocodeHandler({
       method: "GET",
       headers: { "sec-fetch-site": "same-origin" },
