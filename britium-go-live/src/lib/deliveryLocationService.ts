@@ -24,7 +24,6 @@ export type DeliveryLocation = {
   reviewReason?: string;
 };
 
-const accessToken = () => String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || import.meta.env.VITE_MAPBOX_TOKEN || "").trim();
 const googleKey = () => String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
 
 export function validMyanmarCoordinate(lng: unknown, lat: unknown) {
@@ -49,42 +48,12 @@ function parseCoordinate(value: string) {
   return null;
 }
 
-function featureType(feature: any) {
-  return String(feature?.properties?.feature_type || feature?.place_type?.[0] || feature?.type || "").toLowerCase();
-}
-
-function classify(feature: any) {
-  const type = featureType(feature);
-  if (type === "address") return { matchLevel: "ADDRESS_EXACT" as const, confidence: 0.96 };
-  if (type === "poi") return { matchLevel: "POI_EXACT" as const, confidence: 0.9 };
-  if (type === "street") return { matchLevel: "STREET_APPROXIMATE" as const, confidence: 0.78 };
-  if (["neighborhood", "locality"].includes(type)) return { matchLevel: "WARD_APPROXIMATE" as const, confidence: 0.67 };
-  return null;
-}
-
-function point(feature: any) {
-  const coordinates = feature?.geometry?.coordinates
-    || (feature?.properties?.coordinates && [feature.properties.coordinates.longitude, feature.properties.coordinates.latitude]);
-  if (!Array.isArray(coordinates) || !validMyanmarCoordinate(coordinates[0], coordinates[1])) return null;
-  return { longitude: Number(coordinates[0]), latitude: Number(coordinates[1]) };
-}
-
 function featureText(feature: any) {
-  const structuredContext = Object.values(feature?.properties?.context || {}).flatMap((item: any) => [
-    item?.name,
-    item?.name_preferred,
-    item?.text,
-    item?.text_en,
-  ]);
   return [
-    feature?.properties?.full_address,
-    feature?.properties?.name,
-    feature?.properties?.name_preferred,
-    feature?.properties?.place_formatted,
-    feature?.place_name,
-    feature?.text,
-    ...structuredContext,
-    ...(Array.isArray(feature?.context) ? feature.context.map((item: any) => item?.text || item?.text_en) : []),
+    feature?.formatted_address,
+    ...(Array.isArray(feature?.address_components)
+      ? feature.address_components.flatMap((item: any) => [item?.long_name, item?.short_name])
+      : []),
   ].filter(Boolean).join(" ").toLowerCase();
 }
 
@@ -198,7 +167,10 @@ export function buildDeliveryAddressQueries(
 ) {
   const canonicalTownship = canonicalTownshipForGeocoding(township, postalTownship);
   const english = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(address, canonicalTownship));
-  const localityParts = [quarter, canonicalTownship, "Yangon", postalCode, "Myanmar"].filter(Boolean);
+  // The Britium postal directory is authoritative internal validation data, not
+  // necessarily a postal code understood by Google. Injecting it into Google's
+  // query caused otherwise valid Myanmar addresses to collapse to area centroids.
+  const localityParts = [quarter, canonicalTownship, "Yangon", "Myanmar"].filter(Boolean);
   const queries: string[] = [];
   const add = (query: string) => {
     const cleaned = appendMissingLocality(query, localityParts);
@@ -213,7 +185,9 @@ export function buildDeliveryAddressQueries(
     add(a);
     add(b);
   }
-  for (const query of [...bilingualAddressQueries(address, canonicalTownship), english]) {
+  // Search the operator's original spelling first. Google Maps/Places often has
+  // local Myanmar-script POIs that are lost during transliteration.
+  for (const query of [address, ...bilingualAddressQueries(address, canonicalTownship), english]) {
     add(query);
     add(stripHouseNumber(query));
   }
@@ -223,7 +197,7 @@ export function buildDeliveryAddressQueries(
 async function locationServiceRequest(parameters: URLSearchParams) {
   let response: Response;
   try {
-    response = await fetch(`/api/mapbox-geocode?${parameters.toString()}`, { headers: { Accept: "application/json" } });
+    response = await fetch(`/api/google-geocode?${parameters.toString()}`, { headers: { Accept: "application/json" } });
   } catch {
     throw new Error("The Britium location service could not be reached. Check the deployment and internet connection.");
   }
@@ -244,37 +218,16 @@ async function locationServiceRequest(parameters: URLSearchParams) {
   }
 }
 
-function localityScore(feature: any, township: string, postalTownship = "") {
-  return townshipEvidenceMatches(featureText(feature), township, postalTownship) ? 0.12 : -0.4;
-}
-
-async function geocode(query: string, township: string, postalTownship = "") {
-  const data = await locationServiceRequest(new URLSearchParams({ q: query }));
-  const candidates: any[] = [];
-  for (const feature of data?.features || []) {
-    const classification = classify(feature);
-    const coordinate = point(feature);
-    if (!classification || !coordinate) continue;
-    candidates.push({
-      feature,
-      ...classification,
-      ...coordinate,
-      score: classification.confidence + localityScore(feature, township, postalTownship),
-    });
-  }
-  return candidates.sort((a, b) => b.score - a.score);
-}
-
 async function reverseGeocode(latitude: number, longitude: number) {
   const data = await locationServiceRequest(new URLSearchParams({
     latitude: String(latitude),
     longitude: String(longitude),
   }));
-  return (data?.features || []).map(featureText).filter(Boolean);
+  return (data?.results || []).map(featureText).filter(Boolean);
 }
 
 let googleLoader: Promise<any> | null = null;
-function loadGoogleMaps() {
+export function loadGoogleMaps() {
   const existing = (globalThis as any).google?.maps;
   if (existing) return Promise.resolve(existing);
   if (!googleKey()) return Promise.resolve(null);
@@ -301,32 +254,62 @@ function loadGoogleMaps() {
 
 function googleClassification(result: any) {
   const types: string[] = result?.types || [];
-  if (types.some((type) => ["street_address", "premise", "subpremise"].includes(type))) return { matchLevel: "ADDRESS_EXACT" as const, confidence: 0.97 };
+  const locationType = String(result?.geometry?.location_type || "").toUpperCase();
+  if (types.some((type) => ["street_address", "premise", "subpremise"].includes(type)) && locationType === "ROOFTOP") return { matchLevel: "ADDRESS_EXACT" as const, confidence: 0.98 };
   if (types.some((type) => ["establishment", "point_of_interest"].includes(type))) return { matchLevel: "POI_EXACT" as const, confidence: 0.91 };
-  if (types.includes("route")) return { matchLevel: "STREET_APPROXIMATE" as const, confidence: 0.8 };
+  if (types.some((type) => ["street_address", "route"].includes(type))) return { matchLevel: "STREET_APPROXIMATE" as const, confidence: locationType === "RANGE_INTERPOLATED" ? 0.82 : 0.76 };
   if (types.some((type) => ["neighborhood", "sublocality", "sublocality_level_1", "postal_code"].includes(type))) return { matchLevel: "WARD_APPROXIMATE" as const, confidence: 0.66 };
   return null;
 }
 
 async function googleGeocode(query: string) {
   try {
-    const maps = await loadGoogleMaps();
-    if (!maps?.Geocoder) return [];
-    const response = await new maps.Geocoder().geocode({ address: query, region: "MM", componentRestrictions: { country: "MM" } });
-    return (response?.results || []).map((result: any) => {
+    const response = await locationServiceRequest(new URLSearchParams({ q: query }));
+    const places = (response?.places || []).map((place: any, providerRank: number) => {
+      const types: string[] = place?.types || [];
+      const latitude = Number(place?.location?.latitude);
+      const longitude = Number(place?.location?.longitude);
+      if (!validMyanmarCoordinate(longitude, latitude)) return null;
+      const isPoi = types.some((type) => ["establishment", "point_of_interest", "premise", "subpremise"].includes(type));
+      const isAddress = types.includes("street_address");
+      const isRoute = types.includes("route");
+      const matchLevel = isPoi ? "POI_EXACT" : isAddress ? "STREET_APPROXIMATE" : isRoute ? "STREET_APPROXIMATE" : "WARD_APPROXIMATE";
+      const components = Array.isArray(place?.addressComponents)
+        ? place.addressComponents.flatMap((item: any) => [item?.longText, item?.shortText])
+        : [];
+      const label = [place?.displayName?.text, place?.formattedAddress].filter(Boolean).join(", ") || query;
+      return {
+        matchLevel,
+        // Places results are ranked by relevance. POIs/premises can be precise,
+        // while bare streets and administrative areas always require review.
+        confidence: isPoi ? 0.96 : isAddress ? 0.84 : isRoute ? 0.72 : 0.6,
+        latitude,
+        longitude,
+        label,
+        text: [label, ...components].filter(Boolean).join(" ").toLowerCase(),
+        provider: "GOOGLE_PLACES",
+        providerRank,
+        placeId: place?.id || "",
+        googleMapsUri: place?.googleMapsUri || "",
+      };
+    }).filter(Boolean);
+    if (places.length) return places;
+
+    return (response?.results || []).map((result: any, providerRank: number) => {
       const classification = googleClassification(result);
       const location = result?.geometry?.location;
-      const latitude = Number(location?.lat?.());
-      const longitude = Number(location?.lng?.());
+      const latitude = Number(location?.lat);
+      const longitude = Number(location?.lng);
       if (!classification || !validMyanmarCoordinate(longitude, latitude)) return null;
-      const components = (result.address_components || []).map((component: any) => component.long_name).join(" ");
       return {
         ...classification,
         latitude,
         longitude,
         label: result.formatted_address || query,
-        text: `${result.formatted_address || ""} ${components}`.toLowerCase(),
-        provider: "GOOGLE",
+        text: featureText(result),
+        provider: "GOOGLE_GEOCODING",
+        providerRank,
+        placeId: result?.place_id || "",
       };
     }).filter(Boolean);
   } catch {
@@ -353,15 +336,6 @@ function administrativeAreaNumbers(value: string) {
     for (const match of normalized.matchAll(pattern)) numbers.add(String(Number(match[1])));
   }
   return numbers;
-}
-
-function distanceMeters(a: any, b: any) {
-  const rad = (value: number) => value * Math.PI / 180;
-  const dLat = rad(b.latitude - a.latitude);
-  const dLng = rad(b.longitude - a.longitude);
-  const x = Math.sin(dLat / 2) ** 2
-    + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLng / 2) ** 2;
-  return 6371e3 * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 // These are only coarse rejection envelopes. Full acceptance requires provider
@@ -427,15 +401,16 @@ export function validateDeliveryCandidate(
   const postalValidated = postal.matchLevel === "EXACT_QUARTER" && (postalMatch || quarterMatch);
   const postalCompatible = postal.matchLevel !== "EXACT_QUARTER" || postalValidated;
   const areaMatch = townshipAreaMatches(input.township, Number(candidate.latitude), Number(candidate.longitude));
+  const rankBonus = Math.max(0, 0.08 - (Number(candidate.providerRank || 0) * 0.015));
   const score = Number(candidate.score || candidate.confidence || 0)
+    + rankBonus
     + (townshipMatch ? 0.08 : -0.4)
     + (postalMatch ? 0.12 : quarterMatch ? 0.09 : 0)
     + (houseStreetMatch ? 0.12 : 0)
     + (agreement ? 0.06 : 0);
   const autoAccept = areaMatch && (
-    (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && (postalCompatible || houseStreetMatch) && score >= 0.9)
-    || (candidate.matchLevel === "POI_EXACT" && townshipMatch && (postalCompatible || agreement) && score >= 0.9)
-    || (candidate.matchLevel === "STREET_APPROXIMATE" && townshipMatch && postalCompatible && agreement && score >= 0.9)
+    (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && houseStreetMatch && score >= 0.96)
+    || (candidate.matchLevel === "POI_EXACT" && townshipMatch && score >= 0.96)
   );
   const reviewReason = !areaMatch
     ? "OUTSIDE_TOWNSHIP_AREA"
@@ -455,6 +430,7 @@ export function validateDeliveryCandidate(
     townshipMatch,
     areaMatch,
     providerAgreement: agreement,
+    rankBonus,
     reviewReason,
     reviewStatus: autoAccept ? "ACCEPTED" as const : "MANUAL_REVIEW" as const,
   };
@@ -513,35 +489,32 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   const candidates: any[] = [];
 
   for (const query of queries) {
-    const [mapbox, google] = await Promise.all([
-      geocode(query, input.township, postal.township).catch(() => []),
-      googleGeocode(query),
-    ]);
-    for (const result of mapbox) {
-      candidates.push({
-        ...result,
-        query,
-        label: result.feature?.properties?.full_address || result.feature?.properties?.name || result.feature?.place_name || query,
-        text: featureText(result.feature),
-        provider: "MAPBOX",
-      });
-    }
+    const google = await googleGeocode(query);
     for (const result of google) candidates.push({ ...result, query });
   }
 
   if (!candidates.length) return null;
   const evaluated = candidates
     .map((candidate) => {
-      const agreement = candidates.some((other) =>
-        other.provider !== candidate.provider && distanceMeters(candidate, other) <= 500,
-      );
-      return validateDeliveryCandidate(candidate, { address: originalAddress, township: input.township }, postal, agreement);
+      return validateDeliveryCandidate(candidate, { address: originalAddress, township: input.township }, postal, false);
     })
     .filter((candidate) => candidate.areaMatch && candidate.townshipMatch)
     .sort((a, b) => b.score - a.score);
 
   if (!evaluated.length) return null;
-  const best = evaluated[0];
+
+  // A forward Places result is never trusted by label alone. Google must also
+  // reverse-resolve the returned coordinate back to the requested township.
+  // This closes the North Dagon/North Okkalapa overlap where coarse rectangles
+  // cannot distinguish neighboring administrative boundaries.
+  let best: any = null;
+  for (const candidate of evaluated.slice(0, 5)) {
+    if (await coordinateMatchesTownship(input.township, candidate.latitude, candidate.longitude)) {
+      best = candidate;
+      break;
+    }
+  }
+  if (!best) return null;
   const validationSource = best.postalValidated ? "POSTAL_VALIDATED" : "TOWNSHIP_VALIDATED";
   return {
     deliveryWayId: input.deliveryWayId,
@@ -583,10 +556,9 @@ export async function saveDeliveryLocation(client: any, location: DeliveryLocati
   return data?.location || data;
 }
 
-export function mapboxStaticLocationUrl(location: Pick<DeliveryLocation, "longitude" | "latitude">, zoom = 15) {
-  const token = accessToken();
-  if (!token || !validMyanmarCoordinate(location.longitude, location.latitude)) return "";
+export function googleMapsLocationUrl(location: Pick<DeliveryLocation, "longitude" | "latitude">, zoom = 17) {
+  if (!validMyanmarCoordinate(location.longitude, location.latitude)) return "";
   const lng = Number(location.longitude).toFixed(6);
   const lat = Number(location.latitude).toFixed(6);
-  return `https://api.mapbox.com/styles/v1/mapbox/streets-v12/static/pin-l+f59e0b(${lng},${lat})/${lng},${lat},${zoom},0/900x420@2x?access_token=${encodeURIComponent(token)}`;
+  return `https://www.google.com/maps?q=${lat},${lng}&z=${zoom}&output=embed`;
 }

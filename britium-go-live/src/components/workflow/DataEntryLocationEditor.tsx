@@ -2,12 +2,10 @@
 // BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
 import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
-import { coordinateMatchesTownship, mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
+import { coordinateMatchesTownship, googleMapsLocationUrl, loadGoogleMaps, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 
 const AUTO_LOCATION_CONCURRENCY = 3;
@@ -67,12 +65,12 @@ export default function DataEntryLocationEditor({
   const requestSequence = useRef(0);
   const resolutionCallback = useRef(onResolutionChange);
   const interactiveMapContainer = useRef<HTMLDivElement | null>(null);
-  const interactiveMap = useRef<mapboxgl.Map | null>(null);
-  const draggableMarker = useRef<mapboxgl.Marker | null>(null);
-  const mapboxToken = useMemo(() => String(import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || import.meta.env.VITE_MAPBOX_TOKEN || "").trim(), []);
+  const interactiveMap = useRef<any>(null);
+  const draggableMarker = useRef<any>(null);
+  const googleMapsConfigured = useMemo(() => Boolean(String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim()), []);
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
-  const mapUrl = candidate ? mapboxStaticLocationUrl(candidate) : "";
+  const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
 
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
@@ -151,14 +149,20 @@ export default function DataEntryLocationEditor({
       void find(address, true);
       return;
     }
+    const savedMatchLevel = String(row.match_level || "").toUpperCase();
+    const savedSource = String(row.coordinate_source || "").toUpperCase();
+    const savedIsApproximate = ["WARD_APPROXIMATE", "STREET_APPROXIMATE"].includes(savedMatchLevel)
+      || /MAPBOX|WARD_APPROXIMATE|STREET_APPROXIMATE/.test(savedSource);
     const savedCoordinateMatches = await withAutomaticLocationSlot(() => coordinateMatchesTownship(township, row.latitude, row.longitude));
     if (requestId !== requestSequence.current) return;
-    if (!savedCoordinateMatches) {
+    if (!savedCoordinateMatches || savedIsApproximate) {
       setCandidate(null);
       setLat("");
       setLng("");
       setManualOpen(true);
-      setMessage(`The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with township and postal boundaries…`);
+      setMessage(savedIsApproximate
+        ? "The previously saved Mapbox/approximate pin has been rejected. Searching again with Google Places…"
+        : `The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with Google Places…`);
       reportResolution("SEARCHING");
       const key = `${deliveryWayId}|${address}|${township}`;
       lastAutoKey.current = key;
@@ -225,90 +229,63 @@ export default function DataEntryLocationEditor({
   }
 
   useEffect(() => {
-    if (!mapboxToken || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
+    if (!googleMapsConfigured || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
 
     let disposed = false;
-    let map: mapboxgl.Map | null = null;
-    let marker: mapboxgl.Marker | null = null;
+    let map: any = null;
+    let marker: any = null;
+    const listeners: any[] = [];
     const fallbackMessage = "Interactive map is unavailable on this device. Use the static preview or enter coordinates manually.";
 
     setMapError("");
 
-    try {
-      if (typeof mapboxgl.supported === "function" && !mapboxgl.supported()) {
-        throw new Error("WebGL is not supported by this browser or device.");
+    void loadGoogleMaps().then((maps) => {
+      if (disposed) return;
+      if (!maps || !interactiveMapContainer.current) {
+        setMapError(fallbackMessage);
+        return;
       }
-
-      mapboxgl.accessToken = mapboxToken;
-      map = new mapboxgl.Map({
-        container: interactiveMapContainer.current,
-        style: "mapbox://styles/mapbox/streets-v12",
-        center: [candidate.longitude, candidate.latitude],
-        zoom: 17,
+      const position = { lat: candidate.latitude, lng: candidate.longitude };
+      map = new maps.Map(interactiveMapContainer.current, {
+        center: position,
+        zoom: 18,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+        gestureHandling: "greedy",
       });
-
-      const handleMapError = (event: mapboxgl.ErrorEvent) => {
-        const detail = event.error?.message || "Mapbox could not initialize the interactive map.";
-        console.warn("Interactive location map unavailable:", detail);
-        if (!disposed && /webgl|context|initialize|unsupported/i.test(detail)) {
-          disposed = true;
-          map?.off("error", handleMapError);
-          draggableMarker.current = null;
-          interactiveMap.current = null;
-          try { marker?.remove(); } catch { /* The marker may already be detached. */ }
-          try { map?.remove(); } catch { /* The WebGL context may already be unavailable. */ }
-          setMapError(fallbackMessage);
-        }
-      };
-
-      map.on("error", handleMapError);
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: true, showZoom: true }), "top-right");
-
-      marker = new mapboxgl.Marker({ color: "#f59e0b", draggable: true })
-        .setLngLat([candidate.longitude, candidate.latitude])
-        .addTo(map);
-
-      marker.on("dragend", () => {
-        const point = marker?.getLngLat();
-        if (point) setManualMapCoordinate(point.lat, point.lng, "dragged");
-      });
-
-      map.on("click", (event) => {
-        marker?.setLngLat(event.lngLat);
-        setManualMapCoordinate(event.lngLat.lat, event.lngLat.lng, "clicked");
-      });
-
-      map.on("load", () => {
-        map?.resize();
-        const canvas = map?.getCanvas();
-        if (canvas) canvas.style.cursor = "crosshair";
-      });
-
+      marker = new maps.Marker({ map, position, draggable: true, title: "Exact drop-off point" });
+      listeners.push(marker.addListener("dragend", (event: any) => {
+        const point = event?.latLng;
+        if (point) setManualMapCoordinate(point.lat(), point.lng(), "dragged");
+      }));
+      listeners.push(map.addListener("click", (event: any) => {
+        const point = event?.latLng;
+        if (!point) return;
+        marker.setPosition(point);
+        setManualMapCoordinate(point.lat(), point.lng(), "clicked");
+      }));
       interactiveMap.current = map;
       draggableMarker.current = marker;
+    }).catch((error) => {
+      if (disposed) return;
+      console.warn("Interactive Google location map unavailable:", error);
+      setMapError(fallbackMessage);
+    });
 
-      return () => {
-        disposed = true;
-        draggableMarker.current = null;
-        interactiveMap.current = null;
-        map?.off("error", handleMapError);
-        try { marker?.remove(); } catch { /* The marker may already be detached. */ }
-        try { map?.remove(); } catch { /* The WebGL context may already be unavailable. */ }
-      };
-    } catch (error) {
+    return () => {
       disposed = true;
-      console.warn("Interactive location map unavailable:", error);
+      listeners.forEach((listener) => listener?.remove?.());
       draggableMarker.current = null;
       interactiveMap.current = null;
-      try { marker?.remove(); } catch { /* Mapbox may have failed before marker setup completed. */ }
-      try { map?.remove(); } catch { /* Mapbox may have failed before WebGL setup completed. */ }
-      setMapError(fallbackMessage);
-    }
-  }, [deliveryWayId, Boolean(candidate), deferInteractiveMap, manualOpen, mapboxToken]);
+      marker?.setMap?.(null);
+    };
+  }, [deliveryWayId, Boolean(candidate), deferInteractiveMap, manualOpen, googleMapsConfigured]);
 
   useEffect(() => {
     if (!validMyanmarCoordinate(lng, lat)) return;
-    draggableMarker.current?.setLngLat([Number(lng), Number(lat)]);
+    draggableMarker.current?.setPosition?.({ lat: Number(lat), lng: Number(lng) });
+    interactiveMap.current?.panTo?.({ lat: Number(lat), lng: Number(lng) });
   }, [lat, lng]);
 
   async function find(value = query, automatic = false) {
@@ -433,14 +410,14 @@ export default function DataEntryLocationEditor({
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
       <div>
-        {candidate && mapboxToken && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
+        {candidate && googleMapsConfigured && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
           <div className="relative">
             <div ref={interactiveMapContainer} className="h-[320px] min-h-[230px] w-full overflow-hidden rounded-lg border border-cyan-600/60"/>
             <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">DRAG THE ORANGE PIN OR CLICK THE EXACT DROP-OFF POINT</div>
             {validMyanmarCoordinate(lng, lat) && <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/40 bg-[#061524]/90 px-3 py-2 text-[11px] font-bold text-cyan-100">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</div>}
           </div>
           <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Manual map edits are draft-only. Drag the pin or click the exact gate/building, verify the coordinates, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
-        </div> : mapUrl ? <div><img src={mapUrl} alt={`Mapbox drop-off location for ${deliveryWayId}`} className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 object-cover"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically..." : mapError || "Accepted and review-only candidates appear here. Review-only pins are never shared with Wayplan until Apply coordinates is clicked."}</div>}
+        </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically..." : mapError || "Accepted and review-only candidates appear here. Review-only pins are never shared with Wayplan until Apply coordinates is clicked."}</div>}
       </div>
     </div>
   </div>;
