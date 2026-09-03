@@ -18,6 +18,18 @@ export type UserProfile = {
   role?: string;
   branch_code?: string;
   status?: string;
+  authorized?: boolean;
+  must_change_password?: boolean;
+  territories?: Array<{
+    scope_type: 'GLOBAL' | 'BRANCH' | 'TOWNSHIP';
+    branch_id?: string | null;
+    branch_code?: string | null;
+    township_key?: string | null;
+    can_read: boolean;
+    can_create: boolean;
+    can_update: boolean;
+    can_delete: boolean;
+  }>;
 };
 
 type AuthContextValue = {
@@ -35,23 +47,25 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 async function loadProfile(user: User | null): Promise<UserProfile | null> {
   if (!user) return null;
-  const { data, error } = await supabase
-    .from('be_user_account_registry')
-    .select('user_id,auth_user_id,full_name,email,role,branch_code,status')
-    .eq('auth_user_id', user.id)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc('be_login_access_profile');
 
   if (error) {
-    console.warn('Unable to load user profile:', getErrorMessage(error));
-    return { auth_user_id: user.id, email: user.email ?? undefined, role: 'guest', status: 'unknown' };
+    throw new Error(`Unable to verify account access: ${getErrorMessage(error)}`);
   }
 
-  return (data as UserProfile | null) ?? {
-    auth_user_id: user.id,
-    email: user.email ?? undefined,
-    role: 'guest',
-    status: 'unregistered'
-  };
+  const access = (data ?? {}) as UserProfile & { reason?: string };
+  if (!access.authorized) {
+    const messages: Record<string, string> = {
+      ACCOUNT_NOT_REGISTERED: 'This login is not registered as a Britium Express account.',
+      ACCOUNT_INACTIVE: 'This Britium Express account is inactive.',
+      ROLE_NOT_ASSIGNED: 'No authorized role is assigned to this account.',
+      TERRITORY_NOT_ASSIGNED: 'No active branch or township territory is assigned to this account.',
+      AUTH_REQUIRED: 'Your authentication session is no longer valid.',
+    };
+    throw new Error(messages[access.reason ?? ''] ?? 'This account is not authorized to use Britium Express.');
+  }
+
+  return access;
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -62,7 +76,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshProfile = async () => {
     const { data } = await supabase.auth.getSession();
     setSession(data.session);
-    setProfile(await loadProfile(data.session?.user ?? null));
+    try {
+      setProfile(await loadProfile(data.session?.user ?? null));
+    } catch (error) {
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+      throw error;
+    }
   };
 
   useEffect(() => {
@@ -71,13 +92,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(async ({ data }) => {
       if (!active) return;
       setSession(data.session);
-      setProfile(await loadProfile(data.session?.user ?? null));
+      try {
+        setProfile(await loadProfile(data.session?.user ?? null));
+      } catch (error) {
+        console.warn('Session rejected by RLS login contract:', getErrorMessage(error));
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+      }
       setLoading(false);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
-      loadProfile(newSession?.user ?? null).then(setProfile).finally(() => setLoading(false));
+      loadProfile(newSession?.user ?? null)
+        .then(setProfile)
+        .catch(async (error) => {
+          console.warn('Authentication state rejected:', getErrorMessage(error));
+          setSession(null);
+          setProfile(null);
+          await supabase.auth.signOut();
+        })
+        .finally(() => setLoading(false));
     });
 
     return () => {

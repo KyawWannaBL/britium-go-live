@@ -9,8 +9,8 @@ const loginSource = fs.readFileSync(
 
 assert.match(
   loginSource,
-  /\.from\("be_user_account_registry"\)[\s\S]*?\.eq\("auth_user_id", userId\)[\s\S]*?\.maybeSingle\(\)/,
-  "Login profile lookup must use the account registry auth-user key"
+  /\.rpc\("be_login_access_profile"\)/,
+  "Login profile lookup must use the RLS-backed access contract"
 );
 assert.doesNotMatch(
   loginSource,
@@ -23,21 +23,10 @@ assert.doesNotMatch(
   "Login must not reference the removed requires_password_change column"
 );
 
-for (const field of [
-  "must_change_password",
-  "force_password_change",
-  "password_change_required",
-]) {
-  assert.ok(
-    loginSource.includes(field),
-    `Login must preserve the ${field} compatibility flag`
-  );
-}
-
 assert.match(
   loginSource,
-  /\.update\(\{[\s\S]*?must_change_password:\s*false,[\s\S]*?force_password_change:\s*false,[\s\S]*?password_change_required:\s*false,[\s\S]*?\}\)[\s\S]*?\.eq\("auth_user_id", user\.id\)/,
-  "Password changes must clear every registry compatibility flag"
+  /\.rpc\([\s\S]*?"be_complete_password_change"[\s\S]*?\)/,
+  "Password changes must clear flags through the authenticated-user RPC"
 );
 assert.match(
   loginSource,

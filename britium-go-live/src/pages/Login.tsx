@@ -62,22 +62,23 @@ const MFA_REQUIRED_ROLES = new Set([
 ]);
 
 async function loadProfile(userId: string) {
-  const { data, error } = await supabase
-    .from("be_user_account_registry")
-    .select(
-      "auth_user_id, role, role_code, app_role, user_role, must_change_password, force_password_change, password_change_required"
-    )
-    .eq("auth_user_id", userId)
-    .maybeSingle();
-
-  if (error) return { role: "GUEST", mustChange: false };
+  const { data, error } = await supabase.rpc("be_login_access_profile");
+  if (error) throw error;
 
   const row: any = data || {};
-  const rawRole = row.role ?? row.app_role ?? row.user_role ?? row.role_code ?? "GUEST";
-  const mustChange =
-    Boolean(row.must_change_password) ||
-    Boolean(row.force_password_change) ||
-    Boolean(row.password_change_required);
+  if (!row.authorized || row.auth_user_id !== userId) {
+    const accessMessages: Record<string, string> = {
+      ACCOUNT_NOT_REGISTERED: "This login is not registered as a Britium Express account.",
+      ACCOUNT_INACTIVE: "This Britium Express account is inactive.",
+      ROLE_NOT_ASSIGNED: "No authorized role is assigned to this account.",
+      TERRITORY_NOT_ASSIGNED: "No active branch or township territory is assigned to this account.",
+      AUTH_REQUIRED: "Your authentication session is no longer valid.",
+    };
+    throw new Error(accessMessages[row.reason] || "Account access denied by RLS.");
+  }
+
+  const rawRole = row.role ?? "GUEST";
+  const mustChange = Boolean(row.must_change_password);
 
   return { role: normalizeRole(rawRole), mustChange };
 }
@@ -299,9 +300,8 @@ export default function Login() {
       });
       if (error) throw error;
 
-      await auth.refreshProfile();
-
       const prof = await loadProfile(data.user.id);
+      await auth.refreshProfile();
       setCurrentRole(prof.role);
 
       const dst = defaultPortalForRole(prof.role);
@@ -320,6 +320,7 @@ export default function Login() {
       await goAfterAuth(prof.role);
     } catch (e: any) {
       console.error("Login failed", e);
+      await supabase.auth.signOut();
       setErrorMsg(String(e?.message || "Access Denied: Invalid credentials."));
     } finally {
       setLoading(false);
@@ -403,14 +404,9 @@ export default function Login() {
       } = await supabase.auth.getUser();
 
       if (user?.id) {
-        const { error: profileError } = await supabase
-          .from("be_user_account_registry")
-          .update({
-            must_change_password: false,
-            force_password_change: false,
-            password_change_required: false,
-          })
-          .eq("auth_user_id", user.id);
+        const { error: profileError } = await supabase.rpc(
+          "be_complete_password_change"
+        );
 
         if (profileError) throw profileError;
       }
