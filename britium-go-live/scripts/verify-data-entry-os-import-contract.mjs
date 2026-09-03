@@ -34,6 +34,8 @@ const checks=[
   ["core imports require synchronized locations while external routes bypass maps",/route\.mapRequired\s*&&\s*row\.locationStatus!=="SYNCED"/.test(page)&&/CORE_LOCATION_NOT_SYNCED/.test(migration)&&/MAP_NOT_REQUIRED/.test(migration)],
   ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],
   ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
+  ["Google Map click copies relocation coordinates into Data Entry",/map\.addListener\("click"/.test(location)&&/setLat\(nextLat\.toFixed\(6\)\)/.test(location)&&/setLng\(nextLng\.toFixed\(6\)\)/.test(location)&&/Coordinates copied from the/.test(location)],
+  ["Data Entry exposes an explicit Google Map relocation control",/Relocate directly on Google Map/.test(location)&&/COORDINATES COPY AUTOMATICALLY/.test(location)],
   ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],
   ["photo bypass is explicit and reasoned",/skipPhotoReview/.test(importer)&&/at least 10 characters/.test(importer)&&/PHOTO_BYPASS_REASON_REQUIRED/.test(migration)],
   ["OS import requires upload permission",/be_data_entry_require_access_v57\('upload',false\)/.test(migration)],

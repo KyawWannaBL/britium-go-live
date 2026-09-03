@@ -2,7 +2,7 @@
 // BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, Search } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, MapPin, MousePointer2, Search } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
 import {
@@ -241,16 +241,24 @@ export default function DataEntryLocationEditor({
     setLng(nextLng.toFixed(6));
     setManualOpen(true);
     reportResolution("REVIEW_REQUIRED");
-    setCandidate((current) => current ? {
-      ...current,
+    setCandidate((current) => ({
+      ...(current || {
+        deliveryWayId,
+        label: query || address || "Manually selected drop-off",
+        originalAddress: address,
+        englishAddress: english,
+        township,
+        postalCode: postal.postalCode,
+        postalMatchLevel: postal.matchLevel,
+      }),
       latitude: nextLat,
       longitude: nextLng,
       matchLevel: "MANUAL",
       confidence: 1,
       coordinateSource: "DATA_ENTRY_MANUAL_MAP_EDIT",
       reviewStatus: "MANUAL_REVIEW",
-    } : current);
-    setMessage(`Map pin ${action} manually. This is a draft only; click Apply coordinates to replace the saved location and share the corrected pin with Wayplan.`);
+    }));
+    setMessage(`Coordinates copied from the ${action} Google Map point: ${nextLat.toFixed(6)}, ${nextLng.toFixed(6)}. Click Apply coordinates to save the relocation and share it with Wayplan.`);
   }
 
   useEffect(() => {
@@ -457,17 +465,17 @@ export default function DataEntryLocationEditor({
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Source:</b> {candidate?.coordinateSource || "Not resolved"}</div>
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
-        <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200"><span>{candidate ? "Review or correct coordinates" : "Manual location review"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
+        <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Select location directly on Google Map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
         {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
       <div>
         {candidate && googleMapsConfigured && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
           <div className="relative">
             <div ref={interactiveMapContainer} className="h-[320px] min-h-[230px] w-full overflow-hidden rounded-lg border border-cyan-600/60"/>
-            <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">DRAG THE ORANGE PIN OR CLICK THE EXACT DROP-OFF POINT</div>
+            <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">CLICK THE EXACT DROP-OFF POINT — COORDINATES COPY AUTOMATICALLY</div>
             {validMyanmarCoordinate(lng, lat) && <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/40 bg-[#061524]/90 px-3 py-2 text-[11px] font-bold text-cyan-100">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</div>}
           </div>
-          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Manual map edits are draft-only. Drag the pin or click the exact gate/building, verify the coordinates, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Click the exact gate/building or drag the pin. Latitude and longitude are copied into the fields immediately. Verify them, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
         </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : addressMapUrl ? <div>
           <iframe src={addressMapUrl} title={`Google Maps address search for ${deliveryWayId || "new parcel"}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>
           <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>Address-search preview only: no coordinates are saved from this preview. Verify that Google shows the exact gate/building inside {township || "the selected township"}. If needed, open Google Maps, copy its latitude/longitude here, then click <b>Apply coordinates</b>. {openAddressMapUrl && <a href={openAddressMapUrl} target="_blank" rel="noreferrer" className="ml-1 font-black text-cyan-300 underline">Open in Google Maps</a>}</div>
