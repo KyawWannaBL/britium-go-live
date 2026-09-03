@@ -54,7 +54,8 @@ export function defaultPortalForRole(role: string | null | undefined): string {
     // 💰 Finance & Data
     case 'finance':
     case 'accountant':
-      return '/finance-portal';
+    case 'finance-user':
+      return '/finance';
     case 'data-entry':
     case 'encoder':
       return '/data-entry';

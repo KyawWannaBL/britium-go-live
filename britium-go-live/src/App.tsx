@@ -7,6 +7,7 @@ import AppErrorBoundary from "@/components/system/AppErrorBoundary";
 import EnvironmentBadge from "@/components/system/EnvironmentBadge";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
+import { defaultPortalForRole, normalizeRole } from "@/lib/portalRegistry";
 
 const GLOBAL_FONT = "font-['Poppins','Noto_Sans_Myanmar',sans-serif] antialiased";
 
@@ -134,10 +135,14 @@ function AppShell({ children }: { children: ReactNode }) {
 }
 
 function AuthLayout() {
-  const { loading, session } = useAuth();
+  const { loading, session, profile } = useAuth();
+  const location = useLocation();
 
   if (loading) return <PageLoader />;
   if (!session) return <Navigate to="/" replace />;
+  if (!profile?.authorized || !canRoleOpenPath(profile.role, location.pathname)) {
+    return <Navigate to={defaultPortalForRole(profile?.role)} replace />;
+  }
 
   return (
     <AppShell>
@@ -146,6 +151,41 @@ function AuthLayout() {
       </Suspense>
     </AppShell>
   );
+}
+
+const ELEVATED_ROLES = new Set(['super-admin', 'superadmin', 'app-owner', 'sys', 'admin']);
+
+const PATH_ROLES: Array<[string, Set<string>]> = [
+  ['/admin-hr', new Set(['hr-admin'])],
+  ['/audit-logs', new Set(['management', 'director'])],
+  ['/settings', new Set(['management', 'director'])],
+  ['/go-live-control', new Set(['management', 'director', 'operations-admin'])],
+  ['/go-live-readiness', new Set(['management', 'director', 'operations-admin'])],
+  ['/finance', new Set(['finance', 'finance-user', 'accountant'])],
+  ['/accounts', new Set(['finance', 'finance-user', 'accountant'])],
+  ['/cod-settlement', new Set(['finance', 'finance-user', 'accountant'])],
+  ['/rider-settlement', new Set(['finance', 'finance-user', 'accountant'])],
+  ['/data-entry', new Set(['data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin'])],
+  ['/warehouse', new Set(['warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin'])],
+  ['/wayplan', new Set(['wayplan-manager', 'supervisor', 'operations', 'operations-admin'])],
+  ['/dispatch-command', new Set(['wayplan-manager', 'supervisor', 'operations', 'operations-admin'])],
+  ['/supervisor', new Set(['supervisor', 'operations', 'operations-admin'])],
+  ['/rider', new Set(['rider', 'driver'])],
+  ['/driver', new Set(['driver', 'supervisor', 'operations', 'operations-admin'])],
+  ['/branch', new Set(['branch-office', 'branch-manager', 'branch-staff', 'branch-admin'])],
+  ['/cs-', new Set(['customer-service', 'cs', 'support'])],
+  ['/merchant-portal', new Set(['merchant', 'vip-customer'])],
+  ['/customer-portal', new Set(['customer'])],
+  ['/marketing', new Set(['marketing'])],
+  ['/biz-dev', new Set(['business-development', 'biz-dev', 'management', 'director'])],
+];
+
+function canRoleOpenPath(rawRole: string | undefined, path: string): boolean {
+  const role = normalizeRole(rawRole);
+  if (ELEVATED_ROLES.has(role)) return true;
+  const rule = PATH_ROLES.find(([prefix]) => path.startsWith(prefix));
+  if (rule) return rule[1].has(role);
+  return path === '/profile' || path === defaultPortalForRole(role);
 }
 
 function AppRoutes() {
