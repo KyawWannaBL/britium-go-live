@@ -22,6 +22,8 @@ export type OsBulkPickup = {
 };
 
 export type OsImportRow = {
+  wayId: string;
+  merchantName: string;
   targetSequence: number;
   sourceRowNumber: number;
   recipientName: string;
@@ -38,14 +40,23 @@ export type OsImportRow = {
   issues: string[];
 };
 
+export type OsImportBatch = {
+  targetPickupId: string;
+  rows: OsImportRow[];
+};
+
 export type OsImportApplyPayload = {
   fileName: string;
   targetPickupId: string;
+  mode: "SINGLE_PICKUP" | "BULK_UPLOAD";
+  batches: OsImportBatch[];
   rows: OsImportRow[];
   sourceRowCount: number;
   skipPhotoReview: boolean;
   photoBypassReason: string;
 };
+
+export const BULK_UPLOAD_PICKUP_ID = "__BULK_UPLOAD__";
 
 type Props = {
   pickups: OsBulkPickup[];
@@ -56,6 +67,8 @@ type Props = {
 };
 
 type ColumnKey =
+  | "wayId"
+  | "merchantName"
   | "recipientName"
   | "recipientPhone"
   | "townshipProvider"
@@ -68,6 +81,8 @@ type ColumnKey =
   | "merchantTier";
 
 const TEMPLATE_HEADERS = [
+  "ပို့ဆောင်ရေး Way ID / Pickup ID\n(Way ID / Pickup ID)",
+  "ကုန်သည်အမည် / ကုန်သည် ID\n(Merchant Name / Merchant ID)",
   "လက်ခံသူအမည်\n(Receiver Name)",
   "လက်ခံသူဖုန်း\n(Receiver Phone)",
   "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)",
@@ -81,6 +96,8 @@ const TEMPLATE_HEADERS = [
 ] as const;
 
 const COLUMN_ALIASES: Record<ColumnKey, string[]> = {
+  wayId: ["way id", "pickup id", "pickup way id", "delivery way id", "ပို့ဆောင်ရေး way id", "ပစ်ကပ် id"],
+  merchantName: ["merchant name", "merchant id", "os name", "os id", "ကုန်သည်အမည်", "ကုန်သည် id"],
   recipientName: ["receiver name", "recipient name", "လက်ခံသူအမည်"],
   recipientPhone: ["receiver phone", "recipient phone", "လက်ခံသူဖုန်း"],
   townshipProvider: ["township / service provider", "township service provider", "delivery township", "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ", "မြို့နယ်"],
@@ -92,6 +109,21 @@ const COLUMN_ALIASES: Record<ColumnKey, string[]> = {
   osSetPrice: ["os set price", "os delivery fee", "merchant delivery fee", "ကုန်သည်သတ်မှတ်ပို့ဆောင်ခ"],
   merchantTier: ["merchant tier", "customer tier", "ကုန်သည်အဆင့်"],
 };
+
+const REGISTRATION_COLUMN_KEYS: ColumnKey[] = [
+  "recipientName",
+  "recipientPhone",
+  "townshipProvider",
+  "actualWeight",
+  "deliveryAddress",
+  "serviceType",
+  "paymentType",
+  "itemPrice",
+  "osSetPrice",
+  "merchantTier",
+];
+
+const BULK_ROUTING_COLUMN_KEYS: ColumnKey[] = ["wayId", "merchantName"];
 
 const MYANMAR_DIGITS: Record<string, string> = {
   "၀": "0", "၁": "1", "၂": "2", "၃": "3", "၄": "4",
@@ -169,6 +201,110 @@ function normalizePaymentType(value: unknown, itemPrice: number | "", osSetPrice
   return clean(value).toUpperCase();
 }
 
+function routingKey(value: unknown) {
+  return clean(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+}
+
+type OsImportRoutingPreview = OsImportRow & {
+  matchedPickupId: string;
+  routingIssue: string;
+};
+
+export function buildOsImportPlan(rows: OsImportRow[], pickups: OsBulkPickup[]) {
+  const orderedPickups = [...pickups].sort((a, b) => b.pickup_id.length - a.pickup_id.length);
+  const provisional = rows.map((row) => {
+    const wayId = clean(row.wayId);
+    const upperWayId = wayId.toUpperCase();
+    let pickup: OsBulkPickup | undefined;
+    let explicitSequence = 0;
+    let hasExplicitSequence = false;
+
+    for (const candidate of orderedPickups) {
+      const pickupId = clean(candidate.pickup_id);
+      const upperPickupId = pickupId.toUpperCase();
+      if (upperWayId === upperPickupId) {
+        pickup = candidate;
+        break;
+      }
+      if (upperWayId.startsWith(`${upperPickupId}-`)) {
+        const suffix = wayId.slice(pickupId.length + 1).trim();
+        if (/^\d{1,3}$/.test(suffix)) {
+          pickup = candidate;
+          explicitSequence = Number(suffix);
+          hasExplicitSequence = true;
+          break;
+        }
+      }
+    }
+
+    if (!wayId) return { row, pickup: undefined, explicitSequence: 0, issue: "Way ID / Pickup ID is missing" };
+    if (!pickup) return { row, pickup: undefined, explicitSequence: 0, issue: `Way ID ${wayId} does not match an eligible pickup` };
+    if (hasExplicitSequence && (explicitSequence < 1 || explicitSequence > 200)) return { row, pickup, explicitSequence, issue: "Parcel sequence in Way ID must be from 001 to 200" };
+
+    const merchant = routingKey(row.merchantName);
+    const merchantKeys = new Set([routingKey(pickup.merchant_id), routingKey(pickup.merchant_name)].filter(Boolean));
+    if (!merchant) return { row, pickup, explicitSequence, issue: "Merchant Name / Merchant ID is missing" };
+    if (!merchantKeys.has(merchant)) {
+      return {
+        row,
+        pickup,
+        explicitSequence,
+        issue: `Merchant ${row.merchantName} does not belong to pickup ${pickup.pickup_id}`,
+      };
+    }
+    return { row, pickup, explicitSequence, issue: "" };
+  });
+
+  const issues: string[] = [];
+  const batches: OsImportBatch[] = [];
+  const previewBySourceRow = new Map<number, OsImportRoutingPreview>();
+  const pickupIds = [...new Set(provisional.filter((item) => item.pickup && !item.issue).map((item) => item.pickup!.pickup_id))];
+
+  for (const pickupId of pickupIds) {
+    const group = provisional.filter((item) => item.pickup?.pickup_id === pickupId && !item.issue);
+    const used = new Set<number>();
+    for (const item of group) {
+      if (!item.explicitSequence) continue;
+      if (used.has(item.explicitSequence)) {
+        item.issue = `Duplicate parcel sequence ${String(item.explicitSequence).padStart(3, "0")} for ${pickupId}`;
+      } else {
+        used.add(item.explicitSequence);
+      }
+    }
+    let nextSequence = 1;
+    const batchRows: OsImportRow[] = [];
+    for (const item of group) {
+      if (item.issue) continue;
+      while (used.has(nextSequence)) nextSequence += 1;
+      const targetSequence = item.explicitSequence || nextSequence++;
+      used.add(targetSequence);
+      const routed = { ...item.row, targetSequence };
+      batchRows.push(routed);
+      previewBySourceRow.set(item.row.sourceRowNumber, { ...routed, matchedPickupId: pickupId, routingIssue: "" });
+    }
+    if (batchRows.length) batches.push({ targetPickupId: pickupId, rows: batchRows.sort((a, b) => a.targetSequence - b.targetSequence) });
+  }
+
+  for (const item of provisional) {
+    if (!item.issue) continue;
+    issues.push(`Row ${item.row.sourceRowNumber}: ${item.issue}`);
+    previewBySourceRow.set(item.row.sourceRowNumber, {
+      ...item.row,
+      matchedPickupId: item.pickup?.pickup_id || "",
+      routingIssue: item.issue,
+    });
+  }
+
+  const previewRows = rows.map((row) => previewBySourceRow.get(row.sourceRowNumber) || {
+    ...row,
+    matchedPickupId: "",
+    routingIssue: "Pickup routing could not be resolved",
+  });
+  return { batches, issues, previewRows };
+}
+
 function classifyRow(row: Omit<OsImportRow, "completionStatus" | "issues">) {
   const issues: string[] = [];
   if (!row.recipientName) issues.push("Receiver name is missing");
@@ -199,12 +335,15 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
       bestColumns = columns;
     }
   });
-  if (bestIndex < 0 || bestColumns.size < 6) throw new Error("The 10-column Britium Data Entry header row was not found.");
+  if (bestIndex < 0 || bestColumns.size < 6) throw new Error("The Britium Data Entry header row was not found.");
 
-  const requiredKeys = Object.keys(COLUMN_ALIASES) as ColumnKey[];
-  const missingHeaders = requiredKeys
+  const allKeys = Object.keys(COLUMN_ALIASES) as ColumnKey[];
+  const missingHeaders = REGISTRATION_COLUMN_KEYS
     .filter((key) => !bestColumns.has(key))
-    .map((key) => TEMPLATE_HEADERS[requiredKeys.indexOf(key)]);
+    .map((key) => TEMPLATE_HEADERS[allKeys.indexOf(key)]);
+  const missingBulkRoutingHeaders = BULK_ROUTING_COLUMN_KEYS
+    .filter((key) => !bestColumns.has(key))
+    .map((key) => TEMPLATE_HEADERS[allKeys.indexOf(key)]);
   const rows: OsImportRow[] = [];
   let targetSequence = 0;
   matrix.slice(bestIndex + 1).forEach((values, offset) => {
@@ -214,6 +353,8 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
     const itemPrice = parseAmount(value("itemPrice"));
     const osSetPrice = parseAmount(value("osSetPrice"));
     const base = {
+      wayId: clean(value("wayId")),
+      merchantName: clean(value("merchantName")),
       targetSequence,
       sourceRowNumber: bestIndex + offset + 2,
       recipientName: clean(value("recipientName")),
@@ -231,8 +372,8 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
     rows.push({ ...base, ...classification });
   });
   if (!rows.length) throw new Error("No data rows were found below the header.");
-  if (rows.length > 200) throw new Error("Import one pickup at a time with no more than 200 rows.");
-  return { rows, missingHeaders, headerRowNumber: bestIndex + 1 };
+  if (rows.length > 200) throw new Error("Import no more than 200 rows in one spreadsheet.");
+  return { rows, missingHeaders, missingBulkRoutingHeaders, headerRowNumber: bestIndex + 1 };
 }
 
 function csvCell(value: unknown) {
@@ -266,6 +407,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
   const [filename, setFilename] = useState("");
   const [rows, setRows] = useState<OsImportRow[]>([]);
   const [missingHeaders, setMissingHeaders] = useState<string[]>([]);
+  const [missingBulkRoutingHeaders, setMissingBulkRoutingHeaders] = useState<string[]>([]);
   const [fileBusy, setFileBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [scope, setScope] = useState<"ALL_OS" | "DEDICATED_OS">("DEDICATED_OS");
@@ -277,14 +419,20 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
   const [targetPickupId, setTargetPickupId] = useState(selectedPickupId);
   const [skipPhotoReview, setSkipPhotoReview] = useState(false);
   const [photoBypassReason, setPhotoBypassReason] = useState("");
+  const bulkMode = selectedPickupId === BULK_UPLOAD_PICKUP_ID;
 
-  useEffect(() => setTargetPickupId(selectedPickupId), [selectedPickupId]);
+  useEffect(() => setTargetPickupId(bulkMode ? BULK_UPLOAD_PICKUP_ID : selectedPickupId), [bulkMode, selectedPickupId]);
+
+  useEffect(() => {
+    if (bulkMode) setScope("ALL_OS");
+  }, [bulkMode]);
 
   useEffect(() => {
     if (!open || scope !== "DEDICATED_OS" || merchantFilter) return;
+    if (bulkMode) return;
     const selected = pickups.find((pickup) => pickup.pickup_id === selectedPickupId);
     if (selected) setMerchantFilter(selected.merchant_id || selected.merchant_name);
-  }, [merchantFilter, open, pickups, scope, selectedPickupId]);
+  }, [bulkMode, merchantFilter, open, pickups, scope, selectedPickupId]);
 
   const merchants = useMemo(() => {
     const map = new Map<string, string>();
@@ -312,9 +460,23 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
     () => rows.filter((row) => rowStatus === "ALL" || row.completionStatus === rowStatus),
     [rowStatus, rows],
   );
+  const bulkPlan = useMemo(
+    () => buildOsImportPlan(selectedRows, eligiblePickups),
+    [eligiblePickups, selectedRows],
+  );
+  const previewRows = bulkMode
+    ? bulkPlan.previewRows
+    : selectedRows.map((row) => ({ ...row, matchedPickupId: targetPickupId, routingIssue: "" }));
   const completeCount = rows.filter((row) => row.completionStatus === "COMPLETE").length;
   const partialCount = rows.length - completeCount;
-  const targetReady = Boolean(targetPickupId && targetPickupId === selectedPickupId && eligiblePickups.some((pickup) => pickup.pickup_id === targetPickupId) && !busy);
+  const targetReady = bulkMode
+    ? Boolean(
+      bulkPlan.batches.length
+      && !bulkPlan.issues.length
+      && !missingBulkRoutingHeaders.length
+      && !busy
+    )
+    : Boolean(targetPickupId && targetPickupId === selectedPickupId && eligiblePickups.some((pickup) => pickup.pickup_id === targetPickupId) && !busy);
 
   async function parseFile(file?: File) {
     if (!file) return;
@@ -332,6 +494,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
       setFilename(file.name);
       setRows(parsed.rows);
       setMissingHeaders(parsed.missingHeaders);
+      setMissingBulkRoutingHeaders(parsed.missingBulkRoutingHeaders);
       setOpen(true);
       const incomplete = parsed.rows.filter((row) => row.completionStatus === "PARTIAL").length;
       setMessage(`Loaded ${parsed.rows.length} row(s): ${parsed.rows.length - incomplete} complete, ${incomplete} partial.`);
@@ -339,6 +502,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
       setFilename("");
       setRows([]);
       setMissingHeaders([]);
+      setMissingBulkRoutingHeaders([]);
       setMessage(error?.message || "The spreadsheet could not be read.");
     } finally {
       setFileBusy(false);
@@ -347,10 +511,11 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
   }
 
   function downloadCsvTemplate() {
+    const fillerCount = TEMPLATE_HEADERS.length - 1;
     const matrix = [
-      ["BRITIUM VENTURES — DATA ENTRY TEMPLATE", ...Array(9).fill("")],
-      ["Myanmar / English parcel registration sheet", ...Array(9).fill("")],
-      ["အဖြူရောင်အကွက်များတွင် အချက်အလက်ဖြည့်ပါ။ ငွေပမာဏကို ကျပ်ဖြင့် ထည့်ပါ။  |  Enter data in the white cells; enter monetary values in MMK.", ...Array(9).fill("")],
+      ["BRITIUM VENTURES — DATA ENTRY TEMPLATE", ...Array(fillerCount).fill("")],
+      ["Myanmar / English parcel registration sheet", ...Array(fillerCount).fill("")],
+      ["Bulk upload requires Way ID / Pickup ID and Merchant Name / Merchant ID on every row.", ...Array(fillerCount).fill("")],
       [...TEMPLATE_HEADERS],
     ];
     const csv = `\uFEFF${matrix.map((row) => row.map(csvCell).join(",")).join("\r\n")}`;
@@ -364,13 +529,13 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
       const worksheet = XLSX.utils.aoa_to_sheet([
         ["BRITIUM VENTURES — DATA ENTRY TEMPLATE"],
         ["Myanmar / English parcel registration sheet"],
-        ["အဖြူရောင်အကွက်များတွင် အချက်အလက်ဖြည့်ပါ။ ငွေပမာဏကို ကျပ်ဖြင့် ထည့်ပါ။  |  Enter data in the white cells; enter monetary values in MMK."],
+        ["Bulk upload requires Way ID / Pickup ID and Merchant Name / Merchant ID on every row."],
         [...TEMPLATE_HEADERS],
       ]);
       worksheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: 9 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: 9 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: 9 } },
+        { s: { r: 0, c: 0 }, e: { r: 0, c: TEMPLATE_HEADERS.length - 1 } },
+        { s: { r: 1, c: 0 }, e: { r: 1, c: TEMPLATE_HEADERS.length - 1 } },
+        { s: { r: 2, c: 0 }, e: { r: 2, c: TEMPLATE_HEADERS.length - 1 } },
       ];
       worksheet["!cols"] = TEMPLATE_HEADERS.map((header) => ({ wch: Math.min(34, Math.max(18, header.length / 2)) }));
       const workbook = XLSX.utils.book_new();
@@ -383,11 +548,17 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
 
   async function applyRows() {
     if (!targetReady) {
-      setMessage("Select the target pickup and wait for its registration rows to finish loading.");
+      setMessage(bulkMode
+        ? "Fix every Way ID / Merchant routing issue before filling the bulk upload."
+        : "Select the target pickup and wait for its registration rows to finish loading.");
       return;
     }
     if (missingHeaders.length) {
       setMessage("The spreadsheet is missing one or more required columns.");
+      return;
+    }
+    if (bulkMode && missingBulkRoutingHeaders.length) {
+      setMessage("Bulk upload requires the Way ID and Merchant Name columns.");
       return;
     }
     if (!selectedRows.length) {
@@ -404,6 +575,8 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
       await onApply({
         fileName: filename,
         targetPickupId,
+        mode: bulkMode ? "BULK_UPLOAD" : "SINGLE_PICKUP",
+        batches: bulkMode ? bulkPlan.batches : [{ targetPickupId, rows: selectedRows }],
         rows: selectedRows,
         sourceRowCount: rows.length,
         skipPhotoReview,
@@ -443,9 +616,9 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
                   <label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Pickup from</span><input type="date" className="w-full rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={fromDate} onChange={(event) => setFromDate(event.target.value)}/></label>
                   <label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Pickup to</span><input type="date" className="w-full rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={toDate} onChange={(event) => setToDate(event.target.value)}/></label>
                   <label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Pickup data</span><select className="w-full rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={pickupStatus} onChange={(event) => setPickupStatus(event.target.value as typeof pickupStatus)}><option value="ALL">Completed + partial</option><option value="COMPLETE">Completed only</option><option value="PARTIAL">Partial only</option></select></label>
-                  <label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Target pickup</span><select className="w-full rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={targetPickupId} onChange={(event) => { setTargetPickupId(event.target.value); onPickupChange(event.target.value); }}><option value="">Select pickup</option>{eligiblePickups.map((pickup) => <option key={pickup.pickup_id} value={pickup.pickup_id}>{pickup.pickup_id} · {pickup.merchant_id || pickup.merchant_name} · {pickup.registered_parcels}/{authorizedCount(pickup)}</option>)}</select></label>
+                  <label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Target pickup</span><select className="w-full rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={targetPickupId} onChange={(event) => { setTargetPickupId(event.target.value); onPickupChange(event.target.value); }}><option value="">Select pickup</option><option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · match Way ID + Merchant</option>{eligiblePickups.map((pickup) => <option key={pickup.pickup_id} value={pickup.pickup_id}>{pickup.pickup_id} · {pickup.merchant_id || pickup.merchant_name} · {pickup.registered_parcels}/{authorizedCount(pickup)}</option>)}</select></label>
                 </div>
-                <div className="mt-2 text-[10px] text-[#789db8]">All OS exposes every eligible pickup. Each spreadsheet is still applied to one selected pickup so its map pins can be reviewed before anything is saved.</div>
+                <div className="mt-2 text-[10px] text-[#789db8]">{bulkMode ? "Bulk upload routes each row to an eligible pickup using Way ID / Pickup ID, then verifies Merchant Name / Merchant ID. Matched pickup batches remain separate for drop-point review, Calculate All, and Save All." : "All OS exposes every eligible pickup. A dedicated spreadsheet is applied to the selected pickup so its map pins can be reviewed before anything is saved."}</div>
               </section>
 
               <section className="rounded-xl border border-[#1d4b70] bg-[#0b2236] p-4">
@@ -462,9 +635,11 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
                   ["File", filename], ["Rows", rows.length], ["Complete", completeCount], ["Partial", partialCount], ["Selected", selectedRows.length],
                 ].map(([label, value]) => <div key={String(label)} className="rounded-lg border border-[#1d4b70] bg-[#061524] p-3"><div className="text-[9px] font-black uppercase text-[#789db8]">{label}</div><div className="mt-1 truncate text-xs font-black">{value}</div></div>)}</div> : null}
 
-                {rows.length ? <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Spreadsheet row status</span><select className="rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={rowStatus} onChange={(event) => setRowStatus(event.target.value as typeof rowStatus)}><option value="ALL">Completed + partial rows</option><option value="COMPLETE">Completed rows only</option><option value="PARTIAL">Partial rows only</option></select></label>{missingHeaders.length ? <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[10px] text-rose-200"><AlertTriangle size={13} className="mr-1 inline"/>Missing columns: {missingHeaders.join("; ")}</div> : <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-200"><CheckCircle2 size={13} className="mr-1 inline"/>All 10 template columns recognized</div>}</div> : null}
+                {rows.length ? <div className="mt-3 flex flex-wrap items-end justify-between gap-3"><label><span className="mb-1 block text-[10px] font-black text-[#8db5d1]">Spreadsheet row status</span><select className="rounded-lg border border-[#2b6388] bg-white px-3 py-2 text-xs font-bold text-black" value={rowStatus} onChange={(event) => setRowStatus(event.target.value as typeof rowStatus)}><option value="ALL">Completed + partial rows</option><option value="COMPLETE">Completed rows only</option><option value="PARTIAL">Partial rows only</option></select></label>{missingHeaders.length || (bulkMode && missingBulkRoutingHeaders.length) ? <div className="rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[10px] text-rose-200"><AlertTriangle size={13} className="mr-1 inline"/>Missing columns: {[...missingHeaders, ...(bulkMode ? missingBulkRoutingHeaders : [])].join("; ")}</div> : <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[10px] text-emerald-200"><CheckCircle2 size={13} className="mr-1 inline"/>All {bulkMode ? 12 : 10} required template columns recognized</div>}</div> : null}
 
-                {rows.length ? <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-[#1d4b70]"><table className="min-w-[1200px] text-left text-[10px]"><thead className="sticky top-0 bg-[#12314a]"><tr>{["Seq", "Row", "Receiver", "Phone", "Township / Provider", "Weight", "Address", "Service", "Payment", "Item", "OS Price", "Tier", "Status"].map((header) => <th key={header} className="px-3 py-2 font-black">{header}</th>)}</tr></thead><tbody>{selectedRows.slice(0, 40).map((row) => <tr key={row.sourceRowNumber} className="border-t border-[#1d4b70]"><td className="px-3 py-2">{row.targetSequence}</td><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="max-w-40 truncate px-3 py-2">{row.recipientName || "—"}</td><td className="px-3 py-2">{row.recipientPhone || "—"}</td><td className="max-w-52 truncate px-3 py-2">{row.townshipProvider || "—"}</td><td className="px-3 py-2">{row.actualWeight || "—"}</td><td className="max-w-64 truncate px-3 py-2">{row.deliveryAddress || "—"}</td><td className="px-3 py-2">{row.serviceType}</td><td className="px-3 py-2">{row.paymentType}</td><td className="px-3 py-2">{row.itemPrice === "" ? "—" : row.itemPrice}</td><td className="px-3 py-2">{row.osSetPrice === "" ? "—" : row.osSetPrice}</td><td className="px-3 py-2">{row.merchantTier}</td><td className={`px-3 py-2 font-black ${row.completionStatus === "COMPLETE" ? "text-emerald-300" : "text-amber-300"}`} title={row.issues.join("; ")}>{row.completionStatus}</td></tr>)}</tbody></table></div> : null}
+                {bulkMode && bulkPlan.issues.length ? <div className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[10px] leading-5 text-rose-200"><AlertTriangle size={13} className="mr-1 inline"/>{bulkPlan.issues.slice(0, 8).join(" · ")}{bulkPlan.issues.length > 8 ? ` · +${bulkPlan.issues.length - 8} more` : ""}</div> : null}
+
+                {rows.length ? <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-[#1d4b70]"><table className="min-w-[1500px] text-left text-[10px]"><thead className="sticky top-0 bg-[#12314a]"><tr>{["Seq", "Row", "Way ID", "Merchant", "Matched pickup", "Receiver", "Phone", "Township / Provider", "Weight", "Address", "Service", "Payment", "Item", "OS Price", "Tier", "Status"].map((header) => <th key={header} className="px-3 py-2 font-black">{header}</th>)}</tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.sourceRowNumber} className="border-t border-[#1d4b70]"><td className="px-3 py-2">{row.targetSequence}</td><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="max-w-44 truncate px-3 py-2">{row.wayId || "—"}</td><td className="max-w-40 truncate px-3 py-2">{row.merchantName || "—"}</td><td className={`max-w-44 truncate px-3 py-2 font-black ${row.routingIssue ? "text-rose-300" : "text-cyan-200"}`} title={row.routingIssue}>{row.routingIssue || row.matchedPickupId || "Selected pickup"}</td><td className="max-w-40 truncate px-3 py-2">{row.recipientName || "—"}</td><td className="px-3 py-2">{row.recipientPhone || "—"}</td><td className="max-w-52 truncate px-3 py-2">{row.townshipProvider || "—"}</td><td className="px-3 py-2">{row.actualWeight || "—"}</td><td className="max-w-64 truncate px-3 py-2">{row.deliveryAddress || "—"}</td><td className="px-3 py-2">{row.serviceType}</td><td className="px-3 py-2">{row.paymentType}</td><td className="px-3 py-2">{row.itemPrice === "" ? "—" : row.itemPrice}</td><td className="px-3 py-2">{row.osSetPrice === "" ? "—" : row.osSetPrice}</td><td className="px-3 py-2">{row.merchantTier}</td><td className={`px-3 py-2 font-black ${row.completionStatus === "COMPLETE" && !row.routingIssue ? "text-emerald-300" : "text-amber-300"}`} title={[...row.issues, row.routingIssue].filter(Boolean).join("; ")}>{row.routingIssue ? "ROUTING ISSUE" : row.completionStatus}</td></tr>)}</tbody></table></div> : null}
               </section>
 
               <section className="rounded-xl border border-amber-400/35 bg-amber-400/5 p-4">
@@ -476,7 +651,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
 
               <div className="flex flex-wrap justify-end gap-2">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-[#31506a] px-4 py-2.5 text-[11px] font-black">CANCEL</button>
-                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !targetReady || !rows.length || !selectedRows.length || Boolean(missingHeaders.length)} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
+                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !targetReady || !rows.length || !selectedRows.length || Boolean(missingHeaders.length) || (bulkMode && Boolean(missingBulkRoutingHeaders.length || bulkPlan.issues.length))} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : bulkMode ? `FILL ${selectedRows.length || ""} ROW(S) · ${bulkPlan.batches.length} PICKUP(S)` : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
               </div>
             </div>
           </div>

@@ -8,15 +8,20 @@ const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"
 const importer=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBulkImport.tsx"),"utf8");
 const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
 const migration=readFileSync(resolve(root,"supabase/migrations/20260903031402_data_entry_os_softcopy_bulk_import_v15.sql"),"utf8");
+const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
 
 const checks=[
-  ["all 10 bilingual OS columns",/Receiver Name[\s\S]*Receiver Phone[\s\S]*Township \/ Service Provider[\s\S]*Actual Weight[\s\S]*Receiver Address[\s\S]*Service Type[\s\S]*Payment Type[\s\S]*Item Price[\s\S]*OS Set Price[\s\S]*Merchant Tier/.test(importer)],
+  ["all 12 bilingual OS columns",/Way ID \/ Pickup ID[\s\S]*Merchant Name \/ Merchant ID[\s\S]*Receiver Name[\s\S]*Receiver Phone[\s\S]*Township \/ Service Provider[\s\S]*Actual Weight[\s\S]*Receiver Address[\s\S]*Service Type[\s\S]*Payment Type[\s\S]*Item Price[\s\S]*OS Set Price[\s\S]*Merchant Tier/.test(importer)],
+  ["legacy 10-column sheets remain valid for a selected pickup",/REGISTRATION_COLUMN_KEYS/.test(importer)&&/missingBulkRoutingHeaders/.test(importer)&&/bulkMode && missingBulkRoutingHeaders/.test(importer)],
   ["header discovery scans first 25 rows",/matrix\.slice\(0, 25\)/.test(importer)],
   ["CSV and Excel use the same parser",/\.\(xlsx\|xls\|csv\)/.test(importer)&&/import\("xlsx"\)/.test(importer)&&/parseOsImportMatrix/.test(importer)],
   ["All OS and Dedicated OS filters",/ALL_OS/.test(importer)&&/DEDICATED_OS/.test(importer)&&/merchantFilter/.test(importer)],
   ["timeline and complete-partial filters",/fromDate/.test(importer)&&/toDate/.test(importer)&&/pickupStatus/.test(importer)&&/rowStatus/.test(importer)],
-  ["spreadsheet fills existing registration state",/async function applyOsImport/.test(page)&&/setRows\(filled/.test(page)],
-  ["canonical delivery IDs exist before location checks",/canonicalWayId\(nextPickup\.pickup_id,sequence\)/.test(page)],
+  ["spreadsheet fills existing registration state",/async function applyOsImport/.test(page)&&/fillImportedPickupRows/.test(page)&&/setRows\(firstDraft\.rows\)/.test(page)],
+  ["main pickup selector includes explicit Bulk upload mode",/BULK_UPLOAD_PICKUP_ID/.test(page)&&/Bulk upload · Way ID \+ Merchant Name/.test(page)],
+  ["bulk rows route by Way ID and verify merchant",/function buildOsImportPlan/.test(importer)&&/does not belong to pickup/.test(importer)&&/Duplicate parcel sequence/.test(importer)],
+  ["multi-pickup drafts remain separated for review",/Bulk upload pickup queue/.test(page)&&/bulkImportDrafts/.test(page)&&/bulkImportOrder/.test(page)],
+  ["canonical delivery IDs exist before location checks",/delivery_way_id:canonicalWayId\(pickup\.pickup_id,sequence\)/.test(page)],
   ["imported saves require synchronized location",/row\.importedFromOs&&row\.locationStatus!=="SYNCED"/.test(page)&&/IMPORTED_LOCATION_NOT_SYNCED/.test(migration)],
   ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],
   ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
@@ -30,10 +35,12 @@ const checks=[
   ["bulk calculate-save-waybill workflow remains",/CALCULATE ALL/.test(page)&&/SAVE ALL/.test(page)&&/CREATE & GENERATE WAYBILL/.test(page)],
   ["timeline export contains OS metadata",/OS Softcopy Source File/.test(page)&&/Photo Evidence Mode/.test(page)&&/OS Imported At/.test(page)],
   ["legacy generic uploader was removed from Data Entry",!/ActiveScreenBulkImport/.test(page)&&/UPLOAD OS DATA/.test(importer)],
+  ["runtime mutation mode comes from an authenticated RPC",/be_data_entry_financial_v2_runtime_state/.test(page)&&/setMutationMode\(resolvedMutationMode/.test(page)&&/be_data_entry_require_access_v57\('create',false\)/.test(runtimeMigration)],
+  ["runtime-state RPC is security-definer and role restricted",/security definer[\s\S]*set search_path to 'public','auth','pg_temp'/.test(runtimeMigration)&&/revoke all on function public\.be_data_entry_financial_v2_runtime_state\(\) from public, anon/.test(runtimeMigration)&&/grant execute[\s\S]*authenticated, service_role/.test(runtimeMigration)],
 ];
 
 for(const [name,ok] of checks){
   assert.equal(ok,true,`Contract check failed: ${name}`);
   console.log(`PASS ${name}`);
 }
-console.log(`PASS ${checks.length} Data Entry OS Import V15 contract checks`);
+console.log(`PASS ${checks.length} Data Entry OS Import V16 contract checks`);

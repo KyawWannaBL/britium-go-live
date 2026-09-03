@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Calculator, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
-import DataEntryOsBulkImport, { type OsBulkPickup, type OsImportApplyPayload } from "@/components/workflow/DataEntryOsBulkImport";
+import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
@@ -19,7 +19,7 @@ export const DATA_ENTRY_TARIFF_AUTOCOMPLETE_BUILD = "BRITIUM_DATA_ENTRY_TARIFF_A
 export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRATION_EXPORT_TIMELINE_V12_9";
 export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECONCILIATION_V13_2_20260902";
 export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK_ACTIONS_V14_20260902";
-export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_SOFTCOPY_BULK_IMPORT_V15_20260902";
+export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_IMPORT_V16_20260903";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -127,6 +127,14 @@ type ParcelRow = {
   photoEvidenceMode: "PICKER_PHOTO" | "OS_SOFTCOPY";
   photoBypassReason: string;
   locationStatus: DataEntryLocationResolution;
+  saved: boolean;
+};
+
+type BulkImportDraft = {
+  pickupId: string;
+  fileName: string;
+  rows: ParcelRow[];
+  tierAccess: MerchantTierAccess;
   saved: boolean;
 };
 
@@ -713,6 +721,9 @@ export default function DataEntryFinancialV2Page() {
   const [pickups,setPickups]=useState<Pickup[]>([]);
   const [selectedPickupId,setSelectedPickupId]=useState("");
   const [rows,setRows]=useState<ParcelRow[]>([]);
+  const [rowsPickupId,setRowsPickupId]=useState("");
+  const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
+  const [bulkImportOrder,setBulkImportOrder]=useState<string[]>([]);
   const [loading,setLoading]=useState(true);
   const [loadingRows,setLoadingRows]=useState(false);
   const [message,setMessage]=useState("");
@@ -738,6 +749,7 @@ export default function DataEntryFinancialV2Page() {
   const [addingRegistration,setAddingRegistration]=useState(false);
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
+  const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
 
   function updateRow(index:number,patch:Partial<ParcelRow>){
     setRows(current=>current.map((row,i)=>i===index?{...row,...patch,message:patch.message??""}:row));
@@ -750,7 +762,15 @@ export default function DataEntryFinancialV2Page() {
       if(schemaResponse.error) throw schemaResponse.error;
       const s=envelope(schemaResponse.data);
       if(!s.ok) throw new Error(envelopeMessage(s)||"Financial V2 schema unavailable.");
-      setMutationMode(text(s.raw?.mutation_mode||s.data?.mutation_mode)||"MUTATION_SHADOW");
+      let resolvedMutationMode=text(s.raw?.mutation_mode||s.data?.mutation_mode);
+      const runtimeResponse=await (supabase as any).rpc("be_data_entry_financial_v2_runtime_state");
+      if(!runtimeResponse.error){
+        const runtime=envelope(runtimeResponse.data);
+        if(runtime.ok) resolvedMutationMode=text(runtime.raw?.mutation_mode||runtime.data?.mutation_mode)||resolvedMutationMode;
+      }else{
+        console.warn("Financial V2 runtime state RPC unavailable; using the schema response fallback.",runtimeResponse.error.message);
+      }
+      setMutationMode(resolvedMutationMode||"MUTATION_SHADOW");
       const tariffResponse=await (supabase as any).rpc("be_data_entry_tariff_options");
       if(tariffResponse.error) throw tariffResponse.error;
       setTariffOptions(Array.isArray(tariffResponse.data)?tariffResponse.data:[]);
@@ -797,82 +817,81 @@ export default function DataEntryFinancialV2Page() {
         registered_parcels:registeredByPickup.get(pickup.pickup_id)?.size??pickup.registered_parcels,
       }));
       setPickups(withRegisteredCounts);
-      setSelectedPickupId(current=>current&&withRegisteredCounts.some(x=>x.pickup_id===current)?current:(withRegisteredCounts[0]?.pickup_id||""));
+      setSelectedPickupId(current=>current===BULK_UPLOAD_PICKUP_ID||withRegisteredCounts.some(x=>x.pickup_id===current)?current:(withRegisteredCounts[0]?.pickup_id||""));
     }catch(error:any){setMessage(error?.message||"Unable to load Financial V2.");}
     finally{setLoading(false);}
+  }
+
+  async function fetchPickupWorkspace(pickup:Pickup):Promise<{tierAccess:MerchantTierAccess;rows:ParcelRow[]}>{
+    const proofSources = [
+      "be_data_entry_parcel_details",
+      "be_v_data_entry_parcel_proofs",
+      "be_v_data_entry_parcel_rows",
+      "be_pickup_parcel_verifications",
+    ];
+    const [tierResponse,proofResponses]=await Promise.all([
+      (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id}),
+      Promise.all(proofSources.map(async (source)=>({
+        source,
+        response:await (supabase as any)
+          .from(source)
+          .select("*")
+          .eq("pickup_id",pickup.pickup_id)
+          .order("parcel_sequence",{ascending:true}),
+      }))),
+    ]);
+    if(tierResponse.error) throw tierResponse.error;
+    if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
+    const nextTierAccess:MerchantTierAccess={
+      merchant_id:text(tierResponse.data?.merchant_id||pickup.merchant_id),
+      registered:Boolean(tierResponse.data?.registered),
+      profile_tier:text(tierResponse.data?.profile_tier).toUpperCase(),
+      resolved_customer_tier:text(tierResponse.data?.resolved_customer_tier||"STANDARD").toUpperCase(),
+      can_select_tier:Boolean(tierResponse.data?.can_select_tier),
+      can_override_profile_tier:Boolean(tierResponse.data?.can_override_profile_tier),
+      tier_rules:tierResponse.data?.tier_rules||{},
+    };
+    const proofs:any[]=[];
+    let lastProofError="";
+    for(const {source,response} of proofResponses){
+      if(response.error){lastProofError=`${source}: ${response.error.message}`;continue;}
+      if(Array.isArray(response.data)&&response.data.length){
+        proofs.push(...response.data);
+        console.info(`Data Entry evidence: ${response.data.length} row(s) loaded from ${source}`);
+      }
+    }
+    if(!proofs.length&&lastProofError) console.warn("No Data Entry proof rows loaded.",lastProofError);
+    const resolvedProofs=await Promise.all(proofs.map(async (proof:any)=>({
+      ...proof,
+      __proof_ref:proofUrl(proof),
+      __proof_url:await displayPhotoUrl(proofUrl(proof)),
+    })));
+    const observedCount=resolvedProofs.reduce((maximum:number,item:any)=>Math.max(maximum,positiveInt(item.parcel_sequence)),0);
+    const count=authorizedParcelCount(pickup,observedCount);
+    if(!count) throw new Error(`Pickup ${pickup.pickup_id} has no authoritative parcel count. Registration is blocked.`);
+    const nextRows=Array.from({length:count},(_,offset)=>{
+      const sequence=offset+1;
+      const proof=resolvedProofs
+        .filter((item:any)=>positiveInt(item.parcel_sequence)===sequence)
+        .reduce((merged:any,item:any)=>{
+          for(const [key,value] of Object.entries(item)){
+            if(value!==null&&value!==undefined&&value!=="") merged[key]=value;
+          }
+          return merged;
+        },{});
+      return parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
+    });
+    return {tierAccess:nextTierAccess,rows:nextRows};
   }
 
   async function loadPickupRows(pickup:Pickup){
     setLoadingRows(true); setMessage("");
     try{
-      const tierResponse=await (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id});
-      if(tierResponse.error) throw tierResponse.error;
-      if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
-      const nextTierAccess:MerchantTierAccess={
-        merchant_id:text(tierResponse.data?.merchant_id||pickup.merchant_id),
-        registered:Boolean(tierResponse.data?.registered),
-        profile_tier:text(tierResponse.data?.profile_tier).toUpperCase(),
-        resolved_customer_tier:text(tierResponse.data?.resolved_customer_tier||"STANDARD").toUpperCase(),
-        can_select_tier:Boolean(tierResponse.data?.can_select_tier),
-        can_override_profile_tier:Boolean(tierResponse.data?.can_override_profile_tier),
-        tier_rules:tierResponse.data?.tier_rules||{},
-      };
-      setTierAccess(nextTierAccess);
-
-      const proofSources = [
-        "be_data_entry_parcel_details",
-        "be_v_data_entry_parcel_proofs",
-        "be_v_data_entry_parcel_rows",
-        "be_pickup_parcel_verifications",
-      ];
-
-      let proofs: any[] = [];
-      let lastProofError = "";
-
-      for (const source of proofSources) {
-        const response = await (supabase as any)
-          .from(source)
-          .select("*")
-          .eq("pickup_id", pickup.pickup_id)
-          .order("parcel_sequence", { ascending: true });
-
-        if (response.error) {
-          lastProofError = `${source}: ${response.error.message}`;
-          continue;
-        }
-
-        if (Array.isArray(response.data) && response.data.length) {
-          proofs.push(...response.data);
-          console.info(
-            `Data Entry evidence: ${response.data.length} row(s) loaded from ${source}`
-          );
-        }
-      }
-
-      if (!proofs.length && lastProofError) {
-        console.warn("No Data Entry proof rows loaded.", lastProofError);
-      }
-      const resolvedProofs=await Promise.all(proofs.map(async (proof:any)=>({
-        ...proof,
-        __proof_ref:proofUrl(proof),
-        __proof_url:await displayPhotoUrl(proofUrl(proof)),
-      })));
-      const observedCount=resolvedProofs.reduce((m:number,x:any)=>Math.max(m,positiveInt(x.parcel_sequence)),0);
-      const count=authorizedParcelCount(pickup,observedCount);
-      if(!count) throw new Error("This pickup has no authoritative parcel count. Registration is blocked.");
-      setRows(Array.from({length:count},(_,offset)=>{
-        const sequence=offset+1;
-        const proof=resolvedProofs
-          .filter((x:any)=>positiveInt(x.parcel_sequence)===sequence)
-          .reduce((merged:any,item:any)=>{
-            for(const [key,value] of Object.entries(item)){
-              if(value!==null && value!==undefined && value!=="") merged[key]=value;
-            }
-            return merged;
-          },{});
-        return parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
-      }));
-    }catch(error:any){setRows([]);setMessage(error?.message||"Unable to load pickup proof rows.");}
+      const workspace=await fetchPickupWorkspace(pickup);
+      setTierAccess(workspace.tierAccess);
+      setRows(workspace.rows);
+      setRowsPickupId(pickup.pickup_id);
+    }catch(error:any){setRows([]);setRowsPickupId("");setMessage(error?.message||"Unable to load pickup proof rows.");}
     finally{setLoadingRows(false);}
   }
 
@@ -1040,6 +1059,12 @@ export default function DataEntryFinancialV2Page() {
     setBulkMessage("");
     try{
       const result=await persistAllRows("PORTAL_FINANCIAL_V2_SAVE_ALL");
+      if(selectedPickup){
+        setBulkImportDrafts((current)=>{
+          const draft=current[selectedPickup.pickup_id];
+          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:true}}:current;
+        });
+      }
       setBulkMessage(`Saved all ${Number(result.saved_count||rows.length)} row(s). The batch was committed atomically.`);
     }catch(error:any){
       setBulkMessage(error?.message||"Save All failed. No partial batch was kept.");
@@ -1048,9 +1073,9 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
-  async function authorizeImportedRows(pickup:Pickup,count:number,fileName:string):Promise<number>{
+  async function authorizeImportedRows(pickup:Pickup,count:number,fileName:string,observedCount=0):Promise<number>{
     let remaining=count;
-    let authorized=authorizedParcelCount(pickup,rows.length);
+    let authorized=authorizedParcelCount(pickup,observedCount);
     while(remaining>0){
       const chunk=Math.min(50,remaining);
       const response=await (supabase as any).rpc("be_data_entry_financial_v2_add_registrations",{p_payload:{
@@ -1069,31 +1094,28 @@ export default function DataEntryFinancialV2Page() {
     return authorized;
   }
 
-  async function applyOsImport(importPayload:OsImportApplyPayload){
-    if(!selectedPickup||importPayload.targetPickupId!==selectedPickup.pickup_id){
-      throw new Error("The target pickup changed while the spreadsheet was loading. Select it again and retry.");
-    }
-    if(!importPayload.rows.length) throw new Error("No spreadsheet rows were selected for this pickup.");
-    const maxSequence=Math.max(...importPayload.rows.map((row)=>positiveInt(row.targetSequence)));
-    let authorized=authorizedParcelCount(selectedPickup,rows.length);
-    if(maxSequence>authorized){
-      if(mutationMode!=="ACTIVE") throw new Error("Production Data Entry mutations must be ACTIVE before imported extra items can be authorized.");
-      authorized=await authorizeImportedRows(selectedPickup,maxSequence-authorized,importPayload.fileName);
-    }
-    const nextPickup={...selectedPickup,verified_parcels:Math.max(selectedPickup.verified_parcels,authorized)};
-    const sourceBySequence=new Map(importPayload.rows.map((row)=>[row.targetSequence,row]));
-    const existingBySequence=new Map(rows.map((row)=>[row.parcel_sequence,row]));
-    const targetCount=Math.max(authorized,rows.length,maxSequence);
+  function fillImportedPickupRows(
+    pickup:Pickup,
+    existingRows:ParcelRow[],
+    pickupTierAccess:MerchantTierAccess,
+    sourceRows:OsImportRow[],
+    importPayload:OsImportApplyPayload,
+    authorized:number,
+  ){
+    const maxSequence=Math.max(...sourceRows.map((row)=>positiveInt(row.targetSequence)));
+    const sourceBySequence=new Map(sourceRows.map((row)=>[row.targetSequence,row]));
+    const existingBySequence=new Map(existingRows.map((row)=>[row.parcel_sequence,row]));
+    const targetCount=Math.max(authorized,existingRows.length,maxSequence);
     const filled:ParcelRow[]=Array.from({length:targetCount},(_,offset):ParcelRow=>{
       const sequence=offset+1;
-      const existing=existingBySequence.get(sequence)||parcelRowFromProof(nextPickup,tierAccess,{},sequence);
+      const existing=existingBySequence.get(sequence)||parcelRowFromProof(pickup,pickupTierAccess,{},sequence);
       const sourceRow=sourceBySequence.get(sequence);
       if(!sourceRow) return existing;
       const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,tariffOptions);
       const requestedTier=text(sourceRow.merchantTier||"STANDARD").toUpperCase();
-      const customerTier=tierAccess.can_select_tier
+      const customerTier=pickupTierAccess.can_select_tier
         ? requestedTier
-        : tierAccess.resolved_customer_tier||"STANDARD";
+        : pickupTierAccess.resolved_customer_tier||"STANDARD";
       const amountType=(AMOUNT_TYPES.includes(sourceRow.paymentType as AmountType)
         ?sourceRow.paymentType
         :"ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
@@ -1107,23 +1129,23 @@ export default function DataEntryFinancialV2Page() {
         :`Township normalized from postal data (${destination.postal.matchLevel.replace(/_/g," ")}).`;
       return {
         ...existing,
-        pickup_id:nextPickup.pickup_id,
+        pickup_id:pickup.pickup_id,
         parcel_sequence:sequence,
-        delivery_way_id:canonicalWayId(nextPickup.pickup_id,sequence),
+        delivery_way_id:canonicalWayId(pickup.pickup_id,sequence),
         recipient_name:sourceRow.recipientName,
         recipient_phone:sourceRow.recipientPhone,
         township:destination.township,
         delivery_address:sourceRow.deliveryAddress,
         weight_kg:sourceRow.actualWeight,
         customer_tier:customerTier,
-        tier_override:Boolean(tierAccess.registered&&tierAccess.profile_tier&&customerTier!==tierAccess.profile_tier&&tierAccess.can_override_profile_tier),
+        tier_override:Boolean(pickupTierAccess.registered&&pickupTierAccess.profile_tier&&customerTier!==pickupTierAccess.profile_tier&&pickupTierAccess.can_override_profile_tier),
         service_provider_code:destination.providerCode,
         service_type:sourceRow.serviceType||"STANDARD",
         amount_entry_type:amountType,
         item_price:amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"",
         delivery_charges:amountType==="EXACT_COLLECTION_AMOUNT"?"":declaredDelivery,
         merchant_stated_total_amount:amountType==="EXACT_COLLECTION_AMOUNT"?exactTotal:"",
-        remarks:[existing.remarks,`OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}.`].filter(Boolean).join(" "),
+        remarks:[existing.remarks,`OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}, Way ID ${sourceRow.wayId||pickup.pickup_id}, merchant ${sourceRow.merchantName||pickup.merchant_id||pickup.merchant_name}.`].filter(Boolean).join(" "),
         calculation:{},
         calculating:false,
         checking:false,
@@ -1131,7 +1153,7 @@ export default function DataEntryFinancialV2Page() {
         photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
         photoUnavailableAcknowledged:importPayload.skipPhotoReview,
         photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
-        isAdditionalRegistration:sequence>requestedParcelCount(nextPickup),
+        isAdditionalRegistration:sequence>requestedParcelCount(pickup),
         importedFromOs:true,
         sourceFileName:importPayload.fileName,
         sourceRowNumber:sourceRow.sourceRowNumber,
@@ -1142,9 +1164,62 @@ export default function DataEntryFinancialV2Page() {
         saved:false,
       };
     });
-    setRows(filled.sort((a,b)=>a.parcel_sequence-b.parcel_sequence));
-    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===nextPickup.pickup_id?{...pickup,verified_parcels:nextPickup.verified_parcels}:pickup));
-    setBulkMessage(`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review every imported drop point; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}. Then use Calculate All and Save All.`);
+    return filled.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
+  }
+
+  async function applyOsImport(importPayload:OsImportApplyPayload){
+    const batches=importPayload.batches.length
+      ?importPayload.batches
+      :[{targetPickupId:importPayload.targetPickupId,rows:importPayload.rows}];
+    if(!batches.length||!importPayload.rows.length) throw new Error("No spreadsheet rows were selected for import.");
+    if(importPayload.mode==="SINGLE_PICKUP"&&(!selectedPickup||importPayload.targetPickupId!==selectedPickup.pickup_id)){
+      throw new Error("The target pickup changed while the spreadsheet was loading. Select it again and retry.");
+    }
+
+    const nextDrafts:Record<string,BulkImportDraft>={};
+    for(const batch of batches){
+      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
+      if(!pickup) throw new Error(`Pickup ${batch.targetPickupId} is no longer eligible. Refresh and upload the spreadsheet again.`);
+      const workspace=importPayload.mode==="SINGLE_PICKUP"&&rowsPickupId===pickup.pickup_id
+        ?{tierAccess,rows}
+        :await fetchPickupWorkspace(pickup);
+      const maxSequence=Math.max(...batch.rows.map((row)=>positiveInt(row.targetSequence)));
+      let authorized=authorizedParcelCount(pickup,workspace.rows.length);
+      if(maxSequence>authorized){
+        authorized=await authorizeImportedRows(pickup,maxSequence-authorized,importPayload.fileName,workspace.rows.length);
+      }
+      const nextPickup={...pickup,verified_parcels:Math.max(pickup.verified_parcels,authorized)};
+      nextDrafts[pickup.pickup_id]={
+        pickupId:pickup.pickup_id,
+        fileName:importPayload.fileName,
+        rows:fillImportedPickupRows(nextPickup,workspace.rows,workspace.tierAccess,batch.rows,importPayload,authorized),
+        tierAccess:workspace.tierAccess,
+        saved:false,
+      };
+    }
+
+    const pickupOrder=batches.map((batch)=>batch.targetPickupId);
+    const firstPickupId=pickupOrder[0];
+    if(importPayload.mode==="BULK_UPLOAD"){
+      setBulkImportDrafts(nextDrafts);
+      setBulkImportOrder(pickupOrder);
+    }else{
+      setBulkImportDrafts({});
+      setBulkImportOrder([]);
+    }
+    const firstDraft=nextDrafts[firstPickupId];
+    setSelectedPickupId(firstPickupId);
+    setTierAccess(firstDraft.tierAccess);
+    setRows(firstDraft.rows);
+    setRowsPickupId(firstPickupId);
+    setPickups((current)=>current.map((pickup)=>{
+      const draft=nextDrafts[pickup.pickup_id];
+      return draft?{...pickup,verified_parcels:Math.max(pickup.verified_parcels,draft.rows.length)}:pickup;
+    }));
+    setBulkMessage(importPayload.mode==="BULK_UPLOAD"
+      ?`Bulk upload staged ${importPayload.rows.length} row(s) across ${pickupOrder.length} pickup(s). Review and save each pickup batch from the queue; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}.`
+      :`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review every imported drop point; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}. Then use Calculate All and Save All.`
+    );
   }
 
   async function addRegistrations(){
@@ -1473,7 +1548,27 @@ export default function DataEntryFinancialV2Page() {
   }
 
   useEffect(()=>{void loadStartup();},[]);
-  useEffect(()=>{if(selectedPickup) void loadPickupRows(selectedPickup); else setRows([]);},[selectedPickupId]);
+  useEffect(()=>{
+    if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
+    const draft=bulkImportDrafts[selectedPickupId];
+    if(draft){
+      setTierAccess(draft.tierAccess);
+      setRows(draft.rows);
+      setRowsPickupId(draft.pickupId);
+      setLoadingRows(false);
+      return;
+    }
+    if(selectedPickup) void loadPickupRows(selectedPickup);
+    else {setRows([]);setRowsPickupId("");}
+  },[selectedPickupId]);
+  useEffect(()=>{
+    if(!rowsPickupId||rowsPickupId!==selectedPickupId) return;
+    setBulkImportDrafts((current)=>{
+      const draft=current[rowsPickupId];
+      if(!draft||draft.rows===rows) return current;
+      return {...current,[rowsPickupId]:{...draft,rows}};
+    });
+  },[rows,rowsPickupId,selectedPickupId]);
 
   if(loading) return <div className="flex min-h-[70vh] items-center justify-center bg-[#061524] text-[#eef8ff]"><Loader2 className="mr-3 animate-spin text-[#f6b84b]"/>Loading Financial V2…</div>;
 
@@ -1511,6 +1606,7 @@ export default function DataEntryFinancialV2Page() {
             <div className="min-w-[320px] flex-1">
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
               <select className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
+                <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
                 {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {authorizedParcelCount(p)} parcels</option>)}
               </select>
             </div>
@@ -1538,6 +1634,15 @@ export default function DataEntryFinancialV2Page() {
               onApply={applyOsImport}
             />
           </div>
+          {bulkUploadSelected?<div className="mt-4 rounded-xl border border-cyan-300/35 bg-cyan-400/5 p-4 text-[11px] leading-5 text-cyan-100"><b>Bulk upload mode:</b> attach the 12-column template. Way ID / Pickup ID assigns each row to its pickup and Merchant Name / Merchant ID is checked before any registrations are authorized. After staging, review the separate pickup batches below.</div>:null}
+          {bulkImportOrder.length?<div data-os-bulk-pickup-queue-v16="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Bulk upload pickup queue</div>
+            <div className="mt-1 text-[10px] text-[#8db4ce]">Open each matched pickup, verify its drop points, then run Calculate All and Save All. Saved batches are marked below.</div>
+            <div className="mt-3 flex flex-wrap gap-2">{bulkImportOrder.map((pickupId)=>{
+              const draft=bulkImportDrafts[pickupId];
+              return <button key={pickupId} type="button" onClick={()=>setSelectedPickupId(pickupId)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${selectedPickupId===pickupId?"border-cyan-300 bg-cyan-400 text-[#04111d]":draft?.saved?"border-emerald-400/50 bg-emerald-500/10 text-emerald-200":"border-[#31506a] bg-[#12314a] text-[#bfe8ff]"}`}>{pickupId} · {draft?.rows.length||0} row(s) · {draft?.saved?"SAVED":"REVIEW"}</button>;
+            })}</div>
+          </div>:null}
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
             <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
@@ -1560,7 +1665,7 @@ export default function DataEntryFinancialV2Page() {
                   <input className={inputClass} value={additionalReason} onChange={(e)=>setAdditionalReason(e.target.value)} placeholder="e.g. Merchant handed over 2 additional parcels"/>
                 </Field>
               </div>
-              <button type="button" onClick={()=>void addRegistrations()} disabled={addingRegistration || mutationMode!=="ACTIVE"} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50">
+              <button type="button" onClick={()=>void addRegistrations()} disabled={addingRegistration} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50">
                 {addingRegistration?<Loader2 size={14} className="animate-spin"/>:<Plus size={14}/>}ADD REGISTRATION
               </button>
             </div>
