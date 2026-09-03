@@ -839,6 +839,11 @@ export default function DataEntryFinancialV2Page() {
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
+  const sequenceFloorByPickup=useMemo(()=>Object.fromEntries(pickups.map((pickup)=>{
+    const draft=bulkImportDrafts[pickup.pickup_id];
+    const draftMaximum=draft?.rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0)||0;
+    return [pickup.pickup_id,Math.max(pickup.registered_parcels,draftMaximum)];
+  })),[bulkImportDrafts,pickups]);
   const importedLocationSummary=useMemo(()=>{
     const summary={total:0,synced:0,notRequired:0,resolving:0,review:0};
     for(const row of rows){
@@ -1165,7 +1170,7 @@ export default function DataEntryFinancialV2Page() {
   async function persistAllRows(reason:string){
     requireSaveReady();
     if(!selectedPickup) throw new Error("Select a pickup first.");
-    const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_all",{p_payload:{
+    const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_batch_v22",{p_payload:{
       request_id:requestId("FINANCIAL_V2_SAVE_ALL"),
       pickup_id:selectedPickup.pickup_id,
       reason,
@@ -1188,7 +1193,8 @@ export default function DataEntryFinancialV2Page() {
       calculation:{...row.calculation,...(savedResults[index]?.data||{})},
       message:"Saved by the atomic Save All operation.",
     })));
-    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,rows.length)}:pickup));
+    const maximumSavedSequence=rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
+    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,maximumSavedSequence)}:pickup));
     return result;
   }
 
@@ -1309,7 +1315,10 @@ export default function DataEntryFinancialV2Page() {
         saved:false,
       };
     });
-    return filled.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
+    const staged=importPayload.mode==="BULK_UPLOAD"
+      ?filled.filter((row)=>sourceBySequence.has(row.parcel_sequence))
+      :filled;
+    return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
@@ -1325,6 +1334,10 @@ export default function DataEntryFinancialV2Page() {
     for(const batch of batches){
       const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
       if(!pickup) throw new Error(`Pickup ${batch.targetPickupId} is no longer eligible. Refresh and upload the spreadsheet again.`);
+      const pendingDraft=bulkImportDrafts[pickup.pickup_id];
+      if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
+        throw new Error(`Pickup ${pickup.pickup_id} still has an unsaved upload batch. Calculate and Save All before uploading its next batch.`);
+      }
       const workspace=importPayload.mode==="SINGLE_PICKUP"&&rowsPickupId===pickup.pickup_id
         ?{tierAccess,rows}
         :await fetchPickupWorkspace(pickup);
@@ -1346,8 +1359,8 @@ export default function DataEntryFinancialV2Page() {
     const pickupOrder=batches.map((batch)=>batch.targetPickupId);
     const firstPickupId=pickupOrder[0];
     if(importPayload.mode==="BULK_UPLOAD"){
-      setBulkImportDrafts(nextDrafts);
-      setBulkImportOrder(pickupOrder);
+      setBulkImportDrafts((current)=>({...current,...nextDrafts}));
+      setBulkImportOrder((current)=>[...current.filter((pickupId)=>!pickupOrder.includes(pickupId)),...pickupOrder]);
     }else{
       setBulkImportDrafts({});
       setBulkImportOrder([]);
@@ -1782,6 +1795,7 @@ export default function DataEntryFinancialV2Page() {
             <DataEntryOsBulkImport
               pickups={pickups as OsBulkPickup[]}
               selectedPickupId={selectedPickupId}
+              sequenceFloorByPickup={sequenceFloorByPickup}
               busy={loadingRows||bulkCalculating||bulkSaving||waybillBusy||addingRegistration}
               onPickupChange={setSelectedPickupId}
               onApply={applyOsImport}

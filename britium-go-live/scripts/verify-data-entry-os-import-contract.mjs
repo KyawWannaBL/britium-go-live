@@ -9,6 +9,7 @@ const importer=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBul
 const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
 const migration=readFileSync(resolve(root,"supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
 const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
+const continuousBatchMigration=readFileSync(resolve(root,"supabase/migrations/20260904043000_continuous_data_entry_bulk_batches_v22.sql"),"utf8");
 
 const checks=[
   ["all 12 bilingual OS columns",/Way ID \/ Pickup ID[\s\S]*Merchant Name \/ Merchant ID[\s\S]*Receiver Name[\s\S]*Receiver Phone[\s\S]*Township \/ Service Provider[\s\S]*Actual Weight[\s\S]*Receiver Address[\s\S]*Service Type[\s\S]*Payment Type[\s\S]*Item Price[\s\S]*OS Set Price[\s\S]*Merchant Tier/.test(importer)],
@@ -21,6 +22,14 @@ const checks=[
   ["main pickup selector includes explicit Bulk upload mode",/BULK_UPLOAD_PICKUP_ID/.test(page)&&/Bulk upload · Way ID \+ Merchant Name/.test(page)],
   ["bulk rows route by Way ID and verify merchant",/function buildOsImportPlan/.test(importer)&&/does not belong to pickup/.test(importer)&&/Duplicate parcel sequence/.test(importer)],
   ["multi-pickup drafts remain separated for review",/Bulk upload pickup queue/.test(page)&&/bulkImportDrafts/.test(page)&&/bulkImportOrder/.test(page)],
+  ["each source file remains capped at 200 rows",/rows\.length > 200/.test(importer)&&/Import no more than 200 rows in one spreadsheet/.test(importer)],
+  ["consecutive uploads continue after the saved sequence",/sequenceFloorByPickup/.test(importer)&&/nextSequence = Math\.max\(0, Number\(sequenceFloorByPickup\[pickupId\]/.test(importer)&&/maximumSavedSequence/.test(page)],
+  ["parcel sequence can continue beyond 200",/if \(\/\^\\d\+\$\/\.test\(suffix\)\)/.test(importer)&&!/explicitSequence > 200/.test(importer)],
+  ["unsaved batches cannot be replaced by a later upload",/still has an unsaved upload batch/.test(page)&&/Calculate and Save All before uploading its next batch/.test(page)],
+  ["bulk staging keeps each batch limited to imported rows",/filled\.filter\(\(row\)=>sourceBySequence\.has\(row\.parcel_sequence\)\)/.test(page)],
+  ["continuous batches use the V22 atomic save RPC",/be_data_entry_financial_v2_save_batch_v22/.test(page)&&/create or replace function public\.be_data_entry_financial_v2_save_batch_v22/.test(continuousBatchMigration)],
+  ["V22 accepts only 1-200 contiguous rows inside the authorized range",/v_row_count<1 or v_row_count>200/.test(continuousBatchMigration)&&/SAVE_BATCH_NOT_CONTIGUOUS/.test(continuousBatchMigration)&&/v_last_sequence>v_authorized_count/.test(continuousBatchMigration)],
+  ["V22 batch saves are idempotent audited and rollback on failure",/SAVE_BATCH_V22/.test(continuousBatchMigration)&&/SAVE_BATCH_ROLLED_BACK/.test(continuousBatchMigration)&&/DATA_ENTRY_FINANCIAL_V2_BATCH_SAVED/.test(continuousBatchMigration)],
   ["canonical delivery IDs exist before location checks",/delivery_way_id:canonicalWayId\(pickup\.pickup_id,sequence\)/.test(page)],
   ["core imports require synchronized locations while external routes bypass maps",/route\.mapRequired\s*&&\s*row\.locationStatus!=="SYNCED"/.test(page)&&/CORE_LOCATION_NOT_SYNCED/.test(migration)&&/MAP_NOT_REQUIRED/.test(migration)],
   ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],

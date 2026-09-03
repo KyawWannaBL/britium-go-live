@@ -61,6 +61,7 @@ export const BULK_UPLOAD_PICKUP_ID = "__BULK_UPLOAD__";
 type Props = {
   pickups: OsBulkPickup[];
   selectedPickupId: string;
+  sequenceFloorByPickup?: Record<string, number>;
   busy?: boolean;
   onPickupChange: (pickupId: string) => void;
   onApply: (payload: OsImportApplyPayload) => Promise<void>;
@@ -212,7 +213,11 @@ type OsImportRoutingPreview = OsImportRow & {
   routingIssue: string;
 };
 
-export function buildOsImportPlan(rows: OsImportRow[], pickups: OsBulkPickup[]) {
+export function buildOsImportPlan(
+  rows: OsImportRow[],
+  pickups: OsBulkPickup[],
+  sequenceFloorByPickup: Record<string, number> = {},
+) {
   const orderedPickups = [...pickups].sort((a, b) => b.pickup_id.length - a.pickup_id.length);
   const provisional = rows.map((row) => {
     const wayId = clean(row.wayId);
@@ -230,7 +235,7 @@ export function buildOsImportPlan(rows: OsImportRow[], pickups: OsBulkPickup[]) 
       }
       if (upperWayId.startsWith(`${upperPickupId}-`)) {
         const suffix = wayId.slice(pickupId.length + 1).trim();
-        if (/^\d{1,3}$/.test(suffix)) {
+        if (/^\d+$/.test(suffix)) {
           pickup = candidate;
           explicitSequence = Number(suffix);
           hasExplicitSequence = true;
@@ -241,7 +246,13 @@ export function buildOsImportPlan(rows: OsImportRow[], pickups: OsBulkPickup[]) 
 
     if (!wayId) return { row, pickup: undefined, explicitSequence: 0, issue: "Way ID / Pickup ID is missing" };
     if (!pickup) return { row, pickup: undefined, explicitSequence: 0, issue: `Way ID ${wayId} does not match an eligible pickup` };
-    if (hasExplicitSequence && (explicitSequence < 1 || explicitSequence > 200)) return { row, pickup, explicitSequence, issue: "Parcel sequence in Way ID must be from 001 to 200" };
+    const sequenceFloor = pickup ? Math.max(0, Number(sequenceFloorByPickup[pickup.pickup_id] || 0)) : 0;
+    if (hasExplicitSequence && explicitSequence <= sequenceFloor) return {
+      row,
+      pickup,
+      explicitSequence,
+      issue: `Parcel sequence ${String(explicitSequence).padStart(3, "0")} already belongs to an earlier upload for ${pickup?.pickup_id}`,
+    };
 
     const merchant = routingKey(row.merchantName);
     const merchantKeys = new Set([routingKey(pickup.merchant_id), routingKey(pickup.merchant_name)].filter(Boolean));
@@ -273,7 +284,7 @@ export function buildOsImportPlan(rows: OsImportRow[], pickups: OsBulkPickup[]) 
         used.add(item.explicitSequence);
       }
     }
-    let nextSequence = 1;
+    let nextSequence = Math.max(0, Number(sequenceFloorByPickup[pickupId] || 0)) + 1;
     const batchRows: OsImportRow[] = [];
     for (const item of group) {
       if (item.issue) continue;
@@ -401,7 +412,7 @@ function authorizedCount(pickup: OsBulkPickup) {
   return Math.max(Number(pickup.expected_parcels || 0), Number(pickup.verified_parcels || 0));
 }
 
-export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy = false, onPickupChange, onApply }: Props) {
+export default function DataEntryOsBulkImport({ pickups, selectedPickupId, sequenceFloorByPickup = {}, busy = false, onPickupChange, onApply }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [filename, setFilename] = useState("");
@@ -461,8 +472,8 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, busy 
     [rowStatus, rows],
   );
   const bulkPlan = useMemo(
-    () => buildOsImportPlan(selectedRows, eligiblePickups),
-    [eligiblePickups, selectedRows],
+    () => buildOsImportPlan(selectedRows, eligiblePickups, sequenceFloorByPickup),
+    [eligiblePickups, selectedRows, sequenceFloorByPickup],
   );
   const previewRows = bulkMode
     ? bulkPlan.previewRows
