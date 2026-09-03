@@ -10,7 +10,51 @@ import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
 import { coordinateMatchesTownship, mapboxStaticLocationUrl, resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, verifiedAddressLocation, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 
-export default function DataEntryLocationEditor({ deliveryWayId, address, township }: { deliveryWayId: string; address: string; township: string }) {
+const AUTO_LOCATION_CONCURRENCY = 3;
+let activeAutomaticLocations = 0;
+const automaticLocationWaiters: Array<() => void> = [];
+
+async function withAutomaticLocationSlot<T>(task: () => Promise<T>): Promise<T> {
+  if (activeAutomaticLocations >= AUTO_LOCATION_CONCURRENCY) {
+    await new Promise<void>((resolve) => automaticLocationWaiters.push(resolve));
+  }
+  activeAutomaticLocations += 1;
+  try {
+    return await task();
+  } finally {
+    activeAutomaticLocations -= 1;
+    automaticLocationWaiters.shift()?.();
+  }
+}
+
+export type DataEntryLocationResolution = "PENDING" | "SEARCHING" | "REVIEW_REQUIRED" | "SYNCED";
+
+type DataEntryLocationEditorProps = {
+  deliveryWayId: string;
+  address: string;
+  township: string;
+  autoResolveDelayMs?: number;
+  deferInteractiveMap?: boolean;
+  onResolutionChange?: (status: DataEntryLocationResolution) => void;
+};
+
+function addressKey(value: unknown) {
+  return String(value ?? "")
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/[၊။,./\\\-_()\[\]]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export default function DataEntryLocationEditor({
+  deliveryWayId,
+  address,
+  township,
+  autoResolveDelayMs = 900,
+  deferInteractiveMap = false,
+  onResolutionChange,
+}: DataEntryLocationEditorProps) {
   const [query, setQuery] = useState(address || "");
   const [candidate, setCandidate] = useState<DeliveryLocation | null>(null);
   const [lat, setLat] = useState("");
@@ -21,6 +65,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   const [manualOpen, setManualOpen] = useState(false);
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
+  const resolutionCallback = useRef(onResolutionChange);
   const interactiveMapContainer = useRef<HTMLDivElement | null>(null);
   const interactiveMap = useRef<mapboxgl.Map | null>(null);
   const draggableMarker = useRef<mapboxgl.Marker | null>(null);
@@ -29,10 +74,19 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? mapboxStaticLocationUrl(candidate) : "";
 
+  useEffect(() => {
+    resolutionCallback.current = onResolutionChange;
+  }, [onResolutionChange]);
+
+  function reportResolution(status: DataEntryLocationResolution) {
+    resolutionCallback.current?.(status);
+  }
+
   async function load() {
     const requestId = ++requestSequence.current;
     if (!deliveryWayId) {
       setMessage("Location details are ready for review. The location can be saved after the Delivery Way ID is allocated.");
+      reportResolution("PENDING");
       return;
     }
     const verified = verifiedAddressLocation(address, township);
@@ -55,7 +109,14 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setLat(String(corrected.latitude));
       setLng(String(corrected.longitude));
       setMessage("Verified South Okkalapa Ward 3 location restored; stale provider coordinates were ignored.");
-      try { await saveDeliveryLocation(supabase, corrected); } catch { /* Display the verified pin even if persistence is temporarily unavailable. */ }
+      try {
+        await saveDeliveryLocation(supabase, corrected);
+        reportResolution("SYNCED");
+      } catch {
+        reportResolution("REVIEW_REQUIRED");
+        setManualOpen(true);
+        setMessage("The verified pin is shown, but it could not be synchronized. Click Apply coordinates before saving this parcel.");
+      }
       return;
     }
     const { data, error } = await supabase.rpc("be_delivery_location_get_v10", { p_delivery_way_id: deliveryWayId });
@@ -63,19 +124,34 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     if (error) {
       setManualOpen(true);
       setMessage(`Saved location could not be loaded: ${error.message}`);
+      reportResolution("REVIEW_REQUIRED");
       return;
     }
     if (data?.ok === false) {
       setManualOpen(true);
       setMessage(data?.message || "Saved location could not be loaded.");
+      reportResolution("REVIEW_REQUIRED");
       return;
     }
     const row = data?.location;
     if (!row) {
       setMessage("No saved location exists yet. Check the address to create Location Details.");
+      reportResolution("PENDING");
       return;
     }
-    const savedCoordinateMatches = await coordinateMatchesTownship(township, row.latitude, row.longitude);
+    if (row.address_original && addressKey(row.address_original) !== addressKey(address)) {
+      setCandidate(null);
+      setLat("");
+      setLng("");
+      setManualOpen(true);
+      setMessage("The saved pin belongs to an older address for this parcel. Searching again for the newly imported address…");
+      reportResolution("SEARCHING");
+      const key = `${deliveryWayId}|${address}|${township}`;
+      lastAutoKey.current = key;
+      void find(address, true);
+      return;
+    }
+    const savedCoordinateMatches = await withAutomaticLocationSlot(() => coordinateMatchesTownship(township, row.latitude, row.longitude));
     if (requestId !== requestSequence.current) return;
     if (!savedCoordinateMatches) {
       setCandidate(null);
@@ -83,6 +159,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setLng("");
       setManualOpen(true);
       setMessage(`The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with township and postal boundaries…`);
+      reportResolution("SEARCHING");
       const key = `${deliveryWayId}|${address}|${township}`;
       lastAutoKey.current = key;
       void find(address, true);
@@ -91,6 +168,13 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     setCandidate({ deliveryWayId, latitude: Number(row.latitude), longitude: Number(row.longitude), label: row.provider_label || row.address_english || row.address_original, originalAddress: row.address_original || address, englishAddress: row.address_english || "", township: row.township || township, postalCode: row.postal_code || "", postalMatchLevel: row.postal_match_level || "UNRESOLVED", matchLevel: row.match_level, confidence: Number(row.confidence || 0), coordinateSource: row.coordinate_source, reviewStatus: row.review_status });
     setLat(String(row.latitude));
     setLng(String(row.longitude));
+    if (row.review_status === "ACCEPTED") {
+      reportResolution("SYNCED");
+    } else {
+      setManualOpen(true);
+      setMessage("The saved pin is still review-only. Verify it and click Apply coordinates before saving this parcel.");
+      reportResolution("REVIEW_REQUIRED");
+    }
   }
 
   useEffect(() => {
@@ -101,6 +185,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     setLng("");
     setMessage("");
     lastAutoKey.current = "";
+    reportResolution("PENDING");
     void load();
   }, [deliveryWayId, address, township]);
 
@@ -111,9 +196,9 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   useEffect(() => {
     const key = `${deliveryWayId}|${address}|${township}`;
     if (!deliveryWayId || address.trim().length < 5 || lastAutoKey.current === key || candidate) return;
-    const timer = window.setTimeout(() => { lastAutoKey.current = key; void find(address, true); }, 900);
+    const timer = window.setTimeout(() => { lastAutoKey.current = key; void find(address, true); }, Math.max(0, autoResolveDelayMs));
     return () => window.clearTimeout(timer);
-  }, [deliveryWayId, address, township, candidate]);
+  }, [deliveryWayId, address, township, candidate, autoResolveDelayMs]);
 
 
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
@@ -126,6 +211,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
     setLat(nextLat.toFixed(6));
     setLng(nextLng.toFixed(6));
     setManualOpen(true);
+    reportResolution("REVIEW_REQUIRED");
     setCandidate((current) => current ? {
       ...current,
       latitude: nextLat,
@@ -139,7 +225,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   }
 
   useEffect(() => {
-    if (!mapboxToken || !candidate || !interactiveMapContainer.current) return;
+    if (!mapboxToken || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
 
     let disposed = false;
     let map: mapboxgl.Map | null = null;
@@ -218,7 +304,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       try { map?.remove(); } catch { /* Mapbox may have failed before WebGL setup completed. */ }
       setMapError(fallbackMessage);
     }
-  }, [deliveryWayId, Boolean(candidate), mapboxToken]);
+  }, [deliveryWayId, Boolean(candidate), deferInteractiveMap, manualOpen, mapboxToken]);
 
   useEffect(() => {
     if (!validMyanmarCoordinate(lng, lat)) return;
@@ -228,14 +314,18 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   async function find(value = query, automatic = false) {
     const requestId = ++requestSequence.current;
     setBusy(true);
+    reportResolution("SEARCHING");
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
-      const found = await resolveDeliveryLocation({ deliveryWayId, address: value || address, township });
+      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township });
+      const resolved = automatic ? await withAutomaticLocationSlot(resolve) : await resolve();
+      const found = resolved ? { ...resolved, originalAddress: address } : null;
       if (requestId !== requestSequence.current) return;
       if (!found) {
         setCandidate(null);
         setManualOpen(true);
         setMessage("No reliable address, POI, street, ward or neighborhood match. Manual review is required.");
+        reportResolution("REVIEW_REQUIRED");
         return;
       }
       if (found.reviewStatus === "MANUAL_REVIEW" || found.matchLevel === "WARD_APPROXIMATE") {
@@ -246,6 +336,7 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         setLat(String(found.latitude));
         setLng(String(found.longitude));
         setManualOpen(true);
+        reportResolution("REVIEW_REQUIRED");
         const reason=String(found.reviewReason||"");
         if(reason==="TOWNSHIP_MISMATCH") {
           setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but its township does not match ${township || "the selected township"}. The pin is shown for review only and has NOT been shared with Wayplan.`);
@@ -264,10 +355,12 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setMessage(deliveryWayId
         ? `${found.matchLevel.replaceAll("_", " ")} saved automatically and shared with Wayplan.`
         : `${found.matchLevel.replaceAll("_", " ")} found. Preview only until the Delivery Way ID is allocated.`);
+      reportResolution(deliveryWayId ? "SYNCED" : "REVIEW_REQUIRED");
     } catch (error: any) {
       if (requestId !== requestSequence.current) return;
       setManualOpen(true);
       setMessage(error?.message || "Location search failed.");
+      reportResolution("REVIEW_REQUIRED");
     } finally {
       if (requestId === requestSequence.current) setBusy(false);
     }
@@ -276,24 +369,29 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
   async function apply() {
     if (!deliveryWayId) {
       setMessage("The Delivery Way ID must be allocated before coordinates can be saved.");
+      reportResolution("REVIEW_REQUIRED");
       return;
     }
     if (!validMyanmarCoordinate(lng, lat)) {
       setMessage("Latitude/longitude is outside Myanmar or invalid.");
+      reportResolution("REVIEW_REQUIRED");
       return;
     }
     setBusy(true);
+    reportResolution("SEARCHING");
     try {
       const verified = verifiedAddressLocation(query || address, township);
       if (verified) {
         const distance = Math.hypot((Number(lat) - verified.latitude) * 111_320, (Number(lng) - verified.longitude) * 106_000);
         if (distance > 750) {
           setMessage("These coordinates are outside the verified South Okkalapa Ward 3 area and were not saved.");
+          reportResolution("REVIEW_REQUIRED");
           return;
         }
       }
       if (!(await coordinateMatchesTownship(township, lat, lng))) {
         setMessage(`The selected point is outside ${township || "the selected township"} and was not saved. Choose an exact point inside the correct township.`);
+        reportResolution("REVIEW_REQUIRED");
         return;
       }
       const next: DeliveryLocation = {
@@ -304,8 +402,10 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
       setCandidate(next);
       setManualOpen(false);
       setMessage("Manual coordinates applied, map updated, and location shared with Wayplan.");
+      reportResolution("SYNCED");
     } catch (error: any) {
       setMessage(error?.message || "Coordinates could not be applied.");
+      reportResolution("REVIEW_REQUIRED");
     } finally {
       setBusy(false);
     }
@@ -330,10 +430,10 @@ export default function DataEntryLocationEditor({ deliveryWayId, address, townsh
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <button type="button" onClick={()=>setManualOpen((open)=>!open)} className="mt-3 flex w-full items-center justify-between rounded-lg border border-slate-700 px-3 py-2 text-xs font-black text-slate-200"><span>{candidate ? "Review or correct coordinates" : "Manual location review"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
-        {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>setLat(event.target.value)} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>setLng(event.target.value)} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
+        {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
       </div>
       <div>
-        {candidate && mapboxToken && !mapError ? <div>
+        {candidate && mapboxToken && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
           <div className="relative">
             <div ref={interactiveMapContainer} className="h-[320px] min-h-[230px] w-full overflow-hidden rounded-lg border border-cyan-600/60"/>
             <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">DRAG THE ORANGE PIN OR CLICK THE EXACT DROP-OFF POINT</div>

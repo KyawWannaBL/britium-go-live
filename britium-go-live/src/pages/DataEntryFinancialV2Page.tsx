@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Calculator, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, X } from "lucide-react";
+import { AlertTriangle, Calculator, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import ActiveScreenBulkImport from "@/components/workflow/ActiveScreenBulkImport";
-import DataEntryLocationEditor from "@/components/workflow/DataEntryLocationEditor";
+import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
+import DataEntryOsBulkImport, { type OsBulkPickup, type OsImportApplyPayload } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
+import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
+import { resolvePostalCode } from "@/lib/postalCodeResolver";
 export const BRITIUM_LOCATION_WORKFLOW_V10 = "DATA_ENTRY_BILINGUAL_LOCATION_V10";
 
 export const DATA_ENTRY_PHOTO_LIGHTBOX_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_LIGHTBOX_PROXY_V1_3_20260823";
@@ -17,6 +19,7 @@ export const DATA_ENTRY_TARIFF_AUTOCOMPLETE_BUILD = "BRITIUM_DATA_ENTRY_TARIFF_A
 export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRATION_EXPORT_TIMELINE_V12_9";
 export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECONCILIATION_V13_2_20260902";
 export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK_ACTIONS_V14_20260902";
+export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_SOFTCOPY_BULK_IMPORT_V15_20260902";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -74,6 +77,9 @@ type Pickup = {
   city: string;
   expected_parcels: number;
   verified_parcels: number;
+  registered_parcels: number;
+  pickup_date: string;
+  created_at: string;
   pickup_status: string;
   workflow_stage: string;
 };
@@ -93,6 +99,7 @@ type ParcelRow = {
   customer_tier: string;
   tier_override: boolean;
   service_provider_code: string;
+  service_type: string;
   amount_entry_type: AmountType;
   item_price: number | "";
   delivery_charges: number | "";
@@ -113,6 +120,13 @@ type ParcelRow = {
   photoRejectionNote: string;
   photoReviewBusy: boolean;
   isAdditionalRegistration: boolean;
+  importedFromOs: boolean;
+  sourceFileName: string;
+  sourceRowNumber: number | null;
+  sourceRowCount: number | null;
+  photoEvidenceMode: "PICKER_PHOTO" | "OS_SOFTCOPY";
+  photoBypassReason: string;
+  locationStatus: DataEntryLocationResolution;
   saved: boolean;
 };
 
@@ -141,6 +155,55 @@ function requestId(prefix: string): string {
     : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
   return prefix + ":" + id;
 }
+function canonicalWayId(pickupId: string, sequence: number): string {
+  return `${pickupId}-${String(sequence).padStart(3,"0")}`;
+}
+function stripProviderDecoration(value: unknown): string {
+  return text(value)
+    .replace(/[（(]\s*(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs)\s*[)）]/gi," ")
+    .replace(/(?:^|[\s/|·,-])(?:royal(?:\s+express)?|dk(?:\s+delivery)?|grs)(?=$|[\s/|·,-])/gi," ")
+    .replace(/\s+/g," ")
+    .trim();
+}
+function destinationMatchKey(value: unknown): string {
+  return convertMyanmarTownshipToEnglish(stripProviderDecoration(value))
+    .normalize("NFC")
+    .toLowerCase()
+    .replace(/\b(?:township|city|town)\b/g,"")
+    .replace(/[^a-z0-9\u1000-\u109f]+/g,"");
+}
+function importedProviderCode(value: unknown): string {
+  const source=text(value).normalize("NFC").toLowerCase();
+  if(/royal|ရွိုင်ရယ်/.test(source)) return "ROYAL EXPRESS";
+  if(/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ/.test(source)) return "DK DELIVERY";
+  if(/(?:^|[^a-z])grs(?:[^a-z]|$)|ဂျီအာရ်အက်စ်/.test(source)) return "GRS";
+  return "";
+}
+function resolveImportedDestination(value: unknown,address: unknown,options: TariffOption[]) {
+  const raw=text(value).trim();
+  const postal=resolvePostalCode(address,stripProviderDecoration(raw));
+  const keys=new Set([
+    destinationMatchKey(raw),
+    destinationMatchKey(postal.township),
+    destinationMatchKey(postal.townshipMm),
+  ].filter(Boolean));
+  const matching=options.filter((option)=>keys.has(destinationMatchKey(option.destination_name)));
+  const requestedProvider=importedProviderCode(raw);
+  const providerMatches=requestedProvider
+    ? matching.filter((option)=>option.provider_code===requestedProvider)
+    : matching;
+  const option=providerMatches.length===1
+    ? providerMatches[0]
+    : requestedProvider
+      ? providerMatches.find((candidate)=>candidate.provider_code===requestedProvider)||null
+      : null;
+  const prefersMyanmar=/[\u1000-\u109f]/.test(raw);
+  const township=option?.destination_name
+    ||(prefersMyanmar?postal.townshipMm:postal.township)
+    ||stripProviderDecoration(raw)
+    ||convertMyanmarTownshipToEnglish(raw);
+  return {township,option,providerCode:option?.provider_code||requestedProvider,postal};
+}
 function normalizePickup(row: any): Pickup | null {
   const pickupId = text(row?.pickup_id || row?.pickup_way_id).trim();
   if (!pickupId) return null;
@@ -152,6 +215,9 @@ function normalizePickup(row: any): Pickup | null {
     city: text(row?.city).trim(),
     expected_parcels: positiveInt(row?.expected_parcels || row?.parcel_count),
     verified_parcels: positiveInt(row?.verified_parcels || row?.photo_parcels),
+    registered_parcels: positiveInt(row?.registered_parcels || row?.registered_parcel_count),
+    pickup_date: text(row?.pickup_date).trim(),
+    created_at: text(row?.created_at).trim(),
     pickup_status: text(row?.pickup_status).trim(),
     workflow_stage: text(row?.workflow_stage).trim(),
   };
@@ -228,6 +294,7 @@ function payload(row: ParcelRow, pickup: Pickup) {
   const p: Record<string, unknown> = {
     pickup_id: row.pickup_id,
     parcel_sequence: row.parcel_sequence,
+    delivery_way_id: row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence),
     merchant_id: pickup.merchant_id || null,
     recipient_name: row.recipient_name || null,
     recipient_phone: row.recipient_phone || null,
@@ -237,6 +304,7 @@ function payload(row: ParcelRow, pickup: Pickup) {
     customer_tier: row.customer_tier || "STANDARD",
     customer_tier_override: row.tier_override,
     service_provider_code: row.service_provider_code || null,
+    service_type: row.service_type || "STANDARD",
     amount_entry_type: row.amount_entry_type,
     item_price: row.item_price === "" ? null : Number(row.item_price),
     delivery_charges: row.delivery_charges === "" ? null : Number(row.delivery_charges),
@@ -247,10 +315,16 @@ function payload(row: ParcelRow, pickup: Pickup) {
     merchant_payable_charges: row.merchant_payable_charges === "" ? 0 : Number(row.merchant_payable_charges),
     other_merchant_credits: row.other_merchant_credits === "" ? 0 : Number(row.other_merchant_credits),
     remarks: row.remarks || null,
+    os_softcopy_import: row.importedFromOs,
+    os_source_file_name: row.sourceFileName || null,
+    source_row_number: row.sourceRowNumber,
+    source_row_count: row.sourceRowCount,
+    photo_evidence_mode: row.photoEvidenceMode,
+    photo_bypass: row.photoUnavailableAcknowledged,
+    photo_bypass_reason: row.photoBypassReason || null,
   };
   if (isExact(row.amount_entry_type)) { p.item_price = null; p.delivery_charges = null; }
   else if (row.amount_entry_type === "DELIVERY_CHARGE_ONLY") { p.item_price = null; p.merchant_stated_total_amount = null; }
-  else if (row.amount_entry_type === "ITEM_PRICE_ONLY_DELIVERY_PAID_BY_MERCHANT") { p.delivery_charges = null; p.merchant_stated_total_amount = null; }
   else p.merchant_stated_total_amount = null;
   return p;
 }
@@ -272,10 +346,15 @@ function parcelRowFromProof(
   const customerTier=savedTier||tierAccess.resolved_customer_tier||"STANDARD";
   const legacyAdditional=num(proof.additional_customer_charge);
   const proofReviewStatus=text(proof.proof_check_status||proof.verification_status||"PENDING_REVIEW").toUpperCase();
+  const storedPhotoMode=text(proof.photo_evidence_mode||proof.financial_quote?.photo_evidence_mode).toUpperCase();
+  const importedFromOs=Boolean(
+    proof.source_file_name||proof.os_imported_at||proof.financial_quote?.os_softcopy_import
+  );
+  const photoEvidenceMode:ParcelRow["photoEvidenceMode"]=storedPhotoMode==="OS_SOFTCOPY"?"OS_SOFTCOPY":"PICKER_PHOTO";
   return {
     pickup_id:pickup.pickup_id,
     parcel_sequence:sequence,
-    delivery_way_id:text(proof.delivery_way_id),
+    delivery_way_id:text(proof.delivery_way_id)||canonicalWayId(pickup.pickup_id,sequence),
     proof_url:text(proof.__proof_url),
     proof_ref:text(proof.__proof_ref),
     photo_status:text(proof.review_status||proof.photo_status||proof.status||"PENDING_REVIEW").toUpperCase(),
@@ -287,6 +366,7 @@ function parcelRowFromProof(
     customer_tier:customerTier,
     tier_override:Boolean(tierAccess.registered && tierAccess.profile_tier && customerTier!==tierAccess.profile_tier && tierAccess.can_override_profile_tier),
     service_provider_code:text(proof.service_provider_code||proof.financial_quote?.service_provider_code).toUpperCase(),
+    service_type:text(proof.service_type||proof.financial_quote?.service_type||"STANDARD").toUpperCase(),
     amount_entry_type:editableAmountType,
     item_price:proof.item_price??"",
     delivery_charges:proof.delivery_charges??proof.delivery_fee??"",
@@ -304,12 +384,19 @@ function parcelRowFromProof(
       legacyAdditional>0?`Legacy additional customer charge ${money(legacyAdditional)} is retired and will be reset to 0 on the next save.`:"",
     ].filter(Boolean).join(" "),
     photoReviewed:["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED","RIDER_VERIFIED"].includes(proofReviewStatus),
-    photoUnavailableAcknowledged:false,
+    photoUnavailableAcknowledged:photoEvidenceMode==="OS_SOFTCOPY",
     photoReviewStatus:proofReviewStatus,
     photoRejectionReason:text(proof.rejection_reason),
     photoRejectionNote:text(proof.review_note),
     photoReviewBusy:false,
     isAdditionalRegistration:sequence>requestedParcelCount(pickup),
+    importedFromOs,
+    sourceFileName:text(proof.source_file_name||proof.financial_quote?.os_source_file_name),
+    sourceRowNumber:positiveInt(proof.source_row_number||proof.financial_quote?.source_row_number)||null,
+    sourceRowCount:positiveInt(proof.source_row_count||proof.financial_quote?.source_row_count)||null,
+    photoEvidenceMode,
+    photoBypassReason:text(proof.photo_bypass_reason||proof.financial_quote?.photo_bypass_reason),
+    locationStatus:"PENDING",
     saved:Boolean(proof.saved_at||proof.delivery_way_id),
   };
 }
@@ -403,6 +490,8 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
           <div className="flex flex-wrap items-center gap-2">
             <div className="text-[11px] font-black uppercase tracking-[0.15em] text-[#f6b84b]">Parcel {row.parcel_sequence}</div>
             {row.isAdditionalRegistration?<span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-1 text-[9px] font-black text-cyan-200">AUTHORIZED MERCHANT ADDITION</span>:null}
+            {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY · ROW {row.sourceRowNumber||"—"}</span>:null}
+            {row.importedFromOs?<span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.locationStatus==="SYNCED"?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>:null}
             {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
           </div>
           <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
@@ -413,14 +502,19 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
           </button>
           <button type="button" onClick={() => save(index)} disabled={
               row.checking ||
-              (!row.photoReviewed && !row.isAdditionalRegistration)
+              (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
+              (row.importedFromOs && row.locationStatus !== "SYNCED")
             } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} သိမ်းဆည်းရန်
           </button>
         </div>
       </div>
 
-      {row.proof_url ? (
+      {row.photoUnavailableAcknowledged ? (
+        <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
+          <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
+        </div>
+      ) : row.proof_url ? (
         <>
           <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="mb-4 flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
             <img src={displayProofUrl} alt="Proof" className="h-20 w-28 rounded-lg object-cover" />
@@ -444,7 +538,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         </div>
       ) : <div className="mb-4 rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]"><ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists for this parcel."} <a href="#/data-entry-photo" className="ml-2 font-black underline">Open Photo Check</a></div>}
 
-      {!row.isAdditionalRegistration?<div
+      {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged?<div
         data-photo-review="true"
         className="mb-4 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-4"
       >
@@ -541,13 +635,21 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             {row.tier_override ? " · Authorized parcel override" : tierAccess?.registered ? " · Merchant profile" : " · Operator selection"}
           </span>
         </Field>
+        <Field label="ဝန်ဆောင်မှုအမျိုးအစား">
+          <select className={`${inputClass} !bg-white !text-black`} value={row.service_type} onChange={(e)=>updateRow(index,{service_type:e.target.value})}>
+            <option value="STANDARD">STANDARD</option>
+            <option value="EXPRESS">EXPRESS</option>
+            <option value="SAME_DAY">SAME DAY</option>
+            <option value="NEXT_DAY">NEXT DAY</option>
+            <option value="ECONOMY">ECONOMY</option>
+          </select>
+        </Field>
         <Field label="ငွေကောက်ခံပုံ">
           <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
             const next=e.target.value as AmountType;
             const patch:any={amount_entry_type:next};
             if(isExact(next)){patch.item_price="";patch.delivery_charges="";}
             else if(next==="DELIVERY_CHARGE_ONLY"){patch.item_price="";patch.merchant_stated_total_amount="";}
-            else if(next==="ITEM_PRICE_ONLY_DELIVERY_PAID_BY_MERCHANT"){patch.delivery_charges="";patch.merchant_stated_total_amount="";}
             else patch.merchant_stated_total_amount="";
             updateRow(index,patch);
           }}>
@@ -556,13 +658,20 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         </Field>
       </div>
 
-      <DataEntryLocationEditor deliveryWayId={row.delivery_way_id} address={row.delivery_address} township={row.township} />
+      <DataEntryLocationEditor
+        deliveryWayId={row.delivery_way_id}
+        address={row.delivery_address}
+        township={row.township}
+        autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
+        deferInteractiveMap={row.importedFromOs}
+        onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
+      />
 
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
           {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>updateRow(index,{item_price:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          {!isExact(type) && type!=="ITEM_PRICE_ONLY_DELIVERY_PAID_BY_MERCHANT" ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
+          {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           {isExact(type) ? <Field label="အတိအကျ / COD စုစုပေါင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           <Field label="CBM ထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
           <Field label="အခြားထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
@@ -654,8 +763,41 @@ export default function DataEntryFinancialV2Page() {
       if(p.error) throw p.error;
       const source=Array.isArray(p.data)?p.data:(Array.isArray(p.data?.data)?p.data.data:[]);
       const normalized=source.map(normalizePickup).filter(Boolean) as Pickup[];
-      setPickups(normalized);
-      setSelectedPickupId(current=>current&&normalized.some(x=>x.pickup_id===current)?current:(normalized[0]?.pickup_id||""));
+      const registeredByPickup=new Map<string,Set<number>>();
+      for(let offset=0;offset<normalized.length;offset+=50){
+        const pickupIds=normalized.slice(offset,offset+50).map((pickup)=>pickup.pickup_id);
+        let page=0;
+        while(pickupIds.length){
+          const registrationResponse=await (supabase as any)
+            .from("be_data_entry_parcel_details")
+            .select("pickup_id,parcel_sequence")
+            .in("pickup_id",pickupIds)
+            .order("pickup_id",{ascending:true})
+            .order("parcel_sequence",{ascending:true})
+            .range(page*1000,page*1000+999);
+          if(registrationResponse.error){
+            console.warn("Registered Data Entry counts could not be refreshed.",registrationResponse.error.message);
+            break;
+          }
+          const registrations=Array.isArray(registrationResponse.data)?registrationResponse.data:[];
+          registrations.forEach((registration:any)=>{
+            const pickupId=text(registration.pickup_id);
+            const sequence=positiveInt(registration.parcel_sequence);
+            if(!pickupId||!sequence) return;
+            const values=registeredByPickup.get(pickupId)||new Set<number>();
+            values.add(sequence);
+            registeredByPickup.set(pickupId,values);
+          });
+          if(registrations.length<1000) break;
+          page+=1;
+        }
+      }
+      const withRegisteredCounts=normalized.map((pickup)=>({
+        ...pickup,
+        registered_parcels:registeredByPickup.get(pickup.pickup_id)?.size??pickup.registered_parcels,
+      }));
+      setPickups(withRegisteredCounts);
+      setSelectedPickupId(current=>current&&withRegisteredCounts.some(x=>x.pickup_id===current)?current:(withRegisteredCounts[0]?.pickup_id||""));
     }catch(error:any){setMessage(error?.message||"Unable to load Financial V2.");}
     finally{setLoading(false);}
   }
@@ -678,6 +820,7 @@ export default function DataEntryFinancialV2Page() {
       setTierAccess(nextTierAccess);
 
       const proofSources = [
+        "be_data_entry_parcel_details",
         "be_v_data_entry_parcel_proofs",
         "be_v_data_entry_parcel_rows",
         "be_pickup_parcel_verifications",
@@ -796,21 +939,29 @@ export default function DataEntryFinancialV2Page() {
     if(!selectedPickup) return;
     const row=rows[index]; if(!row) return;
 
-    if (!row.isAdditionalRegistration && !row.proof_ref) {
+    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.proof_ref) {
       updateRow(index,{message:"No stored parcel photo reference exists. Photo capture/re-upload is required before saving."});
       return;
     }
-    if (!row.isAdditionalRegistration && !row.photoReviewed) {
+    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoReviewed) {
       updateRow(index, {
         message:
           "Approve the parcel photo before Save. Reject unavailable, wrong, unclear, or unrelated images and request re-upload.",
       });
       return;
     }
+    if(row.photoUnavailableAcknowledged && (!row.importedFromOs || !row.sourceFileName || row.photoBypassReason.trim().length<10)){
+      updateRow(index,{message:"OS softcopy photo bypass requires an imported source file and a clear reason of at least 10 characters."});
+      return;
+    }
+    if(row.importedFromOs && row.locationStatus!=="SYNCED"){
+      updateRow(index,{message:"Review this imported drop point and apply coordinates when required. Save is enabled only after Location Details reports SYNCED."});
+      return;
+    }
 
     updateRow(index,{checking:true,message:""});
     try{
-      const r=await (supabase as any).rpc("be_data_entry_financial_v2_save",{p_payload:{...payload(row,selectedPickup),request_id:requestId("FINANCIAL_V2_SAVE"),dry_run:false,source_file_name:"PORTAL_FINANCIAL_V2_LIVE",reason:row.isAdditionalRegistration?"AUTHORIZED_MERCHANT_ADDITION_SAVE":"PORTAL_FINANCIAL_V2_SAVE",destination:selectedPickup.city||null}});
+      const r=await (supabase as any).rpc("be_data_entry_financial_v2_save",{p_payload:{...payload(row,selectedPickup),request_id:requestId("FINANCIAL_V2_SAVE"),dry_run:false,source_file_name:row.sourceFileName||"PORTAL_FINANCIAL_V2_LIVE",reason:row.photoUnavailableAcknowledged?row.photoBypassReason:row.isAdditionalRegistration?"AUTHORIZED_MERCHANT_ADDITION_SAVE":"PORTAL_FINANCIAL_V2_SAVE",destination:selectedPickup.city||null}});
       if(r.error) throw r.error;
       const e=envelope(r.data);
       if(!e.ok || r.data?.persisted===false) throw new Error(envelopeMessage(e)||"Live save was not confirmed.");
@@ -821,6 +972,7 @@ export default function DataEntryFinancialV2Page() {
         calculation:{...row.calculation,...e.data},
         message:"Saved successfully with backend calculation and audit lineage."
       });
+      setPickups((current)=>current.map((pickup)=>pickup.pickup_id===row.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,row.parcel_sequence)}:pickup));
     }catch(error:any){updateRow(index,{checking:false,message:error?.message||"Save failed."});}
   }
 
@@ -843,9 +995,13 @@ export default function DataEntryFinancialV2Page() {
   }
 
   function requireSaveReady(){
-    const blocked=rows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed);
-    if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
     if(!selectedPickup || !rows.length) throw new Error("Select a pickup with authorized registration rows first.");
+    const blocked=rows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed && !row.photoUnavailableAcknowledged);
+    if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
+    const invalidBypass=rows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
+    if(invalidBypass) throw new Error(`Parcel ${invalidBypass.parcel_sequence}: OS softcopy photo bypass is missing its source file or audited reason.`);
+    const unresolvedLocation=rows.find((row)=>row.importedFromOs&&row.locationStatus!=="SYNCED");
+    if(unresolvedLocation) throw new Error(`Parcel ${unresolvedLocation.parcel_sequence}: review the imported drop point and Apply coordinates until Location is SYNCED.`);
   }
 
   async function persistAllRows(reason:string){
@@ -874,6 +1030,7 @@ export default function DataEntryFinancialV2Page() {
       calculation:{...row.calculation,...(savedResults[index]?.data||{})},
       message:"Saved by the atomic Save All operation.",
     })));
+    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,rows.length)}:pickup));
     return result;
   }
 
@@ -889,6 +1046,105 @@ export default function DataEntryFinancialV2Page() {
     }finally{
       setBulkSaving(false);
     }
+  }
+
+  async function authorizeImportedRows(pickup:Pickup,count:number,fileName:string):Promise<number>{
+    let remaining=count;
+    let authorized=authorizedParcelCount(pickup,rows.length);
+    while(remaining>0){
+      const chunk=Math.min(50,remaining);
+      const response=await (supabase as any).rpc("be_data_entry_financial_v2_add_registrations",{p_payload:{
+        request_id:requestId("DATA_ENTRY_OS_IMPORT_ADD_REGISTRATIONS"),
+        pickup_id:pickup.pickup_id,
+        count:chunk,
+        reason:`OS softcopy ${fileName}: merchant supplied ${count} additional item(s) beyond the authorized pickup quantity.`,
+      }});
+      if(response.error) throw response.error;
+      const result=response.data||{};
+      if(!result.ok||result.persisted===false) throw new Error(result?.errors?.[0]?.message||"OS import could not authorize its additional registration rows.");
+      authorized=positiveInt(result.authorized_parcels)||authorized+chunk;
+      remaining-=chunk;
+    }
+    setPickups((current)=>current.map((item)=>item.pickup_id===pickup.pickup_id?{...item,verified_parcels:authorized}:item));
+    return authorized;
+  }
+
+  async function applyOsImport(importPayload:OsImportApplyPayload){
+    if(!selectedPickup||importPayload.targetPickupId!==selectedPickup.pickup_id){
+      throw new Error("The target pickup changed while the spreadsheet was loading. Select it again and retry.");
+    }
+    if(!importPayload.rows.length) throw new Error("No spreadsheet rows were selected for this pickup.");
+    const maxSequence=Math.max(...importPayload.rows.map((row)=>positiveInt(row.targetSequence)));
+    let authorized=authorizedParcelCount(selectedPickup,rows.length);
+    if(maxSequence>authorized){
+      if(mutationMode!=="ACTIVE") throw new Error("Production Data Entry mutations must be ACTIVE before imported extra items can be authorized.");
+      authorized=await authorizeImportedRows(selectedPickup,maxSequence-authorized,importPayload.fileName);
+    }
+    const nextPickup={...selectedPickup,verified_parcels:Math.max(selectedPickup.verified_parcels,authorized)};
+    const sourceBySequence=new Map(importPayload.rows.map((row)=>[row.targetSequence,row]));
+    const existingBySequence=new Map(rows.map((row)=>[row.parcel_sequence,row]));
+    const targetCount=Math.max(authorized,rows.length,maxSequence);
+    const filled:ParcelRow[]=Array.from({length:targetCount},(_,offset):ParcelRow=>{
+      const sequence=offset+1;
+      const existing=existingBySequence.get(sequence)||parcelRowFromProof(nextPickup,tierAccess,{},sequence);
+      const sourceRow=sourceBySequence.get(sequence);
+      if(!sourceRow) return existing;
+      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,tariffOptions);
+      const requestedTier=text(sourceRow.merchantTier||"STANDARD").toUpperCase();
+      const customerTier=tierAccess.can_select_tier
+        ? requestedTier
+        : tierAccess.resolved_customer_tier||"STANDARD";
+      const amountType=(AMOUNT_TYPES.includes(sourceRow.paymentType as AmountType)
+        ?sourceRow.paymentType
+        :"ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
+      const tariffDelivery:number|""=destination.option?tariffRate(destination.option,customerTier):"";
+      const declaredDelivery:number|""=sourceRow.osSetPrice===""?tariffDelivery:sourceRow.osSetPrice;
+      const exactValues=[sourceRow.itemPrice,sourceRow.osSetPrice]
+        .filter((value):value is number=>value!==""&&Number.isFinite(Number(value)));
+      const exactTotal:number|""=exactValues.length?exactValues.reduce((sum,value)=>sum+Number(value),0):"";
+      const postalNote=destination.postal.matchLevel==="UNRESOLVED"
+        ?"Township/postal match needs review."
+        :`Township normalized from postal data (${destination.postal.matchLevel.replace(/_/g," ")}).`;
+      return {
+        ...existing,
+        pickup_id:nextPickup.pickup_id,
+        parcel_sequence:sequence,
+        delivery_way_id:canonicalWayId(nextPickup.pickup_id,sequence),
+        recipient_name:sourceRow.recipientName,
+        recipient_phone:sourceRow.recipientPhone,
+        township:destination.township,
+        delivery_address:sourceRow.deliveryAddress,
+        weight_kg:sourceRow.actualWeight,
+        customer_tier:customerTier,
+        tier_override:Boolean(tierAccess.registered&&tierAccess.profile_tier&&customerTier!==tierAccess.profile_tier&&tierAccess.can_override_profile_tier),
+        service_provider_code:destination.providerCode,
+        service_type:sourceRow.serviceType||"STANDARD",
+        amount_entry_type:amountType,
+        item_price:amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"",
+        delivery_charges:amountType==="EXACT_COLLECTION_AMOUNT"?"":declaredDelivery,
+        merchant_stated_total_amount:amountType==="EXACT_COLLECTION_AMOUNT"?exactTotal:"",
+        remarks:[existing.remarks,`OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}.`].filter(Boolean).join(" "),
+        calculation:{},
+        calculating:false,
+        checking:false,
+        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} Review Location Details, then Calculate All and Save All.`,
+        photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
+        photoUnavailableAcknowledged:importPayload.skipPhotoReview,
+        photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
+        isAdditionalRegistration:sequence>requestedParcelCount(nextPickup),
+        importedFromOs:true,
+        sourceFileName:importPayload.fileName,
+        sourceRowNumber:sourceRow.sourceRowNumber,
+        sourceRowCount:importPayload.sourceRowCount,
+        photoEvidenceMode:importPayload.skipPhotoReview?"OS_SOFTCOPY":"PICKER_PHOTO",
+        photoBypassReason:importPayload.skipPhotoReview?importPayload.photoBypassReason:"",
+        locationStatus:"PENDING" as DataEntryLocationResolution,
+        saved:false,
+      };
+    });
+    setRows(filled.sort((a,b)=>a.parcel_sequence-b.parcel_sequence));
+    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===nextPickup.pickup_id?{...pickup,verified_parcels:nextPickup.verified_parcels}:pickup));
+    setBulkMessage(`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review every imported drop point; ${importPayload.skipPhotoReview?"the audited OS-softcopy evidence option is active":"picker-photo approval is still required"}. Then use Calculate All and Save All.`);
   }
 
   async function addRegistrations(){
@@ -1123,6 +1379,7 @@ export default function DataEntryFinancialV2Page() {
         "Recipient Address":text(row.recipient_address),
         "Customer Tier":text(row.customer_tier),
         "Service Provider":text(row.financial_quote?.service_provider_code),
+        "Service Type":text(row.service_type||row.financial_quote?.service_type),
         "Weight (kg)":row.weight_kg??"",
         "Chargeable Weight (kg)":row.chargeable_weight_kg??"",
         "Included Weight (kg)":row.included_kg??"",
@@ -1159,6 +1416,13 @@ export default function DataEntryFinancialV2Page() {
         "Supervisor Status":text(row.supervisor_status),
         "Remark":text(row.remark),
         "Proof Photo":text(row.proof_photo_path),
+        "OS Softcopy Source File":text(row.source_file_name),
+        "OS Softcopy Source Row":row.source_row_number??"",
+        "Source Row Count":row.source_row_count??"",
+        "Photo Evidence Mode":text(row.photo_evidence_mode),
+        "Photo Bypass Reason":text(row.photo_bypass_reason),
+        "OS Imported At":exportDateTime(row.os_imported_at),
+        "OS Imported By":text(row.os_imported_by),
         "Financial Quote JSON":exportCell(row.financial_quote),
         "Created At":exportDateTime(row.created_at),
         "Updated At":exportDateTime(row.updated_at),
@@ -1222,7 +1486,6 @@ export default function DataEntryFinancialV2Page() {
 
   return (
     <div className="min-h-screen bg-[#061524] px-4 py-5 text-[#eef8ff]">
-        <ActiveScreenBulkImport module="data-entry" />
       <div className="mx-auto max-w-[1800px] space-y-4">
         <header className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -1267,6 +1530,13 @@ export default function DataEntryFinancialV2Page() {
               CREATE & GENERATE WAYBILL
             </button>
             <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
+            <DataEntryOsBulkImport
+              pickups={pickups as OsBulkPickup[]}
+              selectedPickupId={selectedPickupId}
+              busy={loadingRows||bulkCalculating||bulkSaving||waybillBusy||addingRegistration}
+              onPickupChange={setSelectedPickupId}
+              onApply={applyOsImport}
+            />
           </div>
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
@@ -1336,7 +1606,7 @@ export default function DataEntryFinancialV2Page() {
             {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
           </div>
         </section>
-        {workspace}
+        {!fullRegistration?workspace:null}
       </div>
 
       {fullRegistration?<div data-full-review-sheet="true" className="fixed inset-0 z-[9999] overflow-auto bg-[#04111d]">

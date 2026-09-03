@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
+const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"utf8");
+const importer=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBulkImport.tsx"),"utf8");
+const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
+const migration=readFileSync(resolve(root,"supabase/migrations/20260903031402_data_entry_os_softcopy_bulk_import_v15.sql"),"utf8");
+
+const checks=[
+  ["all 10 bilingual OS columns",/Receiver Name[\s\S]*Receiver Phone[\s\S]*Township \/ Service Provider[\s\S]*Actual Weight[\s\S]*Receiver Address[\s\S]*Service Type[\s\S]*Payment Type[\s\S]*Item Price[\s\S]*OS Set Price[\s\S]*Merchant Tier/.test(importer)],
+  ["header discovery scans first 25 rows",/matrix\.slice\(0, 25\)/.test(importer)],
+  ["CSV and Excel use the same parser",/\.\(xlsx\|xls\|csv\)/.test(importer)&&/import\("xlsx"\)/.test(importer)&&/parseOsImportMatrix/.test(importer)],
+  ["All OS and Dedicated OS filters",/ALL_OS/.test(importer)&&/DEDICATED_OS/.test(importer)&&/merchantFilter/.test(importer)],
+  ["timeline and complete-partial filters",/fromDate/.test(importer)&&/toDate/.test(importer)&&/pickupStatus/.test(importer)&&/rowStatus/.test(importer)],
+  ["spreadsheet fills existing registration state",/async function applyOsImport/.test(page)&&/setRows\(filled/.test(page)],
+  ["canonical delivery IDs exist before location checks",/canonicalWayId\(nextPickup\.pickup_id,sequence\)/.test(page)],
+  ["imported saves require synchronized location",/row\.importedFromOs&&row\.locationStatus!=="SYNCED"/.test(page)&&/IMPORTED_LOCATION_NOT_SYNCED/.test(migration)],
+  ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],
+  ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
+  ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],
+  ["photo bypass is explicit and reasoned",/skipPhotoReview/.test(importer)&&/at least 10 characters/.test(importer)&&/PHOTO_BYPASS_REASON_REQUIRED/.test(migration)],
+  ["OS import requires upload permission",/be_data_entry_require_access_v57\('upload',false\)/.test(migration)],
+  ["source lineage is persisted",/source_file_name/.test(migration)&&/source_row_number/.test(migration)&&/source_row_count/.test(migration)&&/os_imported_by/.test(migration)],
+  ["OS import and photo bypass are audited",/DATA_ENTRY_OS_SOFTCOPY_IMPORTED/.test(migration)&&/DATA_ENTRY_OS_SOFTCOPY_PHOTO_BYPASS_AUTHORIZED/.test(migration)],
+  ["security-definer RPC is role restricted",/security definer[\s\S]*set search_path to 'public','auth','pg_temp'/.test(migration)&&/revoke all on function public\.be_data_entry_financial_v2_save\(jsonb\) from public, anon/.test(migration)&&/grant execute[\s\S]*authenticated, service_role/.test(migration)],
+  ["extra OS registrations are authorized in chunks",/authorizeImportedRows/.test(page)&&/Math\.min\(50,remaining\)/.test(page)&&/be_data_entry_financial_v2_add_registrations/.test(page)],
+  ["bulk calculate-save-waybill workflow remains",/CALCULATE ALL/.test(page)&&/SAVE ALL/.test(page)&&/CREATE & GENERATE WAYBILL/.test(page)],
+  ["timeline export contains OS metadata",/OS Softcopy Source File/.test(page)&&/Photo Evidence Mode/.test(page)&&/OS Imported At/.test(page)],
+  ["legacy generic uploader was removed from Data Entry",!/ActiveScreenBulkImport/.test(page)&&/UPLOAD OS DATA/.test(importer)],
+];
+
+for(const [name,ok] of checks){
+  assert.equal(ok,true,`Contract check failed: ${name}`);
+  console.log(`PASS ${name}`);
+}
+console.log(`PASS ${checks.length} Data Entry OS Import V15 contract checks`);
