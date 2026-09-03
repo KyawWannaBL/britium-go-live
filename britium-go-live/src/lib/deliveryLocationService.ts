@@ -618,7 +618,17 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     }
   }
   if (!best) return null;
-  const validationSource = best.postalValidated ? "POSTAL_VALIDATED" : "TOWNSHIP_VALIDATED";
+  // The database accepts exact Google results after either postal evidence or
+  // the independent township boundary + reverse-geocode check above. Keep the
+  // stronger exact-township lineage explicit so it cannot be confused with a
+  // review-only ward/street candidate.
+  const exactGoogleMatch = ["ADDRESS_EXACT", "POI_EXACT"].includes(best.matchLevel)
+    && best.reviewStatus === "ACCEPTED";
+  const validationSource = best.postalValidated
+    ? "POSTAL_VALIDATED"
+    : exactGoogleMatch
+      ? "TOWNSHIP_EXACT_VALIDATED"
+      : "TOWNSHIP_VALIDATED";
   return {
     deliveryWayId: input.deliveryWayId,
     latitude: best.latitude,

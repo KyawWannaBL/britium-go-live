@@ -44,6 +44,7 @@ type DataEntryLocationEditorProps = {
   township: string;
   autoResolveDelayMs?: number;
   deferInteractiveMap?: boolean;
+  reloadToken?: number;
   onResolutionChange?: (status: DataEntryLocationResolution) => void;
 };
 
@@ -62,6 +63,7 @@ export default function DataEntryLocationEditor({
   township,
   autoResolveDelayMs = 900,
   deferInteractiveMap = false,
+  reloadToken = 0,
   onResolutionChange,
 }: DataEntryLocationEditorProps) {
   const [query, setQuery] = useState(address || "");
@@ -205,7 +207,7 @@ export default function DataEntryLocationEditor({
     lastAutoKey.current = "";
     reportResolution("PENDING");
     void load();
-  }, [deliveryWayId, address, township]);
+  }, [deliveryWayId, address, township, reloadToken]);
 
   useEffect(() => {
     setQuery(address || "");

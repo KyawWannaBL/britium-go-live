@@ -22,7 +22,7 @@ const checks=[
   ["bulk rows route by Way ID and verify merchant",/function buildOsImportPlan/.test(importer)&&/does not belong to pickup/.test(importer)&&/Duplicate parcel sequence/.test(importer)],
   ["multi-pickup drafts remain separated for review",/Bulk upload pickup queue/.test(page)&&/bulkImportDrafts/.test(page)&&/bulkImportOrder/.test(page)],
   ["canonical delivery IDs exist before location checks",/delivery_way_id:canonicalWayId\(pickup\.pickup_id,sequence\)/.test(page)],
-  ["imported saves require synchronized location",/row\.importedFromOs&&row\.locationStatus!=="SYNCED"/.test(page)&&/IMPORTED_LOCATION_NOT_SYNCED/.test(migration)],
+  ["imported saves require synchronized location",/row\.importedFromOs\s*&&\s*row\.locationStatus\s*!==\s*"SYNCED"/.test(page)&&/IMPORTED_LOCATION_NOT_SYNCED/.test(migration)],
   ["stale address pins are rejected",/saved pin belongs to an older address/.test(location)&&/addressKey\(row\.address_original\) !== addressKey\(address\)/.test(location)],
   ["manual coordinates only sync after Apply",/reportResolution\("REVIEW_REQUIRED"\)/.test(location)&&/reportResolution\("SYNCED"\)/.test(location)&&/Apply coordinates/.test(location)],
   ["reliable automatic coordinates synchronize",/saved automatically and shared with Wayplan/.test(location)&&/deliveryWayId \? "SYNCED"/.test(location)],

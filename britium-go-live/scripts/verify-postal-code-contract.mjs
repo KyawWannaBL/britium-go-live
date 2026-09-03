@@ -261,6 +261,20 @@ try {
     assert.ok(searchRequests.some((request) => /No\. 77/.test(request.textQuery)), "The typed address must reach Google Places");
     assert.ok(searchRequests.every((request) => request.region === "MM" && request.language === "en"));
     assert.ok(searchRequests.every((request) => request.fields.includes("location") && request.fields.includes("addressComponents")));
+
+    const townshipExactValidated = await resolveDeliveryLocation({
+      deliveryWayId: "POSTAL-CONTRACT-002-B",
+      address: "No. 77, Pinlon Road, North Dagon Township, Yangon",
+      township: "မြောက်ဒဂုံ",
+    });
+    assert.ok(townshipExactValidated, "An exact Google result may resolve when the address has township-only postal detail");
+    assert.equal(townshipExactValidated.postalMatchLevel, "TOWNSHIP_ONLY");
+    assert.equal(townshipExactValidated.reviewStatus, "ACCEPTED");
+    assert.equal(
+      townshipExactValidated.coordinateSource,
+      "GOOGLE_PLACES_TOWNSHIP_EXACT_VALIDATED_POI_EXACT",
+      "Exact non-postal Google results must carry the explicit V18 township contract lineage",
+    );
   } finally {
     globalThis.fetch = originalFetch;
     if (originalGoogle == null) delete globalThis.google;
