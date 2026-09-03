@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { supabase } from "@/lib/supabase";
+import { isSupabaseConfigured, supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { defaultPortalForRole, normalizeRole } from "@/lib/portalRegistry";
 import { Card, CardContent } from "@/components/ui/card";
@@ -27,9 +27,7 @@ import {
 } from "lucide-react";
 const REMEMBER_ME_KEY = "britium_remember_me";
 
-const SUPABASE_CONFIGURED = Boolean(
-  import.meta.env.VITE_SUPABASE_URL && import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+const SUPABASE_CONFIGURED = isSupabaseConfigured;
 
 function getRememberMe(): boolean {
   try {

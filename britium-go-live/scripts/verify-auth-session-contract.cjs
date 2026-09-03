@@ -61,6 +61,21 @@ assert.match(
   "The canonical client must use a stable auth storage key"
 );
 assert.match(
+  canonicalClient,
+  /VITE_SUPABASE_URL\s*\|\|\s*DEFAULT_SUPABASE_URL/,
+  "Git-triggered Production builds must retain the public Supabase URL fallback"
+);
+assert.match(
+  canonicalClient,
+  /VITE_SUPABASE_ANON_KEY\s*\|\|\s*DEFAULT_SUPABASE_ANON_KEY/,
+  "Git-triggered Production builds must retain the public Supabase anon-key fallback"
+);
+assert.match(
+  loginSource,
+  /const SUPABASE_CONFIGURED = isSupabaseConfigured;/,
+  "Login must use the canonical client's effective configuration status"
+);
+assert.match(
   loginSource,
   /await auth\.refreshProfile\(\);/,
   "Login must refresh the shared AuthContext after sign-in"
