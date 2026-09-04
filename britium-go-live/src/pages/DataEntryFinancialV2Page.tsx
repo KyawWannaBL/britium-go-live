@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
-import { validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
+import { resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
@@ -1322,7 +1322,7 @@ export default function DataEntryFinancialV2Page() {
         calculation:{},
         calculating:false,
         checking:false,
-        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} ${destination.mapRequired?"Queued for consolidated Excel location review.":destination.stationRequired?"Choose the highway handoff station.":"Google Map is not required for this route."} Then Calculate All and Save All.`,
+        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} ${destination.mapRequired?"Queued for controlled background location validation.":destination.stationRequired?"Choose the highway handoff station.":"Google Map is not required for this route."} Then Calculate All and Save All.`,
         photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
         photoUnavailableAcknowledged:importPayload.skipPhotoReview,
         photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
@@ -1333,7 +1333,7 @@ export default function DataEntryFinancialV2Page() {
         sourceRowCount:importPayload.sourceRowCount,
         photoEvidenceMode:importPayload.skipPhotoReview?"OS_SOFTCOPY":"PICKER_PHOTO",
         photoBypassReason:importPayload.skipPhotoReview?importPayload.photoBypassReason:"",
-        locationStatus:(destination.mapRequired?"REVIEW_REQUIRED":"NOT_REQUIRED") as DataEntryLocationResolution,
+        locationStatus:(destination.mapRequired?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution,
         saved:false,
       };
     });
@@ -1341,6 +1341,51 @@ export default function DataEntryFinancialV2Page() {
       ?filled.filter((row)=>sourceBySequence.has(row.parcel_sequence))
       :filled;
     return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
+  }
+
+  function patchImportedLocation(pickupId:string,parcelSequence:number,patch:Partial<ParcelRow>){
+    setBulkImportDrafts((current)=>{
+      const draft=current[pickupId];
+      if(!draft) return current;
+      return {...current,[pickupId]:{...draft,rows:draft.rows.map((row)=>row.parcel_sequence===parcelSequence?{...row,...patch}:row)}};
+    });
+    setRows((current)=>current.map((row)=>row.pickup_id===pickupId&&row.parcel_sequence===parcelSequence?{...row,...patch}:row));
+  }
+
+  async function validateImportedLocation(row:ParcelRow){
+    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"});
+    try{
+      const found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township});
+      if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."});
+        return;
+      }
+      const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";
+      if(reviewRequired){
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."});
+        return;
+      }
+      const accepted={...found,originalAddress:row.delivery_address};
+      await saveDeliveryLocation(supabase,accepted);
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."});
+    }catch(error:any){
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."});
+    }
+  }
+
+  async function validateImportedLocations(drafts:Record<string,BulkImportDraft>){
+    const jobs=Object.values(drafts).flatMap((draft)=>draft.rows).filter((row)=>
+      row.importedFromOs&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"
+    );
+    let cursor=0;
+    const worker=async()=>{
+      while(cursor<jobs.length){
+        const job=jobs[cursor++];
+        await validateImportedLocation(job);
+      }
+    };
+    await Promise.all(Array.from({length:Math.min(3,jobs.length)},()=>worker()));
+    setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
@@ -1400,6 +1445,7 @@ export default function DataEntryFinancialV2Page() {
       ?`Bulk upload staged ${importPayload.rows.length} row(s) across ${pickupOrder.length} pickup(s). Review core-region Google pins and choose highway stations where requested; outside-core Royal routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}.`
       :`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review Yangon/Mandalay/Naypyitaw Google pins and choose any required highway handoff stations; other outside-core routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}. Then use Calculate All and Save All.`
     );
+    void validateImportedLocations(nextDrafts);
   }
 
   async function addRegistrations(){
@@ -2019,7 +2065,7 @@ export default function DataEntryFinancialV2Page() {
                 <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
                   {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
                     ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
-                    :`${importedLocationSummary.review} core-region rows are queued immediately for consolidated Excel correction · ${importedLocationSummary.resolving} pending. Google Maps are loaded only when one parcel is opened manually.`}
+                    :`${importedLocationSummary.resolving} core-region rows are validating in a controlled background queue · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">

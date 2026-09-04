@@ -232,11 +232,11 @@ export default function DataEntryLocationEditor({
     setMapError("");
     lastAutoKey.current = "";
     if (deferAutomaticResolution && enabled) {
-      const deferredStatus=externalResolutionStatus==="SYNCED"?"SYNCED":"REVIEW_REQUIRED";
-      setMessage(deferredStatus==="SYNCED"
-        ?"Coordinates were applied through the consolidated location-review workbook."
-        :"Queued for consolidated Excel location review. Open this parcel's map only when an on-screen correction is needed.");
-      reportResolution(deferredStatus);
+      setMessage(externalResolutionStatus==="SYNCED"
+        ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
+        :externalResolutionStatus==="REVIEW_REQUIRED"
+          ?"This result genuinely needs review. Open this parcel's map only when an on-screen correction is needed."
+          :"Location validation is running in the controlled background queue.");
       return;
     }
     reportResolution(enabled ? "PENDING" : "NOT_REQUIRED");
@@ -552,13 +552,14 @@ export default function DataEntryLocationEditor({
 
   if (deferAutomaticResolution && !manualOpen) {
     const externallySynced=externalResolutionStatus==="SYNCED";
+    const externallyReviewRequired=externalResolutionStatus==="REVIEW_REQUIRED";
     return <div data-location-details="true" data-bulk-location-deferred-v24="true" className={`mt-4 rounded-xl border p-4 ${externallySynced?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className={`text-xs font-black uppercase tracking-[0.14em] ${externallySynced?"text-emerald-200":"text-amber-200"}`}><MapPin size={15} className="mr-2 inline"/>{externallySynced?"Location synchronized":"Location queued for Excel review"}</div>
-          <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Corrected coordinates are ready for Wayplan.":"This bulk row does not load Google Maps automatically. Download the consolidated review Excel above, fix it outside the system, and re-upload it."}</div>
+          <div className={`text-xs font-black uppercase tracking-[0.14em] ${externallySynced?"text-emerald-200":"text-amber-200"}`}><MapPin size={15} className="mr-2 inline"/>{externallySynced?"Location synchronized":externallyReviewRequired?"Location needs review":"Validating location"}</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Validated coordinates are ready for Wayplan.":externallyReviewRequired?"This row failed automatic validation and is included in the consolidated review Excel.":"The controlled background queue is checking this row without loading an interactive map."}</div>
         </div>
-        {!externallySynced?<button type="button" onClick={()=>setManualOpen(true)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">OPEN MAP FOR THIS PARCEL</button>:null}
+        {externallyReviewRequired?<button type="button" onClick={()=>setManualOpen(true)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">OPEN MAP FOR THIS PARCEL</button>:null}
       </div>
     </div>;
   }
