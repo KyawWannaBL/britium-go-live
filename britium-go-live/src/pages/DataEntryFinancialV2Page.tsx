@@ -1,2102 +1,63 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
-import { validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
-import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
-import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
-import {
-  DATA_ENTRY_HANDOFF_STATIONS,
-  providerRoutingMessage,
-  resolveDataEntryServiceProvider,
-  type DataEntryDeliveryMode,
-  type DataEntryProviderRouting,
-  type DataEntryRouteRegion,
-} from "@/lib/dataEntryServiceProviderRouting";
-export const BRITIUM_LOCATION_WORKFLOW_V10 = "DATA_ENTRY_BILINGUAL_LOCATION_V10";
-
-export const DATA_ENTRY_PHOTO_LIGHTBOX_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_LIGHTBOX_PROXY_V1_3_20260823";
-export const DATA_ENTRY_FINANCIAL_V2_BUILD = "DATA_ENTRY_FINANCIAL_V2_RESTORED_20260816";
-export const DATA_ENTRY_WHITE_CONTROLS_BUILD = "BRITIUM_DATA_ENTRY_WHITE_CONTROLS_V1_20260826";
-export const DATA_ENTRY_PHOTO_REVIEW_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_REVIEW_V2_20260825";
-export const DATA_ENTRY_PHOTO_URL_REFRESH_BUILD = "BRITIUM_DATA_ENTRY_PHOTO_URL_REFRESH_V1_20260825";
-export const DATA_ENTRY_FINANCE_GOVERNANCE_BUILD = "DATA_ENTRY_FINANCE_GOVERNANCE_V4_20260817";
-export const PAYMENT_SETTLEMENT_RULE = "DECLARED_DELIVERY_PLUS_BACKEND_SURCHARGES_V61_9_1";
-export const DATA_ENTRY_TARIFF_AUTOCOMPLETE_BUILD = "BRITIUM_DATA_ENTRY_TARIFF_AUTOCOMPLETE_V1_20260826";
-export const DATA_ENTRY_REGISTRATION_EXPORT_BUILD = "BRITIUM_DATA_ENTRY_REGISTRATION_EXPORT_TIMELINE_V12_9";
-export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECONCILIATION_V13_2_20260902";
-export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK_ACTIONS_V14_20260902";
-export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_IMPORT_V16_20260903";
-export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903";
-
-const AMOUNT_TYPES = [
-  "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
-  "DELIVERY_CHARGE_ONLY",
-  "EXACT_COLLECTION_AMOUNT",
-] as const;
-
-const COLLECTION_METHOD_MY: Record<AmountType,string> = {
-  ITEM_PRICE_PLUS_DECLARED_DELIVERY:"á€•á€…á€¹á€…á€Šá€ºá€¸á€á€”á€ºá€–á€­á€¯á€¸ + á€á€á€ºá€™á€¾á€á€ºá€‘á€¬á€¸á€á€±á€¬ á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€",
-  DELIVERY_CHARGE_ONLY:"á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€á€á€¬",
-  EXACT_COLLECTION_AMOUNT:"á€¡á€á€­á€¡á€€á€» á€€á€±á€¬á€€á€ºá€á€¶á€™á€Šá€·á€ºá€„á€½á€±",
-};
-
-type AmountType = typeof AMOUNT_TYPES[number];
-
-type TariffOption = {
-  destination_key: string;
-  destination_name: string;
-  standard_rate_mmk: number;
-  special_rate_mmk: number | null;
-  rack_code: string | null;
-  provider_code: string;
-  provider_name: string;
-};
-
-type ProviderOption = {
-  provider_code: string;
-  display_name: string;
-  provider_type: string;
-  active_tariff_count: number;
-};
-
-type MerchantTierAccess = {
-  merchant_id: string;
-  registered: boolean;
-  profile_tier: string;
-  resolved_customer_tier: string;
-  can_select_tier: boolean;
-  can_override_profile_tier: boolean;
-  tier_rules: Record<string, any>;
-};
-
-function tariffRate(option: TariffOption, tier: string): number {
-  const specialTier = ["ROYAL", "COMMITMENT"].includes(String(tier || "").toUpperCase());
-  return specialTier && option.special_rate_mmk != null
-    ? Number(option.special_rate_mmk)
-    : Number(option.standard_rate_mmk);
-}
-
-type Pickup = {
-  pickup_id: string;
-  merchant_id: string;
-  merchant_name: string;
-  township: string;
-  city: string;
-  expected_parcels: number;
-  verified_parcels: number;
-  registered_parcels: number;
-  pickup_date: string;
-  created_at: string;
-  pickup_status: string;
-  workflow_stage: string;
-};
-
-type ParcelRow = {
-  pickup_id: string;
-  parcel_sequence: number;
-  delivery_way_id: string;
-  proof_url: string;
-  proof_ref: string;
-  photo_status: string;
-  recipient_name: string;
-  recipient_phone: string;
-  township: string;
-  delivery_address: string;
-  weight_kg: number | "";
-  customer_tier: string;
-  tier_override: boolean;
-  service_provider_code: string;
-  service_type: string;
-  amount_entry_type: AmountType;
-  item_price: number | "";
-  delivery_charges: number | "";
-  merchant_stated_total_amount: number | "";
-  cbm_surcharge: number | "";
-  other_surcharge: number | "";
-  merchant_payable_charges: number | "";
-  other_merchant_credits: number | "";
-  remarks: string;
-  calculating: boolean;
-  checking: boolean;
-  calculation: Record<string, any>;
-  message: string;
-  photoReviewed: boolean;
-  photoUnavailableAcknowledged: boolean;
-  photoReviewStatus: string;
-  photoRejectionReason: string;
-  photoRejectionNote: string;
-  photoReviewBusy: boolean;
-  isAdditionalRegistration: boolean;
-  importedFromOs: boolean;
-  sourceFileName: string;
-  sourceRowNumber: number | null;
-  sourceRowCount: number | null;
-  photoEvidenceMode: "PICKER_PHOTO" | "OS_SOFTCOPY";
-  photoBypassReason: string;
-  deliveryRegion: DataEntryRouteRegion;
-  deliveryMode: DataEntryDeliveryMode;
-  handoffStationCode: string;
-  handoffStationName: string;
-  locationStatus: DataEntryLocationResolution;
-  locationCandidate?: DeliveryLocation | null;
-  saved: boolean;
-};
-
-type BulkImportDraft = {
-  pickupId: string;
-  fileName: string;
-  rows: ParcelRow[];
-  tierAccess: MerchantTierAccess;
-  saved: boolean;
-};
-
-const inputClass =
-  "w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-[12px] font-semibold text-black placeholder:text-slate-500 outline-none focus:border-[#f6b84b]";
-const labelClass = "mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-[#7aa7c6]";
-const serverClass = "rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[12px] text-[#8fd3ff]";
-
-function text(value: unknown): string { return value == null ? "" : String(value); }
-function num(value: unknown): number { const n = Number(value); return Number.isFinite(n) ? n : 0; }
-function positiveInt(value: unknown): number { const n = Math.trunc(num(value)); return n > 0 ? n : 0; }
-function requestedParcelCount(pickup: Pickup): number {
-  return Math.max(positiveInt(pickup.expected_parcels),0);
-}
-function authorizedParcelCount(pickup: Pickup, observed = 0): number {
-  return Math.max(requestedParcelCount(pickup),positiveInt(pickup.verified_parcels),positiveInt(observed));
-}
-function money(value: unknown): string {
-  if (value === "" || value == null) return "â€”";
-  const n = Number(value);
-  return Number.isFinite(n) ? n.toLocaleString("en-US") + " Ks" : text(value);
-}
-function requestId(prefix: string): string {
-  const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : String(Date.now()) + "-" + Math.random().toString(16).slice(2);
-  return prefix + ":" + id;
-}
-function canonicalWayId(pickupId: string, sequence: number): string {
-  return `${pickupId}-${String(sequence).padStart(3,"0")}`;
-}
-function resolveImportedDestination(value: unknown,address: unknown,itemPrice: unknown,options: TariffOption[]) {
-  return resolveDataEntryServiceProvider(value,address,options,{fallbackUnknownToRoyal:true,itemPrice});
-}
-function routeForRow(row: ParcelRow, options: TariffOption[]): DataEntryProviderRouting {
-  return resolveDataEntryServiceProvider(row.township,row.delivery_address,options,{
-    fallbackUnknownToRoyal:true,
-    itemPrice:row.item_price,
-  });
-}
-function routingPatch(route: DataEntryProviderRouting,row: ParcelRow): Partial<ParcelRow> {
-  return {
-    township:route.township||row.township,
-    service_provider_code:route.providerCode,
-    deliveryRegion:route.routeRegion,
-    deliveryMode:route.deliveryMode,
-    locationStatus:route.routeRegion==="UNRESOLVED"
-      ?"PENDING"
-      :route.mapRequired
-      ?row.locationStatus==="NOT_REQUIRED"?"PENDING":row.locationStatus
-      :"NOT_REQUIRED",
-    ...(route.stationRequired
-      ?{}
-      :{handoffStationCode:"",handoffStationName:""}),
-  };
-}
-function handoffStationReady(row: ParcelRow,route: DataEntryProviderRouting): boolean {
-  if(!route.stationRequired) return true;
-  if(!DATA_ENTRY_HANDOFF_STATIONS.some((station)=>station.code===row.handoffStationCode)) return false;
-  return row.handoffStationCode!=="OTHER"||row.handoffStationName.trim().length>=3;
-}
-function routeReady(row: ParcelRow, options: TariffOption[]): boolean {
-  const route=routeForRow(row,options);
-  return Boolean(route.providerCode)
-    && handoffStationReady(row,route)
-    && (route.mapRequired?row.locationStatus==="SYNCED":row.locationStatus==="NOT_REQUIRED");
-}
-function normalizePickup(row: any): Pickup | null {
-  const pickupId = text(row?.pickup_id || row?.pickup_way_id).trim();
-  if (!pickupId) return null;
-  return {
-    pickup_id: pickupId,
-    merchant_id: text(row?.merchant_id || row?.merchant_code).trim().toUpperCase(),
-    merchant_name: text(row?.merchant_name).trim(),
-    township: text(row?.township).trim(),
-    city: text(row?.city).trim(),
-    expected_parcels: positiveInt(row?.expected_parcels || row?.parcel_count),
-    verified_parcels: positiveInt(row?.verified_parcels || row?.photo_parcels),
-    registered_parcels: positiveInt(row?.registered_parcels || row?.registered_parcel_count),
-    pickup_date: text(row?.pickup_date).trim(),
-    created_at: text(row?.created_at).trim(),
-    pickup_status: text(row?.pickup_status).trim(),
-    workflow_stage: text(row?.workflow_stage).trim(),
-  };
-}
-function proofUrl(row: any): string {
-  return text(row?.current_photo_url || row?.proof_photo_url || row?.proof_photo_path || row?.photo_url || row?.cargo_photo_url || row?.parcel_photo_url || row?.proof_url || row?.payload?.proof_photo_data_url).trim();
-}
-function approvedPhoto(row: any): boolean {
-  const status=text(row?.review_status || row?.photo_status || row?.status || row?.payload?.photo_check_status).toUpperCase();
-  return ["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED"].includes(status);
-}
-async function displayPhotoUrl(rawValue: string): Promise<string> {
-  const raw=text(rawValue).trim();
-  if (!raw) return "";
-  if (/^(data:|blob:)/i.test(raw)) return raw;
-
-  const fallbackBuckets=["pickup-parcel-proofs","rider-proofs","ops-photos"];
-  let explicitBucket="";
-  let objectPath="";
-
-  try {
-    const parsed=new URL(raw, typeof window!=="undefined"?window.location.origin:"https://localhost");
-    const storageMatch=parsed.pathname.match(/\/(?:supabase\/)?storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)$/i);
-    if (storageMatch) {
-      explicitBucket=decodeURIComponent(storageMatch[1]);
-      objectPath=storageMatch[2].split("?")[0].split("#")[0].split("/").map((part)=>decodeURIComponent(part)).join("/");
-    } else if (/^https?:/i.test(raw)) {
-      return raw;
-    }
-  } catch {
-    objectPath=raw.replace(/^\/+/, "");
-  }
-
-  const clean=(objectPath||raw).replace(/^\/+/, "");
-  const buckets=explicitBucket?[explicitBucket]:fallbackBuckets;
-  for (const bucket of buckets) {
-    const normalized=clean.startsWith(bucket+"/")?clean.slice(bucket.length+1):clean;
-    if (!normalized) continue;
-    const signed=await (supabase as any).storage.from(bucket).createSignedUrl(normalized, 60*60);
-    if (!signed.error && signed.data?.signedUrl) return signed.data.signedUrl;
-  }
-  return "";
-}
-function dataEntryProofDisplayUrl(value: unknown): string {
-  const raw = text(value).trim();
-  if (!raw || typeof window === "undefined") return raw;
-  try {
-    const parsed = new URL(raw, window.location.origin);
-    if (parsed.hostname.endsWith(".supabase.co") && /\/storage\/v1\//.test(parsed.pathname)) return window.location.origin + "/supabase" + parsed.pathname + parsed.search;
-    return parsed.href;
-  } catch { return raw; }
-}
-
-function isExact(type: AmountType) {
-  return type === "EXACT_COLLECTION_AMOUNT";
-}
-function envelope(data: any) {
-  const object=data&&typeof data==="object"?data:{};
-  const nested="data" in object;
-  return {
-    ok:object.ok!==false,
-    data:nested?(object.data||{}):object,
-    errors:Array.isArray(object.errors)?object.errors:[],
-    warnings:Array.isArray(object.warnings)?object.warnings:[],
-    raw:data,
-  };
-}
-function envelopeMessage(v: any): string {
-  const e = Array.isArray(v.errors) ? v.errors.map((x: any) => x?.message).filter(Boolean) : [];
-  const w = Array.isArray(v.warnings) ? v.warnings.map((x: any) => x?.message).filter(Boolean) : [];
-  return e.join(" ") || w.join(" ") || text(v.data?.validation_message);
-}
-function payload(row: ParcelRow, pickup: Pickup) {
-  const p: Record<string, unknown> = {
-    pickup_id: row.pickup_id,
-    parcel_sequence: row.parcel_sequence,
-    delivery_way_id: row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence),
-    merchant_id: pickup.merchant_id || null,
-    recipient_name: row.recipient_name || null,
-    recipient_phone: row.recipient_phone || null,
-    township: row.township || null,
-    delivery_address: row.delivery_address || null,
-    weight_kg: row.weight_kg === "" ? null : Number(row.weight_kg),
-    customer_tier: row.customer_tier || "STANDARD",
-    customer_tier_override: row.tier_override,
-    service_provider_code: row.service_provider_code || null,
-    delivery_region: row.deliveryRegion === "UNRESOLVED" ? null : row.deliveryRegion,
-    delivery_route_mode: row.deliveryMode === "UNRESOLVED" ? null : row.deliveryMode,
-    location_required: row.deliveryMode === "DOORSTEP_MAP",
-    handoff_station_code: row.handoffStationCode || null,
-    handoff_station_name: row.handoffStationName || null,
-    service_type: row.service_type || "STANDARD",
-    amount_entry_type: row.amount_entry_type,
-    item_price: row.item_price === "" ? null : Number(row.item_price),
-    delivery_charges: row.delivery_charges === "" ? null : Number(row.delivery_charges),
-    merchant_stated_total_amount: row.merchant_stated_total_amount === "" ? null : Number(row.merchant_stated_total_amount),
-    additional_customer_charge: 0,
-    cbm_surcharge: row.cbm_surcharge === "" ? 0 : Number(row.cbm_surcharge),
-    other_surcharge: row.other_surcharge === "" ? 0 : Number(row.other_surcharge),
-    merchant_payable_charges: row.merchant_payable_charges === "" ? 0 : Number(row.merchant_payable_charges),
-    other_merchant_credits: row.other_merchant_credits === "" ? 0 : Number(row.other_merchant_credits),
-    remarks: row.remarks || null,
-    os_softcopy_import: row.importedFromOs,
-    os_source_file_name: row.sourceFileName || null,
-    source_row_number: row.sourceRowNumber,
-    source_row_count: row.sourceRowCount,
-    photo_evidence_mode: row.photoEvidenceMode,
-    photo_bypass: row.photoUnavailableAcknowledged,
-    photo_bypass_reason: row.photoBypassReason || null,
-  };
-  if (isExact(row.amount_entry_type)) { p.item_price = null; p.delivery_charges = null; }
-  else if (row.amount_entry_type === "DELIVERY_CHARGE_ONLY") { p.item_price = null; p.merchant_stated_total_amount = null; }
-  else p.merchant_stated_total_amount = null;
-  return p;
-}
-
-function parcelRowFromProof(
-  pickup: Pickup,
-  tierAccess: MerchantTierAccess,
-  proof: any,
-  sequence: number
-): ParcelRow {
-  const rawAmountType=text(proof.amount_entry_type).toUpperCase();
-  const legacyOpaque=rawAmountType==="OPAQUE_COD_COLLECTION";
-  const editableAmountType=(legacyOpaque
-    ? "EXACT_COLLECTION_AMOUNT"
-    : AMOUNT_TYPES.includes(rawAmountType as AmountType)
-      ? rawAmountType
-      : "ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
-  const savedTier=text(proof.customer_tier).toUpperCase();
-  const customerTier=savedTier||tierAccess.resolved_customer_tier||"STANDARD";
-  const legacyAdditional=num(proof.additional_customer_charge);
-  const proofReviewStatus=text(proof.proof_check_status||proof.verification_status||"PENDING_REVIEW").toUpperCase();
-  const storedPhotoMode=text(proof.photo_evidence_mode||proof.financial_quote?.photo_evidence_mode).toUpperCase();
-  const importedFromOs=Boolean(
-    proof.source_file_name||proof.os_imported_at||proof.financial_quote?.os_softcopy_import
-  );
-  const photoEvidenceMode:ParcelRow["photoEvidenceMode"]=storedPhotoMode==="OS_SOFTCOPY"?"OS_SOFTCOPY":"PICKER_PHOTO";
-  return {
-    pickup_id:pickup.pickup_id,
-    parcel_sequence:sequence,
-    delivery_way_id:text(proof.delivery_way_id)||canonicalWayId(pickup.pickup_id,sequence),
-    proof_url:text(proof.__proof_url),
-    proof_ref:text(proof.__proof_ref),
-    photo_status:text(proof.review_status||proof.photo_status||proof.status||"PENDING_REVIEW").toUpperCase(),
-    recipient_name:text(proof.recipient_name),
-    recipient_phone:text(proof.recipient_phone||proof.contact_no_1),
-    township:text(proof.township||pickup.township),
-    delivery_address:text(proof.delivery_address||proof.recipient_address),
-    weight_kg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
-    customer_tier:customerTier,
-    tier_override:Boolean(tierAccess.registered && tierAccess.profile_tier && customerTier!==tierAccess.profile_tier && tierAccess.can_override_profile_tier),
-    service_provider_code:text(proof.service_provider_code||proof.financial_quote?.service_provider_code).toUpperCase(),
-    service_type:text(proof.service_type||proof.financial_quote?.service_type||"STANDARD").toUpperCase(),
-    amount_entry_type:editableAmountType,
-    item_price:proof.item_price??"",
-    delivery_charges:proof.delivery_charges??proof.delivery_fee??"",
-    merchant_stated_total_amount:proof.merchant_stated_total_amount??"",
-    cbm_surcharge:proof.cbm_surcharge??0,
-    other_surcharge:proof.other_surcharge??0,
-    merchant_payable_charges:proof.merchant_payable_charges??0,
-    other_merchant_credits:proof.other_merchant_credits??0,
-    remarks:text(proof.remarks||proof.remark),
-    calculating:false,
-    checking:false,
-    calculation:proof.financial_quote&&typeof proof.financial_quote==="object"?proof.financial_quote:{},
-    message:[
-      legacyOpaque?"Legacy unclassified COD was converted to Exact Collection Amount; the total amount is unchanged.":"",
-      legacyAdditional>0?`Legacy additional customer charge ${money(legacyAdditional)} is retired and will be reset to 0 on the next save.`:"",
-    ].filter(Boolean).join(" "),
-    photoReviewed:["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED","RIDER_VERIFIED"].includes(proofReviewStatus),
-    photoUnavailableAcknowledged:photoEvidenceMode==="OS_SOFTCOPY",
-    photoReviewStatus:proofReviewStatus,
-    photoRejectionReason:text(proof.rejection_reason),
-    photoRejectionNote:text(proof.review_note),
-    photoReviewBusy:false,
-    isAdditionalRegistration:sequence>requestedParcelCount(pickup),
-    importedFromOs,
-    sourceFileName:text(proof.source_file_name||proof.financial_quote?.os_source_file_name),
-    sourceRowNumber:positiveInt(proof.source_row_number||proof.financial_quote?.source_row_number)||null,
-    sourceRowCount:positiveInt(proof.source_row_count||proof.financial_quote?.source_row_count)||null,
-    photoEvidenceMode,
-    photoBypassReason:text(proof.photo_bypass_reason||proof.financial_quote?.photo_bypass_reason),
-    deliveryRegion:text(proof.delivery_region||proof.financial_quote?.delivery_region||"UNRESOLVED").toUpperCase() as DataEntryRouteRegion,
-    deliveryMode:text(proof.delivery_route_mode||proof.financial_quote?.delivery_route_mode||"UNRESOLVED").toUpperCase() as DataEntryDeliveryMode,
-    handoffStationCode:text(proof.handoff_station_code||proof.financial_quote?.handoff_station_code).toUpperCase(),
-    handoffStationName:text(proof.handoff_station_name||proof.financial_quote?.handoff_station_name),
-    locationStatus:proof.location_required===false||proof.financial_quote?.location_required===false?"NOT_REQUIRED":"PENDING",
-    saved:Boolean(proof.saved_at||proof.delivery_way_id),
-  };
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label><span className={labelClass}>{label}</span>{children}</label>;
-}
-function MoneyBox({ label, value, highlight = false }: { label: string; value: unknown; highlight?: boolean }) {
-  return (
-    <div className={`rounded-xl border p-3 ${highlight ? "border-[#f6b84b]/50 bg-[#f6b84b]/10" : "border-[#1a3a5c] bg-[#061524]"}`}>
-      <div className="text-[9px] font-black uppercase tracking-[0.12em] text-[#6f9ab8]">{label}</div>
-      <div className={`mt-1 text-[14px] font-black ${highlight ? "text-[#f6b84b]" : "text-[#eef8ff]"}`}>{money(value)}</div>
-    </div>
-  );
-}
-
-function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOptions }: any) {
-  const [open, setOpen] = useState(false);
-  const [providerFilter, setProviderFilter] = useState("ALL");
-  const route = resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
-    fallbackUnknownToRoyal:true,
-    itemPrice:row.item_price,
-  });
-  const query = text(row.township).trim().toLowerCase();
-  const matches = (tariffOptions as TariffOption[])
-    .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
-    .filter((option) => !query || option.destination_name.toLowerCase().includes(query) || option.provider_name.toLowerCase().includes(query))
-    .slice(0, 18);
-  const selected = (tariffOptions as TariffOption[]).find((option) =>
-    option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
-  );
-  const choose = (option: TariffOption) => {
-    const nextRoute=resolveDataEntryServiceProvider(option.destination_name,row.delivery_address,tariffOptions,{
-      fallbackUnknownToRoyal:true,
-      itemPrice:row.item_price,
-    });
-    updateRow(index, {
-      ...routingPatch(nextRoute,{...row,township:option.destination_name}),
-      delivery_charges: tariffRate(option, row.customer_tier),
-      message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} Â· Rack ${option.rack_code || "â€”"} was applied.`,
-    });
-    setOpen(false);
-  };
-  const typeTownship = (township: string) => {
-    const nextRoute=resolveDataEntryServiceProvider(township,row.delivery_address,tariffOptions,{
-      fallbackUnknownToRoyal:true,
-      itemPrice:row.item_price,
-    });
-    const option=nextRoute.option as TariffOption|null;
-    updateRow(index,nextRoute.providerCode?{
-      ...routingPatch(nextRoute,{...row,township}),
-      ...(option
-        ?{delivery_charges:tariffRate(option,row.customer_tier)}
-        :row.service_provider_code&&row.service_provider_code!==nextRoute.providerCode
-          ?{delivery_charges:""}
-          :{}),
-      message:providerRoutingMessage(nextRoute),
-    }:{township,...routingPatch(nextRoute,{...row,township}),message:providerRoutingMessage(nextRoute)});
-    setOpen(true);
-  };
-  return (
-    <Field label="á€™á€¼á€­á€¯á€·á€”á€šá€º / á€á€”á€ºá€†á€±á€¬á€„á€ºá€™á€¾á€¯á€•á€±á€¸á€á€°">
-      <div className="relative">
-        <div className="mb-2 flex flex-wrap gap-1.5">
-          <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
-          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
-            <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
-              {provider.display_name} Â· {provider.active_tariff_count}
-            </button>
-          ))}
-        </div>
-        <input
-          className={inputClass}
-          value={row.township}
-          autoComplete="off"
-          placeholder="á€™á€¼á€­á€¯á€·á€”á€šá€ºá€¡á€™á€Šá€º á€…á€á€„á€ºá€›á€­á€¯á€€á€ºá€‘á€Šá€·á€ºá€•á€«â€¦"
-          onFocus={() => setOpen(true)}
-          onChange={(event) => typeTownship(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") setOpen(false);
-            if (event.key === "Enter" && open && matches[0]) { event.preventDefault(); choose(matches[0]); }
-          }}
-        />
-        {open && matches.length ? (
-          <div className="absolute z-50 mt-1 max-h-72 w-full min-w-[360px] overflow-auto rounded-xl border border-[#3aa7de]/50 bg-[#071b2b] p-1 shadow-2xl">
-            {matches.map((option) => (
-              <button key={option.destination_key} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#12314a]">
-                <span><b className="block text-[12px] text-white">{option.destination_name}</b><span className="text-[10px] text-[#8db4ce]">{option.provider_name} Â· Rack {option.rack_code || "â€”"}</span></span>
-                <span className="whitespace-nowrap text-right text-[10px] text-[#f6b84b]">Standard {money(option.standard_rate_mmk)}<br/>Special {option.special_rate_mmk == null ? "â€”" : money(option.special_rate_mmk)}</span>
-              </button>
-            ))}
-          </div>
-        ) : open && providerFilter !== "ALL" ? (
-          <div className="absolute z-50 mt-1 w-full min-w-[360px] rounded-xl border border-amber-400/40 bg-[#071b2b] p-3 text-[11px] text-amber-200 shadow-2xl">
-            No active tariff is configured for this provider and destination. Add its approved rate card before saving a provider-specific route.
-          </div>
-        ) : null}
-        {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {selected.provider_name} Â· Rack {selected.rack_code || "â€”"} Â· {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
-        <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
-          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Provider: <b>{route.providerCode||"UNRESOLVED"}</b></div>
-          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replaceAll("_"," ")}</b></div>
-        </div>
-      </div>
-    </Field>
-  );
-}
-
-function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
-  const c = row.calculation || {};
-  const type = row.amount_entry_type as AmountType;
-  const route = routeForRow(row,tariffOptions);
-  const stationReady = handoffStationReady(row,route);
-  const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
-  const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
-  const [photoZoom, setPhotoZoom] = useState(1);
-  const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
-  return (
-    <section id={`data-entry-parcel-${row.parcel_sequence}`} className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[11px] font-black uppercase tracking-[0.15em] text-[#f6b84b]">Parcel {row.parcel_sequence}</div>
-            {row.isAdditionalRegistration?<span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-1 text-[9px] font-black text-cyan-200">AUTHORIZED MERCHANT ADDITION</span>:null}
-            {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY Â· ROW {row.sourceRowNumber||"â€”"}</span>:null}
-            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>
-            {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} Â· {route.deliveryMode.replaceAll("_"," ")}</span>:null}
-            {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
-          </div>
-          <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => calculate(index)} disabled={row.calculating} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
-            {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />} á€á€½á€€á€ºá€á€»á€€á€ºá€›á€”á€º
-          </button>
-          <button type="button" onClick={() => save(index)} disabled={
-              row.checking ||
-              (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
-              !routeReady(row,tariffOptions)
-            } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
-            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} á€á€­á€™á€ºá€¸á€†á€Šá€ºá€¸á€›á€”á€º
-          </button>
-        </div>
-      </div>
-
-      {row.photoUnavailableAcknowledged ? (
-        <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
-          <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"â€”"}, row {row.sourceRowNumber||"â€”"}. Reason: {row.photoBypassReason||"â€”"}
-        </div>
-      ) : row.proof_url ? (
-        <>
-          <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="mb-4 flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
-            <img src={displayProofUrl} alt="Proof" className="h-20 w-28 rounded-lg object-cover" />
-            <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge on this screen</div></div>
-          </button>
-          {photoPreviewOpen ? (
-            <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
-              <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
-                  <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
-                  <div className="flex items-center gap-2"><button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">âˆ’</button><span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span><button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button><button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button><button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button></div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto bg-[#020912] p-3 text-center"><img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} /></div>
-              </div>
-            </div>
-          ) : null}
-        </>
-      ) : row.isAdditionalRegistration ? (
-        <div className="mb-4 rounded-xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-[11px] text-cyan-100">
-          <Plus size={14} className="mr-2 inline"/>This parcel was added by an authorized Data Entry user after the merchant changed the pickup quantity. Pickup-level evidence and the audited addition reason apply.
-        </div>
-      ) : <div className="mb-4 rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]"><ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists for this parcel."} <a href="#/data-entry-photo" className="ml-2 font-black underline">Open Photo Check</a></div>}
-
-      {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged?<div
-        data-photo-review="true"
-        className="mb-4 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-4"
-      >
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">
-            <ImageIcon size={14} /> Photo Review
-          </div>
-          <span className={`rounded-full border px-3 py-1 text-[10px] font-black ${
-            row.photoReviewStatus === "APPROVED"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-              : row.photoReviewStatus === "REUPLOAD_REQUIRED"
-                ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
-                : "border-amber-500/40 bg-amber-500/10 text-amber-300"
-          }`}>
-            {row.photoReviewStatus || "PENDING REVIEW"}
-          </span>
-        </div>
-
-        <div className="grid gap-3 lg:grid-cols-3">
-          <button
-            type="button"
-            disabled={row.photoReviewBusy || !row.proof_url}
-            onClick={() => reviewPhoto(index, "APPROVE")}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-left text-[12px] font-black text-emerald-300 disabled:opacity-50"
-          >
-            Approve Photo
-            <span className="mt-1 block text-[10px] font-normal text-[#8db4ce]">Correct parcel and sufficiently clear.</span>
-          </button>
-
-          <label className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-[12px] text-rose-200">
-            <b>Reject reason</b>
-            <select
-              className="mt-2 w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white"
-              value={row.photoRejectionReason}
-              onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}
-            >
-              <option value="">Select reasonâ€¦</option>
-              <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
-              <option value="WRONG_PARCEL">Wrong parcel</option>
-              <option value="UNCLEAR_OR_BLURRY">Unclear or blurry</option>
-              <option value="UNRELATED_IMAGE">Unrelated image</option>
-              <option value="PARCEL_NOT_VISIBLE">Parcel not visible</option>
-              <option value="DUPLICATE_IMAGE">Duplicate image</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={row.photoReviewBusy || !row.photoRejectionReason}
-            onClick={() => reviewPhoto(index, "REJECT")}
-            className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-3 text-[12px] font-black text-white disabled:opacity-50"
-          >
-            Reject &amp; Request Re-upload
-            <span className="mt-1 block text-[10px] font-normal text-rose-100">The rider receives a re-upload requirement.</span>
-          </button>
-        </div>
-
-        {row.photoRejectionReason ? (
-          <textarea
-            rows={2}
-            className="mt-3 w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500"
-            placeholder="Optional detail for the riderâ€¦"
-            value={row.photoRejectionNote}
-            onChange={(e) => updateRow(index, { photoRejectionNote: e.target.value })}
-          />
-        ) : null}
-
-        {!row.photoReviewed ? (
-          <div className="mt-3 rounded-lg border border-[#f6b84b]/25 bg-[#f6b84b]/10 px-3 py-2 text-[10px] text-[#ffd98a]">
-            Approve the photo before Save. A rejected or unavailable image must be re-uploaded by the rider.
-          </div>
-        ) : null}
-      </div>:null}
-
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="á€œá€€á€ºá€á€¶á€á€°á€¡á€™á€Šá€º"><input className={inputClass} value={row.recipient_name} onChange={(e) => updateRow(index,{recipient_name:e.target.value})}/></Field>
-        <Field label="á€œá€€á€ºá€á€¶á€á€°á€–á€¯á€”á€ºá€¸"><input className={inputClass} value={row.recipient_phone} onChange={(e) => updateRow(index,{recipient_phone:e.target.value})}/></Field>
-        <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
-        <Field label="á€¡á€™á€¾á€”á€ºá€á€€á€šá€ºá€¡á€œá€±á€¸á€á€»á€­á€”á€º (kg)"><input type="number" step="0.01" className={inputClass} value={row.weight_kg} onChange={(e)=>updateRow(index,{weight_kg:e.target.value===""?"":Number(e.target.value)})}/></Field>
-        <Field label="á€œá€€á€ºá€á€¶á€á€°á€œá€­á€•á€ºá€…á€¬"><textarea rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>{
-          const delivery_address=e.target.value;
-          const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
-          const option=nextRoute.option as TariffOption|null;
-          updateRow(index,nextRoute.providerCode?{
-            delivery_address,
-            ...routingPatch(nextRoute,{...row,delivery_address}),
-            ...(option?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
-            message:providerRoutingMessage(nextRoute),
-          }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
-        }}/></Field>
-        <Field label="á€€á€¯á€”á€ºá€á€Šá€ºá€¡á€†á€„á€·á€º">
-          <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
-            const customer_tier=e.target.value;
-            const option=(tariffOptions as TariffOption[]).find((item)=>item.destination_name===row.township&&(!row.service_provider_code||item.provider_code===row.service_provider_code));
-            const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
-            updateRow(index,{customer_tier,tier_override,...(option?{delivery_charges:tariffRate(option,customer_tier)}:{})});
-          }}>
-            <option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option>
-          </select>
-          <span className="mt-1 block text-[9px] leading-4 text-[#8db4ce]">
-            {row.customer_tier === "STANDARD" ? `Standard Â· ${tierRule.included_kg ?? 3} kg included` : row.customer_tier === "ROYAL" ? `Royal Â· ${tierRule.included_kg ?? 5} kg included` : `Commitment Â· ${tierRule.included_kg ?? 5} kg included Â· ${tierRule.commitment_min_ways ?? 1500} ways target`}
-            {tierRule.extra_per_kg != null ? ` Â· ${money(tierRule.extra_per_kg)} per started extra kg` : ""}
-            {row.tier_override ? " Â· Authorized parcel override" : tierAccess?.registered ? " Â· Merchant profile" : " Â· Operator selection"}
-          </span>
-        </Field>
-        <Field label="á€á€”á€ºá€†á€±á€¬á€„á€ºá€™á€¾á€¯á€¡á€™á€»á€­á€¯á€¸á€¡á€…á€¬á€¸">
-          <select className={`${inputClass} !bg-white !text-black`} value={row.service_type} onChange={(e)=>updateRow(index,{service_type:e.target.value})}>
-            <option value="STANDARD">STANDARD</option>
-            <option value="EXPRESS">EXPRESS</option>
-            <option value="SAME_DAY">SAME DAY</option>
-            <option value="NEXT_DAY">NEXT DAY</option>
-            <option value="ECONOMY">ECONOMY</option>
-          </select>
-        </Field>
-        <Field label="á€„á€½á€±á€€á€±á€¬á€€á€ºá€á€¶á€•á€¯á€¶">
-          <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
-            const next=e.target.value as AmountType;
-            const patch:any={amount_entry_type:next};
-            if(isExact(next)){patch.item_price="";patch.delivery_charges="";}
-            else if(next==="DELIVERY_CHARGE_ONLY"){patch.item_price="";patch.merchant_stated_total_amount="";}
-            else patch.merchant_stated_total_amount="";
-            const nextRow={...row,...patch};
-            const nextRoute=routeForRow(nextRow,tariffOptions);
-            updateRow(index,{...patch,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
-          }}>
-            {AMOUNT_TYPES.map(v=><option key={v} value={v}>{COLLECTION_METHOD_MY[v]}</option>)}
-          </select>
-        </Field>
-      </div>
-
-      {route.stationRequired?<div data-highway-station-selection-v19="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
-        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway bus-station handoff / á€¡á€á€±á€¸á€•á€¼á€±á€¸á€‚á€­á€á€ºá€á€»</div>
-        <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-          <Field label="Handoff station">
-            <select className={`${inputClass} !bg-white !text-black`} value={row.handoffStationCode} onChange={(event)=>{
-              const handoffStationCode=event.target.value;
-              const known=DATA_ENTRY_HANDOFF_STATIONS.find((station)=>station.code===handoffStationCode);
-              updateRow(index,{
-                handoffStationCode,
-                handoffStationName:handoffStationCode==="OTHER"?row.handoffStationName:(known?.name||""),
-                message:handoffStationCode?"Highway handoff station selected. Save will retain this audited station assignment.":"Choose the physical highway handoff station before saving.",
-              });
-            }}>
-              <option value="">Choose the physical stationâ€¦</option>
-              {DATA_ENTRY_HANDOFF_STATIONS.map((station)=><option key={station.code} value={station.code}>{station.name}</option>)}
-            </select>
-          </Field>
-          {row.handoffStationCode==="OTHER"?<Field label="Other station name">
-            <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationName:event.target.value})} placeholder="Enter the exact station / gate name"/>
-          </Field>:<div className="rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[11px] text-amber-100">{row.handoffStationName||"A station must be selected because this outside-core parcel has no item price."}</div>}
-        </div>
-        {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Select Aung Mingalar, Dagon Ayar/Thiri, or enter another station name before Calculate/Save.</div>:null}
-      </div>:null}
-
-      <DataEntryLocationEditor
-        pickupId={row.pickup_id}
-        parcelSequence={row.parcel_sequence}
-        deliveryWayId={row.delivery_way_id}
-        address={row.delivery_address}
-        township={row.township}
-        autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
-        deferInteractiveMap={row.importedFromOs}
-        enabled={route.mapRequired}
-        disabledReason={route.stationRequired
-          ?"Google Map is temporarily disabled for outside-core highway-terminal handoffs. Select the physical bus station instead."
-          :"Google Map is temporarily disabled for outside-core Royal Express routes. No Britium Wayplan coordinate is required."}
-        reloadToken={locationReloadToken}
-        onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
-        onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
-      />
-
-      <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">á€„á€½á€±á€€á€±á€¬á€€á€ºá€á€¶á€›á€”á€º á€Šá€½á€¾á€”á€ºá€€á€¼á€¬á€¸á€á€»á€€á€º</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="á€•á€…á€¹á€…á€Šá€ºá€¸á€á€”á€ºá€–á€­á€¯á€¸"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
-            const item_price=e.target.value===""?"":Number(e.target.value);
-            const nextRow={...row,item_price};
-            const nextRoute=routeForRow(nextRow,tariffOptions);
-            updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
-          }}/></Field>:null}
-          {!isExact(type) ? <Field label="á€€á€¯á€”á€ºá€á€Šá€ºá€á€á€ºá€™á€¾á€á€º á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          {isExact(type) ? <Field label="á€¡á€á€­á€¡á€€á€» / COD á€…á€¯á€…á€¯á€•á€±á€«á€„á€ºá€¸á€€á€±á€¬á€€á€ºá€á€¶á€„á€½á€±"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          <Field label="CBM á€‘á€•á€ºá€†á€±á€¬á€„á€ºá€¸á€"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
-          <Field label="á€¡á€á€¼á€¬á€¸á€‘á€•á€ºá€†á€±á€¬á€„á€ºá€¸á€"><input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-[#3aa7de]/25 bg-[#071b2b] p-4">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">á€”á€±á€¬á€€á€ºá€á€¶á€…á€”á€…á€º á€„á€½á€±á€›á€¾á€„á€ºá€¸á€á€™á€ºá€¸</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <MoneyBox label="á€œá€€á€ºá€á€¶á€á€°á€‘á€¶á€™á€¾ á€€á€±á€¬á€€á€ºá€á€¶á€„á€½á€± / COD" value={c.cod_amount} highlight />
-          <MoneyBox label="á€€á€¯á€”á€ºá€á€Šá€ºá€á€á€ºá€™á€¾á€á€º á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€" value={c.delivery_charges ?? row.delivery_charges} />
-          <MoneyBox label="á€”á€±á€¬á€€á€ºá€á€¶á€…á€”á€…á€º á€‘á€•á€ºá€†á€±á€¬á€„á€ºá€¸á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€" value={c.backend_calculated_delivery_surcharges} />
-          <MoneyBox label="á€œá€€á€ºá€á€¶á€á€°á á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€á€¡á€…á€­á€á€ºá€¡á€•á€­á€¯á€„á€ºá€¸" value={c.customer_payable_delivery_component ?? c.effective_declared_delivery_charge} highlight />
-          <MoneyBox label="á€¡á€á€¼á€±á€á€¶á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€" value={c.base_tariff} />
-          <MoneyBox label="á€¡á€œá€±á€¸á€á€»á€­á€”á€ºá€‘á€•á€ºá€†á€±á€¬á€„á€ºá€¸á€" value={c.weight_surcharge} />
-          <MoneyBox label="Britium á€›á€•á€­á€¯á€„á€ºá€á€½á€„á€·á€º" value={c.net_system_delivery_charge} highlight />
-          <MoneyBox label="á€•á€­á€¯á€·á€†á€±á€¬á€„á€ºá€á€€á€½á€¬á€á€¼á€¬á€¸á€á€»á€€á€º" value={c.delivery_difference} />
-          <MoneyBox label="á€€á€¯á€”á€ºá€á€Šá€ºá€”á€±á€¬á€€á€ºá€†á€¯á€¶á€¸á€›á€¾á€„á€ºá€¸á€á€™á€ºá€¸" value={c.merchant_final_settlement_amount} highlight />
-        </div>
-        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-[10px] leading-5 text-cyan-100">
-          {isExact(type)
-            ? "Exact collection: customer COD is the entered exact total. Merchant settlement = exact total âˆ’ Britium entitlement âˆ’ merchant charges + merchant credits."
-            : "Receiver delivery = merchant-declared delivery + weight/CBM/other delivery surcharges. Merchant settlement = item value + (receiver delivery âˆ’ Britium entitlement) âˆ’ merchant charges + merchant credits. A negative difference is deducted from the merchant, never added to the receiver."}
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div className={serverClass}>á€„á€½á€±á€›á€¾á€„á€ºá€¸á€á€™á€ºá€¸á€¦á€¸á€á€Šá€ºá€á€»á€€á€º: <b>{text(c.settlement_direction)||"â€”"}</b></div>
-          <div className={serverClass}>á€€á€¯á€”á€ºá€á€Šá€ºá€•á€¼á€„á€ºá€†á€„á€ºá€„á€½á€±: <b>{money(c.merchant_settlement_adjustment)}</b></div>
-          <div className={serverClass}>á€…á€…á€ºá€†á€±á€¸á€™á€¾á€¯: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
-        </div>
-      </div>
-
-      {row.message ? <div className="mt-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
-    </section>
-  );
-}
-
-export default function DataEntryFinancialV2Page() {
-  const [mutationMode,setMutationMode]=useState("MUTATION_SHADOW");
-  const [pickups,setPickups]=useState<Pickup[]>([]);
-  const [selectedPickupId,setSelectedPickupId]=useState("");
-  const [rows,setRows]=useState<ParcelRow[]>([]);
-  const [rowsPickupId,setRowsPickupId]=useState("");
-  const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
-  const [bulkImportOrder,setBulkImportOrder]=useState<string[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [loadingRows,setLoadingRows]=useState(false);
-  const [message,setMessage]=useState("");
-  const [fullRegistration,setFullRegistration]=useState(false);
-  const [waybillBusy,setWaybillBusy]=useState(false);
-  const [waybillMessage,setWaybillMessage]=useState("");
-  const [waybillMessageKind,setWaybillMessageKind]=useState<"SUCCESS"|"ERROR">("SUCCESS");
-  const [locationReloadToken,setLocationReloadToken]=useState(0);
-  const [tariffOptions,setTariffOptions]=useState<TariffOption[]>([]);
-  const [providerOptions,setProviderOptions]=useState<ProviderOption[]>([]);
-  const [tierAccess,setTierAccess]=useState<MerchantTierAccess>({
-    merchant_id:"",registered:false,profile_tier:"",resolved_customer_tier:"STANDARD",
-    can_select_tier:true,can_override_profile_tier:false,tier_rules:{}
-  });
-  const [downloadFrom,setDownloadFrom]=useState("");
-  const [downloadTo,setDownloadTo]=useState("");
-  const [downloadScope,setDownloadScope]=useState<"ALL"|"CURRENT_PICKUP">("ALL");
-  const [downloadBusy,setDownloadBusy]=useState(false);
-  const [downloadMessage,setDownloadMessage]=useState("");
-  const [bulkCalculating,setBulkCalculating]=useState(false);
-  const [bulkSaving,setBulkSaving]=useState(false);
-  const [bulkMessage,setBulkMessage]=useState("");
-  const [additionalCount,setAdditionalCount]=useState(1);
-  const [additionalReason,setAdditionalReason]=useState("");
-  const [addingRegistration,setAddingRegistration]=useState(false);
-  const [locationReviewBusy,setLocationReviewBusy]=useState(false);
-  const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
-
-  const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
-  const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
-  const sequenceFloorByPickup=useMemo(()=>Object.fromEntries(pickups.map((pickup)=>{
-    const draft=bulkImportDrafts[pickup.pickup_id];
-    const draftMaximum=draft?.rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0)||0;
-    return [pickup.pickup_id,Math.max(pickup.registered_parcels,draftMaximum)];
-  })),[bulkImportDrafts,pickups]);
-  const importedLocationSummary=useMemo(()=>{
-    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0};
-    for(const row of rows){
-      if(!row.importedFromOs) continue;
-      summary.total+=1;
-      if(row.locationStatus==="SYNCED") summary.synced+=1;
-      else if(row.locationStatus==="NOT_REQUIRED") summary.notRequired+=1;
-      else if(row.locationStatus==="REVIEW_REQUIRED") summary.review+=1;
-      else summary.resolving+=1;
-    }
-    return summary;
-  },[rows]);
-  const consolidatedLocationReviewRows=useMemo(()=>{
-    const combined=[...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows];
-    const unique=new Map<string,ParcelRow>();
-    for(const row of combined) unique.set(`${row.pickup_id}:${row.parcel_sequence}`,row);
-    return [...unique.values()].filter((row)=>
-      routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="REVIEW_REQUIRED"
-    );
-  },[bulkImportDrafts,rows,tariffOptions]);
-
-  function updateRow(index:number,patch:Partial<ParcelRow>){
-    setRows(current=>current.map((row,i)=>i===index?{...row,...patch,message:patch.message??""}:row));
-  }
-
-  async function loadStartup(){
-    setLoading(true); setMessage("");
-    try{
-      const schemaResponse=await (supabase as any).rpc("be_data_entry_financial_v2_schema");
-      if(schemaResponse.error) throw schemaResponse.error;
-      const s=envelope(schemaResponse.data);
-      if(!s.ok) throw new Error(envelopeMessage(s)||"Financial V2 schema unavailable.");
-      let resolvedMutationMode=text(s.raw?.mutation_mode||s.data?.mutation_mode);
-      const runtimeResponse=await (supabase as any).rpc("be_data_entry_financial_v2_runtime_state");
-      if(!runtimeResponse.error){
-        const runtime=envelope(runtimeResponse.data);
-        if(runtime.ok) resolvedMutationMode=text(runtime.raw?.mutation_mode||runtime.data?.mutation_mode)||resolvedMutationMode;
-      }else{
-        console.warn("Financial V2 runtime state RPC unavailable; using the schema response fallback.",runtimeResponse.error.message);
-      }
-      setMutationMode(resolvedMutationMode||"MUTATION_SHADOW");
-      const tariffResponse=await (supabase as any).rpc("be_data_entry_tariff_options");
-      if(tariffResponse.error) throw tariffResponse.error;
-      setTariffOptions(Array.isArray(tariffResponse.data)?tariffResponse.data:[]);
-      const providerResponse=await (supabase as any).rpc("be_data_entry_service_provider_options_v13");
-      if(providerResponse.error) throw providerResponse.error;
-      setProviderOptions(Array.isArray(providerResponse.data)?providerResponse.data:[]);
-
-      let p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16",{p_limit:200});
-      if(p.error) p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16");
-      if(p.error) throw p.error;
-      const source=Array.isArray(p.data)?p.data:(Array.isArray(p.data?.data)?p.data.data:[]);
-      const normalized=source.map(normalizePickup).filter(Boolean) as Pickup[];
-      const registeredByPickup=new Map<string,Set<number>>();
-      for(let offset=0;offset<normalized.length;offset+=50){
-        const pickupIds=normalized.slice(offset,offset+50).map((pickup)=>pickup.pickup_id);
-        let page=0;
-        while(pickupIds.length){
-          const registrationResponse=await (supabase as any)
-            .from("be_data_entry_parcel_details")
-            .select("pickup_id,parcel_sequence")
-            .in("pickup_id",pickupIds)
-            .order("pickup_id",{ascending:true})
-            .order("parcel_sequence",{ascending:true})
-            .range(page*1000,page*1000+999);
-          if(registrationResponse.error){
-            console.warn("Registered Data Entry counts could not be refreshed.",registrationResponse.error.message);
-            break;
-          }
-          const registrations=Array.isArray(registrationResponse.data)?registrationResponse.data:[];
-          registrations.forEach((registration:any)=>{
-            const pickupId=text(registration.pickup_id);
-            const sequence=positiveInt(registration.parcel_sequence);
-            if(!pickupId||!sequence) return;
-            const values=registeredByPickup.get(pickupId)||new Set<number>();
-            values.add(sequence);
-            registeredByPickup.set(pickupId,values);
-          });
-          if(registrations.length<1000) break;
-          page+=1;
-        }
-      }
-      const withRegisteredCounts=normalized.map((pickup)=>({
-        ...pickup,
-        registered_parcels:registeredByPickup.get(pickup.pickup_id)?.size??pickup.registered_parcels,
-      }));
-      setPickups(withRegisteredCounts);
-      setSelectedPickupId(current=>current===BULK_UPLOAD_PICKUP_ID||withRegisteredCounts.some(x=>x.pickup_id===current)?current:(withRegisteredCounts[0]?.pickup_id||""));
-    }catch(error:any){setMessage(error?.message||"Unable to load Financial V2.");}
-    finally{setLoading(false);}
-  }
-
-  async function fetchPickupWorkspace(pickup:Pickup):Promise<{tierAccess:MerchantTierAccess;rows:ParcelRow[]}>{
-    const proofSources = [
-      "be_data_entry_parcel_details",
-      "be_v_data_entry_parcel_proofs",
-      "be_v_data_entry_parcel_rows",
-      "be_pickup_parcel_verifications",
-    ];
-    const [tierResponse,proofResponses]=await Promise.all([
-      (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id}),
-      Promise.all(proofSources.map(async (source)=>({
-        source,
-        response:await (supabase as any)
-          .from(source)
-          .select("*")
-          .eq("pickup_id",pickup.pickup_id)
-          .order("parcel_sequence",{ascending:true}),
-      }))),
-    ]);
-    if(tierResponse.error) throw tierResponse.error;
-    if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
-    const nextTierAccess:MerchantTierAccess={
-      merchant_id:text(tierResponse.data?.merchant_id||pickup.merchant_id),
-      registered:Boolean(tierResponse.data?.registered),
-      profile_tier:text(tierResponse.data?.profile_tier).toUpperCase(),
-      resolved_customer_tier:text(tierResponse.data?.resolved_customer_tier||"STANDARD").toUpperCase(),
-      can_select_tier:Boolean(tierResponse.data?.can_select_tier),
-      can_override_profile_tier:Boolean(tierResponse.data?.can_override_profile_tier),
-      tier_rules:tierResponse.data?.tier_rules||{},
-    };
-    const proofs:any[]=[];
-    let lastProofError="";
-    for(const {source,response} of proofResponses){
-      if(response.error){lastProofError=`${source}: ${response.error.message}`;continue;}
-      if(Array.isArray(response.data)&&response.data.length){
-        proofs.push(...response.data);
-        console.info(`Data Entry evidence: ${response.data.length} row(s) loaded from ${source}`);
-      }
-    }
-    if(!proofs.length&&lastProofError) console.warn("No Data Entry proof rows loaded.",lastProofError);
-    const resolvedProofs=await Promise.all(proofs.map(async (proof:any)=>({
-      ...proof,
-      __proof_ref:proofUrl(proof),
-      __proof_url:await displayPhotoUrl(proofUrl(proof)),
-    })));
-    const observedCount=resolvedProofs.reduce((maximum:number,item:any)=>Math.max(maximum,positiveInt(item.parcel_sequence)),0);
-    const count=authorizedParcelCount(pickup,observedCount);
-    if(!count) throw new Error(`Pickup ${pickup.pickup_id} has no authoritative parcel count. Registration is blocked.`);
-    const nextRows=Array.from({length:count},(_,offset)=>{
-      const sequence=offset+1;
-      const proof=resolvedProofs
-        .filter((item:any)=>positiveInt(item.parcel_sequence)===sequence)
-        .reduce((merged:any,item:any)=>{
-          for(const [key,value] of Object.entries(item)){
-            if(value!==null&&value!==undefined&&value!=="") merged[key]=value;
-          }
-          return merged;
-        },{});
-      const row=parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
-      const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
-      const option=route.option as TariffOption|null;
-      if(!route.providerCode) return row;
-      return {
-        ...row,
-        ...routingPatch(route,row),
-        ...(option&&row.delivery_charges===""?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
-      };
-    });
-    return {tierAccess:nextTierAccess,rows:nextRows};
-  }
-
-  async function loadPickupRows(pickup:Pickup){
-    setLoadingRows(true); setMessage("");
-    try{
-      const workspace=await fetchPickupWorkspace(pickup);
-      setTierAccess(workspace.tierAccess);
-      setRows(workspace.rows);
-      setRowsPickupId(pickup.pickup_id);
-    }catch(error:any){setRows([]);setRowsPickupId("");setMessage(error?.message||"Unable to load pickup proof rows.");}
-    finally{setLoadingRows(false);}
-  }
-
-  async function calculateRow(index:number):Promise<boolean>{
-    if(!selectedPickup) return false;
-    const row=rows[index]; if(!row) return false;
-    updateRow(index,{calculating:true,calculation:{},message:""});
-    try{
-      const r=await (supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
-      if(r.error) throw r.error;
-      const e=envelope(r.data);
-      const resolution=e.raw?.server_resolution||{};
-      const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
-      const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
-      const resolvedRegion=text(e.data?.delivery_region||resolution.delivery_region).toUpperCase() as DataEntryRouteRegion;
-      const resolvedMode=text(e.data?.delivery_route_mode||resolution.delivery_route_mode).toUpperCase() as DataEntryDeliveryMode;
-      updateRow(index,{
-        calculating:false,
-        calculation:{...e.data,server_resolution:resolution},
-        ...(resolvedTier?{customer_tier:resolvedTier}:{}),
-        ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
-        ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
-        ...(resolvedMode?{deliveryMode:resolvedMode}:{}),
-        message:e.ok
-          ? `Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`
-          :(envelopeMessage(e)||"Calculation failed.")
-      });
-      return e.ok;
-    }catch(error:any){
-      updateRow(index,{calculating:false,message:error?.message||"Backend calculation failed."});
-      return false;
-    }
-  }
-
-  async function reviewPhoto(index:number, action:"APPROVE"|"REJECT"){
-    const row=rows[index]; if(!row) return;
-    if(action==="REJECT" && !row.photoRejectionReason){
-      updateRow(index,{message:"Select a rejection reason first."}); return;
-    }
-    updateRow(index,{photoReviewBusy:true,message:""});
-    try{
-      const {data:userData}=await supabase.auth.getUser();
-      const response=await (supabase as any).rpc("be_review_parcel_photo",{p_payload:{
-        action,
-        pickup_id:row.pickup_id,
-        parcel_sequence:row.parcel_sequence,
-        rejection_reason:action==="REJECT"?row.photoRejectionReason:null,
-        rejection_note:action==="REJECT"?(row.photoRejectionNote||null):null,
-        reviewed_by:userData?.user?.id||null,
-        reviewed_by_email:userData?.user?.email||null
-      }});
-      if(response.error) throw response.error;
-      if(response.data?.ok===false) throw new Error(response.data?.error||"Photo review failed.");
-      const status=text(response.data?.review_status||(action==="APPROVE"?"APPROVED":"REUPLOAD_REQUIRED")).toUpperCase();
-      updateRow(index,{
-        photoReviewBusy:false,
-        photoReviewStatus:status,
-        photoReviewed:status==="APPROVED",
-        photoUnavailableAcknowledged:false,
-        message:status==="APPROVED"
-          ?"Photo approved. Validate Save is now available."
-          :"Rejected. Re-upload request sent to the assigned rider."
-      });
-    }catch(error:any){
-      updateRow(index,{photoReviewBusy:false,message:error?.message||"Photo review failed."});
-    }
-  }
-
-  async function saveRow(index:number){
-    if(!selectedPickup) return;
-    const row=rows[index]; if(!row) return;
-
-    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.proof_ref) {
-      updateRow(index,{message:"No stored parcel photo reference exists. Photo capture/re-upload is required before saving."});
-      return;
-    }
-    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoReviewed) {
-      updateRow(index, {
-        message:
-          "Approve the parcel photo before Save. Reject unavailable, wrong, unclear, or unrelated images and request re-upload.",
-      });
-      return;
-    }
-    if(row.photoUnavailableAcknowledged && (!row.importedFromOs || !row.sourceFileName || row.photoBypassReason.trim().length<10)){
-      updateRow(index,{message:"OS softcopy photo bypass requires an imported source file and a clear reason of at least 10 characters."});
-      return;
-    }
-    const route=routeForRow(row,tariffOptions);
-    if(!route.providerCode){
-      updateRow(index,{message:"Enter a recognized township before saving so the delivery route can be assigned."});
-      return;
-    }
-    if(!handoffStationReady(row,route)){
-      updateRow(index,{message:"Choose the physical highway bus station before saving this no-item-price outside-core parcel."});
-      return;
-    }
-    if(route.mapRequired && row.locationStatus!=="SYNCED"){
-      updateRow(index,{message:"This Yangon, Mandalay, or Naypyitaw drop point must be synchronized in Google Location Details before saving."});
-      return;
-    }
-
-    updateRow(index,{checking:true,message:""});
-    try{
-      const r=await (supabase as any).rpc("be_data_entry_financial_v2_save",{p_payload:{...payload(row,selectedPickup),request_id:requestId("FINANCIAL_V2_SAVE"),dry_run:false,source_file_name:row.sourceFileName||"PORTAL_FINANCIAL_V2_LIVE",reason:row.photoUnavailableAcknowledged?row.photoBypassReason:row.isAdditionalRegistration?"AUTHORIZED_MERCHANT_ADDITION_SAVE":"PORTAL_FINANCIAL_V2_SAVE",destination:selectedPickup.city||null}});
-      if(r.error) throw r.error;
-      const e=envelope(r.data);
-      if(!e.ok || r.data?.persisted===false) throw new Error(envelopeMessage(e)||"Live save was not confirmed.");
-      updateRow(index,{
-        checking:false,
-        saved:true,
-        delivery_way_id:text(r.data?.canonical_way_id||e.data?.canonical_way_id||row.delivery_way_id||`${selectedPickup.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
-        calculation:{...row.calculation,...e.data},
-        message:"Saved successfully with backend calculation and audit lineage."
-      });
-      setPickups((current)=>current.map((pickup)=>pickup.pickup_id===row.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,row.parcel_sequence)}:pickup));
-    }catch(error:any){updateRow(index,{checking:false,message:error?.message||"Save failed."});}
-  }
-
-  async function calculateAll(){
-    if(!rows.length || bulkCalculating) return;
-    setBulkCalculating(true);
-    setBulkMessage("");
-    try{
-      let calculated=0;
-      for(let i=0;i<rows.length;i+=1){
-        if(await calculateRow(i)) calculated+=1;
-      }
-      setBulkMessage(calculated===rows.length
-        ? `Calculated all ${rows.length} authorized registration row(s).`
-        : `Calculated ${calculated} of ${rows.length} row(s). Review the failed rows before Save All.`
-      );
-    }finally{
-      setBulkCalculating(false);
-    }
-  }
-
-  function requireSaveReady(){
-    if(!selectedPickup || !rows.length) throw new Error("Select a pickup with authorized registration rows first.");
-    const blocked=rows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed && !row.photoUnavailableAcknowledged);
-    if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
-    const invalidBypass=rows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
-    if(invalidBypass) throw new Error(`Parcel ${invalidBypass.parcel_sequence}: OS softcopy photo bypass is missing its source file or audited reason.`);
-    const unresolvedRoutes=rows.filter((row)=>!routeForRow(row,tariffOptions).providerCode);
-    if(unresolvedRoutes.length) throw new Error(`Parcel ${unresolvedRoutes[0].parcel_sequence}: enter a recognized township so the delivery provider can be assigned.`);
-    const missingStations=rows.filter((row)=>!handoffStationReady(row,routeForRow(row,tariffOptions)));
-    if(missingStations.length){
-      const first=missingStations[0];
-      window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
-      throw new Error(`Parcel ${first.parcel_sequence}: choose Aung Mingalar, Dagon Ayar/Thiri, or enter the other highway station before saving.`);
-    }
-    const mapLocations=rows.filter((row)=>routeForRow(row,tariffOptions).mapRequired);
-    const unresolvedLocations=mapLocations.filter((row)=>row.locationStatus!=="SYNCED");
-    if(unresolvedLocations.length){
-      const first=unresolvedLocations[0];
-      const resolving=unresolvedLocations.filter((row)=>row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING").length;
-      const review=unresolvedLocations.filter((row)=>row.locationStatus==="REVIEW_REQUIRED").length;
-      window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
-      throw new Error(`Core-region location sync incomplete: ${mapLocations.length-unresolvedLocations.length}/${mapLocations.length} synchronized, ${resolving} still resolving, ${review} need review. Parcel ${first.parcel_sequence} is the first unresolved row; use Retry Location Sync or Apply coordinates for a corrected pin.`);
-    }
-  }
-
-  async function persistAllRows(reason:string){
-    requireSaveReady();
-    if(!selectedPickup) throw new Error("Select a pickup first.");
-    const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_batch_v22",{p_payload:{
-      request_id:requestId("FINANCIAL_V2_SAVE_ALL"),
-      pickup_id:selectedPickup.pickup_id,
-      reason,
-      rows:rows.map((row)=>({
-        ...payload(row,selectedPickup),
-        destination:selectedPickup.city||null,
-      })),
-    }});
-    if(response.error) throw response.error;
-    const result=response.data||{};
-    if(!result.ok || result.persisted===false){
-      const e=envelope(result);
-      throw new Error(envelopeMessage(e)||result?.errors?.[0]?.message||"Save All was not confirmed.");
-    }
-    const savedResults=Array.isArray(result.rows)?result.rows:[];
-    setRows((current)=>current.map((row,index)=>({
-      ...row,
-      saved:true,
-      delivery_way_id:text(savedResults[index]?.canonical_way_id||row.delivery_way_id||`${row.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
-      calculation:{...row.calculation,...(savedResults[index]?.data||{})},
-      message:"Saved by the atomic Save All operation.",
-    })));
-    const maximumSavedSequence=rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
-    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,maximumSavedSequence)}:pickup));
-    return result;
-  }
-
-  async function saveAll(){
-    if(bulkSaving) return;
-    setBulkSaving(true);
-    setBulkMessage("");
-    try{
-      const result=await persistAllRows("PORTAL_FINANCIAL_V2_SAVE_ALL");
-      if(selectedPickup){
-        setBulkImportDrafts((current)=>{
-          const draft=current[selectedPickup.pickup_id];
-          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:true}}:current;
-        });
-      }
-      setBulkMessage(`Saved all ${Number(result.saved_count||rows.length)} row(s). The batch was committed atomically.`);
-    }catch(error:any){
-      setBulkMessage(error?.message||"Save All failed. No partial batch was kept.");
-    }finally{
-      setBulkSaving(false);
-    }
-  }
-
-  async function authorizeImportedRows(pickup:Pickup,count:number,fileName:string,observedCount=0):Promise<number>{
-    let remaining=count;
-    let authorized=authorizedParcelCount(pickup,observedCount);
-    while(remaining>0){
-      const chunk=Math.min(50,remaining);
-      const response=await (supabase as any).rpc("be_data_entry_financial_v2_add_registrations",{p_payload:{
-        request_id:requestId("DATA_ENTRY_OS_IMPORT_ADD_REGISTRATIONS"),
-        pickup_id:pickup.pickup_id,
-        count:chunk,
-        reason:`OS softcopy ${fileName}: merchant supplied ${count} additional item(s) beyond the authorized pickup quantity.`,
-      }});
-      if(response.error) throw response.error;
-      const result=response.data||{};
-      if(!result.ok||result.persisted===false) throw new Error(result?.errors?.[0]?.message||"OS import could not authorize its additional registration rows.");
-      authorized=positiveInt(result.authorized_parcels)||authorized+chunk;
-      remaining-=chunk;
-    }
-    setPickups((current)=>current.map((item)=>item.pickup_id===pickup.pickup_id?{...item,verified_parcels:authorized}:item));
-    return authorized;
-  }
-
-  function fillImportedPickupRows(
-    pickup:Pickup,
-    existingRows:ParcelRow[],
-    pickupTierAccess:MerchantTierAccess,
-    sourceRows:OsImportRow[],
-    importPayload:OsImportApplyPayload,
-    authorized:number,
-  ){
-    const maxSequence=Math.max(...sourceRows.map((row)=>positiveInt(row.targetSequence)));
-    const sourceBySequence=new Map(sourceRows.map((row)=>[row.targetSequence,row]));
-    const existingBySequence=new Map(existingRows.map((row)=>[row.parcel_sequence,row]));
-    const targetCount=Math.max(authorized,existingRows.length,maxSequence);
-    const filled:ParcelRow[]=Array.from({length:targetCount},(_,offset):ParcelRow=>{
-      const sequence=offset+1;
-      const existing=existingBySequence.get(sequence)||parcelRowFromProof(pickup,pickupTierAccess,{},sequence);
-      const sourceRow=sourceBySequence.get(sequence);
-      if(!sourceRow) return existing;
-      const requestedTier=text(sourceRow.merchantTier||"STANDARD").toUpperCase();
-      const customerTier=pickupTierAccess.can_select_tier
-        ? requestedTier
-        : pickupTierAccess.resolved_customer_tier||"STANDARD";
-      const amountType=(AMOUNT_TYPES.includes(sourceRow.paymentType as AmountType)
-        ?sourceRow.paymentType
-        :"ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
-      const routedItemPrice=amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"";
-      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions);
-      const tariffOption=destination.option as TariffOption|null;
-      const tariffDelivery:number|""=tariffOption?tariffRate(tariffOption,customerTier):"";
-      const declaredDelivery:number|""=sourceRow.osSetPrice===""?tariffDelivery:sourceRow.osSetPrice;
-      const exactValues=[sourceRow.itemPrice,sourceRow.osSetPrice]
-        .filter((value):value is number=>value!==""&&Number.isFinite(Number(value)));
-      const exactTotal:number|""=exactValues.length?exactValues.reduce((sum,value)=>sum+Number(value),0):"";
-      const postalNote=destination.postal.matchLevel==="UNRESOLVED"
-        ?"Township/postal match needs review."
-        :`Township normalized from postal data (${destination.postal.matchLevel.replace(/_/g," ")}).`;
-      return {
-        ...existing,
-        pickup_id:pickup.pickup_id,
-        parcel_sequence:sequence,
-        delivery_way_id:canonicalWayId(pickup.pickup_id,sequence),
-        recipient_name:sourceRow.recipientName,
-        recipient_phone:sourceRow.recipientPhone,
-        township:destination.township,
-        delivery_address:sourceRow.deliveryAddress,
-        weight_kg:sourceRow.actualWeight,
-        customer_tier:customerTier,
-        tier_override:Boolean(pickupTierAccess.registered&&pickupTierAccess.profile_tier&&customerTier!==pickupTierAccess.profile_tier&&pickupTierAccess.can_override_profile_tier),
-        service_provider_code:destination.providerCode,
-        deliveryRegion:destination.routeRegion,
-        deliveryMode:destination.deliveryMode,
-        handoffStationCode:destination.stationRequired?existing.handoffStationCode:"",
-        handoffStationName:destination.stationRequired?existing.handoffStationName:"",
-        service_type:sourceRow.serviceType||"STANDARD",
-        amount_entry_type:amountType,
-        item_price:amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"",
-        delivery_charges:amountType==="EXACT_COLLECTION_AMOUNT"?"":declaredDelivery,
-        merchant_stated_total_amount:amountType==="EXACT_COLLECTION_AMOUNT"?exactTotal:"",
-        remarks:[existing.remarks,`OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}, Way ID ${sourceRow.wayId||pickup.pickup_id}, merchant ${sourceRow.merchantName||pickup.merchant_id||pickup.merchant_name}.`].filter(Boolean).join(" "),
-        calculation:{},
-        calculating:false,
-        checking:false,
-        message:`Imported from spreadsheet row ${sourceRow.sourceRowNumber}. ${postalNote} ${destination.mapRequired?"Review the Google drop point.":destination.stationRequired?"Choose the highway handoff station.":"Google Map is not required for this route."} Then Calculate All and Save All.`,
-        photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
-        photoUnavailableAcknowledged:importPayload.skipPhotoReview,
-        photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
-        isAdditionalRegistration:sequence>requestedParcelCount(pickup),
-        importedFromOs:true,
-        sourceFileName:importPayload.fileName,
-        sourceRowNumber:sourceRow.sourceRowNumber,
-        sourceRowCount:importPayload.sourceRowCount,
-        photoEvidenceMode:importPayload.skipPhotoReview?"OS_SOFTCOPY":"PICKER_PHOTO",
-        photoBypassReason:importPayload.skipPhotoReview?importPayload.photoBypassReason:"",
-        locationStatus:(destination.mapRequired?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution,
-        saved:false,
-      };
-    });
-    const staged=importPayload.mode==="BULK_UPLOAD"
-      ?filled.filter((row)=>sourceBySequence.has(row.parcel_sequence))
-      :filled;
-    return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
-  }
-
-  async function applyOsImport(importPayload:OsImportApplyPayload){
-    const batches=importPayload.batches.length
-      ?importPayload.batches
-      :[{targetPickupId:importPayload.targetPickupId,rows:importPayload.rows}];
-    if(!batches.length||!importPayload.rows.length) throw new Error("No spreadsheet rows were selected for import.");
-    if(importPayload.mode==="SINGLE_PICKUP"&&(!selectedPickup||importPayload.targetPickupId!==selectedPickup.pickup_id)){
-      throw new Error("The target pickup changed while the spreadsheet was loading. Select it again and retry.");
-    }
-
-    const nextDrafts:Record<string,BulkImportDraft>={};
-    for(const batch of batches){
-      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
-      if(!pickup) throw new Error(`Pickup ${batch.targetPickupId} is no longer eligible. Refresh and upload the spreadsheet again.`);
-      const pendingDraft=bulkImportDrafts[pickup.pickup_id];
-      if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
-        throw new Error(`Pickup ${pickup.pickup_id} still has an unsaved upload batch. Calculate and Save All before uploading its next batch.`);
-      }
-      const workspace=importPayload.mode==="SINGLE_PICKUP"&&rowsPickupId===pickup.pickup_id
-        ?{tierAccess,rows}
-        :await fetchPickupWorkspace(pickup);
-      const maxSequence=Math.max(...batch.rows.map((row)=>positiveInt(row.targetSequence)));
-      let authorized=authorizedParcelCount(pickup,workspace.rows.length);
-      if(maxSequence>authorized){
-        authorized=await authorizeImportedRows(pickup,maxSequence-authorized,importPayload.fileName,workspace.rows.length);
-      }
-      const nextPickup={...pickup,verified_parcels:Math.max(pickup.verified_parcels,authorized)};
-      nextDrafts[pickup.pickup_id]={
-        pickupId:pickup.pickup_id,
-        fileName:importPayload.fileName,
-        rows:fillImportedPickupRows(nextPickup,workspace.rows,workspace.tierAccess,batch.rows,importPayload,authorized),
-        tierAccess:workspace.tierAccess,
-        saved:false,
-      };
-    }
-
-    const pickupOrder=batches.map((batch)=>batch.targetPickupId);
-    const firstPickupId=pickupOrder[0];
-    if(importPayload.mode==="BULK_UPLOAD"){
-      setBulkImportDrafts((current)=>({...current,...nextDrafts}));
-      setBulkImportOrder((current)=>[...current.filter((pickupId)=>!pickupOrder.includes(pickupId)),...pickupOrder]);
-    }else{
-      setBulkImportDrafts({});
-      setBulkImportOrder([]);
-    }
-    const firstDraft=nextDrafts[firstPickupId];
-    setSelectedPickupId(firstPickupId);
-    setTierAccess(firstDraft.tierAccess);
-    setRows(firstDraft.rows);
-    setRowsPickupId(firstPickupId);
-    setPickups((current)=>current.map((pickup)=>{
-      const draft=nextDrafts[pickup.pickup_id];
-      return draft?{...pickup,verified_parcels:Math.max(pickup.verified_parcels,draft.rows.length)}:pickup;
-    }));
-    setBulkMessage(importPayload.mode==="BULK_UPLOAD"
-      ?`Bulk upload staged ${importPayload.rows.length} row(s) across ${pickupOrder.length} pickup(s). Review core-region Google pins and choose highway stations where requested; outside-core Royal routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}.`
-      :`Filled ${importPayload.rows.length} row(s) from ${importPayload.fileName}. Review Yangon/Mandalay/Naypyitaw Google pins and choose any required highway handoff stations; other outside-core routes skip Maps. ${importPayload.skipPhotoReview?"The audited OS-softcopy evidence option is active":"Picker-photo approval is still required"}. Then use Calculate All and Save All.`
-    );
-  }
-
-  async function addRegistrations(){
-    if(!selectedPickup || addingRegistration) return;
-    const count=Math.trunc(Number(additionalCount));
-    const reason=additionalReason.trim();
-    if(!Number.isInteger(count) || count<1 || count>50){
-      setBulkMessage("Enter an additional registration count from 1 to 50.");
-      return;
-    }
-    if(!reason){
-      setBulkMessage("Enter the merchant's reason for changing the pickup quantity.");
-      return;
-    }
-    setAddingRegistration(true);
-    setBulkMessage("");
-    try{
-      const response=await (supabase as any).rpc("be_data_entry_financial_v2_add_registrations",{p_payload:{
-        request_id:requestId("DATA_ENTRY_ADD_REGISTRATIONS"),
-        pickup_id:selectedPickup.pickup_id,
-        count,
-        reason,
-      }});
-      if(response.error) throw response.error;
-      const result=response.data||{};
-      if(!result.ok || result.persisted===false) throw new Error(result?.errors?.[0]?.message||"Additional registration authorization failed.");
-      const sequences=(Array.isArray(result.sequences)?result.sequences:[]).map(positiveInt).filter(Boolean);
-      const newAuthorized=positiveInt(result.authorized_parcels);
-      setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,verified_parcels:newAuthorized}:pickup));
-      setRows((current)=>{
-        const existing=new Set(current.map((row)=>row.parcel_sequence));
-        const additions=sequences.filter((sequence:number)=>!existing.has(sequence)).map((sequence:number)=>parcelRowFromProof(
-          {...selectedPickup,verified_parcels:newAuthorized},tierAccess,{},sequence
-        ));
-        return [...current,...additions].sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
-      });
-      setAdditionalReason("");
-      setAdditionalCount(1);
-      setBulkMessage(`Authorized ${sequences.length} merchant-added registration(s): parcel ${sequences.join(", ")}.`);
-    }catch(error:any){
-      setBulkMessage(error?.message||"Unable to add the merchant-requested registrations.");
-    }finally{
-      setAddingRegistration(false);
-    }
-  }
-
-  async function createAndGenerateWaybill(){
-    if(!selectedPickupId) return;
-
-    setWaybillBusy(true);
-    setWaybillMessage("");
-    setWaybillMessageKind("SUCCESS");
-
-    try{
-      await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
-
-      const requestId =
-        "WAYBILL:" +
-        selectedPickupId +
-        ":" +
-        (
-          typeof crypto !== "undefined" &&
-          typeof crypto.randomUUID === "function"
-            ? crypto.randomUUID()
-            : Date.now()
-        );
-
-      const { data, error } = await (supabase as any).rpc(
-        "be_data_entry_financial_v2_create_waybill",
-        {
-          p_payload: {
-            request_id: requestId,
-            pickup_id: selectedPickupId,
-            dry_run: false,
-          },
-        }
-      );
-
-      if(error) throw error;
-
-      if(!data?.ok){
-        const rpcMessage =
-          data?.errors
-            ?.map((item:any)=>item?.message)
-            .filter(Boolean)
-            .join(" ") ||
-          data?.message ||
-          data?.code ||
-          "Waybill creation failed.";
-
-        throw new Error(rpcMessage);
-      }
-
-      const sync = await syncWaybillStudioV122({
-        pickupId: selectedPickupId,
-        merchantCode: selectedPickup?.merchant_id,
-        merchantName: selectedPickup?.merchant_name,
-      });
-
-      const expected = rows.length;
-      const printable = Number(sync?.printable_count || 0);
-      if (printable < expected) {
-        throw new Error(
-          `Waybill creation was not completed: ${printable} of ${expected} parcel(s) reached Waybill Studio.`
-        );
-      }
-
-      const waybillContext = {
-        pickupId: selectedPickupId, pickup_id: selectedPickupId,
-        waybillNo: data?.waybill_no || null, waybill_no: data?.waybill_no || null,
-        parcelCount: printable, parcel_count: printable, createdAt: new Date().toISOString(),
-      };
-      try {
-        const encoded = JSON.stringify(waybillContext);
-        window.sessionStorage.setItem("britium:last-created-waybill", encoded);
-        window.localStorage.setItem("britium:last-created-waybill", encoded);
-        window.dispatchEvent(new CustomEvent("britium:waybill-created", { detail: waybillContext }));
-      } catch {}
-      setWaybillMessage(
-        `Waybill created, live-synced and verified in Waybill Studio: ${printable} parcel(s) Â· ` +
-        (data?.waybill_no || selectedPickupId)
-      );
-      setWaybillMessageKind("SUCCESS");
-      window.setTimeout(()=>{
-        window.location.hash=`#/waybill-studio?pickup_id=${encodeURIComponent(selectedPickupId)}&paper=4x6&printer=NIPPON_POS`;
-      },350);
-    }catch(error:any){
-      setWaybillMessageKind("ERROR");
-      setWaybillMessage(
-        error?.message || "Waybill creation failed."
-      );
-    }finally{
-      setWaybillBusy(false);
-    }
-  }
-
-
-  function toDateTimeLocalValue(date:Date):string{
-    const shifted=new Date(date.getTime()-date.getTimezoneOffset()*60_000);
-    return shifted.toISOString().slice(0,16);
-  }
-
-  function applyDownloadRange(range:"ALL"|"TODAY"|"LAST_24_HOURS"|"THIS_WEEK"|"THIS_MONTH"){
-    if(range==="ALL"){
-      setDownloadFrom("");
-      setDownloadTo("");
-      return;
-    }
-    const now=new Date();
-    let from=new Date(now);
-    if(range==="TODAY"){
-      from.setHours(0,0,0,0);
-    }else if(range==="LAST_24_HOURS"){
-      from=new Date(now.getTime()-24*60*60*1000);
-    }else if(range==="THIS_MONTH"){
-      from=new Date(now.getFullYear(),now.getMonth(),1,0,0,0,0);
-    }else{
-      const day=(now.getDay()+6)%7;
-      from.setDate(now.getDate()-day);
-      from.setHours(0,0,0,0);
-    }
-    setDownloadFrom(toDateTimeLocalValue(from));
-    setDownloadTo(toDateTimeLocalValue(now));
-  }
-
-  function exportDateTime(value:unknown):string{
-    const raw=text(value).trim();
-    if(!raw) return "";
-    const date=new Date(raw);
-    if(Number.isNaN(date.getTime())) return raw;
-    return date.toLocaleString("en-GB",{
-      year:"numeric",month:"2-digit",day:"2-digit",
-      hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
-    });
-  }
-
-  function exportCell(value:unknown):string|number|boolean{
-    if(value==null) return "";
-    if(typeof value==="string" || typeof value==="number" || typeof value==="boolean") return value;
-    try{return JSON.stringify(value);}catch{return String(value);}
-  }
-
-  async function downloadDataEntryRegistration(){
-    setDownloadBusy(true);
-    setDownloadMessage("");
-    try{
-      const fromDate=downloadFrom?new Date(downloadFrom):null;
-      const toDate=downloadTo?new Date(downloadTo):null;
-      if(fromDate && Number.isNaN(fromDate.getTime())) throw new Error("Invalid From date/time.");
-      if(toDate && Number.isNaN(toDate.getTime())) throw new Error("Invalid To date/time.");
-      if(fromDate && toDate && fromDate.getTime()>toDate.getTime()) throw new Error("From date/time must be earlier than To date/time.");
-      if(downloadScope==="CURRENT_PICKUP" && !selectedPickupId) throw new Error("Select a pickup before using Current pickup only.");
-
-      const pageSize=1000;
-      let offset=0;
-      const records:any[]=[];
-      while(true){
-        let query:any=(supabase as any)
-          .from("be_data_entry_parcel_details")
-          .select("*")
-          .order("saved_at",{ascending:true})
-          .range(offset,offset+pageSize-1);
-        if(fromDate) query=query.gte("saved_at",fromDate.toISOString());
-        if(toDate) query=query.lte("saved_at",toDate.toISOString());
-        if(downloadScope==="CURRENT_PICKUP") query=query.eq("pickup_id",selectedPickupId);
-        const response=await query;
-        if(response.error) throw response.error;
-        const batch=Array.isArray(response.data)?response.data:[];
-        records.push(...batch);
-        if(batch.length<pageSize) break;
-        offset+=pageSize;
-      }
-
-      if(!records.length){
-        setDownloadMessage("No Data Entry registration records matched the selected timeline.");
-        return;
-      }
-
-      const exportRows=records.map((row:any)=>({
-        "Registration Saved Time":exportDateTime(row.saved_at),
-        "Saved By":text(row.saved_by_email),
-        "Pickup ID":text(row.pickup_id),
-        "Parcel Sequence":row.parcel_sequence??"",
-        "Delivery Way ID":text(row.delivery_way_id),
-        "Way ID":text(row.way_id),
-        "Merchant ID":text(row.merchant_id),
-        "Customer ID":text(row.customer_id),
-        "Recipient Name":text(row.recipient_name),
-        "Contact 1":text(row.contact_no_1),
-        "Contact 2":text(row.contact_no_2),
-        "Township":text(row.township),
-        "Township Key":text(row.township_key),
-        "City":text(row.city),
-        "State / Region":text(row.region_state),
-        "Recipient Address":text(row.recipient_address),
-        "Customer Tier":text(row.customer_tier),
-        "Service Provider":text(row.financial_quote?.service_provider_code),
-        "Delivery Region":text(row.delivery_region||row.financial_quote?.delivery_region),
-        "Delivery Route Mode":text(row.delivery_route_mode||row.financial_quote?.delivery_route_mode),
-        "Google Location Required":row.location_required??row.financial_quote?.location_required??"",
-        "Highway Handoff Station Code":text(row.handoff_station_code||row.financial_quote?.handoff_station_code),
-        "Highway Handoff Station Name":text(row.handoff_station_name||row.financial_quote?.handoff_station_name),
-        "Service Type":text(row.service_type||row.financial_quote?.service_type),
-        "Weight (kg)":row.weight_kg??"",
-        "Chargeable Weight (kg)":row.chargeable_weight_kg??"",
-        "Included Weight (kg)":row.included_kg??"",
-        "Extra Weight (kg)":row.extra_kg??"",
-        "Amount Entry Type":text(row.amount_entry_type),
-        "Item Price":row.item_price??"",
-        "Delivery Charges":row.delivery_charges??row.delivery_fee??"",
-        "COD Amount":row.cod_amount??"",
-        "Actual Collect":row.actual_collect??"",
-        "CBM Surcharge":row.cbm_surcharge??"",
-        "Other Surcharge":row.other_surcharge??"",
-        "Merchant Payable Charges":row.merchant_payable_charges??"",
-        "Other Merchant Credits":row.other_merchant_credits??"",
-        "Base Tariff":row.base_tariff??"",
-        "Weight Surcharge":row.weight_surcharge??"",
-        "Gross System Delivery Charge":row.gross_system_delivery_charge??"",
-        "Commitment Refund":row.commitment_refund??"",
-        "Net System Delivery Charge":row.net_system_delivery_charge??"",
-        "Effective Declared Delivery Charge":row.effective_declared_delivery_charge??"",
-        "Delivery Difference":row.delivery_difference??"",
-        "Settlement Direction":text(row.settlement_direction),
-        "Merchant Settlement Adjustment":row.merchant_settlement_adjustment??"",
-        "Merchant Final Settlement":row.merchant_final_settlement_amount??"",
-        "Financial Validation":text(row.financial_validation_status),
-        "Financial Validation Message":text(row.financial_validation_message),
-        "Financial Calculation Version":text(row.financial_calculation_version),
-        "Financial Calculated At":exportDateTime(row.financial_calculated_at),
-        "Parcel Status":text(row.parcel_status),
-        "Print Status":text(row.print_status),
-        "Warehouse Status":text(row.warehouse_status),
-        "Way Management Status":text(row.way_management_status),
-        "Finance Status":text(row.finance_status),
-        "Assigned Rider":text(row.assigned_rider_name),
-        "Supervisor Status":text(row.supervisor_status),
-        "Remark":text(row.remark),
-        "Proof Photo":text(row.proof_photo_path),
-        "OS Softcopy Source File":text(row.source_file_name),
-        "OS Softcopy Source Row":row.source_row_number??"",
-        "Source Row Count":row.source_row_count??"",
-        "Photo Evidence Mode":text(row.photo_evidence_mode),
-        "Photo Bypass Reason":text(row.photo_bypass_reason),
-        "OS Imported At":exportDateTime(row.os_imported_at),
-        "OS Imported By":text(row.os_imported_by),
-        "Financial Quote JSON":exportCell(row.financial_quote),
-        "Created At":exportDateTime(row.created_at),
-        "Updated At":exportDateTime(row.updated_at),
-      }));
-
-      const XLSX:any=await import("xlsx");
-      const workbook=XLSX.utils.book_new();
-      const worksheet=XLSX.utils.json_to_sheet(exportRows);
-      const keys=Object.keys(exportRows[0]||{});
-      worksheet["!cols"]=keys.map((key)=>{
-        let width=Math.max(12,key.length+2);
-        for(const item of exportRows.slice(0,250)) width=Math.max(width,String(item[key]??"").length+2);
-        return {wch:Math.min(width,42)};
-      });
-      XLSX.utils.book_append_sheet(workbook,worksheet,"Data Entry Registration");
-
-      const allFieldRows=records.map((row:any)=>Object.fromEntries(
-        Object.entries(row).map(([key,value])=>[key,exportCell(value)])
-      ));
-      const allFieldsSheet=XLSX.utils.json_to_sheet(allFieldRows);
-      const allFieldKeys=Object.keys(allFieldRows[0]||{});
-      allFieldsSheet["!cols"]=allFieldKeys.map((key)=>({wch:Math.min(Math.max(14,key.length+2),42)}));
-      XLSX.utils.book_append_sheet(workbook,allFieldsSheet,"All Registered Fields");
-
-      const summaryRows=[
-        {Field:"Report",Value:"Data Entry Registration Timeline Export"},
-        {Field:"Generated At",Value:exportDateTime(new Date().toISOString())},
-        {Field:"From",Value:downloadFrom||"All available history"},
-        {Field:"To",Value:downloadTo||"Latest available"},
-        {Field:"Scope",Value:downloadScope==="CURRENT_PICKUP"?("Current pickup: "+selectedPickupId):"All accessible Data Entry registrations"},
-        {Field:"Timeline Field",Value:"saved_at (Data Entry registration saved time)"},
-        {Field:"Workbook Detail",Value:"Friendly operational sheet plus every accessible stored field"},
-        {Field:"Record Count",Value:records.length},
-      ];
-      const summarySheet=XLSX.utils.json_to_sheet(summaryRows);
-      summarySheet["!cols"]=[{wch:22},{wch:48}];
-      XLSX.utils.book_append_sheet(workbook,summarySheet,"Export Summary");
-
-      const stamp=new Date().toISOString().replace(/[:T]/g,"-").slice(0,16);
-      const scopePart=downloadScope==="CURRENT_PICKUP"?("_"+selectedPickupId.replace(/[^a-zA-Z0-9_-]/g,"-")):"";
-      XLSX.writeFile(workbook,"Britium_Data_Entry_Registration"+scopePart+"_"+stamp+".xlsx",{compression:true});
-      setDownloadMessage("Downloaded "+records.length.toLocaleString("en-US")+" Data Entry registration record(s).");
-    }catch(error:any){
-      setDownloadMessage(error?.message||"Unable to download Data Entry registration information.");
-    }finally{
-      setDownloadBusy(false);
-    }
-  }
-
-  async function downloadConsolidatedLocationReview(){
-    if(!consolidatedLocationReviewRows.length){
-      setBulkMessage("There are no location-review rows to download.");
-      return;
-    }
-    setLocationReviewBusy(true);
-    setBulkMessage("");
-    try{
-      const XLSX:any=await import("xlsx");
-      const exportRows=consolidatedLocationReviewRows.map((row)=>({
-        "Delivery Way ID":row.delivery_way_id,
-        "Pickup ID":row.pickup_id,
-        "Parcel Sequence":row.parcel_sequence,
-        "Recipient Name":row.recipient_name,
-        "Township":row.township,
-        "Delivery Address":row.delivery_address,
-        "Suggested Latitude":row.locationCandidate?.latitude??"",
-        "Suggested Longitude":row.locationCandidate?.longitude??"",
-        "Corrected Latitude":"",
-        "Corrected Longitude":"",
-        "Action":"APPLY_CORRECTION",
-        "Reason":"Location corrected through consolidated review workbook",
-      }));
-      const worksheet=XLSX.utils.json_to_sheet(exportRows);
-      worksheet["!cols"]=[18,18,14,22,24,48,18,18,18,18,20,46].map((wch)=>({wch}));
-      worksheet["!autofilter"]={ref:`A1:L${exportRows.length+1}`};
-      const instructions=XLSX.utils.aoa_to_sheet([
-        ["Britium Location Review Round-trip"],
-        ["1", "For each APPLY_CORRECTION row, enter Corrected Latitude and Corrected Longitude."],
-        ["2", "To accept the suggested pin without visual review, change Action to SKIP_REVIEW."],
-        ["3", "Do not change Delivery Way ID, Pickup ID, or Parcel Sequence."],
-        ["4", "Upload the completed workbook from the same Data Entry screen."],
-        ["5", "Every change or skip is permission-checked and written to the audit trail."],
-      ]);
-      instructions["!cols"]=[8,100].map((wch)=>({wch}));
-      const workbook=XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook,worksheet,"Location Review");
-      XLSX.utils.book_append_sheet(workbook,instructions,"Instructions");
-      const stamp=new Date().toISOString().replace(/[:T]/g,"-").slice(0,16);
-      XLSX.writeFile(workbook,`Britium_Consolidated_Location_Review_${stamp}.xlsx`,{compression:true});
-      setBulkMessage(`Downloaded ${exportRows.length} location-review row(s) in one Excel workbook.`);
-    }catch(error:any){
-      setBulkMessage(error?.message||"Unable to download the consolidated location-review workbook.");
-    }finally{
-      setLocationReviewBusy(false);
-    }
-  }
-
-  function applyLocationReviewResults(results:any[]){
-    const resultById=new Map(results.map((result)=>[text(result.delivery_way_id),result]));
-    const applyToRows=(sourceRows:ParcelRow[])=>sourceRows.map((row)=>{
-      const result=resultById.get(row.delivery_way_id);
-      if(!result) return row;
-      const latitude=Number(result.latitude);
-      const longitude=Number(result.longitude);
-      const locationCandidate:DeliveryLocation={
-        ...(row.locationCandidate||{
-          deliveryWayId:row.delivery_way_id,label:row.delivery_address,originalAddress:row.delivery_address,
-          englishAddress:row.delivery_address,township:row.township,matchLevel:"MANUAL",confidence:1,
-        }),
-        deliveryWayId:row.delivery_way_id,latitude,longitude,matchLevel:"MANUAL",confidence:1,
-        coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
-      };
-      return {...row,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
-    });
-    setRows((current)=>applyToRows(current));
-    setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[
-      pickupId,{...draft,rows:applyToRows(draft.rows)},
-    ])));
-  }
-
-  async function skipAllLocationReviews(){
-    const skippable=consolidatedLocationReviewRows.filter((row)=>
-      row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude)
-    );
-    if(!skippable.length){
-      setBulkMessage("No review row currently has a valid suggested pin to accept. Retry location sync or use the correction workbook.");
-      return;
-    }
-    if(!window.confirm(`Accept ${skippable.length} currently suggested pin(s) without further visual review? Every decision will be recorded in the audit trail.`)) return;
-    setLocationReviewBusy(true);
-    setBulkMessage("");
-    try{
-      const allResults:any[]=[];
-      for(let offset=0;offset<skippable.length;offset+=200){
-        const batch=skippable.slice(offset,offset+200).map((row)=>({
-          delivery_way_id:row.delivery_way_id,pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,
-          township:row.township,delivery_address:row.delivery_address,
-          latitude:row.locationCandidate!.latitude,longitude:row.locationCandidate!.longitude,
-          action:"SKIP_REVIEW",reason:"Operator bulk-accepted the suggested pin without further visual map review.",
-        }));
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
-          request_id:requestId("LOCATION_REVIEW_SKIP_ALL"),rows:batch,
-        }});
-        if(response.error) throw response.error;
-        if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||"Bulk location-review skip failed.");
-        allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
-      }
-      applyLocationReviewResults(allResults);
-      setLocationReloadToken((token)=>token+1);
-      const remaining=consolidatedLocationReviewRows.length-allResults.length;
-      setBulkMessage(`Accepted and audited ${allResults.length} suggested pin(s) without further review.${remaining>0?` ${remaining} row(s) still need corrected coordinates.`:" All location-review rows are now ready for way generation."}`);
-    }catch(error:any){
-      setBulkMessage(error?.message||"Unable to skip the location reviews.");
-    }finally{
-      setLocationReviewBusy(false);
-    }
-  }
-
-  async function uploadConsolidatedLocationReview(file?:File){
-    if(!file) return;
-    setLocationReviewBusy(true);
-    setBulkMessage("");
-    try{
-      if(!/\.xlsx$/i.test(file.name)) throw new Error("Choose the completed Britium location-review XLSX workbook.");
-      const XLSX:any=await import("xlsx");
-      const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true,raw:false});
-      const sheet=workbook.Sheets["Location Review"]||workbook.Sheets[workbook.SheetNames[0]];
-      const imported=XLSX.utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:"",raw:false});
-      if(!imported.length) throw new Error("The Location Review sheet contains no rows.");
-      const knownRows=new Map([...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows].map((row)=>[row.delivery_way_id,row]));
-      const payloadRows=imported.map((entry,index)=>{
-        const deliveryWayId=text(entry["Delivery Way ID"]).trim();
-        const current=knownRows.get(deliveryWayId);
-        if(!deliveryWayId||!current) throw new Error(`Excel row ${index+2}: Delivery Way ID is missing or is not in the current authorized review workspace.`);
-        const action=text(entry["Action"]||"APPLY_CORRECTION").trim().toUpperCase();
-        if(!["APPLY_CORRECTION","SKIP_REVIEW"].includes(action)) throw new Error(`Excel row ${index+2}: Action must be APPLY_CORRECTION or SKIP_REVIEW.`);
-        const correctedLat=Number(entry["Corrected Latitude"]);
-        const correctedLng=Number(entry["Corrected Longitude"]);
-        const suggestedLat=Number(entry["Suggested Latitude"]||current.locationCandidate?.latitude);
-        const suggestedLng=Number(entry["Suggested Longitude"]||current.locationCandidate?.longitude);
-        const latitude=action==="SKIP_REVIEW"?suggestedLat:correctedLat;
-        const longitude=action==="SKIP_REVIEW"?suggestedLng:correctedLng;
-        if(!validMyanmarCoordinate(longitude,latitude)) throw new Error(`Excel row ${index+2}: enter valid Myanmar latitude and longitude values for ${deliveryWayId}.`);
-        return {
-          delivery_way_id:deliveryWayId,
-          pickup_id:text(entry["Pickup ID"]),
-          parcel_sequence:positiveInt(entry["Parcel Sequence"]),
-          township:current.township,
-          delivery_address:current.delivery_address,
-          latitude,longitude,action,
-          reason:text(entry["Reason"]||"Location corrected through consolidated review workbook").trim(),
-          source_file_name:file.name,
-          source_row_number:index+2,
-        };
-      });
-      const allResults:any[]=[];
-      for(let offset=0;offset<payloadRows.length;offset+=200){
-        const batch=payloadRows.slice(offset,offset+200);
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
-          request_id:requestId("LOCATION_REVIEW_XLSX"),source_file_name:file.name,rows:batch,
-        }});
-        if(response.error) throw response.error;
-        if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||`Location review batch ${Math.floor(offset/200)+1} failed.`);
-        allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
-      }
-      applyLocationReviewResults(allResults);
-      setLocationReloadToken((token)=>token+1);
-      setBulkMessage(`Applied and audited ${allResults.length} reviewed location(s). These rows are now ready for Calculate All, Save All, and way generation.`);
-    }catch(error:any){
-      setBulkMessage(error?.message||"Unable to apply the location-review workbook.");
-    }finally{
-      setLocationReviewBusy(false);
-      if(locationReviewInputRef.current) locationReviewInputRef.current.value="";
-    }
-  }
-
-  useEffect(()=>{void loadStartup();},[]);
-  useEffect(()=>{
-    if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
-    const draft=bulkImportDrafts[selectedPickupId];
-    if(draft){
-      setTierAccess(draft.tierAccess);
-      setRows(draft.rows);
-      setRowsPickupId(draft.pickupId);
-      setLoadingRows(false);
-      return;
-    }
-    if(selectedPickup) void loadPickupRows(selectedPickup);
-    else {setRows([]);setRowsPickupId("");}
-  },[selectedPickupId]);
-  useEffect(()=>{
-    if(!rowsPickupId||rowsPickupId!==selectedPickupId) return;
-    setBulkImportDrafts((current)=>{
-      const draft=current[rowsPickupId];
-      if(!draft||draft.rows===rows) return current;
-      return {...current,[rowsPickupId]:{...draft,rows}};
-    });
-  },[rows,rowsPickupId,selectedPickupId]);
-
-  if(loading) return <div className="flex min-h-[70vh] items-center justify-center bg-[#061524] text-[#eef8ff]"><Loader2 className="mr-3 animate-spin text-[#f6b84b]"/>Loading Financial V2â€¦</div>;
-
-  const workspace=(
-    <div className="space-y-4">
-      {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rowsâ€¦</div>:
-      rows.map((row,index)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={index} updateRow={updateRow} calculate={calculateRow} save={saveRow} reviewPhoto={reviewPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
-    </div>
-  );
-
-  return (
-    <div className="min-h-screen bg-[#061524] px-4 py-5 text-[#eef8ff]">
-      <div className="mx-auto max-w-[1800px] space-y-4">
-        <header className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-[#f6b84b]">Data Entry Â· Financial V2</div>
-              <h1 className="mt-2 text-2xl font-black">Pickup á€…á€¬á€›á€„á€ºá€¸á€á€½á€„á€ºá€¸á€á€¼á€„á€ºá€¸á€”á€¾á€„á€·á€º á€€á€¯á€”á€ºá€á€Šá€ºá€„á€½á€±á€›á€¾á€„á€ºá€¸á€á€™á€ºá€¸</h1>
-              <p className="mt-2 max-w-4xl text-[12px] leading-5 text-[#92b7cf]">Backend-authoritative receiver collection, Britium á€›á€•á€­á€¯á€„á€ºá€á€½á€„á€·á€º, delivery difference and merchant final settlement. {mutationMode==="ACTIVE"?"Live saves are active and audited.":"Live financial persistence remains disabled while the backend mutation gate is shadow."}</p>
-            </div>
-            <div className="rounded-lg border border-[#3aa7de]/30 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">{mutationMode}</div>
-          </div>
-        </header>
-
-        {message?<div className="rounded-xl border border-[#ff6b6b]/35 bg-[#3a1e28] p-3 text-[12px] text-[#ff9aa2]"><AlertTriangle size={15} className="mr-2 inline"/>{message}</div>:null}
-
-        {waybillMessage?
-          <div role={waybillMessageKind==="ERROR"?"alert":"status"} className={`rounded-xl border p-3 text-[12px] font-semibold ${waybillMessageKind==="ERROR"?"border-rose-300/60 bg-rose-950/70 text-rose-100":"border-emerald-300/60 bg-emerald-950/60 text-emerald-100"}`}>
-            {waybillMessageKind==="ERROR"?<AlertTriangle size={15} className="mr-2 inline"/>:null}{waybillMessage}
-          </div>
-        :null}
-
-        <section className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[320px] flex-1">
-              <div className={labelClass}>á€…á€…á€ºá€†á€±á€¸á€•á€¼á€®á€¸ Pickup á€€á€­á€¯ á€›á€½á€±á€¸á€á€»á€šá€ºá€›á€”á€º</div>
-              <select className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
-                <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload Â· Way ID + Merchant Name</option>
-                {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} Â· {p.merchant_id||p.merchant_name||"Merchant"} Â· {authorizedParcelCount(p)} parcels</option>)}
-              </select>
-            </div>
-            <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>á€•á€¼á€”á€ºá€–á€á€ºá€›á€”á€º</button>
-            <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
-            <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
-            <button
-              type="button"
-              onClick={()=>void createAndGenerateWaybill()}
-              disabled={!rows.length || waybillBusy || bulkSaving || bulkCalculating}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50"
-            >
-              {waybillBusy
-                ? <Loader2 size={14} className="animate-spin"/>
-                : <Save size={14}/>
-              }
-              CREATE & GENERATE WAYBILL
-            </button>
-            <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>á€…á€¬á€›á€„á€ºá€¸á€á€½á€„á€ºá€¸á€™á€»á€€á€ºá€”á€¾á€¬á€•á€¼á€„á€º á€¡á€•á€¼á€Šá€·á€º</button>
-            <DataEntryOsBulkImport
-              pickups={pickups as OsBulkPickup[]}
-              selectedPickupId={selectedPickupId}
-              sequenceFloorByPickup={sequenceFloorByPickup}
-              busy={loadingRows||bulkCalculating||bulkSaving||waybillBusy||addingRegistration}
-              onPickupChange={setSelectedPickupId}
-              onApply={applyOsImport}
-            />
-          </div>
-          {bulkUploadSelected?<div className="mt-4 rounded-xl border border-cyan-300/35 bg-cyan-400/5 p-4 text-[11px] leading-5 text-cyan-100"><b>Bulk upload mode:</b> attach the 12-column template. Way ID / Pickup ID assigns each row to its pickup and Merchant Name / Merchant ID is checked before any registrations are authorized. After staging, review the separate pickup batches below.</div>:null}
-          {bulkImportOrder.length?<div data-os-bulk-pickup-queue-v16="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
-            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Bulk upload pickup queue</div>
-            <div className="mt-1 text-[10px] text-[#8db4ce]">Open each matched pickup, verify its drop points, then run Calculate All and Save All. Saved batches are marked below.</div>
-            <div className="mt-3 flex flex-wrap gap-2">{bulkImportOrder.map((pickupId)=>{
-              const draft=bulkImportDrafts[pickupId];
-              return <button key={pickupId} type="button" onClick={()=>setSelectedPickupId(pickupId)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${selectedPickupId===pickupId?"border-cyan-300 bg-cyan-400 text-[#04111d]":draft?.saved?"border-emerald-400/50 bg-emerald-500/10 text-emerald-200":"border-[#31506a] bg-[#12314a] text-[#bfe8ff]"}`}>{pickupId} Â· {draft?.rows.length||0} row(s) Â· {draft?.saved?"SAVED":"REVIEW"}</button>;
-            })}</div>
-          </div>:null}
-          {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-            <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
-            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"â€”"}</b></div>
-            <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> Â· Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
-            <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"â€”"}</b></div>
-            <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"â€”"}</b></div>
-          </div>:null}
-
-          {importedLocationSummary.total?<div data-bulk-location-readiness-v19="true" className={`mt-4 rounded-xl border p-4 ${importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Bulk location readiness</div>
-                <div className="mt-1 text-[13px] font-black text-white">{importedLocationSummary.synced} synchronized Â· {importedLocationSummary.notRequired} map not required Â· {importedLocationSummary.total} total</div>
-                <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
-                  {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
-                    ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
-                    :`${importedLocationSummary.resolving} core-region locations automatically resolving Â· ${importedLocationSummary.review} require operator review. Outside-core rows do not enter Google location review.`}
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {importedLocationSummary.synced+importedLocationSummary.notRequired<importedLocationSummary.total?<button type="button" onClick={()=>{setBulkMessage("Retrying unresolved Yangon, Mandalay, and Naypyitaw locations only. Outside-core rows remain map-not-required.");setLocationReloadToken((token)=>token+1);}} disabled={importedLocationSummary.resolving>0||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-45"><RefreshCw size={14} className={importedLocationSummary.resolving>0?"animate-spin":""}/>RETRY LOCATION SYNC</button>:null}
-                <button type="button" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some((row)=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/50 bg-rose-400/10 px-4 py-2.5 text-[10px] font-black text-rose-100 disabled:opacity-40">SKIP ALL REVIEWS</button>
-                <button type="button" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2.5 text-[10px] font-black text-amber-100 disabled:opacity-40"><Download size={14}/>DOWNLOAD REVIEW EXCEL ({consolidatedLocationReviewRows.length})</button>
-                <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
-              </div>
-            </div>
-            <div className="mt-3 rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[10px] leading-5 text-amber-100">Download combines every current pickup row requiring location review into one workbook. Correct latitude/longitude and re-upload it here. Files above 200 rows are applied automatically in consecutive audited batches.</div>
-          </div>:null}
-
-          {selectedPickup?<div data-extra-registration-v14="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/5 p-4">
-            <div className="flex flex-wrap items-end gap-3">
-              <div className="min-w-[260px] flex-1">
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Merchant changed the pickup quantity</div>
-                <div className="mt-1 text-[10px] text-[#8db4ce]">Authorize extra registration rows before saving them. The original requested count is preserved; the verified count and audit trail are updated atomically.</div>
-              </div>
-              <Field label="Additional items">
-                <input type="number" min={1} max={50} className={`${inputClass} w-28`} value={additionalCount} onChange={(e)=>setAdditionalCount(Math.max(1,Math.min(50,Math.trunc(Number(e.target.value)||1))))}/>
-              </Field>
-              <div className="min-w-[300px] flex-[2]">
-                <Field label="Merchant addition reason">
-                  <input className={inputClass} value={additionalReason} onChange={(e)=>setAdditionalReason(e.target.value)} placeholder="e.g. Merchant handed over 2 additional parcels"/>
-                </Field>
-              </div>
-              <button type="button" onClick={()=>void addRegistrations()} disabled={addingRegistration} className="inline-flex items-center gap-2 rounded-lg bg-cyan-400 px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50">
-                {addingRegistration?<Loader2 size={14} className="animate-spin"/>:<Plus size={14}/>}ADD REGISTRATION
-              </button>
-            </div>
-          </div>:null}
-
-          {bulkMessage?<div className="mt-4 rounded-lg border border-[#3aa7de]/35 bg-[#12314a] px-3 py-2 text-[11px] font-semibold text-[#bfe8ff]">{bulkMessage}</div>:null}
-
-          <div data-data-entry-registration-export-v12-9="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Data Entry Registration Download</div>
-                <div className="mt-1 text-[12px] font-bold text-[#eef8ff]">Download registration records by timeline</div>
-                <div className="mt-1 text-[10px] text-[#7aa7c6]">Timeline uses Data Entry Saved Time. Export follows the signed-in account's existing Data Entry permissions.</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={()=>applyDownloadRange("TODAY")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">TODAY</button>
-                <button type="button" onClick={()=>applyDownloadRange("LAST_24_HOURS")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">LAST 24 HOURS</button>
-                <button type="button" onClick={()=>applyDownloadRange("THIS_WEEK")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS WEEK</button>
-                <button type="button" onClick={()=>applyDownloadRange("THIS_MONTH")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS MONTH</button>
-                <button type="button" onClick={()=>applyDownloadRange("ALL")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">ALL TIME</button>
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
-              <Field label="From date & time">
-                <input type="datetime-local" className={inputClass} value={downloadFrom} onChange={(e)=>setDownloadFrom(e.target.value)}/>
-              </Field>
-              <Field label="To date & time">
-                <input type="datetime-local" className={inputClass} value={downloadTo} onChange={(e)=>setDownloadTo(e.target.value)}/>
-              </Field>
-              <Field label="Registration scope">
-                <select className={inputClass} value={downloadScope} onChange={(e)=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}>
-                  <option value="ALL">All accessible registration records</option>
-                  <option value="CURRENT_PICKUP">Current pickup only</option>
-                </select>
-              </Field>
-              <div className="flex items-end">
-                <button type="button" onClick={()=>void downloadDataEntryRegistration()} disabled={downloadBusy} className="w-full rounded-lg bg-[#21c7e8] px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50 xl:w-auto">
-                  {downloadBusy?"PREPARING...":"DOWNLOAD REGISTRATION EXCEL"}
-                </button>
-              </div>
-            </div>
-            {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
-          </div>
-        </section>
-        {!fullRegistration?workspace:null}
-      </div>
-
-      {fullRegistration?<div data-full-review-sheet="true" className="fixed inset-0 z-[9999] overflow-auto bg-[#04111d]">
-        <div className="sticky top-0 z-10 border-b border-[#1a3a5c] bg-[#071b2b]/95 px-5 py-4 backdrop-blur">
-          <div className="mx-auto flex max-w-[1900px] items-center justify-between gap-3">
-            <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f6b84b]">Full Registration</div><div className="mt-1 text-lg font-black">{selectedPickupId} Â· {rows.length} parcels</div></div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
-              <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
-              <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-lg border border-[#ff6b6b]/40 bg-[#3a1e28] px-4 py-2 text-[11px] font-black text-[#ff9aa2]"><X size={14}/>CLOSE</button>
-            </div>
-          </div>
-        </div>
-        <div className="mx-auto max-w-[1900px] p-5">{workspace}</div>
-      </div>:null}
-    </div>
-  );
-}
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éíã}=é:-jZ.¶›­–)Ş³V–×÷'B²W6TVffV7BÂW6TÖVÖòÂW6U&VbÂW6U7FFRÒg&öÒ'&V7B#°¦–×÷'B²ÆW'EG&–ævÆRÂ6Æ7VÆF÷"ÂF÷væÆöBÂf–ÆU7&VG6†VWBÂ–ÖvR2–ÖvT–6öâÂÆöFW#"ÂÖ†–Ö—¦S"ÂÇW2Â&Vg&W6„7rÂ6fRÂWÆöBÂ‚Òg&öÒ&ÇV6–FR×&V7B#°¦–×÷'B²7W&6RÒg&öÒ$ö–çFVw&F–öç2÷7W&6Rö6Æ–VçB#°¦–×÷'BFFVçG'”Æö6F–öäVF—F÷"Â²G—RFFVçG'”Æö6F–öå&W6öÇWF–öâÒg&öÒ$ö6ö×öæVçG2÷v÷&¶fÆ÷rôFFVçG'”Æö6F–öäVF—F÷"#°¦–×÷'B²fÆ–D×–æÖ$6ö÷&F–æFRÂG—RFVÆ—fW'”Æö6F–öâÒg&öÒ$öÆ–"öFVÆ—fW'”Æö6F–öå6W'f–6R#°¦–×÷'BFFVçG'”÷4'VÆ´–×÷'BÂ²%TÄµõUÄôEõ”4µUô”BÂG—R÷4'VÆµ–6·WÂG—R÷4–×÷'DÇ•–ÆöBÂG—R÷4–×÷'E&÷rÒg&öÒ$ö6ö×öæVçG2÷v÷&¶fÆ÷rôFFVçG'”÷4'VÆ´–×÷'B#°¦–×÷'B²7–æ5v–&–ÆÅ7GVF–õc#"Òg&öÒ$öÆ–"ö'&—F—VÔ6ö×ÆWFUv—&WW•c32#°¦–×÷'B°¢DDôTåE%•ô„äDôdeõ5DD”ôå2À¢&÷f–FW%&÷WF–ætÖW76vRÀ¢&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"À¢G—RFFVçG'”FVÆ—fW'”ÖöFRÀ¢G—RFFVçG'•&÷f–FW%&÷WF–ærÀ¢G—RFFVçG'•&÷WFU&Vv–öâÀ§Òg&öÒ$öÆ–"öFFVçG'•6W'f–6U&÷f–FW%&÷WF–ær#°¦W‡÷'B6öç7B%$•D•TÕôÄô4D”ôåõtõ$´dÄõuõcÒ$DDôTåE%•ô$”Ä”äuTÅôÄô4D”ôåõc#° ¦W‡÷'B6öç7BDDôTåE%•õ„õDõôÄ”t…D$õ…ô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õ„õDõôÄ”t…D$õ…õ$õ…•õcó5ó##cƒ#2#°¦W‡÷'B6öç7BDDôTåE%•ôd”ää4”Åõc%ô%T”ÄBÒ$DDôTåE%•ôd”ää4”Åõc%õ$U5Dõ$TEó##cƒb#°¦W‡÷'B6öç7BDDôTåE%•õt„•DUô4ôåE$ôÅ5ô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õt„•DUô4ôåE$ôÅ5õcó##cƒ#b#°¦W‡÷'B6öç7BDDôTåE%•õ„õDõõ$Ud”Uuô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õ„õDõõ$Ud”Uuõc%ó##cƒ#R#°¦W‡÷'B6öç7BDDôTåE%•õ„õDõõU$Åõ$Te$U4…ô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õ„õDõõU$Åõ$Te$U4…õcó##cƒ#R#°¦W‡÷'B6öç7BDDôTåE%•ôd”ää4UôtõdU$ää4Uô%T”ÄBÒ$DDôTåE%•ôd”ää4UôtõdU$ää4UõcEó##cƒr#°¦W‡÷'B6öç7B”ÔTåEõ4UEDÄTÔTåEõ%TÄRÒ$DT4Ä$TEôDTÄ•dU%•õÅU5ô$4´TäEõ5U$4„$tU5õccó•ó#°¦W‡÷'B6öç7BDDôTåE%•õD$”deôUDô4ôÕÄUDUô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õD$”deôUDô4ôÕÄUDUõcó##cƒ#b#°¦W‡÷'B6öç7BDDôTåE%•õ$Tt•5E$D”ôåôU…õ%Eô%T”ÄBÒ$%$•D•TÕôDDôTåE%•õ$Tt•5E$D”ôåôU…õ%EõD”ÔTÄ”äUõc%ó’#°¦W‡÷'B6öç7BDDôTåE%•ôd”ää4Uõ$T4ôä4”Ä”D”ôåô%T”ÄBÒ$DDôTåE%•ôd”ää4Uõ$T4ôä4”Ä”D”ôåõc5ó%ó##c“"#°¦W‡÷'B6öç7BDDôTåE%•ô%TÄµô5D”ôå5ô%T”ÄBÒ$DDôTåE%•ôU…E$õ$Tt•5E$D”ôåô%TÄµô5D”ôå5õcEó##c“"#°¦W‡÷'B6öç7BDDôTåE%•ôõ5õ4ôeD4õ•ô”Õõ%Eô%T”ÄBÒ$DDôTåE%•ôõ5ôÕTÅD•õ”4µUô”Õõ%Eõceó##c“2#°¦W‡÷'B6öç7BDDôTåE%•õ$õd”DU%õ$õUD”äuô%T”ÄBÒ$DDôTåE%•ôDTÄ•dU%•õ$õUD”äuõt•Äåõ$Tt”ôå5õc•ó##c“2#° ¦6öç7BÔõTåEõE•U2Ò°¢$•DTÕõ$”4UõÅU5ôDT4Ä$TEôDTÄ•dU%’"À¢$DTÄ•dU%•ô4„$tUôôäÅ’"À¢$U„5Eô4ôÄÄT5D”ôåôÔõTåB"À¥Ò26öç7C° ¦6öç7B4ôÄÄT5D”ôåôÔUD„ôEôÕ“¢&V6÷&CÄÖ÷VçEG—RÇ7G&–æsâÒ°¢•DTÕõ$”4UõÅU5ôDT4Ä$TEôDTÄ•dU%“¢.	^^^®®		N®	n
+Ş
+ş‚²	î	®	î	®	
+Î	î
+Â	^
+Ş
+ş~n
+ÎN®"À¢DTÄ•dU%•ô4„$tUôôäÅ“¢.	^
+Ş
+ş~n
+ÎN®	î
+Â"À¢U„5Eô4ôÄÄT5D”ôåôÔõTåC¢.
+	
+Ş
+²
+Î®n	®~®NŞ"À§Ó° §G—RÖ÷VçEG—RÒG—VöbÔõTåEõE•U5¶çVÖ&W%Ó° §G—RF&–fd÷F–öâÒ°¢FW7F–æF–öåö¶W“¢7G&–æs°¢FW7F–æF–öåöæÖS¢7G&–æs°¢7FæF&E÷&FUöÖÖ³¢çVÖ&W#°¢7V6–Å÷&FUöÖÖ³¢çVÖ&W"ÂçVÆÃ°¢&6µö6öFS¢7G&–ærÂçVÆÃ°¢&÷f–FW%ö6öFS¢7G&–æs°¢&÷f–FW%öæÖS¢7G&–æs°§Ó° §G—R&÷f–FW$÷F–öâÒ°¢&÷f–FW%ö6öFS¢7G&–æs°¢F—7Æ•öæÖS¢7G&–æs°¢&÷f–FW%÷G—S¢7G&–æs°¢7F—fU÷F&–feö6÷VçC¢çVÖ&W#°§Ó° §G—RÖW&6†çEF–W$66W72Ò°¢ÖW&6†çEö–C¢7G&–æs°¢&Vv—7FW&VC¢&ööÆVã°¢&öf–ÆU÷F–W#¢7G&–æs°¢&W6öÇfVEö7W7FöÖW%÷F–W#¢7G&–æs°¢6å÷6VÆV7E÷F–W#¢&ööÆVã°¢6åö÷fW'&–FU÷&öf–ÆU÷F–W#¢&ööÆVã°¢F–W%÷'VÆW3¢&V6÷&CÇ7G&–ærÂç“ã°§Ó° ¦gVæ7F–öâF&–fe&FR†÷F–öã¢F&–fd÷F–öâÂF–W#¢7G&–ær“¢çVÖ&W"°¢6öç7B7V6–ÅF–W"Ò²%$õ”Â"Â$4ôÔÔ•DÔTåB%Òæ–æ6ÇVFW2…7G&–ær‡F–W"ÇÂ""’çFõWW$66R‚’“°¢&WGW&â7V6–ÅF–W"bb÷F–öâç7V6–Å÷&FUöÖÖ²ÒçVÆÀ¢òçVÖ&W"†÷F–öâç7V6–Å÷&FUöÖÖ²¢¢çVÖ&W"†÷F–öâç7FæF&E÷&FUöÖÖ²“°§Ğ §G—R–6·WÒ°¢–6·Wö–C¢7G&–æs°¢ÖW&6†çEö–C¢7G&–æs°¢ÖW&6†çEöæÖS¢7G&–æs°¢F÷vç6†—¢7G&–æs°¢6—G“¢7G&–æs°¢W‡V7FVE÷&6VÇ3¢çVÖ&W#°¢fW&–f–VE÷&6VÇ3¢çVÖ&W#°¢&Vv—7FW&VE÷&6VÇ3¢çVÖ&W#°¢–6·WöFFS¢7G&–æs°¢7&VFVEöC¢7G&–æs°¢–6·W÷7FGW3¢7G&–æs°¢v÷&¶fÆ÷u÷7FvS¢7G&–æs°§Ó° §G—R&6VÅ&÷rÒ°¢–6·Wö–C¢7G&–æs°¢&6VÅ÷6WVVæ6S¢çVÖ&W#°¢FVÆ—fW'•÷v•ö–C¢7G&–æs°¢&ööe÷W&Ã¢7G&–æs°¢&ööe÷&Vc¢7G&–æs°¢†÷Fõ÷7FGW3¢7G&–æs°¢&V6—–VçEöæÖS¢7G&–æs°¢&V6—–VçE÷†öæS¢7G&–æs°¢F÷vç6†—¢7G&–æs°¢FVÆ—fW'•öFG&W73¢7G&–æs°¢vV–v‡Eö¶s¢çVÖ&W"Â"#°¢7W7FöÖW%÷F–W#¢7G&–æs°¢F–W%ö÷fW'&–FS¢&ööÆVã°¢6W'f–6U÷&÷f–FW%ö6öFS¢7G&–æs°¢6W'f–6U÷G—S¢7G&–æs°¢Ö÷VçEöVçG'•÷G—S¢Ö÷VçEG—S°¢—FVÕ÷&–6S¢çVÖ&W"Â"#°¢FVÆ—fW'•ö6†&vW3¢çVÖ&W"Â"#°¢ÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçC¢çVÖ&W"Â"#°¢6&Õ÷7W&6†&vS¢çVÖ&W"Â"#°¢÷F†W%÷7W&6†&vS¢çVÖ&W"Â"#°¢ÖW&6†çE÷–&ÆUö6†&vW3¢çVÖ&W"Â"#°¢÷F†W%öÖW&6†çEö7&VF—G3¢çVÖ&W"Â"#°¢&VÖ&·3¢7G&–æs°¢6Æ7VÆF–æs¢&ööÆVã°¢6†V6¶–æs¢&ööÆVã°¢6Æ7VÆF–öã¢&V6÷&CÇ7G&–ærÂç“ã°¢ÖW76vS¢7G&–æs°¢†÷Fõ&Wf–WvVC¢&ööÆVã°¢†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVC¢&ööÆVã°¢†÷Fõ&Wf–Wu7FGW3¢7G&–æs°¢†÷Fõ&V¦V7F–öå&V6öã¢7G&–æs°¢†÷Fõ&V¦V7F–öäæ÷FS¢7G&–æs°¢†÷Fõ&Wf–Wt'W7“¢&ööÆVã°¢—4FF—F–öæÅ&Vv—7G&F–öã¢&ööÆVã°¢–×÷'FVDg&öÔ÷3¢&ööÆVã°¢6÷W&6Tf–ÆTæÖS¢7G&–æs°¢6÷W&6U&÷tçVÖ&W#¢çVÖ&W"ÂçVÆÃ°¢6÷W&6U&÷t6÷VçC¢çVÖ&W"ÂçVÆÃ°¢†÷FôWf–FVæ6TÖöFS¢%”4´U%õ„õDò"Â$õ5õ4ôeD4õ’#°¢†÷Fô'—75&V6öã¢7G&–æs°¢FVÆ—fW'•&Vv–öã¢FFVçG'•&÷WFU&Vv–öã°¢FVÆ—fW'”ÖöFS¢FFVçG'”FVÆ—fW'”ÖöFS°¢†æFöfe7FF–öä6öFS¢7G&–æs°¢†æFöfe7FF–öäæÖS¢7G&–æs°¢Æö6F–öå7FGW3¢FFVçG'”Æö6F–öå&W6öÇWF–öã°¢Æö6F–öä6æF–FFSó¢FVÆ—fW'”Æö6F–öâÂçVÆÃ°¢6fVC¢&ööÆVã°§Ó° §G—R'VÆ´–×÷'DG&gBÒ°¢–6·W–C¢7G&–æs°¢f–ÆTæÖS¢7G&–æs°¢&÷w3¢&6VÅ&÷uµÓ°¢F–W$66W73¢ÖW&6†çEF–W$66W73°¢6fVC¢&ööÆVã°§Ó° ¦6öç7B–çWD6Æ72Ğ¢'rÖgVÆÂ&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&r×v†—FR‚Ó2’Ó"FW‡BÕ³'…ÒföçB×6VÖ–&öÆBFW‡BÖ&Æ6²Æ6V†öÆFW#§FW‡B×6ÆFRÓS÷WFÆ–æRÖæöæRfö7W3¦&÷&FW"Õ²6cf#ƒF%Ò#°¦6öç7BÆ&VÄ6Æ72Ò&Ö"Ó&Æö6²FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ã&VÕÒFW‡BÕ²3vv3eÒ#°¦6öç7B6W'fW$6Æ72Ò'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒ‚Ó2’Ó"FW‡BÕ³'…ÒFW‡BÕ²3†fC6feÒ#° ¦gVæ7F–öâFW‡B‡fÇVS¢Væ¶æ÷vâ“¢7G&–ær²&WGW&âfÇVRÓÒçVÆÂò""¢7G&–ær‡fÇVR“²Ğ¦gVæ7F–öâçVÒ‡fÇVS¢Væ¶æ÷vâ“¢çVÖ&W"²6öç7BâÒçVÖ&W"‡fÇVR“²&WGW&âçVÖ&W"æ—4f–æ—FR†â’òâ¢²Ğ¦gVæ7F–öâ÷6—F—fT–çB‡fÇVS¢Væ¶æ÷vâ“¢çVÖ&W"²6öç7BâÒÖF‚çG'Væ2†çVÒ‡fÇVR’“²&WGW&âââòâ¢²Ğ¦gVæ7F–öâ&WVW7FVE&6VÄ6÷VçB‡–6·W¢–6·W“¢çVÖ&W"°¢&WGW&âÖF‚æÖ‚‡÷6—F—fT–çB‡–6·WæW‡V7FVE÷&6VÇ2’Ã“°§Ğ¦gVæ7F–öâWF†÷&—¦VE&6VÄ6÷VçB‡–6·W¢–6·WÂö'6W'fVBÒ“¢çVÖ&W"°¢&WGW&âÖF‚æÖ‚‡&WVW7FVE&6VÄ6÷VçB‡–6·W’Ç÷6—F—fT–çB‡–6·WçfW&–f–VE÷&6VÇ2’Ç÷6—F—fT–çB†ö'6W'fVB’“°§Ğ¦gVæ7F–öâÖöæW’‡fÇVS¢Væ¶æ÷vâ“¢7G&–ær°¢–b‡fÇVRÓÓÒ""ÇÂfÇVRÓÒçVÆÂ’&WGW&â.(	B#°¢6öç7BâÒçVÖ&W"‡fÇVR“°¢&WGW&âçVÖ&W"æ—4f–æ—FR†â’òâçFôÆö6ÆU7G&–ær‚&VâÕU2"’²"·2"¢FW‡B‡fÇVR“°§Ğ¦gVæ7F–öâ&WVW7D–B‡&Vf—ƒ¢7G&–ær“¢7G&–ær°¢6öç7B–BÒG—Vöb7'—FòÓÒ'VæFVf–æVB"bbG—Vöb7'—Fòç&æFöÕUT”BÓÓÒ&gVæ7F–öâ ¢ò7'—Fòç&æFöÕUT”B‚¢¢7G&–ær„FFRææ÷r‚’’²"Ò"²ÖF‚ç&æFöÒ‚’çFõ7G&–ærƒb’ç6Æ–6Rƒ"“°¢&WGW&â&Vf—‚²#¢"²–C°§Ğ¦gVæ7F–öâ6æöæ–6Åv”–B‡–6·W–C¢7G&–ærÂ6WVVæ6S¢çVÖ&W"“¢7G&–ær°¢&WGW&âG·–6·W–GÒÒGµ7G&–ær‡6WVVæ6R’çE7F'Bƒ2Â#"—Ö°§Ğ¦gVæ7F–öâ&W6öÇfT–×÷'FVDFW7F–æF–öâ‡fÇVS¢Væ¶æ÷vâÆFG&W73¢Væ¶æ÷vâÆ—FVÕ&–6S¢Væ¶æ÷vâÆ÷F–öç3¢F&–fd÷F–öåµÒ’°¢&WGW&â&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"‡fÇVRÆFG&W72Æ÷F–öç2Ç¶fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÆ—FVÕ&–6WÒ“°§Ğ¦gVæ7F–öâ&÷WFTf÷%&÷r‡&÷s¢&6VÅ&÷rÂ÷F–öç3¢F&–fd÷F–öåµÒ“¢FFVçG'•&÷f–FW%&÷WF–ær°¢&WGW&â&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"‡&÷rçF÷vç6†—Ç&÷ræFVÆ—fW'•öFG&W72Æ÷F–öç2Ç°¢fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÀ¢—FVÕ&–6S§&÷ræ—FVÕ÷&–6RÀ¢Ò“°§Ğ¦gVæ7F–öâ&÷WF–æuF6‚‡&÷WFS¢FFVçG'•&÷f–FW%&÷WF–ærÇ&÷s¢&6VÅ&÷r“¢'F–ÃÅ&6VÅ&÷sâ°¢&WGW&â°¢F÷vç6†—§&÷WFRçF÷vç6†—ÇÇ&÷rçF÷vç6†—À¢6W'f–6U÷&÷f–FW%ö6öFS§&÷WFRç&÷f–FW$6öFRÀ¢FVÆ—fW'•&Vv–öã§&÷WFRç&÷WFU&Vv–öâÀ¢FVÆ—fW'”ÖöFS§&÷WFRæFVÆ—fW'”ÖöFRÀ¢Æö6F–öå7FGW3§&÷WFRç&÷WFU&Vv–öãÓÓÒ%Tå$U4ôÅdTB ¢ò%TäD”är ¢§&÷WFRæÖ&WV—&V@¢÷&÷ræÆö6F–öå7FGW3ÓÓÒ$äõEõ$UT•$TB#ò%TäD”är#§&÷ræÆö6F–öå7FGW0¢¢$äõEõ$UT•$TB"À¢âââ‡&÷WFRç7FF–öå&WV—&V@¢÷·Ğ¢§¶†æFöfe7FF–öä6öFS¢""Æ†æFöfe7FF–öäæÖS¢"'Ò’À¢Ó°§Ğ¦gVæ7F–öâ†æFöfe7FF–öå&VG’‡&÷s¢&6VÅ&÷rÇ&÷WFS¢FFVçG'•&÷f–FW%&÷WF–ær“¢&ööÆVâ°¢–b‚&÷WFRç7FF–öå&WV—&VB’&WGW&âG'VS°¢–b‚DDôTåE%•ô„äDôdeõ5DD”ôå2ç6öÖR‚‡7FF–öâ“Óç7FF–öâæ6öFSÓÓ×&÷ræ†æFöfe7FF–öä6öFR’’&WGW&âfÇ6S°¢&WGW&â&÷ræ†æFöfe7FF–öä6öFRÓÒ$õD„U"'ÇÇ&÷ræ†æFöfe7FF–öäæÖRçG&–Ò‚’æÆVæwFƒãÓ3°§Ğ¦gVæ7F–öâ&÷WFU&VG’‡&÷s¢&6VÅ&÷rÂ÷F–öç3¢F&–fd÷F–öåµÒ“¢&ööÆVâ°¢6öç7B&÷WFS×&÷WFTf÷%&÷r‡&÷rÆ÷F–öç2“°¢&WGW&â&ööÆVâ‡&÷WFRç&÷f–FW$6öFR¢bb†æFöfe7FF–öå&VG’‡&÷rÇ&÷WFR¢bb‡&÷WFRæÖ&WV—&VC÷&÷ræÆö6F–öå7FGW3ÓÓÒ%5”ä4TB#§&÷ræÆö6F–öå7FGW3ÓÓÒ$äõEõ$UT•$TB"“°§Ğ¦gVæ7F–öâæ÷&ÖÆ—¦U–6·W‡&÷s¢ç’“¢–6·WÂçVÆÂ°¢6öç7B–6·W–BÒFW‡B‡&÷sòç–6·Wö–BÇÂ&÷sòç–6·W÷v•ö–B’çG&–Ò‚“°¢–b‚–6·W–B’&WGW&âçVÆÃ°¢&WGW&â°¢–6·Wö–C¢–6·W–BÀ¢ÖW&6†çEö–C¢FW‡B‡&÷sòæÖW&6†çEö–BÇÂ&÷sòæÖW&6†çEö6öFR’çG&–Ò‚’çFõWW$66R‚’À¢ÖW&6†çEöæÖS¢FW‡B‡&÷sòæÖW&6†çEöæÖR’çG&–Ò‚’À¢F÷vç6†—¢FW‡B‡&÷sòçF÷vç6†—’çG&–Ò‚’À¢6—G“¢FW‡B‡&÷sòæ6—G’’çG&–Ò‚’À¢W‡V7FVE÷&6VÇ3¢÷6—F—fT–çB‡&÷sòæW‡V7FVE÷&6VÇ2ÇÂ&÷sòç&6VÅö6÷VçB’À¢fW&–f–VE÷&6VÇ3¢÷6—F—fT–çB‡&÷sòçfW&–f–VE÷&6VÇ2ÇÂ&÷sòç†÷Fõ÷&6VÇ2’À¢&Vv—7FW&VE÷&6VÇ3¢÷6—F—fT–çB‡&÷sòç&Vv—7FW&VE÷&6VÇ2ÇÂ&÷sòç&Vv—7FW&VE÷&6VÅö6÷VçB’À¢–6·WöFFS¢FW‡B‡&÷sòç–6·WöFFR’çG&–Ò‚’À¢7&VFVEöC¢FW‡B‡&÷sòæ7&VFVEöB’çG&–Ò‚’À¢–6·W÷7FGW3¢FW‡B‡&÷sòç–6·W÷7FGW2’çG&–Ò‚’À¢v÷&¶fÆ÷u÷7FvS¢FW‡B‡&÷sòçv÷&¶fÆ÷u÷7FvR’çG&–Ò‚’À¢Ó°§Ğ¦gVæ7F–öâ&ööeW&Â‡&÷s¢ç’“¢7G&–ær°¢&WGW&âFW‡B‡&÷sòæ7W'&VçE÷†÷Fõ÷W&ÂÇÂ&÷sòç&ööe÷†÷Fõ÷W&ÂÇÂ&÷sòç&ööe÷†÷Fõ÷F‚ÇÂ&÷sòç†÷Fõ÷W&ÂÇÂ&÷sòæ6&võ÷†÷Fõ÷W&ÂÇÂ&÷sòç&6VÅ÷†÷Fõ÷W&ÂÇÂ&÷sòç&ööe÷W&ÂÇÂ&÷sòç–ÆöCòç&ööe÷†÷FõöFF÷W&Â’çG&–Ò‚“°§Ğ¦gVæ7F–öâ&÷fVE†÷Fò‡&÷s¢ç’“¢&ööÆVâ°¢6öç7B7FGW3×FW‡B‡&÷sòç&Wf–Wu÷7FGW2ÇÂ&÷sòç†÷Fõ÷7FGW2ÇÂ&÷sòç7FGW2ÇÂ&÷sòç–ÆöCòç†÷Fõö6†V6µ÷7FGW2’çFõWW$66R‚“°¢&WGW&â²$$õdTB"Â$$õdTEôeDU%õ$UUÄôB"Â%„õDõô$õdTB"Â%dU$”d”TB%Òæ–æ6ÇVFW2‡7FGW2“°§Ğ¦7–æ2gVæ7F–öâF—7Æ•†÷FõW&Â‡&ufÇVS¢7G&–ær“¢&öÖ—6SÇ7G&–æsâ°¢6öç7B&s×FW‡B‡&ufÇVR’çG&–Ò‚“°¢–b‚&r’&WGW&â"#°¢–b‚õâ†FF§Æ&Æö#¢’ö’çFW7B‡&r’’&WGW&â&s° ¢6öç7BfÆÆ&6´'V6¶WG3Õ²'–6·W×&6VÂ×&öög2"Â'&–FW"×&öög2"Â&÷2×†÷F÷2%Ó°¢ÆWBW‡Æ–6—D'V6¶WCÒ"#°¢ÆWBö&¦V7EFƒÒ"#° ¢G'’°¢6öç7B'6VCÖæWrU$Â‡&rÂG—Vöbv–æF÷rÓÒ'VæFVf–æVB#÷v–æF÷ræÆö6F–öâæ÷&–v–ã¢&‡GG3¢òöÆö6Æ†÷7B"“°¢6öç7B7F÷&vTÖF6ƒ×'6VBçF†æÖRæÖF6‚‚õÂòƒó§7W&6UÂò“÷7F÷&vUÂ÷cÂöö&¦V7EÂòƒó§V&Æ–7Ç6–vçÆWF†VçF–6FVB•Âò…µâõÒ²•Âò‚â²’Bö’“°¢–b‡7F÷&vTÖF6‚’°¢W‡Æ–6—D'V6¶WCÖFV6öFUU$”6ö×öæVçB‡7F÷&vTÖF6…³Ò“°¢ö&¦V7EFƒ×7F÷&vTÖF6…³%Òç7Æ—B‚#ò"•³Òç7Æ—B‚"2"•³Òç7Æ—B‚"ò"’æÖ‚‡'B“ÓæFV6öFUU$”6ö×öæVçB‡'B’’æ¦ö–â‚"ò"“°¢ÒVÇ6R–b‚õæ‡GG3ó¢ö’çFW7B‡&r’’°¢&WGW&â&s°¢Ğ¢Ò6F6‚°¢ö&¦V7EFƒ×&rç&WÆ6R‚õåÂò²òÂ""“°¢Ğ ¢6öç7B6ÆVãÒ†ö&¦V7EF‡ÇÇ&r’ç&WÆ6R‚õåÂò²òÂ""“°¢6öç7B'V6¶WG3ÖW‡Æ–6—D'V6¶WCõ¶W‡Æ–6—D'V6¶WEÓ¦fÆÆ&6´'V6¶WG3°¢f÷"†6öç7B'V6¶WBöb'V6¶WG2’°¢6öç7Bæ÷&ÖÆ—¦VCÖ6ÆVâç7F'G5v—F‚†'V6¶WB²"ò"“ö6ÆVâç6Æ–6R†'V6¶WBæÆVæwF‚³“¦6ÆVã°¢–b‚æ÷&ÖÆ—¦VB’6öçF–çVS°¢6öç7B6–væVCÖv—B‡7W&6R2ç’’ç7F÷&vRæg&öÒ†'V6¶WB’æ7&VFU6–væVEW&Â†æ÷&ÖÆ—¦VBÂc£c“°¢–b‚6–væVBæW'&÷"bb6–væVBæFFòç6–væVEW&Â’&WGW&â6–væVBæFFç6–væVEW&Ã°¢Ğ¢&WGW&â"#°§Ğ¦gVæ7F–öâFFVçG'•&öödF—7Æ•W&Â‡fÇVS¢Væ¶æ÷vâ“¢7G&–ær°¢6öç7B&rÒFW‡B‡fÇVR’çG&–Ò‚“°¢–b‚&rÇÂG—Vöbv–æF÷rÓÓÒ'VæFVf–æVB"’&WGW&â&s°¢G'’°¢6öç7B'6VBÒæWrU$Â‡&rÂv–æF÷ræÆö6F–öâæ÷&–v–â“°¢–b‡'6VBæ†÷7FæÖRæVæG5v—F‚‚"ç7W&6Ræ6ò"’bbõÂ÷7F÷&vUÂ÷cÂòòçFW7B‡'6VBçF†æÖR’’&WGW&âv–æF÷ræÆö6F–öâæ÷&–v–â²"÷7W&6R"²'6VBçF†æÖR²'6VBç6V&6ƒ°¢&WGW&â'6VBæ‡&Vc°¢Ò6F6‚²&WGW&â&s²Ğ§Ğ ¦gVæ7F–öâ—4W†7B‡G—S¢Ö÷VçEG—R’°¢&WGW&âG—RÓÓÒ$U„5Eô4ôÄÄT5D”ôåôÔõTåB#°§Ğ¦gVæ7F–öâVçfVÆ÷R†FF¢ç’’°¢6öç7Bö&¦V7CÖFFbgG—VöbFFÓÓÒ&ö&¦V7B#öFF§·Ó°¢6öç7BæW7FVCÒ&FF"–âö&¦V7C°¢&WGW&â°¢ö³¦ö&¦V7Bæö²ÓÖfÇ6RÀ¢FF¦æW7FVCò†ö&¦V7BæFFÇÇ·Ò“¦ö&¦V7BÀ¢W'&÷'3¤'&’æ—4'&’†ö&¦V7BæW'&÷'2“öö&¦V7BæW'&÷'3¥µÒÀ¢v&æ–æw3¤'&’æ—4'&’†ö&¦V7Bçv&æ–æw2“öö&¦V7Bçv&æ–æw3¥µÒÀ¢&s¦FFÀ¢Ó°§Ğ¦gVæ7F–öâVçfVÆ÷TÖW76vR‡c¢ç’“¢7G&–ær°¢6öç7BRÒ'&’æ—4'&’‡bæW'&÷'2’òbæW'&÷'2æÖ‚‡ƒ¢ç’’ÓâƒòæÖW76vR’æf–ÇFW"„&ööÆVâ’¢µÓ°¢6öç7BrÒ'&’æ—4'&’‡bçv&æ–æw2’òbçv&æ–æw2æÖ‚‡ƒ¢ç’’ÓâƒòæÖW76vR’æf–ÇFW"„&ööÆVâ’¢µÓ°¢&WGW&âRæ¦ö–â‚""’ÇÂræ¦ö–â‚""’ÇÂFW‡B‡bæFFòçfÆ–FF–öåöÖW76vR“°§Ğ¦gVæ7F–öâ–ÆöB‡&÷s¢&6VÅ&÷rÂ–6·W¢–6·W’°¢6öç7B¢&V6÷&CÇ7G&–ærÂVæ¶æ÷vãâÒ°¢–6·Wö–C¢&÷rç–6·Wö–BÀ¢&6VÅ÷6WVVæ6S¢&÷rç&6VÅ÷6WVVæ6RÀ¢FVÆ—fW'•÷v•ö–C¢&÷ræFVÆ—fW'•÷v•ö–BÇÂ6æöæ–6Åv”–B‡&÷rç–6·Wö–BÇ&÷rç&6VÅ÷6WVVæ6R’À¢ÖW&6†çEö–C¢–6·WæÖW&6†çEö–BÇÂçVÆÂÀ¢&V6—–VçEöæÖS¢&÷rç&V6—–VçEöæÖRÇÂçVÆÂÀ¢&V6—–VçE÷†öæS¢&÷rç&V6—–VçE÷†öæRÇÂçVÆÂÀ¢F÷vç6†—¢&÷rçF÷vç6†—ÇÂçVÆÂÀ¢FVÆ—fW'•öFG&W73¢&÷ræFVÆ—fW'•öFG&W72ÇÂçVÆÂÀ¢vV–v‡Eö¶s¢&÷rçvV–v‡Eö¶rÓÓÒ""òçVÆÂ¢çVÖ&W"‡&÷rçvV–v‡Eö¶r’À¢7W7FöÖW%÷F–W#¢&÷ræ7W7FöÖW%÷F–W"ÇÂ%5DäD$B"À¢7W7FöÖW%÷F–W%ö÷fW'&–FS¢&÷rçF–W%ö÷fW'&–FRÀ¢6W'f–6U÷&÷f–FW%ö6öFS¢&÷rç6W'f–6U÷&÷f–FW%ö6öFRÇÂçVÆÂÀ¢FVÆ—fW'•÷&Vv–öã¢&÷ræFVÆ—fW'•&Vv–öâÓÓÒ%Tå$U4ôÅdTB"òçVÆÂ¢&÷ræFVÆ—fW'•&Vv–öâÀ¢FVÆ—fW'•÷&÷WFUöÖöFS¢&÷ræFVÆ—fW'”ÖöFRÓÓÒ%Tå$U4ôÅdTB"òçVÆÂ¢&÷ræFVÆ—fW'”ÖöFRÀ¢Æö6F–öå÷&WV—&VC¢&÷ræFVÆ—fW'”ÖöFRÓÓÒ$Dôõ%5DUôÔ"À¢†æFöfe÷7FF–öåö6öFS¢&÷ræ†æFöfe7FF–öä6öFRÇÂçVÆÂÀ¢†æFöfe÷7FF–öåöæÖS¢&÷ræ†æFöfe7FF–öäæÖRÇÂçVÆÂÀ¢6W'f–6U÷G—S¢&÷rç6W'f–6U÷G—RÇÂ%5DäD$B"À¢Ö÷VçEöVçG'•÷G—S¢&÷ræÖ÷VçEöVçG'•÷G—RÀ¢—FVÕ÷&–6S¢&÷ræ—FVÕ÷&–6RÓÓÒ""òçVÆÂ¢çVÖ&W"‡&÷ræ—FVÕ÷&–6R’À¢FVÆ—fW'•ö6†&vW3¢&÷ræFVÆ—fW'•ö6†&vW2ÓÓÒ""òçVÆÂ¢çVÖ&W"‡&÷ræFVÆ—fW'•ö6†&vW2’À¢ÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçC¢&÷ræÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçBÓÓÒ""òçVÆÂ¢çVÖ&W"‡&÷ræÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçB’À¢FF—F–öæÅö7W7FöÖW%ö6†&vS¢À¢6&Õ÷7W&6†&vS¢&÷ræ6&Õ÷7W&6†&vRÓÓÒ""ò¢çVÖ&W"‡&÷ræ6&Õ÷7W&6†&vR’À¢÷F†W%÷7W&6†&vS¢&÷ræ÷F†W%÷7W&6†&vRÓÓÒ""ò¢çVÖ&W"‡&÷ræ÷F†W%÷7W&6†&vR’À¢ÖW&6†çE÷–&ÆUö6†&vW3¢&÷ræÖW&6†çE÷–&ÆUö6†&vW2ÓÓÒ""ò¢çVÖ&W"‡&÷ræÖW&6†çE÷–&ÆUö6†&vW2’À¢÷F†W%öÖW&6†çEö7&VF—G3¢&÷ræ÷F†W%öÖW&6†çEö7&VF—G2ÓÓÒ""ò¢çVÖ&W"‡&÷ræ÷F†W%öÖW&6†çEö7&VF—G2’À¢&VÖ&·3¢&÷rç&VÖ&·2ÇÂçVÆÂÀ¢÷5÷6ögF6÷•ö–×÷'C¢&÷ræ–×÷'FVDg&öÔ÷2À¢÷5÷6÷W&6Uöf–ÆUöæÖS¢&÷rç6÷W&6Tf–ÆTæÖRÇÂçVÆÂÀ¢6÷W&6U÷&÷uöçVÖ&W#¢&÷rç6÷W&6U&÷tçVÖ&W"À¢6÷W&6U÷&÷uö6÷VçC¢&÷rç6÷W&6U&÷t6÷VçBÀ¢†÷FõöWf–FVæ6UöÖöFS¢&÷rç†÷FôWf–FVæ6TÖöFRÀ¢†÷Fõö'—73¢&÷rç†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVBÀ¢†÷Fõö'—75÷&V6öã¢&÷rç†÷Fô'—75&V6öâÇÂçVÆÂÀ¢Ó°¢–b†—4W†7B‡&÷ræÖ÷VçEöVçG'•÷G—R’’²æ—FVÕ÷&–6RÒçVÆÃ²æFVÆ—fW'•ö6†&vW2ÒçVÆÃ²Ğ¢VÇ6R–b‡&÷ræÖ÷VçEöVçG'•÷G—RÓÓÒ$DTÄ•dU%•ô4„$tUôôäÅ’"’²æ—FVÕ÷&–6RÒçVÆÃ²æÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçBÒçVÆÃ²Ğ¢VÇ6RæÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçBÒçVÆÃ°¢&WGW&â°§Ğ ¦gVæ7F–öâ&6VÅ&÷tg&öÕ&ööb€¢–6·W¢–6·WÀ¢F–W$66W73¢ÖW&6†çEF–W$66W72À¢&ööc¢ç’À¢6WVVæ6S¢çVÖ&W ¢“¢&6VÅ&÷r°¢6öç7B&tÖ÷VçEG—S×FW‡B‡&ööbæÖ÷VçEöVçG'•÷G—R’çFõWW$66R‚“°¢6öç7BÆVv7”÷VS×&tÖ÷VçEG—SÓÓÒ$õTUô4ôEô4ôÄÄT5D”ôâ#°¢6öç7BVF—F&ÆTÖ÷VçEG—SÒ†ÆVv7”÷VP¢ò$U„5Eô4ôÄÄT5D”ôåôÔõTåB ¢¢ÔõTåEõE•U2æ–æ6ÇVFW2‡&tÖ÷VçEG—R2Ö÷VçEG—R¢ò&tÖ÷VçEG—P¢¢$•DTÕõ$”4UõÅU5ôDT4Ä$TEôDTÄ•dU%’"’2Ö÷VçEG—S°¢6öç7B6fVEF–W#×FW‡B‡&ööbæ7W7FöÖW%÷F–W"’çFõWW$66R‚“°¢6öç7B7W7FöÖW%F–W#×6fVEF–W'ÇÇF–W$66W72ç&W6öÇfVEö7W7FöÖW%÷F–W'ÇÂ%5DäD$B#°¢6öç7BÆVv7”FF—F–öæÃÖçVÒ‡&ööbæFF—F–öæÅö7W7FöÖW%ö6†&vR“°¢6öç7B&ööe&Wf–Wu7FGW3×FW‡B‡&ööbç&ööeö6†V6µ÷7FGW7ÇÇ&ööbçfW&–f–6F–öå÷7FGW7ÇÂ%TäD”äuõ$Ud”Ur"’çFõWW$66R‚“°¢6öç7B7F÷&VE†÷FôÖöFS×FW‡B‡&ööbç†÷FõöWf–FVæ6UöÖöFWÇÇ&ööbæf–ææ6–Å÷V÷FSòç†÷FõöWf–FVæ6UöÖöFR’çFõWW$66R‚“°¢6öç7B–×÷'FVDg&öÔ÷3Ô&ööÆVâ€¢&ööbç6÷W&6Uöf–ÆUöæÖWÇÇ&ööbæ÷5ö–×÷'FVEöGÇÇ&ööbæf–ææ6–Å÷V÷FSòæ÷5÷6ögF6÷•ö–×÷'@¢“°¢6öç7B†÷FôWf–FVæ6TÖöFS¥&6VÅ&÷u²'†÷FôWf–FVæ6TÖöFR%Ó×7F÷&VE†÷FôÖöFSÓÓÒ$õ5õ4ôeD4õ’#ò$õ5õ4ôeD4õ’#¢%”4´U%õ„õDò#°¢&WGW&â°¢–6·Wö–C§–6·Wç–6·Wö–BÀ¢&6VÅ÷6WVVæ6S§6WVVæ6RÀ¢FVÆ—fW'•÷v•ö–C§FW‡B‡&ööbæFVÆ—fW'•÷v•ö–B—ÇÆ6æöæ–6Åv”–B‡–6·Wç–6·Wö–BÇ6WVVæ6R’À¢&ööe÷W&Ã§FW‡B‡&ööbåõ÷&ööe÷W&Â’À¢&ööe÷&Vc§FW‡B‡&ööbåõ÷&ööe÷&Vb’À¢†÷Fõ÷7FGW3§FW‡B‡&ööbç&Wf–Wu÷7FGW7ÇÇ&ööbç†÷Fõ÷7FGW7ÇÇ&ööbç7FGW7ÇÂ%TäD”äuõ$Ud”Ur"’çFõWW$66R‚’À¢&V6—–VçEöæÖS§FW‡B‡&ööbç&V6—–VçEöæÖR’À¢&V6—–VçE÷†öæS§FW‡B‡&ööbç&V6—–VçE÷†öæWÇÇ&ööbæ6öçF7Eöæõó’À¢F÷vç6†—§FW‡B‡&ööbçF÷vç6†—ÇÇ–6·WçF÷vç6†—’À¢FVÆ—fW'•öFG&W73§FW‡B‡&ööbæFVÆ—fW'•öFG&W77ÇÇ&ööbç&V6—–VçEöFG&W72’À¢vV–v‡Eö¶s§&ööbæ7GVÅ÷vV–v‡Eö¶só÷&ööbç&6VÅ÷vV–v‡Eö¶só÷&ööbçvV–v‡Eö¶sóò""À¢7W7FöÖW%÷F–W#¦7W7FöÖW%F–W"À¢F–W%ö÷fW'&–FS¤&ööÆVâ‡F–W$66W72ç&Vv—7FW&VBbbF–W$66W72ç&öf–ÆU÷F–W"bb7W7FöÖW%F–W"Ó×F–W$66W72ç&öf–ÆU÷F–W"bbF–W$66W72æ6åö÷fW'&–FU÷&öf–ÆU÷F–W"’À¢6W'f–6U÷&÷f–FW%ö6öFS§FW‡B‡&ööbç6W'f–6U÷&÷f–FW%ö6öFWÇÇ&ööbæf–ææ6–Å÷V÷FSòç6W'f–6U÷&÷f–FW%ö6öFR’çFõWW$66R‚’À¢6W'f–6U÷G—S§FW‡B‡&ööbç6W'f–6U÷G—WÇÇ&ööbæf–ææ6–Å÷V÷FSòç6W'f–6U÷G—WÇÂ%5DäD$B"’çFõWW$66R‚’À¢Ö÷VçEöVçG'•÷G—S¦VF—F&ÆTÖ÷VçEG—RÀ¢—FVÕ÷&–6S§&ööbæ—FVÕ÷&–6Sóò""À¢FVÆ—fW'•ö6†&vW3§&ööbæFVÆ—fW'•ö6†&vW3ó÷&ööbæFVÆ—fW'•öfVSóò""À¢ÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçC§&ööbæÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçCóò""À¢6&Õ÷7W&6†&vS§&ööbæ6&Õ÷7W&6†&vSóóÀ¢÷F†W%÷7W&6†&vS§&ööbæ÷F†W%÷7W&6†&vSóóÀ¢ÖW&6†çE÷–&ÆUö6†&vW3§&ööbæÖW&6†çE÷–&ÆUö6†&vW3óóÀ¢÷F†W%öÖW&6†çEö7&VF—G3§&ööbæ÷F†W%öÖW&6†çEö7&VF—G3óóÀ¢&VÖ&·3§FW‡B‡&ööbç&VÖ&·7ÇÇ&ööbç&VÖ&²’À¢6Æ7VÆF–æs¦fÇ6RÀ¢6†V6¶–æs¦fÇ6RÀ¢6Æ7VÆF–öã§&ööbæf–ææ6–Å÷V÷FRbgG—Vöb&ööbæf–ææ6–Å÷V÷FSÓÓÒ&ö&¦V7B#÷&ööbæf–ææ6–Å÷V÷FS§·ÒÀ¢ÖW76vS¥°¢ÆVv7”÷VSò$ÆVv7’Væ6Æ76–f–VB4ôBv26öçfW'FVBFòW†7B6öÆÆV7F–öâÖ÷VçC²F†RF÷FÂÖ÷VçB—2Væ6†ævVBâ#¢""À¢ÆVv7”FF—F–öæÃãöÆVv7’FF—F–öæÂ7W7FöÖW"6†&vRG¶ÖöæW’†ÆVv7”FF—F–öæÂ—Ò—2&WF—&VBæBv–ÆÂ&R&W6WBFòöâF†RæW‡B6fRæ¢""À¢Òæf–ÇFW"„&ööÆVâ’æ¦ö–â‚""’À¢†÷Fõ&Wf–WvVC¥²$$õdTB"Â$$õdTEôeDU%õ$UUÄôB"Â%„õDõô$õdTB"Â%dU$”d”TB"Â%$”DU%õdU$”d”TB%Òæ–æ6ÇVFW2‡&ööe&Wf–Wu7FGW2’À¢†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVC§†÷FôWf–FVæ6TÖöFSÓÓÒ$õ5õ4ôeD4õ’"À¢†÷Fõ&Wf–Wu7FGW3§&ööe&Wf–Wu7FGW2À¢†÷Fõ&V¦V7F–öå&V6öã§FW‡B‡&ööbç&V¦V7F–öå÷&V6öâ’À¢†÷Fõ&V¦V7F–öäæ÷FS§FW‡B‡&ööbç&Wf–Wuöæ÷FR’À¢†÷Fõ&Wf–Wt'W7“¦fÇ6RÀ¢—4FF—F–öæÅ&Vv—7G&F–öã§6WVVæ6Sç&WVW7FVE&6VÄ6÷VçB‡–6·W’À¢–×÷'FVDg&öÔ÷2À¢6÷W&6Tf–ÆTæÖS§FW‡B‡&ööbç6÷W&6Uöf–ÆUöæÖWÇÇ&ööbæf–ææ6–Å÷V÷FSòæ÷5÷6÷W&6Uöf–ÆUöæÖR’À¢6÷W&6U&÷tçVÖ&W#§÷6—F—fT–çB‡&ööbç6÷W&6U÷&÷uöçVÖ&W'ÇÇ&ööbæf–ææ6–Å÷V÷FSòç6÷W&6U÷&÷uöçVÖ&W"—ÇÆçVÆÂÀ¢6÷W&6U&÷t6÷VçC§÷6—F—fT–çB‡&ööbç6÷W&6U÷&÷uö6÷VçGÇÇ&ööbæf–ææ6–Å÷V÷FSòç6÷W&6U÷&÷uö6÷VçB—ÇÆçVÆÂÀ¢†÷FôWf–FVæ6TÖöFRÀ¢†÷Fô'—75&V6öã§FW‡B‡&ööbç†÷Fõö'—75÷&V6öçÇÇ&ööbæf–ææ6–Å÷V÷FSòç†÷Fõö'—75÷&V6öâ’À¢FVÆ—fW'•&Vv–öã§FW‡B‡&ööbæFVÆ—fW'•÷&Vv–öçÇÇ&ööbæf–ææ6–Å÷V÷FSòæFVÆ—fW'•÷&Vv–öçÇÂ%Tå$U4ôÅdTB"’çFõWW$66R‚’2FFVçG'•&÷WFU&Vv–öâÀ¢FVÆ—fW'”ÖöFS§FW‡B‡&ööbæFVÆ—fW'•÷&÷WFUöÖöFWÇÇ&ööbæf–ææ6–Å÷V÷FSòæFVÆ—fW'•÷&÷WFUöÖöFWÇÂ%Tå$U4ôÅdTB"’çFõWW$66R‚’2FFVçG'”FVÆ—fW'”ÖöFRÀ¢†æFöfe7FF–öä6öFS§FW‡B‡&ööbæ†æFöfe÷7FF–öåö6öFWÇÇ&ööbæf–ææ6–Å÷V÷FSòæ†æFöfe÷7FF–öåö6öFR’çFõWW$66R‚’À¢†æFöfe7FF–öäæÖS§FW‡B‡&ööbæ†æFöfe÷7FF–öåöæÖWÇÇ&ööbæf–ææ6–Å÷V÷FSòæ†æFöfe÷7FF–öåöæÖR’À¢Æö6F–öå7FGW3§&ööbæÆö6F–öå÷&WV—&VCÓÓÖfÇ6WÇÇ&ööbæf–ææ6–Å÷V÷FSòæÆö6F–öå÷&WV—&VCÓÓÖfÇ6Sò$äõEõ$UT•$TB#¢%TäD”är"À¢6fVC¤&ööÆVâ‡&ööbç6fVEöGÇÇ&ööbæFVÆ—fW'•÷v•ö–B’À¢Ó°§Ğ ¦gVæ7F–öâf–VÆB‡²Æ&VÂÂ6†–ÆG&VâÓ¢²Æ&VÃ¢7G&–æs²6†–ÆG&Vã¢&V7Bå&V7DæöFRÒ’°¢&WGW&âÆÆ&VÃãÇ7â6Æ74æÖS×¶Æ&VÄ6Æ77Óç¶Æ&VÇÓÂ÷7ãç¶6†–ÆG&VçÓÂöÆ&VÃã°§Ğ¦gVæ7F–öâÖöæW”&÷‚‡²Æ&VÂÂfÇVRÂ†–v†Æ–v‡BÒfÇ6RÓ¢²Æ&VÃ¢7G&–æs²fÇVS¢Væ¶æ÷vã²†–v†Æ–v‡Có¢&ööÆVâÒ’°¢&WGW&â€¢ÆF—b6Æ74æÖS×¶&÷VæFVB×†Â&÷&FW"Ó2G¶†–v†Æ–v‡Bò&&÷&FW"Õ²6cf#ƒF%ÒóS&rÕ²6cf#ƒF%Òó"¢&&÷&FW"Õ²36V5Ò&rÕ²3cS#EÒ'ÖÓà¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³—…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ã&VÕÒFW‡BÕ²3fc–#…Ò#ç¶Æ&VÇÓÂöF—cà¢ÆF—b6Æ74æÖS×¶×BÓFW‡BÕ³G…ÒföçBÖ&Æ6²G¶†–v†Æ–v‡Bò'FW‡BÕ²6cf#ƒF%Ò"¢'FW‡BÕ²6VVc†feÒ'ÖÓç¶ÖöæW’‡fÇVR—ÓÂöF—cà¢ÂöF—cà¢“°§Ğ ¦gVæ7F–öâF÷vç6†—F&–fdf–VÆB‡²&÷rÂ–æFW‚ÂWFFU&÷rÂF&–fd÷F–öç2Â&÷f–FW$÷F–öç2Ó¢ç’’°¢6öç7B¶÷VâÂ6WD÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B·&÷f–FW$f–ÇFW"Â6WE&÷f–FW$f–ÇFW%ÒÒW6U7FFR‚$ÄÂ"“°¢6öç7B&÷WFRÒ&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"‡&÷rçF÷vç6†—Ç&÷ræFVÆ—fW'•öFG&W72ÇF&–fd÷F–öç2Ç°¢fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÀ¢—FVÕ&–6S§&÷ræ—FVÕ÷&–6RÀ¢Ò“°¢6öç7BVW'’ÒFW‡B‡&÷rçF÷vç6†—’çG&–Ò‚’çFôÆ÷vW$66R‚“°¢6öç7BÖF6†W2Ò‡F&–fd÷F–öç22F&–fd÷F–öåµÒ¢æf–ÇFW"‚†÷F–öâ’Óâ&÷f–FW$f–ÇFW"ÓÓÒ$ÄÂ"ÇÂ÷F–öâç&÷f–FW%ö6öFRÓÓÒ&÷f–FW$f–ÇFW"¢æf–ÇFW"‚†÷F–öâ’ÓâVW'’ÇÂ÷F–öâæFW7F–æF–öåöæÖRçFôÆ÷vW$66R‚’æ–æ6ÇVFW2‡VW'’’ÇÂ÷F–öâç&÷f–FW%öæÖRçFôÆ÷vW$66R‚’æ–æ6ÇVFW2‡VW'’’¢ç6Æ–6RƒÂ‚“°¢6öç7B6VÆV7FVBÒ‡F&–fd÷F–öç22F&–fd÷F–öåµÒ’æf–æB‚†÷F–öâ’Óà¢÷F–öâæFW7F–æF–öåöæÖRÓÓÒ&÷rçF÷vç6†—bb‚&÷rç6W'f–6U÷&÷f–FW%ö6öFRÇÂ÷F–öâç&÷f–FW%ö6öFRÓÓÒ&÷rç6W'f–6U÷&÷f–FW%ö6öFR¢“°¢6öç7B6†ö÷6RÒ†÷F–öã¢F&–fd÷F–öâ’Óâ°¢6öç7BæW‡E&÷WFS×&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"†÷F–öâæFW7F–æF–öåöæÖRÇ&÷ræFVÆ—fW'•öFG&W72ÇF&–fd÷F–öç2Ç°¢fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÀ¢—FVÕ&–6S§&÷ræ—FVÕ÷&–6RÀ¢Ò“°¢WFFU&÷r†–æFW‚Â°¢ââç&÷WF–æuF6‚†æW‡E&÷WFRÇ²ââç&÷rÇF÷vç6†—¦÷F–öâæFW7F–æF–öåöæÖWÒ’À¢FVÆ—fW'•ö6†&vW3¢F&–fe&FR†÷F–öâÂ&÷ræ7W7FöÖW%÷F–W"’À¢ÖW76vS¢G·&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR—Ò&÷fVBF&–fbG¶÷F–öâç&÷f–FW%öæÖWÒ+r&6²G¶÷F–öâç&6µö6öFRÇÂ.(	B'Òv2Æ–VBæÀ¢Ò“°¢6WD÷Vâ†fÇ6R“°¢Ó°¢6öç7BG—UF÷vç6†—Ò‡F÷vç6†—¢7G&–ær’Óâ°¢6öç7BæW‡E&÷WFS×&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"‡F÷vç6†—Ç&÷ræFVÆ—fW'•öFG&W72ÇF&–fd÷F–öç2Ç°¢fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÀ¢—FVÕ&–6S§&÷ræ—FVÕ÷&–6RÀ¢Ò“°¢6öç7B÷F–öãÖæW‡E&÷WFRæ÷F–öâ2F&–fd÷F–öçÆçVÆÃ°¢WFFU&÷r†–æFW‚ÆæW‡E&÷WFRç&÷f–FW$6öFS÷°¢ââç&÷WF–æuF6‚†æW‡E&÷WFRÇ²ââç&÷rÇF÷vç6†—Ò’À¢âââ†÷F–öà¢÷¶FVÆ—fW'•ö6†&vW3§F&–fe&FR†÷F–öâÇ&÷ræ7W7FöÖW%÷F–W"—Ğ¢§&÷rç6W'f–6U÷&÷f–FW%ö6öFRbg&÷rç6W'f–6U÷&÷f–FW%ö6öFRÓÖæW‡E&÷WFRç&÷f–FW$6öFP¢÷¶FVÆ—fW'•ö6†&vW3¢"'Ğ¢§·Ò’À¢ÖW76vS§&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR’À¢Ó§·F÷vç6†—Âââç&÷WF–æuF6‚†æW‡E&÷WFRÇ²ââç&÷rÇF÷vç6†—Ò’ÆÖW76vS§&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR—Ò“°¢6WD÷Vâ‡G'VR“°¢Ó°¢&WGW&â€¢Äf–VÆBÆ&VÃÒ.	Î
+Ş
+ş~	N	®¢ò	Ş	N®n
+ÎN®	î
+ş	^	î#à¢ÆF—b6Æ74æÖSÒ'&VÆF—fR#à¢ÆF—b6Æ74æÖSÒ&Ö"Ó"fÆW‚fÆW‚×w&vÓãR#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ²6WE&÷f–FW$f–ÇFW"‚$ÄÂ"“²6WD÷Vâ‡G'VR“²×Ò6Æ74æÖS×¶&÷VæFVBÖgVÆÂ&÷&FW"‚Ó"ãR’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²G·&÷f–FW$f–ÇFW"ÓÓÒ$ÄÂ"ò&&÷&FW"Ö7–âÓ3&rÖ7–âÓCó#FW‡BÖ7–âÓ"¢&&÷&FW"Õ²3&S#s%ÒFW‡BÕ²3†F#F6UÒ'ÖÓäÄÃÂö'WGFöãà¢²‡&÷f–FW$÷F–öç22&÷f–FW$÷F–öåµÒ’æf–ÇFW"‚‡&÷f–FW"’Óâ²%$õ”ÂU…$U52"Â$D²DTÄ•dU%’"Â$åB%$ä4‚"Â$‚åDU$Ô”äÂE$õÔôdb"Â$u%2%Òæ–æ6ÇVFW2‡&÷f–FW"ç&÷f–FW%ö6öFR’’æÖ‚‡&÷f–FW"’Óâ€¢Æ'WGFöâ¶W“×·&÷f–FW"ç&÷f–FW%ö6öFWÒG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ²6WE&÷f–FW$f–ÇFW"‡&÷f–FW"ç&÷f–FW%ö6öFR“²6WD÷Vâ‡G'VR“²×Ò6Æ74æÖS×¶&÷VæFVBÖgVÆÂ&÷&FW"‚Ó"ãR’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²G·&÷f–FW$f–ÇFW"ÓÓÒ&÷f–FW"ç&÷f–FW%ö6öFRò&&÷&FW"Ö7–âÓ3&rÖ7–âÓCó#FW‡BÖ7–âÓ"¢&&÷&FW"Õ²3&S#s%ÒFW‡BÕ²3†F#F6UÒ'ÖÓà¢·&÷f–FW"æF—7Æ•öæÖWÒ+r·&÷f–FW"æ7F—fU÷F&–feö6÷VçGĞ¢Âö'WGFöãà¢’—Ğ¢ÂöF—cà¢Æ–çW@¢6Æ74æÖS×¶–çWD6Æ77Ğ¢fÇVS×·&÷rçF÷vç6†—Ğ¢WFô6ö×ÆWFSÒ&öfb ¢Æ6V†öÆFW#Ò.	Î
+Ş
+ş~	N	®®
+	®¢^	N®	¾
+Ş
+ş®	®~®	^
+¾(
+b ¢öäfö7W3×²‚’Óâ6WD÷Vâ‡G'VR—Ğ¢öä6†ævS×²†WfVçB’ÓâG—UF÷vç6†—†WfVçBçF&vWBçfÇVR—Ğ¢öä¶W”F÷vã×²†WfVçB’Óâ°¢–b†WfVçBæ¶W’ÓÓÒ$W66R"’6WD÷Vâ†fÇ6R“°¢–b†WfVçBæ¶W’ÓÓÒ$VçFW""bb÷VâbbÖF6†W5³Ò’²WfVçBç&WfVçDFVfVÇB‚“²6†ö÷6R†ÖF6†W5³Ò“²Ğ¢×Ğ¢óà¢¶÷VâbbÖF6†W2æÆVæwF‚ò€¢ÆF—b6Æ74æÖSÒ&'6öÇWFR¢ÓS×BÓÖ‚Ö‚Ós"rÖgVÆÂÖ–â×rÕ³3c…Ò÷fW&fÆ÷rÖWFò&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²36vFUÒóS&rÕ²3s#&%ÒÓ6†F÷rÓ'†Â#à¢¶ÖF6†W2æÖ‚†÷F–öâ’Óâ€¢Æ'WGFöâ¶W“×¶÷F–öâæFW7F–æF–öåö¶W—ÒG—SÒ&'WGFöâ"öäÖ÷W6TF÷vã×²†WfVçB’ÓâWfVçBç&WfVçDFVfVÇB‚—Òöä6Æ–6³×²‚’Óâ6†ö÷6R†÷F–öâ—Ò6Æ74æÖSÒ&fÆW‚rÖgVÆÂ—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ2&÷VæFVBÖÆr‚Ó2’Ó"FW‡BÖÆVgB†÷fW#¦&rÕ²3#3FÒ#à¢Ç7ããÆ"6Æ74æÖSÒ&&Æö6²FW‡BÕ³'…ÒFW‡B×v†—FR#ç¶÷F–öâæFW7F–æF–öåöæÖWÓÂö#ãÇ7â6Æ74æÖSÒ'FW‡BÕ³…ÒFW‡BÕ²3†F#F6UÒ#ç¶÷F–öâç&÷f–FW%öæÖWÒ+r&6²¶÷F–öâç&6µö6öFRÇÂ.(	B'ÓÂ÷7ããÂ÷7ãà¢Ç7â6Æ74æÖSÒ'v†—FW76RÖæ÷w&FW‡B×&–v‡BFW‡BÕ³…ÒFW‡BÕ²6cf#ƒF%Ò#å7FæF&B¶ÖöæW’†÷F–öâç7FæF&E÷&FUöÖÖ²—ÓÆ'"óå7V6–Â¶÷F–öâç7V6–Å÷&FUöÖÖ²ÓÒçVÆÂò.(	B"¢ÖöæW’†÷F–öâç7V6–Å÷&FUöÖÖ²—ÓÂ÷7ãà¢Âö'WGFöãà¢’—Ğ¢ÂöF—cà¢’¢÷Vâbb&÷f–FW$f–ÇFW"ÓÒ$ÄÂ"ò€¢ÆF—b6Æ74æÖSÒ&'6öÇWFR¢ÓS×BÓrÖgVÆÂÖ–â×rÕ³3c…Ò&÷VæFVB×†Â&÷&FW"&÷&FW"ÖÖ&W"ÓCóC&rÕ²3s#&%ÒÓ2FW‡BÕ³…ÒFW‡BÖÖ&W"Ó#6†F÷rÓ'†Â#à¢æò7F—fRF&–fb—26öæf–wW&VBf÷"F†—2&÷f–FW"æBFW7F–æF–öââFB—G2&÷fVB&FR6&B&Vf÷&R6f–ær&÷f–FW"×7V6–f–2&÷WFRà¢ÂöF—cà¢’¢çVÆÇĞ¢·6VÆV7FVBòÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³—…ÒföçB×6VÖ–&öÆBFW‡BÕ²3c†S†&EÒ#ç·&÷f–FW%&÷WF–ætÖW76vR‡&÷WFR—ÒF&–fc¢·6VÆV7FVBç&÷f–FW%öæÖWÒ+r&6²·6VÆV7FVBç&6µö6öFRÇÂ.(	B'Ò+r¶ÖöæW’‡F&–fe&FR‡6VÆV7FVBÂ&÷ræ7W7FöÖW%÷F–W"’—ÓÂöF—câ¢&÷WFRç&÷f–FW$6öFRòÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³—…ÒföçB×6VÖ–&öÆBFW‡BÕ²3c†S†&EÒ#ç·&÷f–FW%&÷WF–ætÖW76vR‡&÷WFR—ÓÂöF—câ¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³—…ÒFW‡BÕ²6cf#ƒF%Ò#äVçFW"&V6övæ—¦VBF÷vç6†—â–ævöâÂÖæFÆ’ÂæBVÆ–v–&ÆRæ—–—Fr&÷WFW2W6RÖ3²÷WG6–FRÖ6÷&R&÷WFW2W6RF†R—FVÒ×&–6R'VÆRãÂöF—cçĞ¢ÆF—b6Æ74æÖSÒ&×BÓ"w&–Bw&–BÖ6öÇ2Ó"vÓ"FW‡BÕ³—…Ò#à¢ÆF—b6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Ö7–âÓ3ó#&rÕ²3cS#EÒ‚Ó"’ÓãRFW‡BÖ7–âÓ#å&÷f–FW#¢Æ#ç·&÷WFRç&÷f–FW$6öFWÇÂ%Tå$U4ôÅdTB'ÓÂö#ãÂöF—cà¢ÆF—b6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Ö7–âÓ3ó#&rÕ²3cS#EÒ‚Ó"’ÓãRFW‡BÖ7–âÓ#å&Vv–öã¢Æ#ç·&÷WFRç&÷WFU&Vv–öâç&WÆ6TÆÂ‚%ò"Â""—ÓÂö#ãÂöF—cà¢ÂöF—cà¢ÂöF—cà¢Âôf–VÆCà¢“°§Ğ ¦gVæ7F–öâ&6VÄVF—F÷"‡²&÷rÂ–æFW‚ÂWFFU&÷rÂ6Æ7VÆFRÂ6fRÂ&Wf–Wu†÷FòÂF&–fd÷F–öç2Â&÷f–FW$÷F–öç2ÂF–W$66W72ÂÆö6F–öå&VÆöEFö¶VâÓ¢ç’’°¢6öç7B2Ò&÷ræ6Æ7VÆF–öâÇÂ·Ó°¢6öç7BG—RÒ&÷ræÖ÷VçEöVçG'•÷G—R2Ö÷VçEG—S°¢6öç7B&÷WFRÒ&÷WFTf÷%&÷r‡&÷rÇF&–fd÷F–öç2“°¢6öç7B7FF–öå&VG’Ò†æFöfe7FF–öå&VG’‡&÷rÇ&÷WFR“°¢6öç7BF–W%'VÆRÒF–W$66W73òçF–W%÷'VÆW3òå·&÷ræ7W7FöÖW%÷F–W%ÒÇÂ·Ó°¢6öç7B·†÷Fõ&Wf–Wt÷VâÂ6WE†÷Fõ&Wf–Wt÷VåÒÒW6U7FFR†fÇ6R“°¢6öç7B·†÷Fõ¦ööÒÂ6WE†÷Fõ¦ööÕÒÒW6U7FFRƒ“°¢6öç7BF—7Æ•&ööeW&ÂÒFFVçG'•&öödF—7Æ•W&Â‡&÷rç&ööe÷W&Â“°¢&WGW&â€¢Ç6V7F–öâ–C×¶FFÖVçG'’×&6VÂÒG·&÷rç&6VÅ÷6WVVæ6WÖÒ7G–ÆS×·¶6öçFVçEf—6–&–Æ—G“¢&WFò"Æ6öçF–ä–çG&–ç6–56—¦S¢#‚'×Ò6Æ74æÖSÒ'&÷VæFVBÓ'†Â&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒÓB#à¢ÆF—b6Æ74æÖSÒ&Ö"ÓBfÆW‚fÆW‚×w&—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ2#à¢ÆF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2Ö6VçFW"vÓ"#à¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãVVÕÒFW‡BÕ²6cf#ƒF%Ò#å&6VÂ·&÷rç&6VÅ÷6WVVæ6WÓÂöF—cà¢·&÷ræ—4FF—F–öæÅ&Vv—7G&F–öãóÇ7â6Æ74æÖSÒ'&÷VæFVBÖgVÆÂ&÷&FW"&÷&FW"Ö7–âÓ3óC&rÖ7–âÓCó‚Ó"’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²FW‡BÖ7–âÓ##äUD„õ$•¤TBÔU$4„åBDD•D”ôãÂ÷7ãã¦çVÆÇĞ¢·&÷ræ–×÷'FVDg&öÔ÷3óÇ7â6Æ74æÖSÒ'&÷VæFVBÖgVÆÂ&÷&FW"&÷&FW"×f–öÆWBÓ3óC&r×f–öÆWBÓCó‚Ó"’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²FW‡B×f–öÆWBÓ##äõ24ôeD4õ’+r$õr·&÷rç6÷W&6U&÷tçVÖ&W'ÇÂ.(	B'ÓÂ÷7ãã¦çVÆÇĞ¢Ç7â6Æ74æÖS×¶&÷VæFVBÖgVÆÂ&÷&FW"‚Ó"’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²Gµ²%5”ä4TB"Â$äõEõ$UT•$TB%Òæ–æ6ÇVFW2‡&÷ræÆö6F–öå7FGW2“ò&&÷&FW"ÖVÖW&ÆBÓCóC&rÖVÖW&ÆBÓCóFW‡BÖVÖW&ÆBÓ##§&÷ræÆö6F–öå7FGW3ÓÓÒ%4T$4„”är#ò&&÷&FW"Ö7–âÓ3óC&rÖ7–âÓCóFW‡BÖ7–âÓ##¢&&÷&FW"ÖÖ&W"Ó3óC&rÖÖ&W"ÓCóFW‡BÖÖ&W"Ó#'ÖÓäÄô4D”ôâ·&÷ræÆö6F–öå7FGW2ç&WÆ6TÆÂ‚%ò"Â""—ÓÂ÷7ãà¢·&÷WFRç&÷WFU&Vv–öâÓÒ%Tå$U4ôÅdTB#óÇ7â6Æ74æÖSÒ'&÷VæFVBÖgVÆÂ&÷&FW"&÷&FW"×6·’Ó3óC&r×6·’ÓCó‚Ó"’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²FW‡B×6·’Ó##ç·&÷WFRç&÷WFU&Vv–öçÒ+r·&÷WFRæFVÆ—fW'”ÖöFRç&WÆ6TÆÂ‚%ò"Â""—ÓÂ÷7ãã¦çVÆÇĞ¢·&÷rç6fVCóÇ7â6Æ74æÖSÒ'&÷VæFVBÖgVÆÂ&÷&FW"&÷&FW"ÖVÖW&ÆBÓCóC&rÖVÖW&ÆBÓCó‚Ó"’ÓFW‡BÕ³—…ÒföçBÖ&Æ6²FW‡BÖVÖW&ÆBÓ##å4dTCÂ÷7ãã¦çVÆÇĞ¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³'…ÒFW‡BÕ²3†F#F6UÒ#ç·&÷ræFVÆ—fW'•÷v•ö–BÇÂ$FVÆ—fW'’v’”BÆÆö6FVB'’&6¶VæB'ÓÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚vÓ"#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6Æ7VÆFR†–æFW‚—ÒF—6&ÆVC×·&÷ræ6Æ7VÆF–æwÒ6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36vFUÒóS&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒF—6&ÆVC¦÷6—G’ÓS#à¢·&÷ræ6Æ7VÆF–æròÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óâ¢Ä6Æ7VÆF÷"6—¦S×³GÒóçÒ	Ş®¾®	¾	N ¢Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6fR†–æFW‚—ÒF—6&ÆVC×°¢&÷ræ6†V6¶–ærÇÀ¢‚&÷rç†÷Fõ&Wf–WvVBbb&÷ræ—4FF—F–öæÅ&Vv—7G&F–öâbb&÷rç†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVB’ÇÀ¢&÷WFU&VG’‡&÷rÇF&–fd÷F–öç2¢Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²33FC3“•ÒóC&rÕ²3C6#3%Ò‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3c†S†&EÒF—6&ÆVC¦÷6—G’ÓS#à¢·&÷ræ6†V6¶–æròÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óâ¢Å6fR6—¦S×³GÒóçÒ	î
+Ş	®n®®	¾	N ¢Âö'WGFöãà¢ÂöF—cà¢ÂöF—cà ¢·&÷rç†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVBò€¢ÆF—b6Æ74æÖSÒ&Ö"ÓB&÷VæFVB×†Â&÷&FW"&÷&FW"ÖÖ&W"Ó3ó3R&rÖÖ&W"ÓCóÓ2FW‡BÕ³…ÒFW‡BÖÖ&W"Ó#à¢Äf–ÆU7&VG6†VWB6—¦S×³GÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óãÆ#äõ26ögF6÷’Wf–FVæ6RWF†÷&—¦VBãÂö#â–6¶W"×†÷Fò&Wf–Wr—2'—76VBöæÇ’f÷"F†—2–×÷'FVB&÷râ6÷W&6S¢·&÷rç6÷W&6Tf–ÆTæÖWÇÂ.(	B'ÒÂ&÷r·&÷rç6÷W&6U&÷tçVÖ&W'ÇÂ.(	B'Òâ&V6öã¢·&÷rç†÷Fô'—75&V6öçÇÂ.(	B'Ğ¢ÂöF—cà¢’¢&÷rç&ööe÷W&Âò€¢Ãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ²6WE†÷Fõ¦ööÒƒ“²6WE†÷Fõ&Wf–Wt÷Vâ‡G'VR“²×Ò6Æ74æÖSÒ&Ö"ÓBfÆW‚rÖgVÆÂ—FV×2Ö6VçFW"vÓ2&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3cS#EÒÓ2FW‡BÖÆVgB†÷fW#¦&÷&FW"Õ²6cf#ƒF%Ò"&–ÖÆ&VÃÒ$VæÆ&vR&6VÂ&ööböâF†—267&VVâ#à¢Æ–Ör7&3×¶F—7Æ•&ööeW&ÇÒÇCÒ%&ööb"6Æ74æÖSÒ&‚Ó#rÓ#‚&÷VæFVBÖÆrö&¦V7BÖ6÷fW""óà¢ÆF—cãÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3c†S†&EÒ#ãÄ–ÖvT–6öâ6—¦S×³GÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óäd”TÄB$ôôb$T4T•dTCÂöF—cãÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒFW‡BÕ²3†F#F6UÒ#ä6Æ–6²FòVæÆ&vRöâF†—267&VVãÂöF—cãÂöF—cà¢Âö'WGFöãà¢·†÷Fõ&Wf–Wt÷Vâò€¢ÆF—b6Æ74æÖSÒ&f—†VB–ç6WBÓ¢Õ³#SÒfÆW‚—FV×2Ö6VçFW"§W7F–g’Ö6VçFW"&rÖ&Æ6²óƒRÓ2ÖC§Ób"&öÆSÒ&F–Æör"&–ÖÖöFÃÒ'G'VR"&–ÖÆ&VÃÒ%&6VÂ&ööb&Wf–Wr"öä6Æ–6³×²‚’Óâ6WE†÷Fõ&Wf–Wt÷Vâ†fÇ6R—Óà¢ÆF—b6Æ74æÖSÒ&fÆW‚Ö‚Ö‚Õ³“gf…ÒrÖgVÆÂÖ‚×rÕ³S…ÒfÆW‚Ö6öÂ÷fW&fÆ÷rÖ†–FFVâ&÷VæFVBÓ'†Â&÷&FW"&÷&FW"Õ²3&S#s%Ò&rÕ²3s#&5Ò6†F÷rÓ'†Â"öä6Æ–6³×²†WfVçB’ÓâWfVçBç7F÷&÷vF–öâ‚—Óà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ"&÷&FW"Ö"&÷&FW"Õ²36V5Ò‚ÓB’Ó2#à¢ÆF—cãÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ær×v–FW7BFW‡BÕ²6cf#ƒF%Ò#å&6VÂ·&÷rç&6VÅ÷6WVVæ6WÒ†÷FòfW&–f–6F–öãÂöF—cãÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒFW‡BÕ²3†F#F6UÒ#ç·&÷ræFVÆ—fW'•÷v•ö–BÇÂ&÷rç–6·Wö–GÓÂöF—cãÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"vÓ"#ãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WE†÷Fõ¦ööÒ‚‡b’ÓâÖF‚æÖ‚ƒãRÂbÒã#R’—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²3&S#s%Ò‚Ó2’Ó"FW‡B×6ÒföçBÖ&Æ6²FW‡B×v†—FR#î(‰#Âö'WGFöããÇ7â6Æ74æÖSÒ&Ö–â×rÓBFW‡BÖ6VçFW"FW‡B×‡2föçBÖ&öÆBFW‡BÕ²3–63&C•Ò#ç´ÖF‚ç&÷VæB‡†÷Fõ¦ööÒ¢—ÒSÂ÷7ããÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WE†÷Fõ¦ööÒ‚‡b’ÓâÖF‚æÖ–âƒ2Âb²ã#R’—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²3&S#s%Ò‚Ó2’Ó"FW‡B×6ÒföçBÖ&Æ6²FW‡B×v†—FR#â³Âö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WE†÷Fõ¦ööÒƒ—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²3&S#s%Ò‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&öÆBFW‡B×v†—FR#å&W6WCÂö'WGFöããÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚’Óâ6WE†÷Fõ&Wf–Wt÷Vâ†fÇ6R—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&rÕ²6cf#ƒF%Ò‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3cS#EÒ#ä6Æ÷6SÂö'WGFöããÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&Ö–âÖ‚ÓfÆW‚Ó÷fW&fÆ÷rÖWFò&rÕ²3#“%ÒÓ2FW‡BÖ6VçFW"#ãÆ–Ör7&3×¶F—7Æ•&ööeW&ÇÒÇC×²%&6VÂ"²&÷rç&6VÅ÷6WVVæ6R²"gVÆÂ&ööb'Ò6Æ74æÖSÒ&×‚ÖWFòÖ‚×rÖæöæR&÷VæFVBÖÆrö&¦V7BÖ6öçF–âG&ç6—F–öâ×G&ç6f÷&Ò"7G–ÆS×·²v–GFƒ¢7G&–ær‡†÷Fõ¦ööÒ¢’²"R"ÂÖ„†V–v‡C¢†÷Fõ¦ööÒÃÒò#s‡f‚"¢&æöæR"×ÒóãÂöF—cà¢ÂöF—cà¢ÂöF—cà¢’¢çVÆÇĞ¢Âóà¢’¢&÷ræ—4FF—F–öæÅ&Vv—7G&F–öâò€¢ÆF—b6Æ74æÖSÒ&Ö"ÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Ö7–âÓ3ó3R&rÖ7–âÓCóÓ2FW‡BÕ³…ÒFW‡BÖ7–âÓ#à¢ÅÇW26—¦S×³GÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óåF†—2&6VÂv2FFVB'’âWF†÷&—¦VBFFVçG'’W6W"gFW"F†RÖW&6†çB6†ævVBF†R–6·WVçF—G’â–6·WÖÆWfVÂWf–FVæ6RæBF†RVF—FVBFF—F–öâ&V6öâÇ’à¢ÂöF—cà¢’¢ÆF—b6Æ74æÖSÒ&Ö"ÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²6fcFcƒeÒóC&rÕ²6fcFcƒeÒóÓ2FW‡BÕ³…ÒFW‡BÕ²6fc–&EÒ#ãÄ–ÖvT–6öâ6—¦S×³GÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óç·&÷rç&ööe÷&Vcò%7F÷&VB&ööbW†—7G2'WB6÷VÆBæ÷B&R6V7W&VÇ’F—7Æ–VBâ#¢$æò&–FW"òG&—fW"&6VÂ†÷FòW†—7G2f÷"F†—2&6VÂâ'ÒÆ‡&VcÒ"2öFFÖVçG'’×†÷Fò"6Æ74æÖSÒ&ÖÂÓ"föçBÖ&Æ6²VæFW&Æ–æR#ä÷Vâ†÷Fò6†V6³ÂöãÂöF—cçĞ ¢²&÷ræ—4FF—F–öæÅ&Vv—7G&F–öâbb&÷rç†÷FõVæf–Æ&ÆT6¶æ÷vÆVFvVCóÆF—`¢FF×†÷Fò×&Wf–WsÒ'G'VR ¢6Æ74æÖSÒ&Ö"ÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²6cf#ƒF%Òó3&rÕ²3cS#EÒÓB ¢à¢ÆF—b6Æ74æÖSÒ&Ö"Ó2fÆW‚fÆW‚×w&—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ"#à¢ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2Ö6VçFW"vÓ"FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÕ²6cf#ƒF%Ò#à¢Ä–ÖvT–6öâ6—¦S×³GÒóâ†÷Fò&Wf–Wp¢ÂöF—cà¢Ç7â6Æ74æÖS×¶&÷VæFVBÖgVÆÂ&÷&FW"‚Ó2’ÓFW‡BÕ³…ÒföçBÖ&Æ6²G°¢&÷rç†÷Fõ&Wf–Wu7FGW2ÓÓÒ$$õdTB ¢ò&&÷&FW"ÖVÖW&ÆBÓSóC&rÖVÖW&ÆBÓSóFW‡BÖVÖW&ÆBÓ3 ¢¢&÷rç†÷Fõ&Wf–Wu7FGW2ÓÓÒ%$UUÄôEõ$UT•$TB ¢ò&&÷&FW"×&÷6RÓSóC&r×&÷6RÓSóFW‡B×&÷6RÓ3 ¢¢&&÷&FW"ÖÖ&W"ÓSóC&rÖÖ&W"ÓSóFW‡BÖÖ&W"Ó3 ¢ÖÓà¢·&÷rç†÷Fõ&Wf–Wu7FGW2ÇÂ%TäD”är$Ud”Ur'Ğ¢Â÷7ãà¢ÂöF—cà ¢ÆF—b6Æ74æÖSÒ&w&–BvÓ2Æs¦w&–BÖ6öÇ2Ó2#à¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢F—6&ÆVC×·&÷rç†÷Fõ&Wf–Wt'W7’ÇÂ&÷rç&ööe÷W&ÇĞ¢öä6Æ–6³×²‚’Óâ&Wf–Wu†÷Fò†–æFW‚Â$$õdR"—Ğ¢6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"ÖVÖW&ÆBÓSóC&rÖVÖW&ÆBÓSóÓ2FW‡BÖÆVgBFW‡BÕ³'…ÒföçBÖ&Æ6²FW‡BÖVÖW&ÆBÓ3F—6&ÆVC¦÷6—G’ÓS ¢à¢&÷fR†÷Fğ¢Ç7â6Æ74æÖSÒ&×BÓ&Æö6²FW‡BÕ³…ÒföçBÖæ÷&ÖÂFW‡BÕ²3†F#F6UÒ#ä6÷'&V7B&6VÂæB7Vff–6–VçFÇ’6ÆV"ãÂ÷7ãà¢Âö'WGFöãà ¢ÆÆ&VÂ6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"×&÷6RÓSóC&r×&÷6RÓSóÓ2FW‡BÕ³'…ÒFW‡B×&÷6RÓ##à¢Æ#å&V¦V7B&V6öãÂö#à¢Ç6VÆV7@¢6Æ74æÖSÒ&×BÓ"rÖgVÆÂ&÷VæFVBÖÆr&÷&FW"&÷&FW"×&÷6RÓSó3&rÕ²3###3eÒ‚Ó2’Ó"FW‡BÕ³…ÒFW‡B×v†—FR ¢fÇVS×·&÷rç†÷Fõ&V¦V7F–öå&V6öçĞ¢öä6†ævS×²†R’ÓâWFFU&÷r†–æFW‚Â²†÷Fõ&V¦V7F–öå&V6öã¢RçF&vWBçfÇVRÒ—Ğ¢à¢Æ÷F–öâfÇVSÒ"#å6VÆV7B&V6öî(
+cÂö÷F–öãà¢Æ÷F–öâfÇVSÒ$”ÔtUõTäd”Ä$ÄR#ä–ÖvRVæf–Æ&ÆSÂö÷F–öãà¢Æ÷F–öâfÇVSÒ%u$ôäuõ$4TÂ#åw&öær&6VÃÂö÷F–öãà¢Æ÷F–öâfÇVSÒ%Tä4ÄT%ôõ%ô$ÅU%%’#åVæ6ÆV"÷"&ÇW''“Âö÷F–öãà¢Æ÷F–öâfÇVSÒ%Tå$TÄDTEô”ÔtR#åVç&VÆFVB–ÖvSÂö÷F–öãà¢Æ÷F–öâfÇVSÒ%$4TÅôäõEõd•4”$ÄR#å&6VÂæ÷Bf—6–&ÆSÂö÷F–öãà¢Æ÷F–öâfÇVSÒ$EUÄ”4DUô”ÔtR#äGWÆ–6FR–ÖvSÂö÷F–öãà¢Æ÷F–öâfÇVSÒ$õD„U"#ä÷F†W#Âö÷F–öãà¢Â÷6VÆV7Cà¢ÂöÆ&VÃà ¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢F—6&ÆVC×·&÷rç†÷Fõ&Wf–Wt'W7’ÇÂ&÷rç†÷Fõ&V¦V7F–öå&V6öçĞ¢öä6Æ–6³×²‚’Óâ&Wf–Wu†÷Fò†–æFW‚Â%$T¤T5B"—Ğ¢6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"×&÷6RÓSóS&r×&÷6RÓc‚Ó2’Ó2FW‡BÕ³'…ÒföçBÖ&Æ6²FW‡B×v†—FRF—6&ÆVC¦÷6—G’ÓS ¢à¢&V¦V7Bf×²&WVW7B&R×WÆö@¢Ç7â6Æ74æÖSÒ&×BÓ&Æö6²FW‡BÕ³…ÒföçBÖæ÷&ÖÂFW‡B×&÷6RÓ#åF†R&–FW"&V6V—fW2&R×WÆöB&WV—&VÖVçBãÂ÷7ãà¢Âö'WGFöãà¢ÂöF—cà ¢·&÷rç†÷Fõ&V¦V7F–öå&V6öâò€¢ÇFW‡F&V¢&÷w3×³'Ğ¢6Æ74æÖSÒ&×BÓ2rÖgVÆÂ&÷VæFVBÖÆr&÷&FW"&÷&FW"×&÷6RÓSó3&rÕ²3###3eÒ‚Ó2’Ó"FW‡BÕ³…ÒFW‡B×v†—FRÆ6V†öÆFW#§FW‡B×6ÆFRÓS ¢Æ6V†öÆFW#Ò$÷F–öæÂFWF–Âf÷"F†R&–FW.(
+b ¢fÇVS×·&÷rç†÷Fõ&V¦V7F–öäæ÷FWĞ¢öä6†ævS×²†R’ÓâWFFU&÷r†–æFW‚Â²†÷Fõ&V¦V7F–öäæ÷FS¢RçF&vWBçfÇVRÒ—Ğ¢óà¢’¢çVÆÇĞ ¢²&÷rç†÷Fõ&Wf–WvVBò€¢ÆF—b6Æ74æÖSÒ&×BÓ2&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²6cf#ƒF%Òó#R&rÕ²6cf#ƒF%Òó‚Ó2’Ó"FW‡BÕ³…ÒFW‡BÕ²6ffC“†Ò#à¢&÷fRF†R†÷Fò&Vf÷&R6fRâ&V¦V7FVB÷"Væf–Æ&ÆR–ÖvR×W7B&R&R×WÆöFVB'’F†R&–FW"à¢ÂöF—cà¢’¢çVÆÇĞ¢ÂöF—cã¦çVÆÇĞ ¢ÆF—b6Æ74æÖSÒ&w&–Bw&–BÖ6öÇ2ÓvÓ2ÖC¦w&–BÖ6öÇ2Ó"†Ã¦w&–BÖ6öÇ2ÓB#à¢Äf–VÆBÆ&VÃÒ.	Î®n	î
+	®¢#ãÆ–çWB6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×·&÷rç&V6—–VçEöæÖWÒöä6†ævS×²†R’ÓâWFFU&÷r†–æFW‚Ç·&V6—–VçEöæÖS¦RçF&vWBçfÇVWÒ—ÒóãÂôf–VÆCà¢Äf–VÆBÆ&VÃÒ.	Î®n	î	n
+ş	N®‚#ãÆ–çWB6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×·&÷rç&V6—–VçE÷†öæWÒöä6†ævS×²†R’ÓâWFFU&÷r†–æFW‚Ç·&V6—–VçE÷†öæS¦RçF&vWBçfÇVWÒ—ÒóãÂôf–VÆCà¢ÅF÷vç6†—F&–fdf–VÆB&÷s×·&÷wÒ–æFWƒ×¶–æFW‡ÒWFFU&÷s×·WFFU&÷wÒF&–fd÷F–öç3×·F&–fd÷F–öç7Ò&÷f–FW$÷F–öç3×·&÷f–FW$÷F–öç7Òóà¢Äf–VÆBÆ&VÃÒ.
+	î	N®		®®
+	Î¾
+Ş	N¢†¶r’#ãÆ–çWBG—SÒ&çVÖ&W""7FWÒ#ã"6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×·&÷rçvV–v‡Eö¶wÒöä6†ævS×²†R“ÓçWFFU&÷r†–æFW‚Ç·vV–v‡Eö¶s¦RçF&vWBçfÇVSÓÓÒ"#ò"#¤çVÖ&W"†RçF&vWBçfÇVR—Ò—ÒóãÂôf–VÆCà¢Äf–VÆBÆ&VÃÒ.	Î®n	î	Î
+Ş	^®^
+Â#ãÇFW‡F&V&÷w3×³'Ò6Æ74æÖS×¶G¶–çWD6Æ77Ò&r×v†—FRFW‡BÖ&Æ6²Æ6V†öÆFW#¢FW‡B×6ÆFRÓSÒfÇVS×·&÷ræFVÆ—fW'•öFG&W77Òöä6†ævS×²†R“Óç°¢6öç7BFVÆ—fW'•öFG&W73ÖRçF&vWBçfÇVS°¢6öç7BæW‡E&÷WFS×&W6öÇfTFFVçG'•6W'f–6U&÷f–FW"‡&÷rçF÷vç6†—ÆFVÆ—fW'•öFG&W72ÇF&–fd÷F–öç2Ç¶fÆÆ&6µVæ¶æ÷våFõ&÷–Ã§G'VRÆ—FVÕ&–6S§&÷ræ—FVÕ÷&–6WÒ“°¢6öç7B÷F–öãÖæW‡E&÷WFRæ÷F–öâ2F&–fd÷F–öçÆçVÆÃ°¢WFFU&÷r†–æFW‚ÆæW‡E&÷WFRç&÷f–FW$6öFS÷°¢FVÆ—fW'•öFG&W72À¢ââç&÷WF–æuF6‚†æW‡E&÷WFRÇ²ââç&÷rÆFVÆ—fW'•öFG&W77Ò’À¢âââ†÷F–öã÷¶FVÆ—fW'•ö6†&vW3§F&–fe&FR†÷F–öâÇ&÷ræ7W7FöÖW%÷F–W"—Ó§·Ò’À¢ÖW76vS§&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR’À¢Ó§¶FVÆ—fW'•öFG&W72Âââç&÷WF–æuF6‚†æW‡E&÷WFRÇ²ââç&÷rÆFVÆ—fW'•öFG&W77Ò’ÆÖW76vS§&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR—Ò“°¢×ÒóãÂôf–VÆCà¢Äf–VÆBÆ&VÃÒ.
+ş	N®	î®®
+nN~¢#à¢Ç6VÆV7BF—6&ÆVC×²F–W$66W73òæ6å÷6VÆV7E÷F–W'Ò6Æ74æÖS×¶G¶–çWD6Æ77Ò&r×v†—FRFW‡BÖ&Æ6²F—6&ÆVC¦7W'6÷"Öæ÷BÖÆÆ÷vVBF—6&ÆVC¦÷6—G’ÓcÒfÇVS×·&÷ræ7W7FöÖW%÷F–W'Òöä6†ævS×²†R“Óç°¢6öç7B7W7FöÖW%÷F–W#ÖRçF&vWBçfÇVS°¢6öç7B÷F–öãÒ‡F&–fd÷F–öç22F&–fd÷F–öåµÒ’æf–æB‚†—FVÒ“Óæ—FVÒæFW7F–æF–öåöæÖSÓÓ×&÷rçF÷vç6†—bb‚&÷rç6W'f–6U÷&÷f–FW%ö6öFWÇÆ—FVÒç&÷f–FW%ö6öFSÓÓ×&÷rç6W'f–6U÷&÷f–FW%ö6öFR’“°¢6öç7BF–W%ö÷fW'&–FSÔ&ööÆVâ‡F–W$66W73òç&Vv—7FW&VBbbF–W$66W73òç&öf–ÆU÷F–W"bb7W7FöÖW%÷F–W"Ó×F–W$66W72ç&öf–ÆU÷F–W"“°¢WFFU&÷r†–æFW‚Ç¶7W7FöÖW%÷F–W"ÇF–W%ö÷fW'&–FRÂâââ†÷F–öã÷¶FVÆ—fW'•ö6†&vW3§F&–fe&FR†÷F–öâÆ7W7FöÖW%÷F–W"—Ó§·Ò—Ò“°¢×Óà¢Æ÷F–öãå5DäD$CÂö÷F–öããÆ÷F–öãå$õ”ÃÂö÷F–öããÆ÷F–öãä4ôÔÔ•DÔTåCÂö÷F–öãà¢Â÷6VÆV7Cà¢Ç7â6Æ74æÖSÒ&×BÓ&Æö6²FW‡BÕ³—…ÒÆVF–ærÓBFW‡BÕ²3†F#F6UÒ#à¢·&÷ræ7W7FöÖW%÷F–W"ÓÓÒ%5DäD$B"ò7FæF&B+rG·F–W%'VÆRæ–æ6ÇVFVEö¶róò7Ò¶r–æ6ÇVFVF¢&÷ræ7W7FöÖW%÷F–W"ÓÓÒ%$õ”Â"ò&÷–Â+rG·F–W%'VÆRæ–æ6ÇVFVEö¶róòWÒ¶r–æ6ÇVFVF¢6öÖÖ—FÖVçB+rG·F–W%'VÆRæ–æ6ÇVFVEö¶róòWÒ¶r–æ6ÇVFVB+rG·F–W%'VÆRæ6öÖÖ—FÖVçEöÖ–å÷v—2óòSÒv—2F&vWFĞ¢·F–W%'VÆRæW‡G&÷W%ö¶rÒçVÆÂò+rG¶ÖöæW’‡F–W%'VÆRæW‡G&÷W%ö¶r—ÒW"7F'FVBW‡G&¶v¢"'Ğ¢·&÷rçF–W%ö÷fW'&–FRò"+rWF†÷&—¦VB&6VÂ÷fW'&–FR"¢F–W$66W73òç&Vv—7FW&VBò"+rÖW&6†çB&öf–ÆR"¢"+r÷W&F÷"6VÆV7F–öâ'Ğ¢Â÷7ãà¢Âôf–VÆCà¢Äf–VÆBÆ&VÃÒ.	Ş	N®n
+ÎN®	î
+ş
+	¾
+Ş
+ş
+^
+Î‚#à¢Ç6VÆV7B6Æ74æÖS×¶G¶–çWD6Æ77Ò&r×v†—FRFW‡BÖ&Æ6¶ÒfÇVS×·&÷rç6W'f–6U÷G—WÒöä6†ævS×²†R“ÓçWFFU&÷r†–æFW‚Ç·6W'f–6U÷G—S¦RçF&vWBçfÇVWÒ—Óà¢Æ÷F–öâfÇVSÒ%5DäD$B#å5DäD$CÂö÷F–öãà¢Æ÷F–öâfÇVSÒ$U…$U52#äU…$U53Âö÷F–öãà¢Æ÷F–öâfÇVSÒ%4ÔUôD’#å4ÔRD“Âö÷F–öãà¢Æ÷F–öâfÇVSÒ$äU…EôD’#ääU…BD“Âö÷F–öãà¢Æ÷F–öâfÇVSÒ$T4ôäôÕ’#äT4ôäôÕ“Âö÷F–öãà¢Â÷6VÆV7Cà¢Âôf–VÆCà¢Äf–VÆBÆ&VÃÒ.NŞ
+Î®n	^
+şb#à¢Ç6VÆV7B6Æ74æÖS×¶G¶–çWD6Æ77Ò&r×v†—FRFW‡BÖ&Æ6¶ÒfÇVS×·&÷ræÖ÷VçEöVçG'•÷G—WÒöä6†ævS×²†R“Óâ°¢6öç7BæW‡CÖRçF&vWBçfÇVR2Ö÷VçEG—S°¢6öç7BF6ƒ¦ç“×¶Ö÷VçEöVçG'•÷G—S¦æW‡GÓ°¢–b†—4W†7B†æW‡B’—·F6‚æ—FVÕ÷&–6SÒ"#·F6‚æFVÆ—fW'•ö6†&vW3Ò"#·Ğ¢VÇ6R–b†æW‡CÓÓÒ$DTÄ•dU%•ô4„$tUôôäÅ’"—·F6‚æ—FVÕ÷&–6SÒ"#·F6‚æÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçCÒ"#·Ğ¢VÇ6RF6‚æÖW&6†çE÷7FFVE÷F÷FÅöÖ÷VçCÒ"#°¢6öç7BæW‡E&÷s×²ââç&÷rÂââçF6‡Ó°¢6öç7BæW‡E&÷WFS×&÷WFTf÷%&÷r†æW‡E&÷rÇF&–fd÷F–öç2“°¢WFFU&÷r†–æFW‚Ç²ââçF6‚Âââç&÷WF–æuF6‚†æW‡E&÷WFRÆæW‡E&÷r’ÆÖW76vS§&÷f–FW%&÷WF–ætÖW76vR†æW‡E&÷WFR—Ò“°¢×Óà¢´ÔõTåEõE•U2æÖ‡cÓãÆ÷F–öâ¶W“×·gÒfÇVS×·gÓç´4ôÄÄT5D”ôåôÔUD„ôEôÕ•·e×ÓÂö÷F–öãâ—Ğ¢Â÷6VÆV7Cà¢Âôf–VÆCà¢ÂöF—cà ¢·&÷WFRç7FF–öå&WV—&VCóÆF—bFFÖ†–v‡v’×7FF–öâ×6VÆV7F–öâ×c“Ò'G'VR"6Æ74æÖSÒ&×BÓB&÷VæFVB×†Â&÷&FW"&÷&FW"ÖÖ&W"Ó3óC&rÖÖ&W"ÓCóÓB#à¢ÆF—b6Æ74æÖSÒ&Ö"Ó"FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÖÖ&W"Ó##ä†–v‡v’'W2×7FF–öâ†æFöfbò
+	Ş	^Î.
+Ş	®³ÂöF—cà¢ÆF—b6Æ74æÖSÒ&w&–BvÓ2Æs¦w&–BÖ6öÇ2Õ³g%óg%Ò#à¢Äf–VÆBÆ&VÃÒ$†æFöfb7FF–öâ#à¢Ç6VÆV7B6Æ74æÖS×¶G¶–çWD6Æ77Ò&r×v†—FRFW‡BÖ&Æ6¶ÒfÇVS×·&÷ræ†æFöfe7FF–öä6öFWÒöä6†ævS×²†WfVçB“Óç°¢6öç7B†æFöfe7FF–öä6öFSÖWfVçBçF&vWBçfÇVS°¢6öç7B¶æ÷vãÔDDôTåE%•ô„äDôdeõ5DD”ôå2æf–æB‚‡7FF–öâ“Óç7FF–öâæ6öFSÓÓÖ†æFöfe7FF–öä6öFR“°¢WFFU&÷r†–æFW‚Ç°¢†æFöfe7FF–öä6öFRÀ¢†æFöfe7FF–öäæÖS¦†æFöfe7FF–öä6öFSÓÓÒ$õD„U"#÷&÷ræ†æFöfe7FF–öäæÖS¢†¶æ÷vãòææÖWÇÂ""’À¢ÖW76vS¦†æFöfe7FF–öä6öFSò$†–v‡v’†æFöfb7FF–öâ6VÆV7FVBâ6fRv–ÆÂ&WF–âF†—2VF—FVB7FF–öâ76–væÖVçBâ#¢$6†ö÷6RF†R‡—6–6Â†–v‡v’†æFöfb7FF–öâ&Vf÷&R6f–ærâ"À¢Ò“°¢×Óà¢Æ÷F–öâfÇVSÒ"#ä6†ö÷6RF†R‡—6–6Â7FF–öî(
+cÂö÷F–öãà¢´DDôTåE%•ô„äDôdeõ5DD”ôå2æÖ‚‡7FF–öâ“ÓãÆ÷F–öâ¶W“×·7FF–öâæ6öFWÒfÇVS×·7FF–öâæ6öFWÓç·7FF–öâææÖWÓÂö÷F–öãâ—Ğ¢Â÷6VÆV7Cà¢Âôf–VÆCà¢·&÷ræ†æFöfe7FF–öä6öFSÓÓÒ$õD„U"#óÄf–VÆBÆ&VÃÒ$÷F†W"7FF–öâæÖR#à¢Æ–çWB6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×·&÷ræ†æFöfe7FF–öäæÖWÒöä6†ævS×²†WfVçB“ÓçWFFU&÷r†–æFW‚Ç¶†æFöfe7FF–öäæÖS¦WfVçBçF&vWBçfÇVWÒ—ÒÆ6V†öÆFW#Ò$VçFW"F†RW†7B7FF–öâòvFRæÖR"óà¢Âôf–VÆCã£ÆF—b=wÓŞ­¢G§²ÚîÆ­y×ÆöB7FvVBG¶–×÷'E–ÆöBç&÷w2æÆVæwF‡Ò&÷r‡2’7&÷72G·–6·W÷&FW"æÆVæwF‡Ò–6·W‡2’â&Wf–Wr6÷&R×&Vv–öâvöövÆR–ç2æB6†ö÷6R†–v‡v’7FF–öç2v†W&R&WVW7FVC²÷WG6–FRÖ6÷&R&÷–Â&÷WFW26¶—Ö2âG¶–×÷'E–ÆöBç6¶—†÷Fõ&Wf–Wsò%F†RVF—FVBõ2×6ögF6÷’Wf–FVæ6R÷F–öâ—27F—fR#¢%–6¶W"×†÷Fò&÷fÂ—27F–ÆÂ&WV—&VB'Òæ ¢¦f–ÆÆVBG¶–×÷'E–ÆöBç&÷w2æÆVæwF‡Ò&÷r‡2’g&öÒG¶–×÷'E–ÆöBæf–ÆTæÖWÒâ&Wf–Wr–ævöâôÖæFÆ’ôæ—–—FrvöövÆR–ç2æB6†ö÷6Rç’&WV—&VB†–v‡v’†æFöfb7FF–öç3²÷F†W"÷WG6–FRÖ6÷&R&÷WFW26¶—Ö2âG¶–×÷'E–ÆöBç6¶—†÷Fõ&Wf–Wsò%F†RVF—FVBõ2×6ögF6÷’Wf–FVæ6R÷F–öâ—27F—fR#¢%–6¶W"×†÷Fò&÷fÂ—27F–ÆÂ&WV—&VB'ÒâF†VâW6R6Æ7VÆFRÆÂæB6fRÆÂæ ¢“°¢Ğ ¢7–æ2gVæ7F–öâFE&Vv—7G&F–öç2‚—°¢–b‚6VÆV7FVE–6·WÇÂFF–æu&Vv—7G&F–öâ’&WGW&ã°¢6öç7B6÷VçCÔÖF‚çG'Væ2„çVÖ&W"†FF—F–öæÄ6÷VçB’“°¢6öç7B&V6öãÖFF—F–öæÅ&V6öâçG&–Ò‚“°¢–b‚çVÖ&W"æ—4–çFVvW"†6÷VçB’ÇÂ6÷VçCÃÇÂ6÷VçCãS—°¢6WD'VÆ´ÖW76vR‚$VçFW"âFF—F–öæÂ&Vv—7G&F–öâ6÷VçBg&öÒFòSâ"“°¢&WGW&ã°¢Ğ¢–b‚&V6öâ—°¢6WD'VÆ´ÖW76vR‚$VçFW"F†RÖW&6†çBw2&V6öâf÷"6†æv–ærF†R–6·WVçF—G’â"“°¢&WGW&ã°¢Ğ¢6WDFF–æu&Vv—7G&F–öâ‡G'VR“°¢6WD'VÆ´ÖW76vR‚""“°¢G'—°¢6öç7B&W7öç6SÖv—B‡7W&6R2ç’’ç'2‚&&UöFFöVçG'•öf–ææ6–Å÷c%öFE÷&Vv—7G&F–öç2"Ç·÷–ÆöC§°¢&WVW7Eö–C§&WVW7D–B‚$DDôTåE%•ôDEõ$Tt•5E$D”ôå2"’À¢–6·Wö–C§6VÆV7FVE–6·Wç–6·Wö–BÀ¢6÷VçBÀ¢&V6öâÀ¢×Ò“°¢–b‡&W7öç6RæW'&÷"’F‡&÷r&W7öç6RæW'&÷#°¢6öç7B&W7VÇC×&W7öç6RæFFÇÇ·Ó°¢–b‚&W7VÇBæö²ÇÂ&W7VÇBçW'6—7FVCÓÓÖfÇ6R’F‡&÷ræWrW'&÷"‡&W7VÇCòæW'&÷'3òå³ÓòæÖW76vWÇÂ$FF—F–öæÂ&Vv—7G&F–öâWF†÷&—¦F–öâf–ÆVBâ"“°¢6öç7B6WVVæ6W3Ò„'&’æ—4'&’‡&W7VÇBç6WVVæ6W2“÷&W7VÇBç6WVVæ6W3¥µÒ’æÖ‡÷6—F—fT–çB’æf–ÇFW"„&ööÆVâ“°¢6öç7BæWtWF†÷&—¦VC×÷6—F—fT–çB‡&W7VÇBæWF†÷&—¦VE÷&6VÇ2“°¢6WE–6·W2‚†7W'&VçB“Óæ7W'&VçBæÖ‚‡–6·W“Óç–6·Wç–6·Wö–CÓÓ×6VÆV7FVE–6·Wç–6·Wö–C÷²ââç–6·WÇfW&–f–VE÷&6VÇ3¦æWtWF†÷&—¦VGÓ§–6·W’“°¢6WE&÷w2‚†7W'&VçB“Óç°¢6öç7BW†—7F–æsÖæWr6WB†7W'&VçBæÖ‚‡&÷r“Óç&÷rç&6VÅ÷6WVVæ6R’“°¢6öç7BFF—F–öç3×6WVVæ6W2æf–ÇFW"‚‡6WVVæ6S¦çVÖ&W"“ÓâW†—7F–æræ†2‡6WVVæ6R’’æÖ‚‡6WVVæ6S¦çVÖ&W"“Óç&6VÅ&÷tg&öÕ&ööb€¢²ââç6VÆV7FVE–6·WÇfW&–f–VE÷&6VÇ3¦æWtWF†÷&—¦VGÒÇF–W$66W72Ç·ÒÇ6WVVæ6P¢’“°¢&WGW&â²ââæ7W'&VçBÂââæFF—F–öç5Òç6÷'B‚†Æ"“Óæç&6VÅ÷6WVVæ6RÖ"ç&6VÅ÷6WVVæ6R“°¢Ò“°¢6WDFF—F–öæÅ&V6öâ‚""“°¢6WDFF—F–öæÄ6÷VçBƒ“°¢6WD'VÆ´ÖW76vR†WF†÷&—¦VBG·6WVVæ6W2æÆVæwF‡ÒÖW&6†çBÖFFVB&Vv—7G&F–öâ‡2“¢&6VÂG·6WVVæ6W2æ¦ö–â‚"Â"—Òæ“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WD'VÆ´ÖW76vR†W'&÷#òæÖW76vWÇÂ%Væ&ÆRFòFBF†RÖW&6†çB×&WVW7FVB&Vv—7G&F–öç2â"“°¢Öf–æÆÇ—°¢6WDFF–æu&Vv—7G&F–öâ†fÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâ7&VFTæDvVæW&FUv–&–ÆÂ‚—°¢–b‚6VÆV7FVE–6·W–B’&WGW&ã° ¢6WEv–&–ÆÄ'W7’‡G'VR“°¢6WEv–&–ÆÄÖW76vR‚""“°¢6WEv–&–ÆÄÖW76vT¶–æB‚%5T44U52"“° ¢G'—°¢v—BW'6—7DÆÅ&÷w2‚%4dUôÄÅô$Tdõ$UôtTäU$DUõt”$”ÄÂ"“° ¢6öç7B&WVW7D–BĞ¢%t”$”ÄÃ¢"°¢6VÆV7FVE–6·W–B°¢#¢"°¢€¢G—Vöb7'—FòÓÒ'VæFVf–æVB"b`¢G—Vöb7'—Fòç&æFöÕUT”BÓÓÒ&gVæ7F–öâ ¢ò7'—Fòç&æFöÕUT”B‚¢¢FFRææ÷r‚¢“° ¢6öç7B²FFÂW'&÷"ÒÒv—B‡7W&6R2ç’’ç'2€¢&&UöFFöVçG'•öf–ææ6–Å÷c%ö7&VFU÷v–&–ÆÂ"À¢°¢÷–ÆöC¢°¢&WVW7Eö–C¢&WVW7D–BÀ¢–6·Wö–C¢6VÆV7FVE–6·W–BÀ¢G'•÷'Vã¢fÇ6RÀ¢ÒÀ¢Ğ¢“° ¢–b†W'&÷"’F‡&÷rW'&÷#° ¢–b‚FFòæö²—°¢6öç7B'4ÖW76vRĞ¢FFòæW'&÷'0¢òæÖ‚†—FVÓ¦ç’“Óæ—FVÓòæÖW76vR¢æf–ÇFW"„&ööÆVâ¢æ¦ö–â‚""’ÇÀ¢FFòæÖW76vRÇÀ¢FFòæ6öFRÇÀ¢%v–&–ÆÂ7&VF–öâf–ÆVBâ#° ¢F‡&÷ræWrW'&÷"‡'4ÖW76vR“°¢Ğ ¢6öç7B7–æ2Òv—B7–æ5v–&–ÆÅ7GVF–õc#"‡°¢–6·W–C¢6VÆV7FVE–6·W–BÀ¢ÖW&6†çD6öFS¢6VÆV7FVE–6·WòæÖW&6†çEö–BÀ¢ÖW&6†çDæÖS¢6VÆV7FVE–6·WòæÖW&6†çEöæÖRÀ¢Ò“° ¢6öç7BW‡V7FVBÒ&÷w2æÆVæwFƒ°¢6öç7B&–çF&ÆRÒçVÖ&W"‡7–æ3òç&–çF&ÆUö6÷VçBÇÂ“°¢–b‡&–çF&ÆRÂW‡V7FVB’°¢F‡&÷ræWrW'&÷"€¢v–&–ÆÂ7&VF–öâv2æ÷B6ö×ÆWFVC¢G·&–çF&ÆWÒöbG¶W‡V7FVGÒ&6VÂ‡2’&V6†VBv–&–ÆÂ7GVF–òæ ¢“°¢Ğ ¢6öç7Bv–&–ÆÄ6öçFW‡BÒ°¢–6·W–C¢6VÆV7FVE–6·W–BÂ–6·Wö–C¢6VÆV7FVE–6·W–BÀ¢v–&–ÆÄæó¢FFòçv–&–ÆÅöæòÇÂçVÆÂÂv–&–ÆÅöæó¢FFòçv–&–ÆÅöæòÇÂçVÆÂÀ¢&6VÄ6÷VçC¢&–çF&ÆRÂ&6VÅö6÷VçC¢&–çF&ÆRÂ7&VFVDC¢æWrFFR‚’çFô•4õ7G&–ær‚’À¢Ó°¢G'’°¢6öç7BVæ6öFVBÒ¥4ôâç7G&–æv–g’‡v–&–ÆÄ6öçFW‡B“°¢v–æF÷rç6W76–öå7F÷&vRç6WD—FVÒ‚&'&—F—VÓ¦Æ7BÖ7&VFVB×v–&–ÆÂ"ÂVæ6öFVB“°¢v–æF÷ræÆö6Å7F÷&vRç6WD—FVÒ‚&'&—F—VÓ¦Æ7BÖ7&VFVB×v–&–ÆÂ"ÂVæ6öFVB“°¢v–æF÷ræF—7F6„WfVçB†æWr7W7FöÔWfVçB‚&'&—F—VÓ§v–&–ÆÂÖ7&VFVB"Â²FWF–Ã¢v–&–ÆÄ6öçFW‡BÒ’“°¢Ò6F6‚·Ğ¢6WEv–&–ÆÄÖW76vR€¢v–&–ÆÂ7&VFVBÂÆ—fR×7–æ6VBæBfW&–f–VB–âv–&–ÆÂ7GVF–ó¢G·&–çF&ÆWÒ&6VÂ‡2’+r°¢†FFòçv–&–ÆÅöæòÇÂ6VÆV7FVE–6·W–B¢“°¢6WEv–&–ÆÄÖW76vT¶–æB‚%5T44U52"“°¢v–æF÷rç6WEF–ÖV÷WB‚‚“Óç°¢v–æF÷ræÆö6F–öâæ†6ƒÖ2÷v–&–ÆÂ×7GVF–ó÷–6·Wö–CÒG¶Væ6öFUU$”6ö×öæVçB‡6VÆV7FVE–6·W–B—ÒgW#ÓGƒbg&–çFW#Ôä•ôåõõ6°¢ÒÃ3S“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WEv–&–ÆÄÖW76vT¶–æB‚$U%$õ""“°¢6WEv–&–ÆÄÖW76vR€¢W'&÷#òæÖW76vRÇÂ%v–&–ÆÂ7&VF–öâf–ÆVBâ ¢“°¢Öf–æÆÇ—°¢6WEv–&–ÆÄ'W7’†fÇ6R“°¢Ğ¢Ğ  ¢gVæ7F–öâFôFFUF–ÖTÆö6ÅfÇVR†FFS¤FFR“§7G&–æw°¢6öç7B6†–gFVCÖæWrFFR†FFRævWEF–ÖR‚’ÖFFRævWEF–ÖW¦öæTöfg6WB‚’£có“°¢&WGW&â6†–gFVBçFô•4õ7G&–ær‚’ç6Æ–6RƒÃb“°¢Ğ ¢gVæ7F–öâÇ”F÷væÆöE&ævR‡&ævS¢$ÄÂ'Â%DôD’'Â$Ä5Eó#Eô„õU%2'Â%D„•5õtTT²'Â%D„•5ôÔôåD‚"—°¢–b‡&ævSÓÓÒ$ÄÂ"—°¢6WDF÷væÆöDg&öÒ‚""“°¢6WDF÷væÆöEFò‚""“°¢&WGW&ã°¢Ğ¢6öç7Bæ÷sÖæWrFFR‚“°¢ÆWBg&öÓÖæWrFFR†æ÷r“°¢–b‡&ævSÓÓÒ%DôD’"—°¢g&öÒç6WD†÷W'2ƒÃÃÃ“°¢ÖVÇ6R–b‡&ævSÓÓÒ$Ä5Eó#Eô„õU%2"—°¢g&öÓÖæWrFFR†æ÷rævWEF–ÖR‚’Ó#B£c£c£“°¢ÖVÇ6R–b‡&ævSÓÓÒ%D„•5ôÔôåD‚"—°¢g&öÓÖæWrFFR†æ÷rævWDgVÆÅ–V"‚’Ææ÷rævWDÖöçF‚‚’ÃÃÃÃÃ“°¢ÖVÇ6W°¢6öç7BF“Ò†æ÷rævWDF’‚’³b’Ss°¢g&öÒç6WDFFR†æ÷rævWDFFR‚’ÖF’“°¢g&öÒç6WD†÷W'2ƒÃÃÃ“°¢Ğ¢6WDF÷væÆöDg&öÒ‡FôFFUF–ÖTÆö6ÅfÇVR†g&öÒ’“°¢6WDF÷væÆöEFò‡FôFFUF–ÖTÆö6ÅfÇVR†æ÷r’“°¢Ğ ¢gVæ7F–öâW‡÷'DFFUF–ÖR‡fÇVS§Væ¶æ÷vâ“§7G&–æw°¢6öç7B&s×FW‡B‡fÇVR’çG&–Ò‚“°¢–b‚&r’&WGW&â"#°¢6öç7BFFSÖæWrFFR‡&r“°¢–b„çVÖ&W"æ—4æâ†FFRævWEF–ÖR‚’’’&WGW&â&s°¢&WGW&âFFRçFôÆö6ÆU7G&–ær‚&VâÔt""Ç°¢–V#¢&çVÖW&–2"ÆÖöçFƒ¢#"ÖF–v—B"ÆF“¢#"ÖF–v—B"À¢†÷W#¢#"ÖF–v—B"ÆÖ–çWFS¢#"ÖF–v—B"Ç6V6öæC¢#"ÖF–v—B"Æ†÷W##¦fÇ6P¢Ò“°¢Ğ ¢gVæ7F–öâW‡÷'D6VÆÂ‡fÇVS§Væ¶æ÷vâ“§7G&–æwÆçVÖ&W'Æ&ööÆVç°¢–b‡fÇVSÓÖçVÆÂ’&WGW&â"#°¢–b‡G—VöbfÇVSÓÓÒ'7G&–ær"ÇÂG—VöbfÇVSÓÓÒ&çVÖ&W""ÇÂG—VöbfÇVSÓÓÒ&&ööÆVâ"’&WGW&âfÇVS°¢G'—·&WGW&â¥4ôâç7G&–æv–g’‡fÇVR“·Ö6F6‡·&WGW&â7G&–ær‡fÇVR“·Ğ¢Ğ ¢7–æ2gVæ7F–öâF÷væÆöDFFVçG'•&Vv—7G&F–öâ‚—°¢6WDF÷væÆöD'W7’‡G'VR“°¢6WDF÷væÆöDÖW76vR‚""“°¢G'—°¢6öç7Bg&öÔFFSÖF÷væÆöDg&öÓöæWrFFR†F÷væÆöDg&öÒ“¦çVÆÃ°¢6öç7BFôFFSÖF÷væÆöEFóöæWrFFR†F÷væÆöEFò“¦çVÆÃ°¢–b†g&öÔFFRbbçVÖ&W"æ—4æâ†g&öÔFFRævWEF–ÖR‚’’’F‡&÷ræWrW'&÷"‚$–çfÆ–Bg&öÒFFR÷F–ÖRâ"“°¢–b‡FôFFRbbçVÖ&W"æ—4æâ‡FôFFRævWEF–ÖR‚’’’F‡&÷ræWrW'&÷"‚$–çfÆ–BFòFFR÷F–ÖRâ"“°¢–b†g&öÔFFRbbFôFFRbbg&öÔFFRævWEF–ÖR‚“çFôFFRævWEF–ÖR‚’’F‡&÷ræWrW'&÷"‚$g&öÒFFR÷F–ÖR×W7B&RV&Æ–W"F†âFòFFR÷F–ÖRâ"“°¢–b†F÷væÆöE66÷SÓÓÒ$5U%$TåEõ”4µU"bb6VÆV7FVE–6·W–B’F‡&÷ræWrW'&÷"‚%6VÆV7B–6·W&Vf÷&RW6–ær7W'&VçB–6·WöæÇ’â"“° ¢6öç7BvU6—¦SÓ°¢ÆWBöfg6WCÓ°¢6öç7B&V6÷&G3¦ç•µÓÕµÓ°¢v†–ÆR‡G'VR—°¢ÆWBVW'“¦ç“Ò‡7W&6R2ç’¢æg&öÒ‚&&UöFFöVçG'•÷&6VÅöFWF–Ç2"¢ç6VÆV7B‚"¢"¢æ÷&FW"‚'6fVEöB"Ç¶66VæF–æs§G'VWÒ¢ç&ævR†öfg6WBÆöfg6WB·vU6—¦RÓ“°¢–b†g&öÔFFR’VW'“×VW'’æwFR‚'6fVEöB"Æg&öÔFFRçFô•4õ7G&–ær‚’“°¢–b‡FôFFR’VW'“×VW'’æÇFR‚'6fVEöB"ÇFôFFRçFô•4õ7G&–ær‚’“°¢–b†F÷væÆöE66÷SÓÓÒ$5U%$TåEõ”4µU"’VW'“×VW'’æW‚'–6·Wö–B"Ç6VÆV7FVE–6·W–B“°¢6öç7B&W7öç6SÖv—BVW'“°¢–b‡&W7öç6RæW'&÷"’F‡&÷r&W7öç6RæW'&÷#°¢6öç7B&F6ƒÔ'&’æ—4'&’‡&W7öç6RæFF“÷&W7öç6RæFF¥µÓ°¢&V6÷&G2çW6‚‚ââæ&F6‚“°¢–b†&F6‚æÆVæwFƒÇvU6—¦R’'&V³°¢öfg6WB³×vU6—¦S°¢Ğ ¢–b‚&V6÷&G2æÆVæwF‚—°¢6WDF÷væÆöDÖW76vR‚$æòFFVçG'’&Vv—7G&F–öâ&V6÷&G2ÖF6†VBF†R6VÆV7FVBF–ÖVÆ–æRâ"“°¢&WGW&ã°¢Ğ ¢6öç7BW‡÷'E&÷w3×&V6÷&G2æÖ‚‡&÷s¦ç’“Óâ‡°¢%&Vv—7G&F–öâ6fVBF–ÖR#¦W‡÷'DFFUF–ÖR‡&÷rç6fVEöB’À¢%6fVB'’#§FW‡B‡&÷rç6fVEö'•öVÖ–Â’À¢%–6·W”B#§FW‡B‡&÷rç–6·Wö–B’À¢%&6VÂ6WVVæ6R#§&÷rç&6VÅ÷6WVVæ6Sóò""À¢$FVÆ—fW'’v’”B#§FW‡B‡&÷ræFVÆ—fW'•÷v•ö–B’À¢%v’”B#§FW‡B‡&÷rçv•ö–B’À¢$ÖW&6†çB”B#§FW‡B‡&÷ræÖW&6†çEö–B’À¢$7W7FöÖW"”B#§FW‡B‡&÷ræ7W7FöÖW%ö–B’À¢%&V6—–VçBæÖR#§FW‡B‡&÷rç&V6—–VçEöæÖR’À¢$6öçF7B#§FW‡B‡&÷ræ6öçF7Eöæõó’À¢$6öçF7B"#§FW‡B‡&÷ræ6öçF7Eöæõó"’À¢%F÷vç6†—#§FW‡B‡&÷rçF÷vç6†—’À¢%F÷vç6†—¶W’#§FW‡B‡&÷rçF÷vç6†—ö¶W’’À¢$6—G’#§FW‡B‡&÷ræ6—G’’À¢%7FFRò&Vv–öâ#§FW‡B‡&÷rç&Vv–öå÷7FFR’À¢%&V6—–VçBFG&W72#§FW‡B‡&÷rç&V6—–VçEöFG&W72’À¢$7W7FöÖW"F–W"#§FW‡B‡&÷ræ7W7FöÖW%÷F–W"’À¢%6W'f–6R&÷f–FW"#§FW‡B‡&÷ræf–ææ6–Å÷V÷FSòç6W'f–6U÷&÷f–FW%ö6öFR’À¢$FVÆ—fW'’&Vv–öâ#§FW‡B‡&÷ræFVÆ—fW'•÷&Vv–öçÇÇ&÷ræf–ææ6–Å÷V÷FSòæFVÆ—fW'•÷&Vv–öâ’À¢$FVÆ—fW'’&÷WFRÖöFR#§FW‡B‡&÷ræFVÆ—fW'•÷&÷WFUöÖöFWÇÇ&÷ræf–ææ6–Å÷V÷FSòæFVÆ—fW'•÷&÷WFUöÖöFR’À¢$vöövÆRÆö6F–öâ&WV—&VB#§&÷ræÆö6F–öå÷&WV—&VCó÷&÷ræf–ææ6–Å÷V÷FSòæÆö6F–öå÷&WV—&VCóò""À¢$†–v‡v’†æFöfb7FF–öâ6öFR#§FW‡B‡&÷ræ†æFöfe÷7FF–öåö6öFWÇÇ&÷ræf–ææ6–Å÷V÷FSòæ†æFöfe÷7FF–öåö6öFR’À¢$†–v‡v’†æFöfb7FF–öâæÖR#§FW‡B‡&÷ræ†æFöfe÷7FF–öåöæÖWÇÇ&÷ræf–ææ6–Å÷V÷FSòæ†æFöfe÷7FF–öåöæÖR’À¢%6W'f–6RG—R#§FW‡B‡&÷rç6W'f–6U÷G—WÇÇ&÷ræf–ææ6–Å÷V÷FSòç6W'f–6U÷G—R’À¢%vV–v‡B†¶r’#§&÷rçvV–v‡Eö¶sóò""À¢$6†&vV&ÆRvV–v‡B†¶r’#§&÷ræ6†&vV&ÆU÷vV–v‡Eö¶sóò""À¢$–æ6ÇVFVBvV–v‡B†¶r’#§&÷ræ–æ6ÇVFVEö¶sóò""À¢$W‡G&vV–v‡B†¶r’#§&÷ræW‡G&ö¶sóò""À¢$Ö÷VçBVçG'’G—R#§FW‡B‡&÷ræÖ÷VçEöVçG'•÷G—R’À¢$—FVÒ&–6R#§&÷ræ—FVÕ÷&–6Sóò""À¢$FVÆ—fW'’6†&vW2#§&÷ræFVÆ—fW'•ö6†&vW3ó÷&÷ræFVÆ—fW'•öfVSóò""À¢$4ôBÖ÷VçB#§&÷ræ6öEöÖ÷VçCóò""À¢$7GVÂ6öÆÆV7B#§&÷ræ7GVÅö6öÆÆV7Cóò""À¢$4$Ò7W&6†&vR#§&÷ræ6&Õ÷7W&6†&vSóò""À¢$÷F†W"7W&6†&vR#§&÷ræ÷F†W%÷7W&6†&vSóò""À¢$ÖW&6†çB–&ÆR6†&vW2#§&÷ræÖW&6†çE÷–&ÆUö6†&vW3óò""À¢$÷F†W"ÖW&6†çB7&VF—G2#§&÷ræ÷F†W%öÖW&6†çEö7&VF—G3óò""À¢$&6RF&–fb#§&÷ræ&6U÷F&–fcóò""À¢%vV–v‡B7W&6†&vR#§&÷rçvV–v‡E÷7W&6†&vSóò""À¢$w&÷727—7FVÒFVÆ—fW'’6†&vR#§&÷ræw&÷75÷7—7FVÕöFVÆ—fW'•ö6†&vSóò""À¢$6öÖÖ—FÖVçB&VgVæB#§&÷ræ6öÖÖ—FÖVçE÷&VgVæCóò""À¢$æWB7—7FVÒFVÆ—fW'’6†&vR#§&÷rææWE÷7—7FVÕöFVÆ—fW'•ö6†&vSóò""À¢$VffV7F—fRFV6Æ&VBFVÆ—fW'’6†&vR#§&÷ræVffV7F—fUöFV6Æ&VEöFVÆ—fW'•ö6†&vSóò""À¢$FVÆ—fW'’F–ffW&Væ6R#§&÷ræFVÆ—fW'•öF–ffW&Væ6Sóò""À¢%6WGFÆVÖVçBF—&V7F–öâ#§FW‡B‡&÷rç6WGFÆVÖVçEöF—&V7F–öâ’À¢$ÖW&6†çB6WGFÆVÖVçBF§W7FÖVçB#§&÷ræÖW&6†çE÷6WGFÆVÖVçEöF§W7FÖVçCóò""À¢$ÖW&6†çBf–æÂ6WGFÆVÖVçB#§&÷ræÖW&6†çEöf–æÅ÷6WGFÆVÖVçEöÖ÷VçCóò""À¢$f–ææ6–ÂfÆ–FF–öâ#§FW‡B‡&÷ræf–ææ6–Å÷fÆ–FF–öå÷7FGW2’À¢$f–ææ6–ÂfÆ–FF–öâÖW76vR#§FW‡B‡&÷ræf–ææ6–Å÷fÆ–FF–öåöÖW76vR’À¢$f–ææ6–Â6Æ7VÆF–öâfW'6–öâ#§FW‡B‡&÷ræf–ææ6–Åö6Æ7VÆF–öå÷fW'6–öâ’À¢$f–ææ6–Â6Æ7VÆFVBB#¦W‡÷'DFFUF–ÖR‡&÷ræf–ææ6–Åö6Æ7VÆFVEöB’À¢%&6VÂ7FGW2#§FW‡B‡&÷rç&6VÅ÷7FGW2’À¢%&–çB7FGW2#§FW‡B‡&÷rç&–çE÷7FGW2’À¢%v&V†÷W6R7FGW2#§FW‡B‡&÷rçv&V†÷W6U÷7FGW2’À¢%v’ÖævVÖVçB7FGW2#§FW‡B‡&÷rçv•öÖævVÖVçE÷7FGW2’À¢$f–ææ6R7FGW2#§FW‡B‡&÷ræf–ææ6U÷7FGW2’À¢$76–væVB&–FW"#§FW‡B‡&÷ræ76–væVE÷&–FW%öæÖR’À¢%7WW'f—6÷"7FGW2#§FW‡B‡&÷rç7WW'f—6÷%÷7FGW2’À¢%&VÖ&²#§FW‡B‡&÷rç&VÖ&²’À¢%&ööb†÷Fò#§FW‡B‡&÷rç&ööe÷†÷Fõ÷F‚’À¢$õ26ögF6÷’6÷W&6Rf–ÆR#§FW‡B‡&÷rç6÷W&6Uöf–ÆUöæÖR’À¢$õ26ögF6÷’6÷W&6R&÷r#§&÷rç6÷W&6U÷&÷uöçVÖ&W#óò""À¢%6÷W&6R&÷r6÷VçB#§&÷rç6÷W&6U÷&÷uö6÷VçCóò""À¢%†÷FòWf–FVæ6RÖöFR#§FW‡B‡&÷rç†÷FõöWf–FVæ6UöÖöFR’À¢%†÷Fò'—72&V6öâ#§FW‡B‡&÷rç†÷Fõö'—75÷&V6öâ’À¢$õ2–×÷'FVBB#¦W‡÷'DFFUF–ÖR‡&÷ræ÷5ö–×÷'FVEöB’À¢$õ2–×÷'FVB'’#§FW‡B‡&÷ræ÷5ö–×÷'FVEö'’’À¢$f–ææ6–ÂV÷FR¥4ôâ#¦W‡÷'D6VÆÂ‡&÷ræf–ææ6–Å÷V÷FR’À¢$7&VFVBB#¦W‡÷'DFFUF–ÖR‡&÷ræ7&VFVEöB’À¢%WFFVBB#¦W‡÷'DFFUF–ÖR‡&÷rçWFFVEöB’À¢Ò’“° ¢6öç7B„Å5ƒ¦ç“Öv—B–×÷'B‚'†Ç7‚"“°¢6öç7Bv÷&¶&öö³Õ„Å5‚çWF–Ç2æ&ööµöæWr‚“°¢6öç7Bv÷&·6†VWCÕ„Å5‚çWF–Ç2æ§6öå÷Fõ÷6†VWB†W‡÷'E&÷w2“°¢6öç7B¶W—3Ôö&¦V7Bæ¶W—2†W‡÷'E&÷w5³×ÇÇ·Ò“°¢v÷&·6†VWE²"6öÇ2%ÓÖ¶W—2æÖ‚†¶W’“Óç°¢ÆWBv–GFƒÔÖF‚æÖ‚ƒ"Æ¶W’æÆVæwF‚³"“°¢f÷"†6öç7B—FVÒöbW‡÷'E&÷w2ç6Æ–6RƒÃ#S’’v–GFƒÔÖF‚æÖ‚‡v–GF‚Å7G&–ær†—FVÕ¶¶W•Óóò""’æÆVæwF‚³"“°¢&WGW&â·v6ƒ¤ÖF‚æÖ–â‡v–GF‚ÃC"—Ó°¢Ò“°¢„Å5‚çWF–Ç2æ&ööµöVæE÷6†VWB‡v÷&¶&öö²Çv÷&·6†VWBÂ$FFVçG'’&Vv—7G&F–öâ"“° ¢6öç7BÆÄf–VÆE&÷w3×&V6÷&G2æÖ‚‡&÷s¦ç’“Óäö&¦V7Bæg&öÔVçG&–W2€¢ö&¦V7BæVçG&–W2‡&÷r’æÖ‚…¶¶W’ÇfÇVUÒ“Óå¶¶W’ÆW‡÷'D6VÆÂ‡fÇVR•Ò¢’“°¢6öç7BÆÄf–VÆG56†VWCÕ„Å5‚çWF–Ç2æ§6öå÷Fõ÷6†VWB†ÆÄf–VÆE&÷w2“°¢6öç7BÆÄf–VÆD¶W—3Ôö&¦V7Bæ¶W—2†ÆÄf–VÆE&÷w5³×ÇÇ·Ò“°¢ÆÄf–VÆG56†VWE²"6öÇ2%ÓÖÆÄf–VÆD¶W—2æÖ‚†¶W’“Óâ‡·v6ƒ¤ÖF‚æÖ–â„ÖF‚æÖ‚ƒBÆ¶W’æÆVæwF‚³"’ÃC"—Ò’“°¢„Å5‚çWF–Ç2æ&ööµöVæE÷6†VWB‡v÷&¶&öö²ÆÆÄf–VÆG56†VWBÂ$ÆÂ&Vv—7FW&VBf–VÆG2"“° ¢6öç7B7VÖÖ'•&÷w3Õ°¢´f–VÆC¢%&W÷'B"ÅfÇVS¢$FFVçG'’&Vv—7G&F–öâF–ÖVÆ–æRW‡÷'B'ÒÀ¢´f–VÆC¢$vVæW&FVBB"ÅfÇVS¦W‡÷'DFFUF–ÖR†æWrFFR‚’çFô•4õ7G&–ær‚’—ÒÀ¢´f–VÆC¢$g&öÒ"ÅfÇVS¦F÷væÆöDg&ö×ÇÂ$ÆÂf–Æ&ÆR†—7F÷'’'ÒÀ¢´f–VÆC¢%Fò"ÅfÇVS¦F÷væÆöEF÷ÇÂ$ÆFW7Bf–Æ&ÆR'ÒÀ¢´f–VÆC¢%66÷R"ÅfÇVS¦F÷væÆöE66÷SÓÓÒ$5U%$TåEõ”4µU#ò‚$7W'&VçB–6·W¢"·6VÆV7FVE–6·W–B“¢$ÆÂ66W76–&ÆRFFVçG'’&Vv—7G&F–öç2'ÒÀ¢´f–VÆC¢%F–ÖVÆ–æRf–VÆB"ÅfÇVS¢'6fVEöB„FFVçG'’&Vv—7G&F–öâ6fVBF–ÖR’'ÒÀ¢´f–VÆC¢%v÷&¶&öö²FWF–Â"ÅfÇVS¢$g&–VæFÇ’÷W&F–öæÂ6†VWBÇW2WfW'’66W76–&ÆR7F÷&VBf–VÆB'ÒÀ¢´f–VÆC¢%&V6÷&B6÷VçB"ÅfÇVS§&V6÷&G2æÆVæwF‡ÒÀ¢Ó°¢6öç7B7VÖÖ'•6†VWCÕ„Å5‚çWF–Ç2æ§6öå÷Fõ÷6†VWB‡7VÖÖ'•&÷w2“°¢7VÖÖ'•6†VWE²"6öÇ2%ÓÕ··v6ƒ£#'ÒÇ·v6ƒ£C‡ÕÓ°¢„Å5‚çWF–Ç2æ&ööµöVæE÷6†VWB‡v÷&¶&öö²Ç7VÖÖ'•6†VWBÂ$W‡÷'B7VÖÖ'’"“° ¢6öç7B7F×ÖæWrFFR‚’çFô•4õ7G&–ær‚’ç&WÆ6R‚õ³¥EÒörÂ"Ò"’ç6Æ–6RƒÃb“°¢6öç7B66÷U'CÖF÷væÆöE66÷SÓÓÒ$5U%$TåEõ”4µU#ò‚%ò"·6VÆV7FVE–6·W–Bç&WÆ6R‚õµæ×¤Õ£Ó•òÕÒörÂ"Ò"’“¢"#°¢„Å5‚çw&—FTf–ÆR‡v÷&¶&öö²Â$'&—F—VÕôFFôVçG'•õ&Vv—7G&F–öâ"·66÷U'B²%ò"·7F×²"ç†Ç7‚"Ç¶6ö×&W76–öã§G'VWÒ“°¢6WDF÷væÆöDÖW76vR‚$F÷væÆöFVB"·&V6÷&G2æÆVæwF‚çFôÆö6ÆU7G&–ær‚&VâÕU2"’²"FFVçG'’&Vv—7G&F–öâ&V6÷&B‡2’â"“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WDF÷væÆöDÖW76vR†W'&÷#òæÖW76vWÇÂ%Væ&ÆRFòF÷væÆöBFFVçG'’&Vv—7G&F–öâ–æf÷&ÖF–öââ"“°¢Öf–æÆÇ—°¢6WDF÷væÆöD'W7’†fÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâF÷væÆöD6öç6öÆ–FFVDÆö6F–öå&Wf–Wr‚—°¢–b‚6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æÆVæwF‚—°¢6WD'VÆ´ÖW76vR‚%F†W&R&RæòÆö6F–öâ×&Wf–Wr&÷w2FòF÷væÆöBâ"“°¢&WGW&ã°¢Ğ¢6WDÆö6F–öå&Wf–Wt'W7’‡G'VR“°¢6WD'VÆ´ÖW76vR‚""“°¢G'—°¢6öç7B„Å5ƒ¦ç“Öv—B–×÷'B‚'†Ç7‚"“°¢6öç7BW‡÷'E&÷w3Ö6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æÖ‚‡&÷r“Óâ‡°¢$FVÆ—fW'’v’”B#§&÷ræFVÆ—fW'•÷v•ö–BÀ¢%–6·W”B#§&÷rç–6·Wö–BÀ¢%&6VÂ6WVVæ6R#§&÷rç&6VÅ÷6WVVæ6RÀ¢%&V6—–VçBæÖR#§&÷rç&V6—–VçEöæÖRÀ¢%F÷vç6†—#§&÷rçF÷vç6†—À¢$FVÆ—fW'’FG&W72#§&÷ræFVÆ—fW'•öFG&W72À¢%7VvvW7FVBÆF—GVFR#§&÷ræÆö6F–öä6æF–FFSòæÆF—GVFSóò""À¢%7VvvW7FVBÆöæv—GVFR#§&÷ræÆö6F–öä6æF–FFSòæÆöæv—GVFSóò""À¢$6÷'&V7FVBÆF—GVFR#¢""À¢$6÷'&V7FVBÆöæv—GVFR#¢""À¢$7F–öâ#¢$Å•ô4õ%$T5D”ôâ"À¢%&V6öâ#¢$Æö6F–öâ6÷'&V7FVBF‡&÷Vv‚6öç6öÆ–FFVB&Wf–Wrv÷&¶&öö²"À¢Ò’“°¢6öç7Bv÷&·6†VWCÕ„Å5‚çWF–Ç2æ§6öå÷Fõ÷6†VWB†W‡÷'E&÷w2“°¢v÷&·6†VWE²"6öÇ2%ÓÕ³‚Ã‚ÃBÃ#"Ã#BÃC‚Ã‚Ã‚Ã‚Ã‚Ã#ÃCeÒæÖ‚‡v6‚“Óâ‡·v6‡Ò’“°¢v÷&·6†VWE²"WFöf–ÇFW"%Ó×·&Vc¦¤ÂG¶W‡÷'E&÷w2æÆVæwF‚³ÖÓ°¢6öç7B–ç7G'V7F–öç3Õ„Å5‚çWF–Ç2æö÷Fõ÷6†VWB…°¢²$'&—F—VÒÆö6F–öâ&Wf–Wr&÷VæB×G&—%ÒÀ¢²#"Â$f÷"V6‚Å•ô4õ%$T5D”ôâ&÷rÂVçFW"6÷'&V7FVBÆF—GVFRæB6÷'&V7FVBÆöæv—GVFRâ%ÒÀ¢²#""Â%Fò66WBF†R7VvvW7FVB–âv—F†÷WBf—7VÂ&Wf–WrÂ6†ævR7F–öâFò4´•õ$Ud”Urâ%ÒÀ¢²#2"Â$Fòæ÷B6†ævRFVÆ—fW'’v’”BÂ–6·W”BÂ÷"&6VÂ6WVVæ6Râ%ÒÀ¢²#B"Â%WÆöBF†R6ö×ÆWFVBv÷&¶&öö²g&öÒF†R6ÖRFFVçG'’67&VVââ%ÒÀ¢²#R"Â$WfW'’6†ævR÷"6¶——2W&Ö—76–öâÖ6†V6¶VBæBw&—GFVâFòF†RVF—BG&–Ââ%ÒÀ¢Ò“°¢–ç7G'V7F–öç5²"6öÇ2%ÓÕ³‚ÃÒæÖ‚‡v6‚“Óâ‡·v6‡Ò’“°¢6öç7Bv÷&¶&öö³Õ„Å5‚çWF–Ç2æ&ööµöæWr‚“°¢„Å5‚çWF–Ç2æ&ööµöVæE÷6†VWB‡v÷&¶&öö²Çv÷&·6†VWBÂ$Æö6F–öâ&Wf–Wr"“°¢„Å5‚çWF–Ç2æ&ööµöVæE÷6†VWB‡v÷&¶&öö²Æ–ç7G'V7F–öç2Â$–ç7G'V7F–öç2"“°¢6öç7B7F×ÖæWrFFR‚’çFô•4õ7G&–ær‚’ç&WÆ6R‚õ³¥EÒörÂ"Ò"’ç6Æ–6RƒÃb“°¢„Å5‚çw&—FTf–ÆR‡v÷&¶&öö²Æ'&—F—VÕô6öç6öÆ–FFVEôÆö6F–öåõ&Wf–WuòG·7F×Òç†Ç7†Ç¶6ö×&W76–öã§G'VWÒ“°¢6WD'VÆ´ÖW76vR†F÷væÆöFVBG¶W‡÷'E&÷w2æÆVæwF‡ÒÆö6F–öâ×&Wf–Wr&÷r‡2’–âöæRW†6VÂv÷&¶&öö²æ“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WD'VÆ´ÖW76vR†W'&÷#òæÖW76vWÇÂ%Væ&ÆRFòF÷væÆöBF†R6öç6öÆ–FFVBÆö6F–öâ×&Wf–Wrv÷&¶&öö²â"“°¢Öf–æÆÇ—°¢6WDÆö6F–öå&Wf–Wt'W7’†fÇ6R“°¢Ğ¢Ğ ¢gVæ7F–öâÇ”Æö6F–öå&Wf–Wu&W7VÇG2‡&W7VÇG3¦ç•µÒ—°¢6öç7B&W7VÇD'”–CÖæWrÖ‡&W7VÇG2æÖ‚‡&W7VÇB“Óå·FW‡B‡&W7VÇBæFVÆ—fW'•÷v•ö–B’Ç&W7VÇEÒ’“°¢6öç7BÇ•Fõ&÷w3Ò‡6÷W&6U&÷w3¥&6VÅ&÷uµÒ“Óç6÷W&6U&÷w2æÖ‚‡&÷r“Óç°¢6öç7B&W7VÇC×&W7VÇD'”–BævWB‡&÷ræFVÆ—fW'•÷v•ö–B“°¢–b‚&W7VÇB’&WGW&â&÷s°¢6öç7BÆF—GVFSÔçVÖ&W"‡&W7VÇBæÆF—GVFR“°¢6öç7BÆöæv—GVFSÔçVÖ&W"‡&W7VÇBæÆöæv—GVFR“°¢6öç7BÆö6F–öä6æF–FFS¤FVÆ—fW'”Æö6F–öã×°¢âââ‡&÷ræÆö6F–öä6æF–FFWÇÇ°¢FVÆ—fW'•v”–C§&÷ræFVÆ—fW'•÷v•ö–BÆÆ&VÃ§&÷ræFVÆ—fW'•öFG&W72Æ÷&–v–æÄFG&W73§&÷ræFVÆ—fW'•öFG&W72À¢VævÆ—6„FG&W73§&÷ræFVÆ—fW'•öFG&W72ÇF÷vç6†—§&÷rçF÷vç6†—ÆÖF6„ÆWfVÃ¢$ÔåTÂ"Æ6öæf–FVæ6S£À¢Ò’À¢FVÆ—fW'•v”–C§&÷ræFVÆ—fW'•÷v•ö–BÆÆF—GVFRÆÆöæv—GVFRÆÖF6„ÆWfVÃ¢$ÔåTÂ"Æ6öæf–FVæ6S£À¢6ö÷&F–æFU6÷W&6S§FW‡B‡&W7VÇBæ6ö÷&F–æFU÷6÷W&6R—ÇÂ$DDôTåE%•ôÔåTÅô%TÄµô4õ%$T5D”ôâ"Ç&Wf–Wu7FGW3¢$44UDTB"À¢Ó°¢&WGW&â²ââç&÷rÆÆö6F–öå7FGW3¢%5”ä4TB"26öç7BÆÆö6F–öä6æF–FFRÆÖW76vS¢$Æö6F–öâ66WFVBg&öÒF†R6öç6öÆ–FFVB&Wf–Wrv÷&¶&öö²æB7–æ6‡&öæ—¦VBv—F‚v—Æââ'Ó°¢Ò“°¢6WE&÷w2‚†7W'&VçB“ÓæÇ•Fõ&÷w2†7W'&VçB’“°¢6WD'VÆ´–×÷'DG&gG2‚†7W'&VçB“Óäö&¦V7Bæg&öÔVçG&–W2„ö&¦V7BæVçG&–W2†7W'&VçB’æÖ‚…·–6·W–BÆG&gEÒ“Óå°¢–6·W–BÇ²ââæG&gBÇ&÷w3¦Ç•Fõ&÷w2†G&gBç&÷w2—ÒÀ¢Ò’’“°¢Ğ ¢7–æ2gVæ7F–öâ6¶—ÆÄÆö6F–öå&Wf–Ww2‚—°¢6öç7B6¶—&ÆSÖ6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æf–ÇFW"‚‡&÷r“Óà¢&÷ræÆö6F–öä6æF–FFRbgfÆ–D×–æÖ$6ö÷&F–æFR‡&÷ræÆö6F–öä6æF–FFRæÆöæv—GVFRÇ&÷ræÆö6F–öä6æF–FFRæÆF—GVFR¢“°¢–b‚6¶—&ÆRæÆVæwF‚—°¢6WD'VÆ´ÖW76vR‚$æò&Wf–Wr&÷r7W'&VçFÇ’†2fÆ–B7VvvW7FVB–âFò66WBâ&WG'’Æö6F–öâ7–æ2÷"W6RF†R6÷'&V7F–öâv÷&¶&öö²â"“°¢&WGW&ã°¢Ğ¢–b‚v–æF÷ræ6öæf—&Ò†66WBG·6¶—&ÆRæÆVæwF‡Ò7W'&VçFÇ’7VvvW7FVB–â‡2’v—F†÷WBgW'F†W"f—7VÂ&Wf–WsòWfW'’FV6—6–öâv–ÆÂ&R&V6÷&FVB–âF†RVF—BG&–Âæ’’&WGW&ã°¢6WDÆö6F–öå&Wf–Wt'W7’‡G'VR“°¢6WD'VÆ´ÖW76vR‚""“°¢G'—°¢6öç7BÆÅ&W7VÇG3¦ç•µÓÕµÓ°¢f÷"†ÆWBöfg6WCÓ¶öfg6WCÇ6¶—&ÆRæÆVæwFƒ¶öfg6WB³Ó#—°¢6öç7B&F6ƒ×6¶—&ÆRç6Æ–6R†öfg6WBÆöfg6WB³#’æÖ‚‡&÷r“Óâ‡°¢FVÆ—fW'•÷v•ö–C§&÷ræFVÆ—fW'•÷v•ö–BÇ–6·Wö–C§&÷rç–6·Wö–BÇ&6VÅ÷6WVVæ6S§&÷rç&6VÅ÷6WVVæ6RÀ¢F÷vç6†—§&÷rçF÷vç6†—ÆFVÆ—fW'•öFG&W73§&÷ræFVÆ—fW'•öFG&W72À¢ÆF—GVFS§&÷ræÆö6F–öä6æF–FFRæÆF—GVFRÆÆöæv—GVFS§&÷ræÆö6F–öä6æF–FFRæÆöæv—GVFRÀ¢7F–öã¢%4´•õ$Ud”Ur"Ç&V6öã¢$÷W&F÷"'VÆ²Ö66WFVBF†R7VvvW7FVB–âv—F†÷WBgW'F†W"f—7VÂÖ&Wf–Wrâ"À¢Ò’“°¢6öç7B&W7öç6SÖv—B‡7W&6R2ç’’ç'2‚&&UöFVÆ—fW'•öÆö6F–öå÷&Wf–Wuö&F6…÷c#2"Ç·÷–ÆöC§°¢&WVW7Eö–C§&WVW7D–B‚$Äô4D”ôåõ$Ud”Uuõ4´•ôÄÂ"’Ç&÷w3¦&F6‚À¢×Ò“°¢–b‡&W7öç6RæW'&÷"’F‡&÷r&W7öç6RæW'&÷#°¢–b‚&W7öç6RæFFòæö²’F‡&÷ræWrW'&÷"‡&W7öç6RæFFòæW'&÷'3òå³ÓòæÖW76vWÇÂ$'VÆ²Æö6F–öâ×&Wf–Wr6¶—f–ÆVBâ"“°¢ÆÅ&W7VÇG2çW6‚‚âââ„'&’æ—4'&’‡&W7öç6RæFFç&÷w2“÷&W7öç6RæFFç&÷w3¥µÒ’“°¢Ğ¢Ç”Æö6F–öå&Wf–Wu&W7VÇG2†ÆÅ&W7VÇG2“°¢6WDÆö6F–öå&VÆöEFö¶Vâ‚‡Fö¶Vâ“ÓçFö¶Vâ³“°¢6öç7B&VÖ–æ–æsÖ6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æÆVæwF‚ÖÆÅ&W7VÇG2æÆVæwFƒ°¢6WD'VÆ´ÖW76vR†66WFVBæBVF—FVBG¶ÆÅ&W7VÇG2æÆVæwF‡Ò7VvvW7FVB–â‡2’v—F†÷WBgW'F†W"&Wf–WrâG·&VÖ–æ–æsãöG·&VÖ–æ–æwÒ&÷r‡2’7F–ÆÂæVVB6÷'&V7FVB6ö÷&F–æFW2æ¢"ÆÂÆö6F–öâ×&Wf–Wr&÷w2&Ræ÷r&VG’f÷"v’vVæW&F–öââ'Ö“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WD'VÆ´ÖW76vR†W'&÷#òæÖW76vWÇÂ%Væ&ÆRFò6¶—F†RÆö6F–öâ&Wf–Ww2â"“°¢Öf–æÆÇ—°¢6WDÆö6F–öå&Wf–Wt'W7’†fÇ6R“°¢Ğ¢Ğ ¢7–æ2gVæ7F–öâWÆöD6öç6öÆ–FFVDÆö6F–öå&Wf–Wr†f–ÆSó¤f–ÆR—°¢–b‚f–ÆR’&WGW&ã°¢6WDÆö6F–öå&Wf–Wt'W7’‡G'VR“°¢6WD'VÆ´ÖW76vR‚""“°¢G'—°¢–b‚õÂç†Ç7‚Bö’çFW7B†f–ÆRææÖR’’F‡&÷ræWrW'&÷"‚$6†ö÷6RF†R6ö×ÆWFVB'&—F—VÒÆö6F–öâ×&Wf–Wr„Å5‚v÷&¶&öö²â"“°¢6öç7B„Å5ƒ¦ç“Öv—B–×÷'B‚'†Ç7‚"“°¢6öç7Bv÷&¶&öö³Õ„Å5‚ç&VB†v—Bf–ÆRæ'&”'VffW"‚’Ç·G—S¢&'&’"Æ6VÆÄFFW3§G'VRÇ&s¦fÇ6WÒ“°¢6öç7B6†VWC×v÷&¶&öö²å6†VWG5²$Æö6F–öâ&Wf–Wr%×ÇÇv÷&¶&öö²å6†VWG5·v÷&¶&öö²å6†VWDæÖW5³ÕÓ°¢6öç7B–×÷'FVCÕ„Å5‚çWF–Ç2ç6†VWE÷Fõö§6öãÅ&V6÷&CÇ7G&–ærÇVæ¶æ÷vããâ‡6†VWBÇ¶FVgfÃ¢""Ç&s¦fÇ6WÒ“°¢–b‚–×÷'FVBæÆVæwF‚’F‡&÷ræWrW'&÷"‚%F†RÆö6F–öâ&Wf–Wr6†VWB6öçF–ç2æò&÷w2â"“°¢6öç7B¶æ÷vå&÷w3ÖæWrÖ…²ââäö&¦V7BçfÇVW2†'VÆ´–×÷'DG&gG2’æfÆDÖ‚†G&gB“ÓæG&gBç&÷w2’Âââç&÷w5ÒæÖ‚‡&÷r“Óå·&÷ræFVÆ—fW'•÷v•ö–BÇ&÷uÒ’“°¢6öç7B–ÆöE&÷w3Ö–×÷'FVBæÖ‚†VçG'’Æ–æFW‚“Óç°¢6öç7BFVÆ—fW'•v”–C×FW‡B†VçG'•²$FVÆ—fW'’v’”B%Ò’çG&–Ò‚“°¢6öç7B7W'&VçCÖ¶æ÷vå&÷w2ævWB†FVÆ—fW'•v”–B“°¢–b‚FVÆ—fW'•v”–GÇÂ7W'&VçB’F‡&÷ræWrW'&÷"†W†6VÂ&÷rG¶–æFW‚³'Ó¢FVÆ—fW'’v’”B—2Ö—76–ær÷"—2æ÷B–âF†R7W'&VçBWF†÷&—¦VB&Wf–Wrv÷&·76Ræ“°¢6öç7B7F–öã×FW‡B†VçG'•²$7F–öâ%×ÇÂ$Å•ô4õ%$T5D”ôâ"’çG&–Ò‚’çFõWW$66R‚“°¢–b‚²$Å•ô4õ%$T5D”ôâ"Â%4´•õ$Ud”Ur%Òæ–æ6ÇVFW2†7F–öâ’’F‡&÷ræWrW'&÷"†W†6VÂ&÷rG¶–æFW‚³'Ó¢7F–öâ×W7B&RÅ•ô4õ%$T5D”ôâ÷"4´•õ$Ud”Uræ“°¢6öç7B6÷'&V7FVDÆCÔçVÖ&W"†VçG'•²$6÷'&V7FVBÆF—GVFR%Ò“°¢6öç7B6÷'&V7FVDÆæsÔçVÖ&W"†VçG'•²$6÷'&V7FVBÆöæv—GVFR%Ò“°¢6öç7B7VvvW7FVDÆCÔçVÖ&W"†VçG'•²%7VvvW7FVBÆF—GVFR%×ÇÆ7W'&VçBæÆö6F–öä6æF–FFSòæÆF—GVFR“°¢6öç7B7VvvW7FVDÆæsÔçVÖ&W"†VçG'•²%7VvvW7FVBÆöæv—GVFR%×ÇÆ7W'&VçBæÆö6F–öä6æF–FFSòæÆöæv—GVFR“°¢6öç7BÆF—GVFSÖ7F–öãÓÓÒ%4´•õ$Ud”Ur#÷7VvvW7FVDÆC¦6÷'&V7FVDÆC°¢6öç7BÆöæv—GVFSÖ7F–öãÓÓÒ%4´•õ$Ud”Ur#÷7VvvW7FVDÆæs¦6÷'&V7FVDÆæs°¢–b‚fÆ–D×–æÖ$6ö÷&F–æFR†Æöæv—GVFRÆÆF—GVFR’’F‡&÷ræWrW'&÷"†W†6VÂ&÷rG¶–æFW‚³'Ó¢VçFW"fÆ–B×–æÖ"ÆF—GVFRæBÆöæv—GVFRfÇVW2f÷"G¶FVÆ—fW'•v”–GÒæ“°¢&WGW&â°¢FVÆ—fW'•÷v•ö–C¦FVÆ—fW'•v”–BÀ¢–6·Wö–C§FW‡B†VçG'•²%–6·W”B%Ò’À¢&6VÅ÷6WVVæ6S§÷6—F—fT–çB†VçG'•²%&6VÂ6WVVæ6R%Ò’À¢F÷vç6†—¦7W'&VçBçF÷vç6†—À¢FVÆ—fW'•öFG&W73¦7W'&VçBæFVÆ—fW'•öFG&W72À¢ÆF—GVFRÆÆöæv—GVFRÆ7F–öâÀ¢&V6öã§FW‡B†VçG'•²%&V6öâ%×ÇÂ$Æö6F–öâ6÷'&V7FVBF‡&÷Vv‚6öç6öÆ–FFVB&Wf–Wrv÷&¶&öö²"’çG&–Ò‚’À¢6÷W&6Uöf–ÆUöæÖS¦f–ÆRææÖRÀ¢6÷W&6U÷&÷uöçVÖ&W#¦–æFW‚³"À¢Ó°¢Ò“°¢6öç7BÆÅ&W7VÇG3¦ç•µÓÕµÓ°¢f÷"†ÆWBöfg6WCÓ¶öfg6WCÇ–ÆöE&÷w2æÆVæwFƒ¶öfg6WB³Ó#—°¢6öç7B&F6ƒ×–ÆöE&÷w2ç6Æ–6R†öfg6WBÆöfg6WB³#“°¢6öç7B&W7öç6SÖv—B‡7W&6R2ç’’ç'2‚&&UöFVÆ—fW'•öÆö6F–öå÷&Wf–Wuö&F6…÷c#2"Ç·÷–ÆöC§°¢&WVW7Eö–C§&WVW7D–B‚$Äô4D”ôåõ$Ud”Uuõ„Å5‚"’Ç6÷W&6Uöf–ÆUöæÖS¦f–ÆRææÖRÇ&÷w3¦&F6‚À¢×Ò“°¢–b‡&W7öç6RæW'&÷"’F‡&÷r&W7öç6RæW'&÷#°¢–b‚&W7öç6RæFFòæö²’F‡&÷ræWrW'&÷"‡&W7öç6RæFFòæW'&÷'3òå³ÓòæÖW76vWÇÆÆö6F–öâ&Wf–Wr&F6‚G´ÖF‚æfÆö÷"†öfg6WBó#’³Òf–ÆVBæ“°¢ÆÅ&W7VÇG2çW6‚‚âââ„'&’æ—4'&’‡&W7öç6RæFFç&÷w2“÷&W7öç6RæFFç&÷w3¥µÒ’“°¢Ğ¢Ç”Æö6F–öå&Wf–Wu&W7VÇG2†ÆÅ&W7VÇG2“°¢6WDÆö6F–öå&VÆöEFö¶Vâ‚‡Fö¶Vâ“ÓçFö¶Vâ³“°¢6WD'VÆ´ÖW76vR†Æ–VBæBVF—FVBG¶ÆÅ&W7VÇG2æÆVæwF‡Ò&Wf–WvVBÆö6F–öâ‡2’âF†W6R&÷w2&Ræ÷r&VG’f÷"6Æ7VÆFRÆÂÂ6fRÆÂÂæBv’vVæW&F–öâæ“°¢Ö6F6‚†W'&÷#¦ç’—°¢6WD'VÆ´ÖW76vR†W'&÷#òæÖW76vWÇÂ%Væ&ÆRFòÇ’F†RÆö6F–öâ×&Wf–Wrv÷&¶&öö²â"“°¢Öf–æÆÇ—°¢6WDÆö6F–öå&Wf–Wt'W7’†fÇ6R“°¢–b†Æö6F–öå&Wf–Wt–çWE&Vbæ7W'&VçB’Æö6F–öå&Wf–Wt–çWE&Vbæ7W'&VçBçfÇVSÒ"#°¢Ğ¢Ğ ¢W6TVffV7B‚‚“Óç·fö–BÆöE7F'GW‚“·ÒÅµÒ“°¢W6TVffV7B‚‚“Óç°¢6WEf—6–&ÆU&÷t6÷VçBƒ#“°¢–b†'VÆµWÆöE6VÆV7FVB—·6WE&÷w2…µÒ“·6WE&÷w5–6·W–B‚""“·&WGW&ã·Ğ¢6öç7BG&gCÖ'VÆ´–×÷'DG&gG5·6VÆV7FVE–6·W–EÓ°¢–b†G&gB—°¢6WEF–W$66W72†G&gBçF–W$66W72“°¢6WE&÷w2†G&gBç&÷w2“°¢6WE&÷w5–6·W–B†G&gBç–6·W–B“°¢6WDÆöF–æu&÷w2†fÇ6R“°¢&WGW&ã°¢Ğ¢–b‡6VÆV7FVE–6·W’fö–BÆöE–6·W&÷w2‡6VÆV7FVE–6·W“°¢VÇ6R·6WE&÷w2…µÒ“·6WE&÷w5–6·W–B‚""“·Ğ¢ÒÅ·6VÆV7FVE–6·W–EÒ“°¢W6TVffV7B‚‚“Óç°¢–b‚&÷w5–6·W–GÇÇ&÷w5–6·W–BÓ×6VÆV7FVE–6·W–B’&WGW&ã°¢6WD'VÆ´–×÷'DG&gG2‚†7W'&VçB“Óç°¢6öç7BG&gCÖ7W'&VçE·&÷w5–6·W–EÓ°¢–b‚G&gGÇÆG&gBç&÷w3ÓÓ×&÷w2’&WGW&â7W'&VçC°¢&WGW&â²ââæ7W'&VçBÅ·&÷w5–6·W–EÓ§²ââæG&gBÇ&÷w7×Ó°¢Ò“°¢ÒÅ·&÷w2Ç&÷w5–6·W–BÇ6VÆV7FVE–6·W–EÒ“° ¢–b†ÆöF–ær’&WGW&âÆF—b6Æ74æÖSÒ&fÆW‚Ö–âÖ‚Õ³sf…Ò—FV×2Ö6VçFW"§W7F–g’Ö6VçFW"&rÕ²3cS#EÒFW‡BÕ²6VVc†feÒ#ãÄÆöFW#"6Æ74æÖSÒ&×"Ó2æ–ÖFR×7–âFW‡BÕ²6cf#ƒF%Ò"óäÆöF–ærf–ææ6–Âc.(
+cÂöF—cã° ¢6öç7Bv÷&·76SÒ€¢ÆF—b6Æ74æÖSÒ'76R×’ÓB#à¢¶ÆöF–æu&÷w3óÆF—b6Æ74æÖSÒ'&÷VæFVBÓ'†Â&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒÓFW‡BÖ6VçFW"#ãÄÆöFW#"6Æ74æÖSÒ&×"Ó2–æÆ–æRæ–ÖFR×7–âFW‡BÕ²6cf#ƒF%Ò"óäÆöF–ær–6·W&ööb&÷w>(
+cÂöF—cã ¢Ãà¢·&÷w2ç6Æ–6RƒÇf—6–&ÆU&÷t6÷VçB’æÖ‚‡&÷rÆ–æFW‚“ÓãÅ&6VÄVF—F÷"¶W“×·&÷rç–6·Wö–B²#¢"·&÷rç&6VÅ÷6WVVæ6WÒ&÷s×·&÷wÒ–æFWƒ×¶–æFW‡ÒWFFU&÷s×·WFFU&÷wÒ6Æ7VÆFS×¶6Æ7VÆFU&÷wÒ6fS×·6fU&÷wÒ&Wf–Wu†÷Fó×·&Wf–Wu†÷F÷ÒF&–fd÷F–öç3×·F&–fd÷F–öç7Ò&÷f–FW$÷F–öç3×·&÷f–FW$÷F–öç7ÒF–W$66W73×·F–W$66W77ÒÆö6F–öå&VÆöEFö¶Vã×¶Æö6F–öå&VÆöEFö¶VçÒóâ—Ğ¢·&÷w2æÆVæwFƒçf—6–&ÆU&÷t6÷VçCóÆF—b6Æ74æÖSÒ'&÷VæFVB×†Â&÷&FW"&÷&FW"Ö7–âÓ3ó3&rÕ²3s#&%ÒÓBFW‡BÖ6VçFW"#ãÆF—b6Æ74æÖSÒ'FW‡B×‡2föçBÖ&öÆBFW‡BÖ7–âÓ#å6†÷v–ær·f—6–&ÆU&÷t6÷VçGÒöb·&÷w2æÆVæwF‡Ò&6VÇ2Fò¶VWFFVçG'’&W7öç6—fRãÂöF—cãÆ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óç6WEf—6–&ÆU&÷t6÷VçB‚†6÷VçB“ÓäÖF‚æÖ–â‡&÷w2æÆVæwF‚Æ6÷VçB³#’—Ò6Æ74æÖSÒ&×BÓ2&÷VæFVBÖÆr&rÖ7–âÓC‚ÓR’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3CEÒ#å4„õräU…B´ÖF‚æÖ–âƒ#Ç&÷w2æÆVæwF‚×f—6–&ÆU&÷t6÷VçB—Ò$4TÅ3Âö'WGFöããÂöF—cã¦çVÆÇĞ¢ÂóçĞ¢ÂöF—cà¢“° ¢&WGW&â€¢ÆF—b6Æ74æÖSÒ&Ö–âÖ‚×67&VVâ&rÕ²3cS#EÒ‚ÓB’ÓRFW‡BÕ²6VVc†feÒ#à¢ÆF—b6Æ74æÖSÒ&×‚ÖWFòÖ‚×rÕ³ƒ…Ò76R×’ÓB#à¢Æ†VFW"6Æ74æÖSÒ'&÷VæFVBÓ'†Â&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒÓR#à¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2×7F'B§W7F–g’Ö&WGvVVâvÓB#à¢ÆF—cà¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ã#&VÕÒFW‡BÕ²6cf#ƒF%Ò#äFFVçG'’+rf–ææ6–Âc#ÂöF—cà¢Æƒ6Æ74æÖSÒ&×BÓ"FW‡BÓ'†ÂföçBÖ&Æ6²#å–6·W^
+Î	¾N®	îŞN®ÎN®	NîN~¢
+ş	N®	î®®NŞ	¾îN®		®ƒÂöƒà¢Ç6Æ74æÖSÒ&×BÓ"Ö‚×rÓG†ÂFW‡BÕ³'…ÒÆVF–ærÓRFW‡BÕ²3“&#v6eÒ#ä&6¶VæBÖWF†÷&—FF—fR&V6V—fW"6öÆÆV7F–öâÂ'&—F—VÒ	¾	^
+Ş
+şN®ŞN~¢ÂFVÆ—fW'’F–ffW&Væ6RæBÖW&6†çBf–æÂ6WGFÆVÖVçBâ¶×WFF–öäÖöFSÓÓÒ$5D•dR#ò$Æ—fR6fW2&R7F—fRæBVF—FVBâ#¢$Æ—fRf–ææ6–ÂW'6—7FVæ6R&VÖ–ç2F—6&ÆVBv†–ÆRF†R&6¶VæB×WFF–öâvFR—26†F÷râ'ÓÂ÷à¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36vFUÒó3&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#ç¶×WFF–öäÖöFWÓÂöF—cà¢ÂöF—cà¢Âö†VFW#à ¢¶ÖW76vSóÆF—b6Æ74æÖSÒ'&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²6fcf#f%Òó3R&rÕ²36S#…ÒÓ2FW‡BÕ³'…ÒFW‡BÕ²6fc–%Ò#ãÄÆW'EG&–ævÆR6—¦S×³WÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óç¶ÖW76vWÓÂöF—cã¦çVÆÇĞ ¢·v–&–ÆÄÖW76vSğ¢ÆF—b&öÆS×·v–&–ÆÄÖW76vT¶–æCÓÓÒ$U%$õ"#ò&ÆW'B#¢'7FGW2'Ò6Æ74æÖS×¶&÷VæFVB×†Â&÷&FW"Ó2FW‡BÕ³'…ÒföçB×6VÖ–&öÆBG·v–&–ÆÄÖW76vT¶–æCÓÓÒ$U%$õ"#ò&&÷&FW"×&÷6RÓ3óc&r×&÷6RÓ“SósFW‡B×&÷6RÓ#¢&&÷&FW"ÖVÖW&ÆBÓ3óc&rÖVÖW&ÆBÓ“SócFW‡BÖVÖW&ÆBÓ'ÖÓà¢·v–&–ÆÄÖW76vT¶–æCÓÓÒ$U%$õ"#óÄÆW'EG&–ævÆR6—¦S×³WÒ6Æ74æÖSÒ&×"Ó"–æÆ–æR"óã¦çVÆÇ×·v–&–ÆÄÖW76vWĞ¢ÂöF—cà¢¦çVÆÇĞ ¢Ç6V7F–öâ6Æ74æÖSÒ'&÷VæFVBÓ'†Â&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒÓB#à¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2ÖVæBvÓ2#à¢ÆF—b6Æ74æÖSÒ&Ö–â×rÕ³3#…ÒfÆW‚Ó#à¢ÆF—b6Æ74æÖS×¶Æ&VÄ6Æ77Óî^^®n	^Î
+î‚–6·W
+Ş
+ò	¾Ş¾	®®	¾	N£ÂöF—cà¢Ç6VÆV7B6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×·6VÆV7FVE–6·W–GÒöä6†ævS×²†R“Óç6WE6VÆV7FVE–6·W–B†RçF&vWBçfÇVR—Óà¢Æ÷F–öâfÇVS×´%TÄµõUÄôEõ”4µUô”GÓä'VÆ²WÆöB+rv’”B²ÖW&6†çBæÖSÂö÷F–öãà¢·–6·W2æÖ‡ÓãÆ÷F–öâ¶W“×·ç–6·Wö–GÒfÇVS×·ç–6·Wö–GÓç·ç–6·Wö–GÒ+r·æÖW&6†çEö–GÇÇæÖW&6†çEöæÖWÇÂ$ÖW&6†çB'Ò+r¶WF†÷&—¦VE&6VÄ6÷VçB‡—Ò&6VÇ3Âö÷F–öãâ—Ğ¢Â÷6VÆV7Cà¢ÂöF—cà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–BÆöE7F'GW‚—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36vFUÒóC&rÕ²3#3FÒ‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#ãÅ&Vg&W6„7r6—¦S×³GÒóî	^Î	N®	n	®	¾	N£Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–B6Æ7VÆFTÆÂ‚—ÒF—6&ÆVC×²&÷w2æÆVæwF‚ÇÂ'VÆ´6Æ7VÆF–ærÇÂ'VÆµ6f–ærÇÂv–&–ÆÄ'W7—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²33FC3“•ÒóC&rÕ²3C6#3%Ò‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3c†S†&EÒF—6&ÆVC¦÷6—G’ÓS#ç¶'VÆ´6Æ7VÆF–æsóÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óã£Ä6Æ7VÆF÷"6—¦S×³GÒóçÔ4Ä5TÄDRÄÃÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–B6fTÆÂ‚—ÒF—6&ÆVC×²&÷w2æÆVæwF‚ÇÂ'VÆµ6f–ærÇÂ'VÆ´6Æ7VÆF–ærÇÂv–&–ÆÄ'W7—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"ÖVÖW&ÆBÓ3óS&rÖVÖW&ÆBÓc‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡B×v†—FRF—6&ÆVC¦÷6—G’ÓS#ç¶'VÆµ6f–æsóÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óã£Å6fR6—¦S×³GÒóçÕ4dRÄÃÂö'WGFöãà¢Æ'WGFöà¢G—SÒ&'WGFöâ ¢öä6Æ–6³×²‚“Óçfö–B7&VFTæDvVæW&FUv–&–ÆÂ‚—Ğ¢F—6&ÆVC×²&÷w2æÆVæwF‚ÇÂv–&–ÆÄ'W7’ÇÂ'VÆµ6f–ærÇÂ'VÆ´6Æ7VÆF–æwĞ¢6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&rÖVÖW&ÆBÓc‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡B×v†—FRF—6&ÆVC¦÷6—G’ÓS ¢à¢·v–&–ÆÄ'W7¢òÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óà¢¢Å6fR6—¦S×³GÒóà¢Ğ¢5$TDRbtTäU$DRt”$”ÄÀ¢Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óç6WDgVÆÅ&Vv—7G&F–öâ‡G'VR—ÒF—6&ÆVC×²&÷w2æÆVæwF‡Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&rÕ²6cf#ƒF%Ò‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3cS#EÒF—6&ÆVC¦÷6—G’ÓS#ãÄÖ†–Ö—¦S"6—¦S×³GÒóî^
+Î	¾N®	îŞN®	¾®	Nî
+Î	^ÎN¢
+	^Î®~£Âö'WGFöãà¢ÄFFVçG'”÷4'VÆ´–×÷'@¢–6·W3×·–6·W22÷4'VÆµ–6·Wµ×Ğ¢6VÆV7FVE–6·W–C×·6VÆV7FVE–6·W–GĞ¢6WVVæ6TfÆö÷$'•–6·W×·6WVVæ6TfÆö÷$'•–6·WĞ¢'W7“×¶ÆöF–æu&÷w7ÇÆ'VÆ´6Æ7VÆF–æwÇÆ'VÆµ6f–æwÇÇv–&–ÆÄ'W7—ÇÆFF–æu&Vv—7G&F–öçĞ¢öå–6·W6†ævS×·6WE6VÆV7FVE–6·W–GĞ¢öäÇ“×¶Ç”÷4–×÷'GĞ¢óà¢ÂöF—cà¢¶'VÆµWÆöE6VÆV7FVCóÆF—b6Æ74æÖSÒ&×BÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Ö7–âÓ3ó3R&rÖ7–âÓCóRÓBFW‡BÕ³…ÒÆVF–ærÓRFW‡BÖ7–âÓ#ãÆ#ä'VÆ²WÆöBÖöFS£Âö#âGF6‚F†R"Ö6öÇVÖâFV×ÆFRâv’”Bò–6·W”B76–vç2V6‚&÷rFò—G2–6·WæBÖW&6†çBæÖRòÖW&6†çB”B—26†V6¶VB&Vf÷&Rç’&Vv—7G&F–öç2&RWF†÷&—¦VBâgFW"7Fv–ærÂ&Wf–WrF†R6W&FR–6·W&F6†W2&VÆ÷rãÂöF—cã¦çVÆÇĞ¢¶'VÆ´–×÷'D÷&FW"æÆVæwFƒóÆF—bFFÖ÷2Ö'VÆ²×–6·W×VWVR×ccÒ'G'VR"6Æ74æÖSÒ&×BÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²36vFUÒó3&rÕ²3s#&%ÒÓB#à¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÕ²3cF3†feÒ#ä'VÆ²WÆöB–6·WVWVSÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒFW‡BÕ²3†F#F6UÒ#ä÷VâV6‚ÖF6†VB–6·WÂfW&–g’—G2G&÷ö–çG2ÂF†Vâ'Vâ6Æ7VÆFRÆÂæB6fRÆÂâ6fVB&F6†W2&RÖ&¶VB&VÆ÷rãÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓ2fÆW‚fÆW‚×w&vÓ"#ç¶'VÆ´–×÷'D÷&FW"æÖ‚‡–6·W–B“Óç°¢6öç7BG&gCÖ'VÆ´–×÷'DG&gG5·–6·W–EÓ°¢&WGW&âÆ'WGFöâ¶W“×·–6·W–GÒG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óç6WE6VÆV7FVE–6·W–B‡–6·W–B—Ò6Æ74æÖS×¶&÷VæFVBÖÆr&÷&FW"‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²G·6VÆV7FVE–6·W–CÓÓ×–6·W–Cò&&÷&FW"Ö7–âÓ3&rÖ7–âÓCFW‡BÕ²3CEÒ#¦G&gCòç6fVCò&&÷&FW"ÖVÖW&ÆBÓCóS&rÖVÖW&ÆBÓSóFW‡BÖVÖW&ÆBÓ##¢&&÷&FW"Õ²33SfÒ&rÕ²3#3FÒFW‡BÕ²6&fS†feÒ'ÖÓç·–6·W–GÒ+r¶G&gCòç&÷w2æÆVæwF‡ÇÃÒ&÷r‡2’+r¶G&gCòç6fVCò%4dTB#¢%$Ud”Ur'ÓÂö'WGFöãã°¢Ò—ÓÂöF—cà¢ÂöF—cã¦çVÆÇĞ¢·6VÆV7FVE–6·WóÆF—b6Æ74æÖSÒ&×BÓBw&–Bw&–BÖ6öÇ2Ó"vÓ2ÖC¦w&–BÖ6öÇ2ÓR#à¢ÆF—b6Æ74æÖS×·6W'fW$6Æ77Óå–6·W¢Æ#ç·6VÆV7FVE–6·Wç–6·Wö–GÓÂö#ãÂöF—cà¢ÆF—b6Æ74æÖS×·6W'fW$6Æ77ÓäÖW&6†çC¢Æ#ç·6VÆV7FVE–6·WæÖW&6†çEö–GÇÇ6VÆV7FVE–6·WæÖW&6†çEöæÖWÇÂ.(	B'ÓÂö#ãÂöF—cà¢ÆF—b6Æ74æÖS×·6W'fW$6Æ77Óå&WVW7FVC¢Æ#ç·&WVW7FVE&6VÄ6÷VçB‡6VÆV7FVE–6·W—ÓÂö#â+rWF†÷&—¦VC¢Æ#ç¶WF†÷&—¦VE&6VÄ6÷VçB‡6VÆV7FVE–6·WÇ&÷w2æÆVæwF‚—ÓÂö#ãÂöF—cà¢ÆF—b6Æ74æÖS×·6W'fW$6Æ77Óå7FGW3¢Æ#ç·6VÆV7FVE–6·Wç–6·W÷7FGW7ÇÂ.(	B'ÓÂö#ãÂöF—cà¢ÆF—b6Æ74æÖS×·6W'fW$6Æ77Óå7FvS¢Æ#ç·6VÆV7FVE–6·Wçv÷&¶fÆ÷u÷7FvWÇÂ.(	B'ÓÂö#ãÂöF—cà¢ÂöF—cã¦çVÆÇĞ ¢¶–×÷'FVDÆö6F–öå7VÖÖ'’çF÷FÃóÆF—bFFÖ'VÆ²ÖÆö6F–öâ×&VF–æW72×c“Ò'G'VR"6Æ74æÖS×¶×BÓB&÷VæFVB×†Â&÷&FW"ÓBG¶–×÷'FVDÆö6F–öå7VÖÖ'’ç7–æ6VB¶–×÷'FVDÆö6F–öå7VÖÖ'’ææ÷E&WV—&VCÓÓÖ–×÷'FVDÆö6F–öå7VÖÖ'’çF÷FÃò&&÷&FW"ÖVÖW&ÆBÓCóC&rÖVÖW&ÆBÓSó#¢&&÷&FW"ÖÖ&W"Ó3óC&rÖÖ&W"ÓCó'ÖÓà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ2#à¢ÆF—cà¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÖ7–âÓ##ä'VÆ²Æö6F–öâ&VF–æW73ÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³7…ÒföçBÖ&Æ6²FW‡B×v†—FR#ç¶–×÷'FVDÆö6F–öå7VÖÖ'’ç7–æ6VGÒ7–æ6‡&öæ—¦VB+r¶–×÷'FVDÆö6F–öå7VÖÖ'’ææ÷E&WV—&VGÒÖæ÷B&WV—&VB+r¶–×÷'FVDÆö6F–öå7VÖÖ'’çF÷FÇÒF÷FÃÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒÆVF–ærÓRFW‡BÕ²6#†C†VÒ#à¢¶–×÷'FVDÆö6F–öå7VÖÖ'’ç7–æ6VB¶–×÷'FVDÆö6F–öå7VÖÖ'’ææ÷E&WV—&VCÓÓÖ–×÷'FVDÆö6F–öå7VÖÖ'’çF÷FÀ¢ò$ÆÂ–×÷'FVB&÷w2&RÆö6F–öâ×&VG’â6÷&R×&Vv–öâ–ç2&R7–æ6‡&öæ—¦VC²÷WG6–FRÖ6÷&R&÷WFW26÷'&V7FÇ’'—72F†R7W'&VçBvöövÆRõv—Æâ6ö÷&F–æFRfÆ÷râ ¢¦G¶–×÷'FVDÆö6F–öå7VÖÖ'’ç&Wf–WwÒ6÷&R×&Vv–öâ&÷w2&RVWVVB–ÖÖVF–FVÇ’f÷"6öç6öÆ–FFVBW†6VÂ6÷'&V7F–öâ+rG¶–×÷'FVDÆö6F–öå7VÖÖ'’ç&W6öÇf–æwÒVæF–ærâvöövÆRÖ2&RÆöFVBöæÇ’v†VâöæR&6VÂ—2÷VæVBÖçVÆÇ’æĞ¢ÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&vÓ"#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–B6¶—ÆÄÆö6F–öå&Wf–Ww2‚—ÒF—6&ÆVC×²6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2ç6öÖR‚‡&÷r“Óç&÷ræÆö6F–öä6æF–FFRbgfÆ–D×–æÖ$6ö÷&F–æFR‡&÷ræÆö6F–öä6æF–FFRæÆöæv—GVFRÇ&÷ræÆö6F–öä6æF–FFRæÆF—GVFR’—ÇÆÆö6F–öå&Wf–Wt'W7—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"×&÷6RÓ3óS&r×&÷6RÓCó‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡B×&÷6RÓF—6&ÆVC¦÷6—G’ÓC#å4´•ÄÂ$Ud”Uu3Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–BF÷væÆöD6öç6öÆ–FFVDÆö6F–öå&Wf–Wr‚—ÒF—6&ÆVC×²6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æÆVæwF‡ÇÆÆö6F–öå&Wf–Wt'W7—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"ÖÖ&W"Ó3óS&rÖÖ&W"ÓCó‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÖÖ&W"ÓF—6&ÆVC¦÷6—G’ÓC#ãÄF÷væÆöB6—¦S×³GÒóäDõtäÄôB$Ud”UrU„4TÂ‡¶6öç6öÆ–FFVDÆö6F–öå&Wf–Wu&÷w2æÆVæwF‡Ò“Âö'WGFöãà¢ÆÆ&VÂ6Æ74æÖS×¶–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&rÖÖ&W"ÓC‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3CEÒG¶Æö6F–öå&Wf–Wt'W7“ò'ö–çFW"ÖWfVçG2ÖæöæR÷6—G’ÓC#¢&7W'6÷"×ö–çFW"'ÖÓãÅWÆöB6—¦S×³GÒóå$RÕUÄôB4õ%$T5DTBU„4TÃÆ–çWB&Vc×¶Æö6F–öå&Wf–Wt–çWE&VgÒG—SÒ&f–ÆR"66WCÒ"ç†Ç7‚"6Æ74æÖSÒ&†–FFVâ"öä6†ævS×²†WfVçB“Óçfö–BWÆöD6öç6öÆ–FFVDÆö6F–öå&Wf–Wr†WfVçBçF&vWBæf–ÆW3òå³Ò—ÒóãÂöÆ&VÃà¢ÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓ2&÷VæFVBÖÆr&÷&FW"&÷&FW"ÖÖ&W"Ó3ó#R&rÕ²3cS#EÒ‚Ó2’Ó"FW‡BÕ³…ÒÆVF–ærÓRFW‡BÖÖ&W"Ó#äF÷væÆöB6öÖ&–æW2WfW'’7W'&VçB–6·W&÷r&WV—&–ærÆö6F–öâ&Wf–Wr–çFòöæRv÷&¶&öö²â6÷'&V7BÆF—GVFRöÆöæv—GVFRæB&R×WÆöB—B†W&Râf–ÆW2&÷fR#&÷w2&RÆ–VBWFöÖF–6ÆÇ’–â6öç6V7WF—fRVF—FVB&F6†W2ãÂöF—cà¢ÂöF—cã¦çVÆÇĞ ¢·6VÆV7FVE–6·WóÆF—bFFÖW‡G&×&Vv—7G&F–öâ×cCÒ'G'VR"6Æ74æÖSÒ&×BÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Ö7–âÓ3ó3&rÖ7–âÓCóRÓB#à¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2ÖVæBvÓ2#à¢ÆF—b6Æ74æÖSÒ&Ö–â×rÕ³#c…ÒfÆW‚Ó#à¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÖ7–âÓ##äÖW&6†çB6†ævVBF†R–6·WVçF—G“ÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒFW‡BÕ²3†F#F6UÒ#äWF†÷&—¦RW‡G&&Vv—7G&F–öâ&÷w2&Vf÷&R6f–ærF†VÒâF†R÷&–v–æÂ&WVW7FVB6÷VçB—2&W6W'fVC²F†RfW&–f–VB6÷VçBæBVF—BG&–Â&RWFFVBFöÖ–6ÆÇ’ãÂöF—cà¢ÂöF—cà¢Äf–VÆBÆ&VÃÒ$FF—F–öæÂ—FV×2#à¢Æ–çWBG—SÒ&çVÖ&W""Ö–ã×³ÒÖƒ×³SÒ6Æ74æÖS×¶G¶–çWD6Æ77ÒrÓ#†ÒfÇVS×¶FF—F–öæÄ6÷VçGÒöä6†ævS×²†R“Óç6WDFF—F–öæÄ6÷VçB„ÖF‚æÖ‚ƒÄÖF‚æÖ–âƒSÄÖF‚çG'Væ2„çVÖ&W"†RçF&vWBçfÇVR—ÇÃ’’’—Òóà¢Âôf–VÆCà¢ÆF—b6Æ74æÖSÒ&Ö–â×rÕ³3…ÒfÆW‚Õ³%Ò#à¢Äf–VÆBÆ&VÃÒ$ÖW&6†çBFF—F–öâ&V6öâ#à¢Æ–çWB6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×¶FF—F–öæÅ&V6öçÒöä6†ævS×²†R“Óç6WDFF—F–öæÅ&V6öâ†RçF&vWBçfÇVR—ÒÆ6V†öÆFW#Ò&RærâÖW&6†çB†æFVB÷fW""FF—F–öæÂ&6VÇ2"óà¢Âôf–VÆCà¢ÂöF—cà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–BFE&Vv—7G&F–öç2‚—ÒF—6&ÆVC×¶FF–æu&Vv—7G&F–öçÒ6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&rÖ7–âÓC‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3CEÒF—6&ÆVC¦÷6—G’ÓS#à¢¶FF–æu&Vv—7G&F–öãóÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óã£ÅÇW26—¦S×³GÒóçÔDB$Tt•5E$D”ôà¢Âö'WGFöãà¢ÂöF—cà¢ÂöF—cã¦çVÆÇĞ ¢¶'VÆ´ÖW76vSóÆF—b6Æ74æÖSÒ&×BÓB&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36vFUÒó3R&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçB×6VÖ–&öÆBFW‡BÕ²6&fS†feÒ#ç¶'VÆ´ÖW76vWÓÂöF—cã¦çVÆÇĞ ¢ÆF—bFFÖFFÖVçG'’×&Vv—7G&F–öâÖW‡÷'B×c"Ó“Ò'G'VR"6Æ74æÖSÒ&×BÓB&÷VæFVB×†Â&÷&FW"&÷&FW"Õ²36vFUÒó3&rÕ²3s#&%ÒÓB#à¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&—FV×2×7F'B§W7F–g’Ö&WGvVVâvÓ2#à¢ÆF—cà¢ÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ãfVÕÒFW‡BÕ²3cF3†feÒ#äFFVçG'’&Vv—7G&F–öâF÷væÆöCÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³'…ÒföçBÖ&öÆBFW‡BÕ²6VVc†feÒ#äF÷væÆöB&Vv—7G&F–öâ&V6÷&G2'’F–ÖVÆ–æSÂöF—cà¢ÆF—b6Æ74æÖSÒ&×BÓFW‡BÕ³…ÒFW‡BÕ²3vv3eÒ#åF–ÖVÆ–æRW6W2FFVçG'’6fVBF–ÖRâW‡÷'BföÆÆ÷w2F†R6–væVBÖ–â66÷VçBw2W†—7F–ærFFVçG'’W&Ö—76–öç2ãÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&vÓ"#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“ÓæÇ”F÷væÆöE&ævR‚%DôD’"—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#åDôD“Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“ÓæÇ”F÷væÆöE&ævR‚$Ä5Eó#Eô„õU%2"—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#äÄ5B#B„õU%3Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“ÓæÇ”F÷væÆöE&ævR‚%D„•5õtTT²"—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#åD„•2tTT³Âö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“ÓæÇ”F÷væÆöE&ævR‚%D„•5ôÔôåD‚"—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#åD„•2ÔôåDƒÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“ÓæÇ”F÷væÆöE&ævR‚$ÄÂ"—Ò6Æ74æÖSÒ'&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3#3FÒ‚Ó2’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3†fC6feÒ#äÄÂD”ÔSÂö'WGFöãà¢ÂöF—cà¢ÂöF—cà ¢ÆF—b6Æ74æÖSÒ&×BÓ2w&–Bw&–BÖ6öÇ2ÓvÓ2ÖC¦w&–BÖ6öÇ2Ó"†Ã¦w&–BÖ6öÇ2Õ³g%óg%óg%öWFõÒ#à¢Äf–VÆBÆ&VÃÒ$g&öÒFFRbF–ÖR#à¢Æ–çWBG—SÒ&FFWF–ÖRÖÆö6Â"6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×¶F÷væÆöDg&ö×Òöä6†ævS×²†R“Óç6WDF÷væÆöDg&öÒ†RçF&vWBçfÇVR—Òóà¢Âôf–VÆCà¢Äf–VÆBÆ&VÃÒ%FòFFRbF–ÖR#à¢Æ–çWBG—SÒ&FFWF–ÖRÖÆö6Â"6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×¶F÷væÆöEF÷Òöä6†ævS×²†R“Óç6WDF÷væÆöEFò†RçF&vWBçfÇVR—Òóà¢Âôf–VÆCà¢Äf–VÆBÆ&VÃÒ%&Vv—7G&F–öâ66÷R#à¢Ç6VÆV7B6Æ74æÖS×¶–çWD6Æ77ÒfÇVS×¶F÷væÆöE66÷WÒöä6†ævS×²†R“Óç6WDF÷væÆöE66÷R†RçF&vWBçfÇVR2$ÄÂ'Â$5U%$TåEõ”4µU"—Óà¢Æ÷F–öâfÇVSÒ$ÄÂ#äÆÂ66W76–&ÆR&Vv—7G&F–öâ&V6÷&G3Âö÷F–öãà¢Æ÷F–öâfÇVSÒ$5U%$TåEõ”4µU#ä7W'&VçB–6·WöæÇ“Âö÷F–öãà¢Â÷6VÆV7Cà¢Âôf–VÆCà¢ÆF—b6Æ74æÖSÒ&fÆW‚—FV×2ÖVæB#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–BF÷væÆöDFFVçG'•&Vv—7G&F–öâ‚—ÒF—6&ÆVC×¶F÷væÆöD'W7—Ò6Æ74æÖSÒ'rÖgVÆÂ&÷VæFVBÖÆr&rÕ²3#3vS…Ò‚ÓB’Ó"ãRFW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3CEÒF—6&ÆVC¦÷6—G’ÓS†Ã§rÖWFò#à¢¶F÷væÆöD'W7“ò%$U$”ärâââ#¢$DõtäÄôB$Tt•5E$D”ôâU„4TÂ'Ğ¢Âö'WGFöãà¢ÂöF—cà¢ÂöF—cà¢¶F÷væÆöDÖW76vSóÆF—b6Æ74æÖSÒ&×BÓ2&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²36V5Ò&rÕ²3###3eÒ‚Ó2’Ó"FW‡BÕ³…ÒFW‡BÕ²3†fC6feÒ#ç¶F÷væÆöDÖW76vWÓÂöF—cã¦çVÆÇĞ¢ÂöF—cà¢Â÷6V7F–öãà¢²gVÆÅ&Vv—7G&F–öã÷v÷&·76S¦çVÆÇĞ¢ÂöF—cà ¢¶gVÆÅ&Vv—7G&F–öãóÆF—bFFÖgVÆÂ×&Wf–Wr×6†VWCÒ'G'VR"6Æ74æÖSÒ&f—†VB–ç6WBÓ¢Õ³“““•Ò÷fW&fÆ÷rÖWFò&rÕ²3CEÒ#à¢ÆF—b6Æ74æÖSÒ'7F–6·’F÷Ó¢Ó&÷&FW"Ö"&÷&FW"Õ²36V5Ò&rÕ²3s#&%Òó“R‚ÓR’ÓB&6¶G&÷Ö&ÇW"#à¢ÆF—b6Æ74æÖSÒ&×‚ÖWFòfÆW‚Ö‚×rÕ³“…Ò—FV×2Ö6VçFW"§W7F–g’Ö&WGvVVâvÓ2#à¢ÆF—cãÆF—b6Æ74æÖSÒ'FW‡BÕ³…ÒföçBÖ&Æ6²WW&66RG&6¶–ærÕ³ã&VÕÒFW‡BÕ²6cf#ƒF%Ò#ägVÆÂ&Vv—7G&F–öãÂöF—cãÆF—b6Æ74æÖSÒ&×BÓFW‡BÖÆrföçBÖ&Æ6²#ç·6VÆV7FVE–6·W–GÒ+r·&÷w2æÆVæwF‡Ò&6VÇ3ÂöF—cãÂöF—cà¢ÆF—b6Æ74æÖSÒ&fÆW‚fÆW‚×w&vÓ"#à¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–B6Æ7VÆFTÆÂ‚—ÒF—6&ÆVC×¶'VÆ´6Æ7VÆF–ærÇÂ'VÆµ6f–æwÒ6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²33FC3“•ÒóC&rÕ²3C6#3%Ò‚ÓB’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²3c†S†&EÒF—6&ÆVC¦÷6—G’ÓS#ç¶'VÆ´6Æ7VÆF–æsóÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óã£Ä6Æ7VÆF÷"6—¦S×³GÒóçÔ4Ä5TÄDRÄÃÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óçfö–B6fTÆÂ‚—ÒF—6&ÆVC×¶'VÆµ6f–ærÇÂ'VÆ´6Æ7VÆF–æwÒ6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&rÖVÖW&ÆBÓc‚ÓB’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡B×v†—FRF—6&ÆVC¦÷6—G’ÓS#ç¶'VÆµ6f–æsóÄÆöFW#"6—¦S×³GÒ6Æ74æÖSÒ&æ–ÖFR×7–â"óã£Å6fR6—¦S×³GÒóçÕ4dRÄÃÂö'WGFöãà¢Æ'WGFöâG—SÒ&'WGFöâ"öä6Æ–6³×²‚“Óç6WDgVÆÅ&Vv—7G&F–öâ†fÇ6R—Ò6Æ74æÖSÒ&–æÆ–æRÖfÆW‚—FV×2Ö6VçFW"vÓ"&÷VæFVBÖÆr&÷&FW"&÷&FW"Õ²6fcf#f%ÒóC&rÕ²36S#…Ò‚ÓB’Ó"FW‡BÕ³…ÒföçBÖ&Æ6²FW‡BÕ²6fc–%Ò#ãÅ‚6—¦S×³GÒóä4Äõ4SÂö'WGFöãà¢ÂöF—cà¢ÂöF—cà¢ÂöF—cà¢ÆF—b6Æ74æÖSÒ&×‚ÖWFòÖ‚×rÕ³“…ÒÓR#ç·v÷&·76WÓÂöF—cà¢ÂöF—cã¦çVÆÇĞ¢ÂöF—cà¢“°§Ğ

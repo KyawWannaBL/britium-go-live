@@ -45,6 +45,8 @@ type DataEntryLocationEditorProps = {
   township: string;
   autoResolveDelayMs?: number;
   deferInteractiveMap?: boolean;
+  deferAutomaticResolution?: boolean;
+  externalResolutionStatus?: DataEntryLocationResolution;
   enabled?: boolean;
   disabledReason?: string;
   reloadToken?: number;
@@ -69,6 +71,8 @@ export default function DataEntryLocationEditor({
   township,
   autoResolveDelayMs = 900,
   deferInteractiveMap = false,
+  deferAutomaticResolution = false,
+  externalResolutionStatus = "PENDING",
   enabled = true,
   disabledReason = "Google Map is not required for this delivery route.",
   reloadToken = 0,
@@ -227,9 +231,17 @@ export default function DataEntryLocationEditor({
     setMessage("");
     setMapError("");
     lastAutoKey.current = "";
+    if (deferAutomaticResolution && enabled) {
+      const deferredStatus=externalResolutionStatus==="SYNCED"?"SYNCED":"REVIEW_REQUIRED";
+      setMessage(deferredStatus==="SYNCED"
+        ?"Coordinates were applied through the consolidated location-review workbook."
+        :"Queued for consolidated Excel location review. Open this parcel's map only when an on-screen correction is needed.");
+      reportResolution(deferredStatus);
+      return;
+    }
     reportResolution(enabled ? "PENDING" : "NOT_REQUIRED");
     void load();
-  }, [deliveryWayId, address, township, enabled, disabledReason, reloadToken]);
+  }, [deliveryWayId, address, township, enabled, disabledReason, reloadToken, deferAutomaticResolution, externalResolutionStatus]);
 
   useEffect(() => {
     setQuery(address || "");
@@ -237,10 +249,10 @@ export default function DataEntryLocationEditor({
 
   useEffect(() => {
     const key = `${deliveryWayId}|${address}|${township}`;
-    if (!enabled || !deliveryWayId || address.trim().length < 5 || lastAutoKey.current === key || candidate) return;
+    if (deferAutomaticResolution || !enabled || !deliveryWayId || address.trim().length < 5 || lastAutoKey.current === key || candidate) return;
     const timer = window.setTimeout(() => { lastAutoKey.current = key; void find(address, true); }, Math.max(0, autoResolveDelayMs));
     return () => window.clearTimeout(timer);
-  }, [deliveryWayId, address, township, candidate, autoResolveDelayMs, enabled]);
+  }, [deliveryWayId, address, township, candidate, autoResolveDelayMs, enabled, deferAutomaticResolution]);
 
 
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
@@ -534,6 +546,19 @@ export default function DataEntryLocationEditor({
           <div className="mt-1 text-xs leading-5 text-emerald-100">{disabledReason}</div>
           <div className="mt-1 text-[11px] text-slate-300">Township: {township||"—"} · No coordinates will be searched, saved, or sent to the current Wayplan queue.</div>
         </div>
+      </div>
+    </div>;
+  }
+
+  if (deferAutomaticResolution && !manualOpen) {
+    const externallySynced=externalResolutionStatus==="SYNCED";
+    return <div data-location-details="true" data-bulk-location-deferred-v24="true" className={`mt-4 rounded-xl border p-4 ${externallySynced?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className={`text-xs font-black uppercase tracking-[0.14em] ${externallySynced?"text-emerald-200":"text-amber-200"}`}><MapPin size={15} className="mr-2 inline"/>{externallySynced?"Location synchronized":"Location queued for Excel review"}</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Corrected coordinates are ready for Wayplan.":"This bulk row does not load Google Maps automatically. Download the consolidated review Excel above, fix it outside the system, and re-upload it."}</div>
+        </div>
+        {!externallySynced?<button type="button" onClick={()=>setManualOpen(true)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">OPEN MAP FOR THIS PARCEL</button>:null}
       </div>
     </div>;
   }
