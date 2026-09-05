@@ -436,19 +436,19 @@ function MoneyBox({ label, value, highlight = false }: { label: string; value: u
 
 function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOptions }: any) {
   const [open, setOpen] = useState(false);
-  const [providerFilter, setProviderFilter] = useState("ALL");
-  const route = resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
+  const [providerFilter, setProviderFilter] = useState(() => row.service_provider_code || "ALL");
+  const route = useMemo(()=>resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
     fallbackUnknownToRoyal:true,
     itemPrice:row.item_price,
-  });
+  }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   const query = text(row.township).trim().toLowerCase();
-  const matches = (tariffOptions as TariffOption[])
+  const matches = useMemo(()=>(tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
     .filter((option) => !query || option.destination_name.toLowerCase().includes(query) || option.provider_name.toLowerCase().includes(query))
-    .slice(0, 18);
-  const selected = (tariffOptions as TariffOption[]).find((option) =>
+    .slice(0, 18),[providerFilter,query,tariffOptions]);
+  const selected = useMemo(()=>(tariffOptions as TariffOption[]).find((option) =>
     option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
-  );
+  ),[row.service_provider_code,row.township,tariffOptions]);
   const choose = (option: TariffOption) => {
     const nextRoute=resolveDataEntryServiceProvider(option.destination_name,row.delivery_address,tariffOptions,{
       fallbackUnknownToRoyal:true,
@@ -1162,15 +1162,49 @@ export default function DataEntryFinancialV2Page() {
       let completed=0;
       let cursor=0;
       const total=rows.length;
+      const sourceRows=[...rows];
+      const results=new Map<number,{ok:boolean;patch:Partial<ParcelRow>}>();
       const worker=async()=>{
         while(cursor<total){
           const index=cursor++;
-          if(await calculateRow(index)) calculated+=1;
+          const row=sourceRows[index];
+          try{
+            const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup!)});
+            const r=await Promise.race([
+              calculationRequest,
+              new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),30000)),
+            ]);
+            if(r.error) throw r.error;
+            const e=envelope(r.data);
+            const resolution=e.raw?.server_resolution||{};
+            const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
+            const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
+            const resolvedRegion=text(e.data?.delivery_region||resolution.delivery_region).toUpperCase() as DataEntryRouteRegion;
+            const resolvedMode=text(e.data?.delivery_route_mode||resolution.delivery_route_mode).toUpperCase() as DataEntryDeliveryMode;
+            results.set(index,{ok:e.ok,patch:{
+              calculating:false,
+              calculation:{...e.data,server_resolution:resolution},
+              ...(resolvedTier?{customer_tier:resolvedTier}:{}),
+              ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
+              ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
+              ...(resolvedMode?{deliveryMode:resolvedMode}:{}),
+              message:e.ok?`Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`:(envelopeMessage(e)||"Calculation failed."),
+            }});
+            if(e.ok) calculated+=1;
+          }catch(error:any){
+            results.set(index,{ok:false,patch:{calculating:false,message:error?.message||"Backend calculation failed."}});
+          }
           completed+=1;
-          setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
+          if(completed===total||completed%6===0) setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
         }
       };
       await Promise.all(Array.from({length:Math.min(6,total)},()=>worker()));
+      setRows(current=>current.map((row,index)=>{
+        const result=results.get(index);
+        if(!result) return row;
+        if(row!==sourceRows[index]) return {...row,calculating:false,message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
+        return {...row,...result.patch};
+      }));
       setBulkMessage(calculated===rows.length
         ? `Calculated all ${rows.length} authorized registration row(s).`
         : `Calculated ${calculated} of ${rows.length} row(s). Review the failed rows before Save All.`
