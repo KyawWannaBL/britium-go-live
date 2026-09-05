@@ -7,6 +7,7 @@ import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type O
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
+  dataEntryHandoffStationCharge,
   providerRoutingMessage,
   resolveDataEntryServiceProvider,
   type DataEntryDeliveryMode,
@@ -728,9 +729,11 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             <select className={`${inputClass} !bg-white !text-black`} value={row.handoffStationCode} onChange={(event)=>{
               const handoffStationCode=event.target.value;
               const known=DATA_ENTRY_HANDOFF_STATIONS.find((station)=>station.code===handoffStationCode);
+              const stationCharge=dataEntryHandoffStationCharge(handoffStationCode);
               updateRow(index,{
                 handoffStationCode,
                 handoffStationName:handoffStationCode==="OTHER"?row.handoffStationName:(known?.name||""),
+                ...(stationCharge==null?{}:{delivery_charges:stationCharge}),
                 message:handoffStationCode?"Highway handoff station selected. Save will retain this audited station assignment.":"Choose the physical highway handoff station before saving.",
               });
             }}>
@@ -738,10 +741,11 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
               {DATA_ENTRY_HANDOFF_STATIONS.map((station)=><option key={station.code} value={station.code}>{station.name}</option>)}
             </select>
           </Field>
-          {row.handoffStationCode==="OTHER"?<Field label="Other station name">
+          {row.handoffStationCode==="OTHER"?<Field label="Other station name (4,000 Ks)">
             <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationName:event.target.value})} placeholder="Enter the exact station / gate name"/>
-          </Field>:<div className="rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[11px] text-amber-100">{row.handoffStationName||"A station must be selected because this outside-core parcel has no item price."}</div>}
+          </Field>:<div className="rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[11px] text-amber-100">{row.handoffStationName||"A station must be selected because this parcel has no item price, address, or Royal route."}</div>}
         </div>
+        {stationReady?<div className="mt-2 text-[10px] font-bold text-amber-100">Station charge: {money(dataEntryHandoffStationCharge(row.handoffStationCode))} — Aung Mingalar 3,000 Ks; Dagon Ayar/Thiri and other stations 4,000 Ks.</div>:null}
         {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Select Aung Mingalar, Dagon Ayar/Thiri, or enter another station name before Calculate/Save.</div>:null}
       </div>:null}
 

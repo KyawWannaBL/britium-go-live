@@ -29,6 +29,13 @@ export const DATA_ENTRY_HANDOFF_STATIONS = [
   { code: "OTHER", name: "Other highway station / အခြားအဝေးပြေးဂိတ်" },
 ] as const;
 
+export function dataEntryHandoffStationCharge(code: unknown): number | null {
+  const stationCode = String(code ?? "").trim().toUpperCase();
+  if (stationCode === "AUNG_MINGALAR") return 3000;
+  if (stationCode === "DAGON_AYAR_THIRI" || stationCode === "OTHER") return 4000;
+  return null;
+}
+
 export type DataEntryProviderTariffOption = {
   destination_key: string;
   destination_name: string;
@@ -48,6 +55,7 @@ export type DataEntryProviderRouting = {
     | "MANDALAY_DK_SERVICE_AREA"
     | "NAYPYITAW_BRANCH_SERVICE_AREA"
     | "EXACT_BRITIUM_ROUTE"
+    | "OUTSIDE_CORE_ROYAL_DEFAULT"
     | "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE"
     | "OUTSIDE_CORE_HIGHWAY_STATION"
     | "UNRESOLVED";
@@ -96,6 +104,15 @@ const NAYPYITAW_BRANCH_SERVICE_AREA = keySet([
   "Det Khi Na Thi Ri", "Dekkhinathiri", "ဒက္ခိဏသီရိ",
   "Poke Ba Thi Ri", "Pobbathiri", "ပုဗ္ဗသီရိ",
   "Oke Ta Ra Thi Ri", "Ottarathiri", "ဥတ္တရသီရိ",
+]);
+
+// These Yangon outreach townships must route to Britium even while the tariff
+// catalog is still loading. Other configured Britium outreach tariffs continue
+// to be recognized by the exact-tariff branch below.
+const YANGON_BRITIUM_OUTREACH_SERVICE_AREA = keySet([
+  "Yangon", "Rangoon", "ရန်ကုန်",
+  "Thanlyin", "Syriam", "သန်လျင်",
+  "Thongwa", "Thone Gwa", "သုံးခွ",
 ]);
 
 export function stripServiceProviderDecoration(value: unknown): string {
@@ -172,8 +189,6 @@ export function resolveDataEntryServiceProvider(
   let deliveryMode: DataEntryDeliveryMode = "UNRESOLVED";
   let mapRequired = false;
   let stationRequired = false;
-  const itemPrice = Number(options.itemPrice);
-  const hasItemPrice = Number.isFinite(itemPrice) && itemPrice > 0;
   const recognizedDestination = postal.matchLevel !== "UNRESOLVED"
     || exactMatches.length > 0
     || Boolean(options.fallbackUnknownToRoyal && cleanTownship);
@@ -193,6 +208,12 @@ export function resolveDataEntryServiceProvider(
     routeRegion = "NAYPYITAW";
     deliveryMode = "DOORSTEP_MAP";
     mapRequired = true;
+  } else if ([...candidateKeys].some((candidate) => YANGON_BRITIUM_OUTREACH_SERVICE_AREA.has(candidate))) {
+    providerCode = "BRITIUM";
+    reason = "EXACT_BRITIUM_ROUTE";
+    routeRegion = "YANGON";
+    deliveryMode = "DOORSTEP_MAP";
+    mapRequired = true;
   } else {
     const hintedProvider = dataEntryProviderHint(raw);
     const exact = preferredTariff(exactMatches, hintedProvider);
@@ -209,15 +230,20 @@ export function resolveDataEntryServiceProvider(
   }
 
   if (routeRegion === "OUTSIDE_CORE") {
-    if (hasItemPrice) {
-      providerCode = "ROYAL EXPRESS";
-      deliveryMode = "ROYAL_EXPRESS";
-      reason = "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE";
-    } else {
+    const hintedProvider = dataEntryProviderHint(raw);
+    const royalAvailable = hintedProvider === "ROYAL EXPRESS"
+      || exactMatches.some((match) => match.provider_code.toUpperCase() === "ROYAL EXPRESS");
+    const hasItemPrice = Number(options.itemPrice) > 0;
+    const hasAddress = String(deliveryAddress ?? "").trim().length > 0;
+    if (!hasItemPrice && !hasAddress && !royalAvailable) {
       providerCode = "H.TERMINAL DROP-OFF";
       deliveryMode = "HIGHWAY_BUS_STATION";
-      stationRequired = true;
       reason = "OUTSIDE_CORE_HIGHWAY_STATION";
+      stationRequired = true;
+    } else {
+      providerCode = "ROYAL EXPRESS";
+      deliveryMode = "ROYAL_EXPRESS";
+      reason = hasItemPrice ? "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE" : "OUTSIDE_CORE_ROYAL_DEFAULT";
     }
   }
 
@@ -246,8 +272,9 @@ export function providerRoutingMessage(route: DataEntryProviderRouting): string 
     case "NAYPYITAW_BRANCH_SERVICE_AREA": return "Naypyitaw service area · NPT Branch selected automatically.";
     case "NAYPYITAW_EXCEPTION_OUTSIDE_CORE": return "Tatkon / Lewe are outside the NPT Branch area; the item-price routing rule applies.";
     case "EXACT_BRITIUM_ROUTE": return "Britium service area · Britium Express selected automatically.";
+    case "OUTSIDE_CORE_ROYAL_DEFAULT": return "Outside Yangon/Britium outreach, Mandalay, and eligible Naypyitaw · Royal Express selected automatically.";
     case "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE": return "Outside the active core areas · item price present · Royal Express selected; Google Map is not required.";
-    case "OUTSIDE_CORE_HIGHWAY_STATION": return "Outside the active core areas · no item price · highway terminal drop-off selected; choose the handoff station.";
+    case "OUTSIDE_CORE_HIGHWAY_STATION": return "Outside Yangon, Mandalay, and Naypyitaw · no item price, no address, and no Royal route · choose a highway handoff station.";
     default: return "Enter a recognized township to select its service provider automatically.";
   }
 }

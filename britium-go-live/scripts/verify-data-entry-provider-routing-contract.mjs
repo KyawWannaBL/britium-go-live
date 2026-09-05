@@ -13,6 +13,7 @@ try {
   const routing = await server.ssrLoadModule("/src/lib/dataEntryServiceProviderRouting.ts");
   const {
     dataEntryProviderHint,
+    dataEntryHandoffStationCharge,
     resolveDataEntryServiceProvider,
     stripServiceProviderDecoration,
   } = routing;
@@ -50,15 +51,19 @@ try {
     "ဥတ္တရသီရိ", "Oke Ta Ra Thi Ri Township",
   ]) assert.equal(providerFor(township), "NPT BRANCH", township);
 
-  assert.equal(providerFor("တပ်ကုန်း"), "H.TERMINAL DROP-OFF");
+  assert.equal(providerFor("တပ်ကုန်း"), "ROYAL EXPRESS");
   assert.equal(providerFor("Lewe Township", "", { itemPrice: 125000 }), "ROYAL EXPRESS");
   assert.equal(providerFor("Pyinoolwin Township", "", { itemPrice: 125000 }), "ROYAL EXPRESS");
-  assert.equal(providerFor("တောင်ကြီး"), "H.TERMINAL DROP-OFF");
+  assert.equal(providerFor("တောင်ကြီး"), "ROYAL EXPRESS");
   assert.equal(providerFor("Some Unsupported Township"), "");
   assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true }), "H.TERMINAL DROP-OFF");
+  assert.equal(providerFor("Some Unsupported Township", "Some receiver address", { fallbackUnknownToRoyal: true }), "ROYAL EXPRESS");
   assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true, itemPrice: 1 }), "ROYAL EXPRESS");
 
   assert.equal(providerFor("မြောက်ဒဂုံ"), "BRITIUM", "an exact Britium route must beat its Royal duplicate");
+  for (const outreach of ["Yangon", "ရန်ကုန်", "Thanlyin", "သန်လျင်", "Thongwa", "သုံးခွ"]) {
+    assert.equal(providerFor(outreach), "BRITIUM", `${outreach} must remain a Britium outreach route without tariff timing dependency`);
+  }
   assert.equal(
     providerFor("North Dagon Township", "No. 77, Ward 32, North Dagon Township, Yangon"),
     "BRITIUM",
@@ -67,9 +72,16 @@ try {
   assert.equal(dataEntryProviderHint("NPT Branch"), "NPT BRANCH");
   assert.equal(dataEntryProviderHint("H.Terminal Drop-off"), "H.TERMINAL DROP-OFF");
   assert.equal(stripServiceProviderDecoration("ဇမ္ဗူသီရိ (NPT Branch)"), "ဇမ္ဗူသီရိ");
+  assert.equal(dataEntryHandoffStationCharge("AUNG_MINGALAR"), 3000);
+  assert.equal(dataEntryHandoffStationCharge("DAGON_AYAR_THIRI"), 4000);
+  assert.equal(dataEntryHandoffStationCharge("OTHER"), 4000);
 
   const migration = await readFile(
     new URL("../supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url),
+    "utf8",
+  );
+  const geographyMigration = await readFile(
+    new URL("../supabase/migrations/20260905015944_initial_service_provider_geography_v26.sql", import.meta.url),
     "utf8",
   );
   const page = await readFile(
@@ -88,6 +100,12 @@ try {
   assert.match(migration, /v_legacy_reason='EXACT_BRITIUM_ROUTE'/);
   assert.match(migration, /SERVICE_PROVIDER_AUTO_CORRECTED/);
   assert.match(migration, /revoke all on function public\.be_data_entry_delivery_route_v19\(text,numeric\)[\s\S]*from public, anon, authenticated/);
+  assert.match(geographyMigration, /OUTSIDE_CORE_ROYAL_DEFAULT/);
+  assert.match(geographyMigration, /'yangon','rangoon','ရန်ကုန်'/);
+  assert.match(geographyMigration, /'thanlyin','syriam','သန်လျင်'/);
+  assert.match(geographyMigration, /'thongwa','thone gwa','thone-gwa','သုံးခွ'/);
+  assert.match(geographyMigration, /v_provider := 'H\.TERMINAL DROP-OFF'/);
+  assert.match(geographyMigration, /'AUNG_MINGALAR' then 3000/);
 
   console.log("Data Entry provider-routing contract verified.");
 } finally {

@@ -18,9 +18,9 @@ try {
     { destination_key: "ဇမ္ဗူသီရိ", destination_name: "ဇမ္ဗူသီရိ", provider_code: "NPT BRANCH" },
     { destination_key: "တောင်ကြီး", destination_name: "တောင်ကြီး", provider_code: "ROYAL EXPRESS" },
   ];
-  const resolve = (township, itemPrice = "") => resolveDataEntryServiceProvider(
+  const resolve = (township, itemPrice = "", address = "") => resolveDataEntryServiceProvider(
     township,
-    "",
+    address,
     tariffs,
     { fallbackUnknownToRoyal: true, itemPrice },
   );
@@ -34,13 +34,13 @@ try {
   assert.equal(resolve("ဇမ္ဗူသီရိ").providerCode, "NPT BRANCH");
   assert.equal(resolve("ဇမ္ဗူသီရိ").routeRegion, "NAYPYITAW");
 
-  for (const township of ["တပ်ကုန်း", "လယ်ဝေး", "တောင်ကြီး", "Unsupported Township"]) {
-    const terminal = resolve(township);
-    assert.equal(terminal.providerCode, "H.TERMINAL DROP-OFF", township);
-    assert.equal(terminal.routeRegion, "OUTSIDE_CORE", township);
-    assert.equal(terminal.deliveryMode, "HIGHWAY_BUS_STATION", township);
-    assert.equal(terminal.mapRequired, false, township);
-    assert.equal(terminal.stationRequired, true, township);
+  for (const township of ["တပ်ကုန်း", "လယ်ဝေး", "တောင်ကြီး"]) {
+    const initial = resolve(township);
+    assert.equal(initial.providerCode, "ROYAL EXPRESS", township);
+    assert.equal(initial.routeRegion, "OUTSIDE_CORE", township);
+    assert.equal(initial.deliveryMode, "ROYAL_EXPRESS", township);
+    assert.equal(initial.mapRequired, false, township);
+    assert.equal(initial.stationRequired, false, township);
 
     const royal = resolve(township, 1);
     assert.equal(royal.providerCode, "ROYAL EXPRESS", township);
@@ -48,13 +48,24 @@ try {
     assert.equal(royal.mapRequired, false, township);
     assert.equal(royal.stationRequired, false, township);
   }
+  const terminal = resolve("Unsupported Township");
+  assert.equal(terminal.providerCode, "H.TERMINAL DROP-OFF");
+  assert.equal(terminal.deliveryMode, "HIGHWAY_BUS_STATION");
+  assert.equal(terminal.stationRequired, true);
+  assert.equal(resolve("Unsupported Township", "", "A receiver address").providerCode, "ROYAL EXPRESS");
+  for (const outreach of ["Yangon", "ရန်ကုန်", "Thanlyin", "သန်လျင်", "Thongwa", "သုံးခွ"]) {
+    const route = resolve(outreach);
+    assert.equal(route.providerCode, "BRITIUM", outreach);
+    assert.equal(route.routeRegion, "YANGON", outreach);
+  }
   assert.deepEqual(DATA_ENTRY_HANDOFF_STATIONS.map((station) => station.code), ["AUNG_MINGALAR", "DAGON_AYAR_THIRI", "OTHER"]);
 
-  const [page, editor, wayplan, migration] = await Promise.all([
+  const [page, editor, wayplan, migration, geographyMigration] = await Promise.all([
     readFile(new URL("../src/pages/DataEntryFinancialV2Page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/workflow/DataEntryLocationEditor.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/WayplanCommandCenterPage.tsx", import.meta.url), "utf8"),
     readFile(new URL("../supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/20260905015944_initial_service_provider_geography_v26.sql", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /data-highway-station-selection-v19/);
@@ -80,6 +91,9 @@ try {
   assert.match(migration, /HIGHWAY_HANDOFF_STATION_REQUIRED/);
   assert.match(migration, /DATA_ENTRY_DELIVERY_ROUTE_ASSIGNED/);
   assert.match(migration, /notify pgrst, 'reload schema'/);
+  assert.match(geographyMigration, /DATA_ENTRY_INITIAL_PROVIDER_GEOGRAPHY_V26_20260905/);
+  assert.match(geographyMigration, /v_provider := 'ROYAL EXPRESS'[\s\S]*v_region := 'OUTSIDE_CORE'[\s\S]*v_mode := 'ROYAL_EXPRESS'/);
+  assert.match(geographyMigration, /be_data_entry_delivery_route_v26/);
 
   console.log("Data Entry V19 regional routing and Wayplan contract verified.");
 } finally {
