@@ -1856,7 +1856,11 @@ export default function DataEntryFinancialV2Page() {
         "Corrected Latitude":"",
         "Corrected Longitude":"",
         "Action":"APPLY_CORRECTION",
-        "Reason":"Location corrected through consolidated review workbook",
+        "Reason":row.locationCandidate?.reviewReason||(
+          row.locationCandidate
+            ? "AUTOMATIC_LOCATION_REQUIRES_REVIEW"
+            : "NO_RELIABLE_COORDINATE_FOUND"
+        ),
       }));
       const worksheet=XLSX.utils.json_to_sheet(exportRows);
       worksheet["!cols"]=[18,18,14,22,24,48,18,18,18,18,20,46].map((wch)=>({wch}));

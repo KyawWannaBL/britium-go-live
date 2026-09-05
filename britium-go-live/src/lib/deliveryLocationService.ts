@@ -68,7 +68,9 @@ export function validMyanmarCoordinate(lng: unknown, lat: unknown) {
 }
 
 function parseCoordinate(value: string) {
-  const match = value.match(/(-?\d{1,3}(?:\.\d+)?)\s*[, ]\s*(-?\d{1,3}(?:\.\d+)?)/);
+  // OS spreadsheets commonly use Myanmar punctuation between latitude and
+  // longitude. Treat Myanmar/full-width commas exactly like an ASCII comma.
+  const match = value.match(/(-?\d{1,3}(?:\.\d+)?)\s*[,၊，\s]\s*(-?\d{1,3}(?:\.\d+)?)/);
   if (!match) return null;
   const a = Number(match[1]);
   const b = Number(match[2]);

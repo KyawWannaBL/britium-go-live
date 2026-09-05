@@ -19,6 +19,8 @@ const checks=[
   ["ward approximations remain review-only",/v_match = 'WARD_APPROXIMATE' and v_review <> 'MANUAL_REVIEW'/.test(migration)],
   ["street approximations retain exact postal guard",/v_match = 'STREET_APPROXIMATE'[\s\S]*v_postal_match <> 'EXACT_QUARTER'/.test(migration)],
   ["manual corrections remain supported",/v_match <> 'MANUAL'/.test(migration)&&/DATA_ENTRY_MANUAL_COORDINATE/.test(editor)],
+  ["embedded coordinates accept Myanmar and full-width commas",/\[,၊，\\s\]/.test(service)&&/Treat Myanmar\/full-width commas/.test(service)],
+  ["review export reports the actual pending reason",/NO_RELIABLE_COORDINATE_FOUND/.test(page)&&/AUTOMATIC_LOCATION_REQUIRES_REVIEW/.test(page)&&/locationCandidate\?\.reviewReason/.test(page)],
   ["RPC remains invoker-security and role restricted",/security invoker[\s\S]*set search_path = public, pg_temp/.test(migration)&&/revoke all on function public\.be_delivery_location_upsert_v11\(jsonb\) from public, anon/.test(migration)&&/grant execute[\s\S]*authenticated, service_role/.test(migration)],
   ["bulk screen separates synchronized and map-not-required rows",/data-bulk-location-readiness-v19/.test(page)&&/map not required/.test(page)&&/RETRY LOCATION SYNC/.test(page)],
   ["retry token restarts unresolved editor checks",/reloadToken\?: number/.test(editor)&&/deliveryWayId, address, township,[^\]]*reloadToken/.test(editor)&&/locationReloadToken/.test(page)],
