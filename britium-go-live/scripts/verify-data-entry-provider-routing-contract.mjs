@@ -84,6 +84,10 @@ try {
     new URL("../supabase/migrations/20260905015944_initial_service_provider_geography_v26.sql", import.meta.url),
     "utf8",
   );
+  const royalCommissionMigration = await readFile(
+    new URL("../supabase/migrations/20260905050000_royal_partner_commission_v27.sql", import.meta.url),
+    "utf8",
+  );
   const page = await readFile(
     new URL("../src/pages/DataEntryFinancialV2Page.tsx", import.meta.url),
     "utf8",
@@ -106,6 +110,10 @@ try {
   assert.match(geographyMigration, /'thongwa','thone gwa','thone-gwa','သုံးခွ'/);
   assert.match(geographyMigration, /v_provider := 'H\.TERMINAL DROP-OFF'/);
   assert.match(geographyMigration, /'AUNG_MINGALAR' then 3000/);
+  assert.match(royalCommissionMigration, /ROYAL_PARTNER_NORMAL_TARIFF_15_PERCENT/);
+  assert.match(royalCommissionMigration, /round\(v_tariff::numeric\*0\.15\)::bigint/);
+  assert.match(royalCommissionMigration, /ROYAL_COMMISSION_TARIFF_NOT_FOUND/);
+  assert.match(royalCommissionMigration, /be_data_entry_financial_v2_calculate_v21_legacy/);
 
   console.log("Data Entry provider-routing contract verified.");
 } finally {
