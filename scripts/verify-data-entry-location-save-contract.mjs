@@ -18,7 +18,7 @@ const checks=[
   ["automatic source suffix must match precision",/v_source like '%' \|\| v_match/.test(migration)],
   ["ward approximations remain review-only",/v_match = 'WARD_APPROXIMATE' and v_review <> 'MANUAL_REVIEW'/.test(migration)],
   ["street approximations retain exact postal guard",/v_match = 'STREET_APPROXIMATE'[\s\S]*v_postal_match <> 'EXACT_QUARTER'/.test(migration)],
-  ["street auto-accept requires exact postal and independent Google agreement",/candidate\.matchLevel === "STREET_APPROXIMATE"[\s\S]*postalValidated && agreement/.test(service)&&/hasIndependentLocationAgreement\(candidate, initiallyEvaluated\)/.test(service)],
+  ["precise Myanmar street results accept only with exact audited postal evidence",/candidate\.matchLevel === "STREET_APPROXIMATE"[\s\S]*postal\.matchLevel === "EXACT_QUARTER"[\s\S]*score >= 0\.96/.test(service)],
   ["location agreement requires distinct providers within 200 metres",/other\.provider !== candidate\.provider/.test(service)&&/distanceMetres\(candidate, other\) <= 200/.test(service)],
   ["manual corrections remain supported",/v_match <> 'MANUAL'/.test(migration)&&/DATA_ENTRY_MANUAL_COORDINATE/.test(editor)],
   ["embedded coordinates accept Myanmar and full-width commas",/\[,၊，\\s\]/.test(service)&&/Treat Myanmar\/full-width commas/.test(service)],

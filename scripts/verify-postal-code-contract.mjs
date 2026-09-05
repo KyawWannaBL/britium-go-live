@@ -184,7 +184,21 @@ try {
     address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
     township: "မြောက်ဒဂုံ",
   }, northDagonPostal, false);
-  assert.equal(approximateStreetCandidate.reviewStatus, "MANUAL_REVIEW", "A street/ward centroid must never auto-save");
+  assert.equal(approximateStreetCandidate.reviewStatus, "ACCEPTED", "A high-confidence street address with exact audited ward/postal evidence should auto-save");
+
+  const bareRouteCandidate = validateDeliveryCandidate({
+    text: "Pinlon Road, North Dagon Township, Yangon",
+    latitude: 16.9,
+    longitude: 96.19,
+    matchLevel: "STREET_APPROXIMATE",
+    confidence: 0.72,
+    provider: "GOOGLE_PLACES",
+    providerRank: 0,
+  }, {
+    address: "Pinlon Road, North Dagon Township, Yangon",
+    township: "မြောက်ဒဂုံ",
+  }, northDagonPostal, false);
+  assert.equal(bareRouteCandidate.reviewStatus, "MANUAL_REVIEW", "A bare road result must remain below the automatic acceptance threshold");
 
   const agreedStreetCandidate = validateDeliveryCandidate({
     text: "Pinlon Road, Ward 32, North Dagon Township, Yangon",

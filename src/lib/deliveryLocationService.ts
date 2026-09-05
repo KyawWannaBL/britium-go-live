@@ -508,7 +508,15 @@ export function validateDeliveryCandidate(
   const autoAccept = areaMatch && (
     (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && houseStreetMatch && score >= 0.96)
     || (candidate.matchLevel === "POI_EXACT" && townshipMatch && score >= 0.96)
-    || (candidate.matchLevel === "STREET_APPROXIMATE" && townshipMatch && postalValidated && agreement && score >= 0.9)
+    // Places (New) commonly reports precise Myanmar street-address results as
+    // `street_address` without a ROOFTOP location type. Accept that result when
+    // the uploaded address has an exact audited ward/postal match and the
+    // candidate independently matches the requested township. Bare road/route
+    // results remain below this score and continue to manual review.
+    || (candidate.matchLevel === "STREET_APPROXIMATE"
+      && townshipMatch
+      && postal.matchLevel === "EXACT_QUARTER"
+      && score >= 0.96)
   );
   const reviewReason = !areaMatch
     ? "OUTSIDE_TOWNSHIP_AREA"
