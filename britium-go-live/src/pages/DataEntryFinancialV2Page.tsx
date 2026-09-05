@@ -1036,7 +1036,14 @@ export default function DataEntryFinancialV2Page() {
     const row=rows[index]; if(!row) return false;
     updateRow(index,{calculating:true,calculation:{},message:""});
     try{
-      const r=await (supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
+      const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
+      const r=await Promise.race([
+        calculationRequest,
+        new Promise<never>((_,reject)=>window.setTimeout(
+          ()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),
+          30000,
+        )),
+      ]);
       if(r.error) throw r.error;
       const e=envelope(r.data);
       const resolution=e.raw?.server_resolution||{};
@@ -1152,9 +1159,18 @@ export default function DataEntryFinancialV2Page() {
     setBulkMessage("");
     try{
       let calculated=0;
-      for(let i=0;i<rows.length;i+=1){
-        if(await calculateRow(i)) calculated+=1;
-      }
+      let completed=0;
+      let cursor=0;
+      const total=rows.length;
+      const worker=async()=>{
+        while(cursor<total){
+          const index=cursor++;
+          if(await calculateRow(index)) calculated+=1;
+          completed+=1;
+          setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
+        }
+      };
+      await Promise.all(Array.from({length:Math.min(6,total)},()=>worker()));
       setBulkMessage(calculated===rows.length
         ? `Calculated all ${rows.length} authorized registration row(s).`
         : `Calculated ${calculated} of ${rows.length} row(s). Review the failed rows before Save All.`
