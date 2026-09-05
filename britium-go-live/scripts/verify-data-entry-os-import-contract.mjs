@@ -22,6 +22,7 @@ const checks=[
   ["spreadsheet fills existing registration state",/async function applyOsImport/.test(page)&&/fillImportedPickupRows/.test(page)&&/setRows\(firstDraft\.rows\)/.test(page)],
   ["main pickup selector includes explicit Bulk upload mode",/BULK_UPLOAD_PICKUP_ID/.test(page)&&/Bulk upload · Way ID \+ Merchant Name/.test(page)],
   ["bulk rows route by Way ID and verify merchant",/function buildOsImportPlan/.test(importer)&&/does not belong to pickup/.test(importer)&&/Duplicate parcel sequence/.test(importer)],
+  ["single eligible dated pickup accepts consolidated parcel references",/function parcelReferenceDateToken/.test(importer)&&/\^\[DP\]/.test(importer)&&/function pickupDateToken/.test(importer)&&/isConsolidatedDeliverySheet/.test(importer)&&/rows\.length <= solePickupCapacity/.test(importer)&&/targetSequence: solePickupFloor \+ index \+ 1/.test(importer)],
   ["multi-pickup drafts remain separated for review",/Bulk upload pickup queue/.test(page)&&/bulkImportDrafts/.test(page)&&/bulkImportOrder/.test(page)],
   ["each source file remains capped at 200 rows",/rows\.length > 200/.test(importer)&&/Import no more than 200 rows in one spreadsheet/.test(importer)],
   ["consecutive uploads continue after the saved sequence",/sequenceFloorByPickup/.test(importer)&&/nextSequence = Math\.max\(0, Number\(sequenceFloorByPickup\[pickupId\]/.test(importer)&&/maximumSavedSequence/.test(page)],

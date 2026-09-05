@@ -208,6 +208,16 @@ function routingKey(value: unknown) {
     .replace(/[^a-z0-9\u1000-\u109f]+/g, "");
 }
 
+function parcelReferenceDateToken(value: unknown) {
+  return clean(value).toUpperCase().match(/^[DP](\d{4})(?:-|$)/)?.[1] || "";
+}
+
+function pickupDateToken(pickup: OsBulkPickup) {
+  const isoDate = clean(pickup.pickup_date).match(/^\d{4}-(\d{2})-(\d{2})$/);
+  if (isoDate) return `${isoDate[1]}${isoDate[2]}`;
+  return clean(pickup.pickup_id).toUpperCase().match(/^P(\d{4})(?:-|$)/)?.[1] || "";
+}
+
 type OsImportRoutingPreview = OsImportRow & {
   matchedPickupId: string;
   routingIssue: string;
@@ -219,6 +229,36 @@ export function buildOsImportPlan(
   sequenceFloorByPickup: Record<string, number> = {},
 ) {
   const orderedPickups = [...pickups].sort((a, b) => b.pickup_id.length - a.pickup_id.length);
+  const solePickup = orderedPickups.length === 1 ? orderedPickups[0] : undefined;
+  const solePickupFloor = solePickup ? Math.max(0, Number(sequenceFloorByPickup[solePickup.pickup_id] || 0)) : 0;
+  const solePickupCapacity = solePickup
+    ? Math.max(Number(solePickup.expected_parcels || 0), Number(solePickup.verified_parcels || 0)) - solePickupFloor
+    : 0;
+  const solePickupDate = solePickup ? pickupDateToken(solePickup) : "";
+  const isConsolidatedDeliverySheet = Boolean(
+    solePickup
+    && rows.length
+    && rows.length <= solePickupCapacity
+    && solePickupDate
+    && rows.every((row) => parcelReferenceDateToken(row.wayId) === solePickupDate),
+  );
+
+  // Consolidated OS sheets contain delivery references (DMMDD-merchant-sequence), not pickup IDs.
+  // When exactly one pickup is eligible for that date and has enough authorized capacity, keep
+  // those references as source evidence and allocate safe pickup-local parcel sequences.
+  if (solePickup && isConsolidatedDeliverySheet) {
+    const batchRows = rows.map((row, index) => ({ ...row, targetSequence: solePickupFloor + index + 1 }));
+    return {
+      batches: [{ targetPickupId: solePickup.pickup_id, rows: batchRows }],
+      issues: [],
+      previewRows: batchRows.map((row) => ({
+        ...row,
+        matchedPickupId: solePickup.pickup_id,
+        routingIssue: "",
+      })),
+    };
+  }
+
   const provisional = rows.map((row) => {
     const wayId = clean(row.wayId);
     const upperWayId = wayId.toUpperCase();
