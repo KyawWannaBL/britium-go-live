@@ -397,7 +397,7 @@ export default function DataEntryLocationEditor({
     reportResolution("SEARCHING");
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
-      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township });
+      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township },supabase);
       const resolved = automatic ? await withAutomaticLocationSlot(resolve) : await resolve();
       const found = resolved ? { ...resolved, originalAddress: address } : null;
       if (requestId !== requestSequence.current) return;

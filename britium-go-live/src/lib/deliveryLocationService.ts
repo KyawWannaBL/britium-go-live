@@ -239,6 +239,10 @@ export function buildDeliveryAddressQueries(
 }
 
 let googleLoader: Promise<any> | null = null;
+const GOOGLE_QUERY_CACHE_LIMIT = 1500;
+const GOOGLE_QUERY_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const googleQueryCache = new Map<string,{expiresAt:number,promise:Promise<any[]>}>();
+let googleQueryCacheMapsRef:any=null;
 export function loadGoogleMaps() {
   const existing = (globalThis as any).google?.maps;
   if (existing) return Promise.resolve(existing);
@@ -400,6 +404,60 @@ async function googleGeocode(query: string) {
   return combined;
 }
 
+function cachedGoogleGeocode(query:string){
+  const mapsRef=(globalThis as any).google?.maps||null;
+  if(mapsRef!==googleQueryCacheMapsRef){
+    googleQueryCache.clear();
+    googleQueryCacheMapsRef=mapsRef;
+  }
+  const key=normalizedEvidence(query);
+  const now=Date.now();
+  const cached=googleQueryCache.get(key);
+  if(cached&&cached.expiresAt>now) return cached.promise;
+  if(cached) googleQueryCache.delete(key);
+  const promise=googleGeocode(query).catch((error)=>{
+    googleQueryCache.delete(key);
+    throw error;
+  });
+  googleQueryCache.set(key,{expiresAt:now+GOOGLE_QUERY_CACHE_TTL_MS,promise});
+  if(googleQueryCache.size>GOOGLE_QUERY_CACHE_LIMIT){
+    const oldest=googleQueryCache.keys().next().value;
+    if(oldest) googleQueryCache.delete(oldest);
+  }
+  return promise;
+}
+
+async function resolveLearnedLocationAlias(client:any,input:{deliveryWayId:string;address:string;township:string}){
+  if(!client?.rpc||!input.address.trim()) return null;
+  const {data,error}=await client.rpc("be_location_alias_resolve_v28",{
+    p_address:input.address,
+    p_township:input.township,
+  });
+  if(error){
+    if(!["42883","42501","PGRST202"].includes(String(error.code||""))) {
+      console.warn("Learned location alias lookup failed; using Google.",error.message);
+    }
+    return null;
+  }
+  const alias=data?.location;
+  if(!alias||!validMyanmarCoordinate(alias.longitude,alias.latitude)) return null;
+  return {
+    deliveryWayId:input.deliveryWayId,
+    latitude:Number(alias.latitude),
+    longitude:Number(alias.longitude),
+    label:String(alias.provider_label||alias.address_alias||input.address),
+    originalAddress:input.address,
+    englishAddress:String(alias.address_english||normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(input.address,input.township))),
+    township:String(alias.township||input.township),
+    postalCode:String(alias.postal_code||""),
+    postalMatchLevel:(alias.postal_match_level||"UNRESOLVED") as PostalMatch["matchLevel"],
+    matchLevel:(alias.match_level||"MANUAL") as DeliveryLocation["matchLevel"],
+    confidence:Math.max(0.95,Number(alias.confidence)||1),
+    coordinateSource:"LEARNED_ADDRESS_ALIAS_V28",
+    reviewStatus:"ACCEPTED" as const,
+  };
+}
+
 function addressNumbers(value: string) {
   const normalized = normalizeEnglishAddressForGeocoding(value);
   const house = (normalized.match(/\bno\.?\s*([0-9]+[a-z]?)/i)?.[1]
@@ -533,7 +591,7 @@ export function validateDeliveryCandidate(
   };
 }
 
-export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string }) {
+export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string },client?:any) {
   const originalAddress = String(input.address || "").trim();
   const direct = parseCoordinate(originalAddress);
   const postal = resolvePostalCode(originalAddress, input.township);
@@ -576,6 +634,9 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     };
   }
 
+  const learned=await resolveLearnedLocationAlias(client,input);
+  if(learned) return learned;
+
   const queries = buildDeliveryAddressQueries(
     originalAddress,
     input.township,
@@ -588,7 +649,7 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
 
   for (const query of queries) {
     try {
-      const google = await googleGeocode(query);
+      const google = await cachedGoogleGeocode(query);
       for (const result of google) candidates.push({ ...result, query });
     } catch (error) {
       providerFailure ||= error instanceof Error ? error : googleLocationError(error, "Google location search");

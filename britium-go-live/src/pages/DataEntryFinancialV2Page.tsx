@@ -850,6 +850,13 @@ export default function DataEntryFinancialV2Page() {
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
   const [visibleRowCount,setVisibleRowCount]=useState(20);
   const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
+  const importedLocationPatchQueueRef=useRef(new Map<string,Partial<ParcelRow>>());
+  const importedLocationPatchTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  useEffect(()=>()=>{
+    if(importedLocationPatchTimerRef.current) clearTimeout(importedLocationPatchTimerRef.current);
+    importedLocationPatchQueueRef.current.clear();
+  },[]);
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
@@ -1426,19 +1433,46 @@ export default function DataEntryFinancialV2Page() {
     return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
   }
 
-  function patchImportedLocation(pickupId:string,parcelSequence:number,patch:Partial<ParcelRow>){
-    setBulkImportDrafts((current)=>{
-      const draft=current[pickupId];
-      if(!draft) return current;
-      return {...current,[pickupId]:{...draft,rows:draft.rows.map((row)=>row.parcel_sequence===parcelSequence?{...row,...patch}:row)}};
+  function flushImportedLocationPatches(){
+    if(importedLocationPatchTimerRef.current){
+      clearTimeout(importedLocationPatchTimerRef.current);
+      importedLocationPatchTimerRef.current=null;
+    }
+    const queued=importedLocationPatchQueueRef.current;
+    if(!queued.size) return;
+    importedLocationPatchQueueRef.current=new Map();
+    const apply=(source:ParcelRow[])=>source.map((row)=>{
+      const patch=queued.get(`${row.pickup_id}:${row.parcel_sequence}`);
+      return patch?{...row,...patch}:row;
     });
-    setRows((current)=>current.map((row)=>row.pickup_id===pickupId&&row.parcel_sequence===parcelSequence?{...row,...patch}:row));
+    setBulkImportDrafts((current)=>{
+      let changed=false;
+      const next=Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>{
+        const affectsDraft=draft.rows.some((row)=>queued.has(`${row.pickup_id}:${row.parcel_sequence}`));
+        if(!affectsDraft) return [pickupId,draft];
+        changed=true;
+        return [pickupId,{...draft,rows:apply(draft.rows)}];
+      }));
+      return changed?next:current;
+    });
+    setRows((current)=>current.some((row)=>queued.has(`${row.pickup_id}:${row.parcel_sequence}`))?apply(current):current);
+  }
+
+  function patchImportedLocation(pickupId:string,parcelSequence:number,patch:Partial<ParcelRow>){
+    const key=`${pickupId}:${parcelSequence}`;
+    importedLocationPatchQueueRef.current.set(key,{
+      ...(importedLocationPatchQueueRef.current.get(key)||{}),
+      ...patch,
+    });
+    if(importedLocationPatchTimerRef.current===null){
+      importedLocationPatchTimerRef.current=setTimeout(flushImportedLocationPatches,80);
+    }
   }
 
   async function validateImportedLocation(row:ParcelRow){
     patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"});
     try{
-      const found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township});
+      const found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township},supabase);
       if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
         patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."});
         return;
@@ -1468,6 +1502,7 @@ export default function DataEntryFinancialV2Page() {
       }
     };
     await Promise.all(Array.from({length:Math.min(3,jobs.length)},()=>worker()));
+    flushImportedLocationPatches();
     setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);
   }
 
