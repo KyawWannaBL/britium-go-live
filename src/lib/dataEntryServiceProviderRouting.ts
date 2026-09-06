@@ -1,6 +1,5 @@
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
-import { POSTAL_CODE_REGIONS } from "@/lib/postalCodeData";
 
 export type DataEntryProviderCode =
   | "BRITIUM"
@@ -65,7 +64,6 @@ export type DataEntryProviderRouting = {
 };
 
 const PROVIDER_PRIORITY = ["BRITIUM", "NPT BRANCH", "DK DELIVERY", "ROYAL EXPRESS", "H.TERMINAL DROP-OFF", "GRS"];
-const routingCache = new WeakMap<DataEntryProviderTariffOption[], Map<string, DataEntryProviderRouting>>();
 
 function compactLocationKey(value: unknown): string {
   return convertMyanmarTownshipToEnglish(stripServiceProviderDecoration(value))
@@ -117,35 +115,26 @@ const YANGON_BRITIUM_OUTREACH_SERVICE_AREA = keySet([
   "Thongwa", "Thone Gwa", "သုံးခွ",
 ]);
 
-const CORE_REGION_KEYS = {
-  yangon: keySet(["Yangon Region", "ရန်ကုန်တိုင်းဒေသကြီး"]),
-  mandalay: keySet(["Mandalay Region", "မန္တလေးတိုင်းဒေသကြီး"]),
-  naypyitaw: keySet(["Naypyitaw Union Territory", "Nay Pyi Taw", "နေပြည်တော် ပြည်ထောင်စုနယ်မြေ", "နေပြည်တော်"]),
-};
-
-const OUTSIDE_CORE_REGION_KEYS = keySet(POSTAL_CODE_REGIONS.flatMap(([region, regionMm]) => [region, regionMm]));
-
-function sourceContainsAnyLocation(source: unknown, candidates: Set<string>): boolean {
-  const sourceKey = compactLocationKey(source);
-  return [...candidates].some((candidate) => candidate.length >= 4 && sourceKey.includes(candidate));
-}
-
-function hasOutsideCoreRegionEvidence(source: unknown): boolean {
-  if (!sourceContainsAnyLocation(source, OUTSIDE_CORE_REGION_KEYS)) return false;
-  return !sourceContainsAnyLocation(source, CORE_REGION_KEYS.yangon)
-    && !sourceContainsAnyLocation(source, CORE_REGION_KEYS.mandalay)
-    && !sourceContainsAnyLocation(source, CORE_REGION_KEYS.naypyitaw);
-}
-
-function detectedRegionLabel(source: unknown): string {
-  const sourceKey = compactLocationKey(source);
-  const prefersMyanmar = /[\u1000-\u109f]/.test(String(source ?? ""));
-  const match = POSTAL_CODE_REGIONS.find(([region, regionMm]) =>
-    [compactLocationKey(region), compactLocationKey(regionMm)]
-      .some((candidate) => candidate.length >= 4 && sourceKey.includes(candidate)),
-  );
-  return match ? (prefersMyanmar ? match[1] : match[0]) : "";
-}
+// Do not make provider selection depend on the asynchronous tariff download.
+// These Yangon urban townships are Britium-operated and must be routable as
+// soon as an address/postal match identifies them. Hlaingtharya East/West are
+// normalized by the postal resolver to the same Britium scope.
+const YANGON_BRITIUM_CORE_SERVICE_AREA = keySet([
+  "Ahlone", "အလုံ", "Bahan", "ဗဟန်း", "Botahtaung", "ဗိုလ်တထောင်",
+  "Dagon", "ဒဂုံ", "Dagon Seikkan", "Dagon Myothit (Seikkan)", "ဒဂုံဆိပ်ကမ်း",
+  "Dala", "ဒလ", "Dawbon", "ဒေါပုံ", "East Dagon", "Dagon Myothit (East)", "အရှေ့ဒဂုံ",
+  "Hlaing", "လှိုင်", "Hlaingtharya", "Hlaing Tharyar", "Hlaingtharya (East)", "Hlaingtharya (West)", "လှိုင်သာယာ",
+  "Insein", "အင်းစိန်", "Kamayut", "ကမာရွတ်", "Kyauktada", "ကျောက်တံတား",
+  "Kyimyindaing", "Kyeemyindaing", "ကြည့်မြင်တိုင်", "Lanmadaw", "လမ်းမတော်",
+  "Latha", "လသာ", "Mayangone", "Mayangon", "မရမ်းကုန်း", "Mingaladon", "မင်္ဂလာဒုံ",
+  "Mingalartaungnyunt", "Mingala Taungnyunt", "မင်္ဂလာတောင်ညွန့်",
+  "North Dagon", "Dagon Myothit (North)", "မြောက်ဒဂုံ", "North Okkalapa", "မြောက်ဥက္ကလာပ",
+  "Pabedan", "ပန်းဘဲတန်း", "Pazundaung", "ပုဇွန်တောင်", "Sanchaung", "စမ်းချောင်း",
+  "Seikkan", "ဆိပ်ကမ်း", "Shwepyitha", "Shwepyithar", "ရွှေပြည်သာ",
+  "South Dagon", "Dagon Myothit (South)", "တောင်ဒဂုံ", "South Okkalapa", "တောင်ဥက္ကလာပ",
+  "Tamwe", "တာမွေ", "Thaketa", "သာကေတ", "Thingangyun", "သင်္ဃန်းကျွန်း",
+  "Yankin", "ရန်ကင်း",
+]);
 
 export function stripServiceProviderDecoration(value: unknown): string {
   return String(value ?? "")
@@ -207,20 +196,7 @@ export function resolveDataEntryServiceProvider(
 ): DataEntryProviderRouting {
   const raw = String(townshipValue ?? "").trim();
   const cleanTownship = stripServiceProviderDecoration(raw);
-  const addressText = String(deliveryAddress ?? "").trim();
-  const cacheKey = [raw, addressText, String(options.itemPrice ?? ""), options.fallbackUnknownToRoyal ? "1" : "0"].join("\u0000");
-  let cache = routingCache.get(tariffOptions);
-  if (!cache) {
-    cache = new Map();
-    routingCache.set(tariffOptions, cache);
-  }
-  const cached = cache.get(cacheKey);
-  if (cached) return cached;
-
-  // When the spreadsheet township cell is blank or noisy, use the full address
-  // as township evidence. The postal resolver then extracts an explicit locality
-  // instead of forcing the operator to type it again.
-  const postal = resolvePostalCode(deliveryAddress, cleanTownship || addressText);
+  const postal = resolvePostalCode(deliveryAddress, cleanTownship);
   const candidateKeys = new Set([
     compactLocationKey(cleanTownship),
     compactLocationKey(postal.township),
@@ -236,8 +212,7 @@ export function resolveDataEntryServiceProvider(
   let stationRequired = false;
   const recognizedDestination = postal.matchLevel !== "UNRESOLVED"
     || exactMatches.length > 0
-    || Boolean(options.fallbackUnknownToRoyal && cleanTownship)
-    || Boolean(options.fallbackUnknownToRoyal && hasOutsideCoreRegionEvidence(addressText));
+    || Boolean(options.fallbackUnknownToRoyal && cleanTownship);
 
   if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
     routeRegion = "OUTSIDE_CORE";
@@ -254,16 +229,10 @@ export function resolveDataEntryServiceProvider(
     routeRegion = "NAYPYITAW";
     deliveryMode = "DOORSTEP_MAP";
     mapRequired = true;
-  } else if (sourceContainsAnyLocation(addressText, CORE_REGION_KEYS.naypyitaw)
-    && !sourceContainsAnyLocation(addressText, NAYPYITAW_ROYAL_EXCEPTIONS)) {
-    // Naypyitaw addresses sometimes contain only the Union Territory/city name.
-    // They still belong to the NPT branch unless Tatkon or Lewe is stated.
-    providerCode = "NPT BRANCH";
-    reason = "NAYPYITAW_BRANCH_SERVICE_AREA";
-    routeRegion = "NAYPYITAW";
-    deliveryMode = "DOORSTEP_MAP";
-    mapRequired = true;
-  } else if ([...candidateKeys].some((candidate) => YANGON_BRITIUM_OUTREACH_SERVICE_AREA.has(candidate))) {
+  } else if ([...candidateKeys].some((candidate) =>
+    YANGON_BRITIUM_CORE_SERVICE_AREA.has(candidate)
+    || YANGON_BRITIUM_OUTREACH_SERVICE_AREA.has(candidate)
+  )) {
     providerCode = "BRITIUM";
     reason = "EXACT_BRITIUM_ROUTE";
     routeRegion = "YANGON";
@@ -287,8 +256,7 @@ export function resolveDataEntryServiceProvider(
   if (routeRegion === "OUTSIDE_CORE") {
     const hintedProvider = dataEntryProviderHint(raw);
     const royalAvailable = hintedProvider === "ROYAL EXPRESS"
-      || exactMatches.some((match) => match.provider_code.toUpperCase() === "ROYAL EXPRESS")
-      || reason === "NAYPYITAW_EXCEPTION_OUTSIDE_CORE";
+      || exactMatches.some((match) => match.provider_code.toUpperCase() === "ROYAL EXPRESS");
     const hasItemPrice = Number(options.itemPrice) > 0;
     const hasAddress = String(deliveryAddress ?? "").trim().length > 0;
     if (!hasItemPrice && !hasAddress && !royalAvailable) {
@@ -304,18 +272,12 @@ export function resolveDataEntryServiceProvider(
   }
 
   const option = preferredTariff(exactMatches, providerCode);
-  const prefersMyanmar = /[\u1000-\u109f]/.test(raw || addressText);
-  const postalTownship = postal.matchLevel === "UNRESOLVED"
-    ? ""
-    : (prefersMyanmar ? postal.townshipMm : postal.township);
-  const regionFallback = detectedRegionLabel(addressText);
+  const prefersMyanmar = /[\u1000-\u109f]/.test(raw);
   const township = option?.destination_name
-    || postalTownship
-    || (reason === "NAYPYITAW_BRANCH_SERVICE_AREA" ? (prefersMyanmar ? "နေပြည်တော်" : "Naypyitaw") : "")
-    || regionFallback
+    || (prefersMyanmar ? postal.townshipMm : postal.township)
     || cleanTownship;
 
-  const result: DataEntryProviderRouting = {
+  return {
     township,
     providerCode,
     routeRegion,
@@ -326,9 +288,6 @@ export function resolveDataEntryServiceProvider(
     option,
     postal,
   };
-  if (cache.size >= 2000) cache.clear();
-  cache.set(cacheKey, result);
-  return result;
 }
 
 export function providerRoutingMessage(route: DataEntryProviderRouting): string {

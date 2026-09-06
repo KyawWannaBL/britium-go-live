@@ -565,13 +565,43 @@ export function hasIndependentLocationAgreement(candidate: any, candidates: any[
     && distanceMetres(candidate, other) <= 200);
 }
 
-export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string }) {
+export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string; ward?: string; postalCode?: string; merchantId?: string; client?: any }) {
   const originalAddress = String(input.address || "").trim();
+  const addressWithPostalEvidence = [originalAddress, input.ward, input.postalCode].filter(Boolean).join(", ");
   const direct = parseCoordinate(originalAddress);
-  const postal = resolvePostalCode(originalAddress, input.township);
+  const postal = resolvePostalCode(addressWithPostalEvidence, input.township);
   const canonicalTownship = canonicalTownshipForGeocoding(input.township, postal.township);
-  const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(originalAddress, canonicalTownship));
+  const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(addressWithPostalEvidence, canonicalTownship));
   const verified = verifiedAddressLocation(originalAddress, input.township);
+
+  if (input.client && originalAddress.length >= 3) {
+    const { data: alias, error: aliasError } = await input.client.rpc("be_location_alias_lookup_v28", {
+      p_alias_text: originalAddress,
+      p_merchant_id: input.merchantId || null,
+    });
+    if (!aliasError && alias?.matched && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
+      const requestedTownship = String(input.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+      const learnedTownship = String(alias.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+      if (!requestedTownship || !learnedTownship || requestedTownship === learnedTownship) {
+        return {
+          deliveryWayId: input.deliveryWayId,
+          latitude: Number(alias.latitude),
+          longitude: Number(alias.longitude),
+          label: alias.label || originalAddress,
+          originalAddress,
+          englishAddress,
+          township: alias.township || input.township,
+          postalCode: postal.postalCode,
+          postalMatchLevel: postal.matchLevel,
+          matchLevel: "ADDRESS_EXACT" as const,
+          confidence: Number(alias.confidence || 0.95),
+          coordinateSource: "MERCHANT_LOCATION_ALIAS_V28",
+          reviewStatus: "ACCEPTED" as const,
+          reviewReason: "",
+        };
+      }
+    }
+  }
 
   if (direct) {
     const townshipMatch = await coordinateMatchesTownship(input.township, direct.latitude, direct.longitude);
@@ -609,7 +639,7 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   }
 
   const queries = buildDeliveryAddressQueries(
-    originalAddress,
+    addressWithPostalEvidence,
     input.township,
     postal.postalCode,
     postal.quarter,
@@ -618,12 +648,26 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   const candidates: any[] = [];
   let providerFailure: Error | null = null;
 
-  for (const query of queries) {
-    try {
-      const google = await googleGeocode(query);
-      for (const result of google) candidates.push({ ...result, query });
-    } catch (error) {
-      providerFailure ||= error instanceof Error ? error : googleLocationError(error, "Google location search");
+  // Run the independent Google searches together. The former sequential loop
+  // could spend the entire Data Entry row timeout on an early weak query and
+  // incorrectly send an otherwise resolvable address to manual review.
+  const queryResults = await Promise.allSettled(queries.map(async (query) => ({
+    query,
+    results: await Promise.race([
+      googleGeocode(query),
+      new Promise<never>((_, reject) => window.setTimeout(
+        () => reject(new Error("Google location query timed out")),
+        6500,
+      )),
+    ]),
+  })));
+  for (const outcome of queryResults) {
+    if (outcome.status === "fulfilled") {
+      for (const result of outcome.value.results) candidates.push({ ...result, query: outcome.value.query });
+    } else {
+      providerFailure ||= outcome.reason instanceof Error
+        ? outcome.reason
+        : googleLocationError(outcome.reason, "Google location search");
     }
   }
 
