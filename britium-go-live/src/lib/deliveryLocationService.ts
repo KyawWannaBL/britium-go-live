@@ -208,13 +208,21 @@ export function buildDeliveryAddressQueries(
   postalCode = "",
   quarter = "",
   postalTownship = "",
+  postalRegion = "",
 ) {
   const canonicalTownship = canonicalTownshipForGeocoding(township, postalTownship);
   const english = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(address, canonicalTownship));
   // The Britium postal directory is authoritative internal validation data, not
   // necessarily a postal code understood by Google. Injecting it into Google's
   // query caused otherwise valid Myanmar addresses to collapse to area centroids.
-  const localityParts = [quarter, canonicalTownship, "Yangon", "Myanmar"].filter(Boolean);
+  const coreCity = /mandalay/i.test(postalRegion)
+    ? "Mandalay"
+    : /naypyitaw|nay pyi taw/i.test(postalRegion)
+      ? "Naypyitaw"
+      : /yangon/i.test(postalRegion)
+        ? "Yangon"
+        : postalRegion;
+  const localityParts = [quarter, canonicalTownship, coreCity, "Myanmar"].filter(Boolean);
   const queries: string[] = [];
   const add = (query: string) => {
     const cleaned = appendMissingLocality(query, localityParts);
@@ -508,6 +516,15 @@ export function validateDeliveryCandidate(
   const autoAccept = areaMatch && (
     (candidate.matchLevel === "ADDRESS_EXACT" && townshipMatch && houseStreetMatch && score >= 0.96)
     || (candidate.matchLevel === "POI_EXACT" && townshipMatch && score >= 0.96)
+    // Places (New) commonly reports precise Myanmar street-address results as
+    // `street_address` without a ROOFTOP location type. Accept that result when
+    // the uploaded address has an exact audited ward/postal match and the
+    // candidate independently matches the requested township. Bare road/route
+    // results remain below this score and continue to manual review.
+    || (candidate.matchLevel === "STREET_APPROXIMATE"
+      && townshipMatch
+      && postal.matchLevel === "EXACT_QUARTER"
+      && score >= 0.96)
   );
   const reviewReason = !areaMatch
     ? "OUTSIDE_TOWNSHIP_AREA"
@@ -533,13 +550,66 @@ export function validateDeliveryCandidate(
   };
 }
 
-export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string }) {
+function distanceMetres(a: any, b: any) {
+  const toRadians = (value: number) => value * Math.PI / 180;
+  const lat1 = toRadians(Number(a.latitude));
+  const lat2 = toRadians(Number(b.latitude));
+  const deltaLat = lat2 - lat1;
+  const deltaLng = toRadians(Number(b.longitude) - Number(a.longitude));
+  const sinLat = Math.sin(deltaLat / 2);
+  const sinLng = Math.sin(deltaLng / 2);
+  const h = sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLng * sinLng;
+  return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(Math.max(0, 1 - h)));
+}
+
+export function hasIndependentLocationAgreement(candidate: any, candidates: any[]) {
+  if (!candidate?.provider || candidate.matchLevel === "WARD_APPROXIMATE") return false;
+  return candidates.some((other) => other !== candidate
+    && other?.provider
+    && other.provider !== candidate.provider
+    && other.matchLevel !== "WARD_APPROXIMATE"
+    && other.areaMatch
+    && other.townshipMatch
+    && distanceMetres(candidate, other) <= 200);
+}
+
+export async function resolveDeliveryLocation(input: { deliveryWayId: string; address: string; township: string; ward?: string; postalCode?: string; merchantId?: string; client?: any }) {
   const originalAddress = String(input.address || "").trim();
+  const addressWithPostalEvidence = [originalAddress, input.ward, input.postalCode].filter(Boolean).join(", ");
   const direct = parseCoordinate(originalAddress);
-  const postal = resolvePostalCode(originalAddress, input.township);
+  const postal = resolvePostalCode(addressWithPostalEvidence, input.township);
   const canonicalTownship = canonicalTownshipForGeocoding(input.township, postal.township);
-  const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(originalAddress, canonicalTownship));
+  const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(addressWithPostalEvidence, canonicalTownship));
   const verified = verifiedAddressLocation(originalAddress, input.township);
+
+  if (input.client && originalAddress.length >= 3) {
+    const { data: alias, error: aliasError } = await input.client.rpc("be_location_alias_lookup_v28", {
+      p_alias_text: originalAddress,
+      p_merchant_id: input.merchantId || null,
+    });
+    if (!aliasError && alias?.matched && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
+      const requestedTownship = String(input.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+      const learnedTownship = String(alias.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+      if (!requestedTownship || !learnedTownship || requestedTownship === learnedTownship) {
+        return {
+          deliveryWayId: input.deliveryWayId,
+          latitude: Number(alias.latitude),
+          longitude: Number(alias.longitude),
+          label: alias.label || originalAddress,
+          originalAddress,
+          englishAddress,
+          township: alias.township || input.township,
+          postalCode: postal.postalCode,
+          postalMatchLevel: postal.matchLevel,
+          matchLevel: "ADDRESS_EXACT" as const,
+          confidence: Number(alias.confidence || 0.95),
+          coordinateSource: "MERCHANT_LOCATION_ALIAS_V28",
+          reviewStatus: "ACCEPTED" as const,
+          reviewReason: "",
+        };
+      }
+    }
+  }
 
   if (direct) {
     const townshipMatch = await coordinateMatchesTownship(input.township, direct.latitude, direct.longitude);
@@ -577,21 +647,36 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   }
 
   const queries = buildDeliveryAddressQueries(
-    originalAddress,
+    addressWithPostalEvidence,
     input.township,
     postal.postalCode,
     postal.quarter,
     postal.township,
-  ).slice(0, 6);
+    postal.region,
+  ).slice(0, 3);
   const candidates: any[] = [];
   let providerFailure: Error | null = null;
 
-  for (const query of queries) {
-    try {
-      const google = await googleGeocode(query);
-      for (const result of google) candidates.push({ ...result, query });
-    } catch (error) {
-      providerFailure ||= error instanceof Error ? error : googleLocationError(error, "Google location search");
+  // Run the independent Google searches together. The former sequential loop
+  // could spend the entire Data Entry row timeout on an early weak query and
+  // incorrectly send an otherwise resolvable address to manual review.
+  const queryResults = await Promise.allSettled(queries.map(async (query) => ({
+    query,
+    results: await Promise.race([
+      googleGeocode(query),
+      new Promise<never>((_, reject) => globalThis.setTimeout(
+        () => reject(new Error("Google location query timed out")),
+        6500,
+      )),
+    ]),
+  })));
+  for (const outcome of queryResults) {
+    if (outcome.status === "fulfilled") {
+      for (const result of outcome.value.results) candidates.push({ ...result, query: outcome.value.query });
+    } else {
+      providerFailure ||= outcome.reason instanceof Error
+        ? outcome.reason
+        : googleLocationError(outcome.reason, "Google location search");
     }
   }
 
@@ -599,11 +684,18 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     if (providerFailure) throw providerFailure;
     return null;
   }
-  const evaluated = candidates
+  const initiallyEvaluated = candidates
     .map((candidate) => {
       return validateDeliveryCandidate(candidate, { address: originalAddress, township: input.township }, postal, false);
     })
-    .filter((candidate) => candidate.areaMatch && candidate.townshipMatch)
+    .filter((candidate) => candidate.areaMatch && candidate.townshipMatch);
+  const evaluated = initiallyEvaluated
+    .map((candidate) => validateDeliveryCandidate(
+      candidate,
+      { address: originalAddress, township: input.township },
+      postal,
+      hasIndependentLocationAgreement(candidate, initiallyEvaluated),
+    ))
     .sort((a, b) => b.score - a.score);
 
   if (!evaluated.length) return null;
@@ -613,12 +705,12 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   // This closes the North Dagon/North Okkalapa overlap where coarse rectangles
   // cannot distinguish neighboring administrative boundaries.
   let best: any = null;
-  for (const candidate of evaluated.slice(0, 5)) {
-    if (await coordinateMatchesTownship(input.township, candidate.latitude, candidate.longitude)) {
-      best = candidate;
-      break;
-    }
-  }
+  const finalists = evaluated.slice(0, 3);
+  const reverseChecks = await Promise.allSettled(finalists.map((candidate) =>
+    coordinateMatchesTownship(input.township, candidate.latitude, candidate.longitude),
+  ));
+  const bestIndex = reverseChecks.findIndex((result) => result.status === "fulfilled" && result.value);
+  if (bestIndex >= 0) best = finalists[bestIndex];
   if (!best) return null;
   // The database accepts exact Google results after either postal evidence or
   // the independent township boundary + reverse-geocode check above. Keep the
