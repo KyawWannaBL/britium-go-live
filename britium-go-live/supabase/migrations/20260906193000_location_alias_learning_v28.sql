@@ -111,23 +111,38 @@ insert into public.be_location_aliases(
   postal_code,postal_match_level,latitude,longitude,provider_label,match_level,
   confidence,coordinate_source,usage_count,verified_by,first_verified_at,last_verified_at
 )
-select
-  private.be_location_alias_normalize_v28(r.address_original),
-  private.be_location_alias_normalize_v28(r.township),
-  '',r.address_original,r.address_english,r.township,coalesce(r.postal_code,''),
-  coalesce(r.postal_match_level,'UNRESOLVED'),r.latitude,r.longitude,r.provider_label,
-  r.match_level,greatest(r.confidence,0.95),r.coordinate_source,1,r.updated_by,
-  r.created_at,r.updated_at
-from public.be_delivery_location_registry r
-where r.review_status='ACCEPTED'
-  and btrim(r.address_original)<>''
-  and r.latitude is not null
-  and r.longitude is not null
+select alias_key,township_key,'',address_original,address_english,township,postal_code,
+  postal_match_level,latitude,longitude,provider_label,match_level,confidence,
+  coordinate_source,duplicate_count,updated_by,created_at,updated_at
+from (
+  select
+    private.be_location_alias_normalize_v28(r.address_original) as alias_key,
+    private.be_location_alias_normalize_v28(r.township) as township_key,
+    r.address_original,r.address_english,r.township,coalesce(r.postal_code,'') as postal_code,
+    coalesce(r.postal_match_level,'UNRESOLVED') as postal_match_level,
+    r.latitude,r.longitude,r.provider_label,r.match_level,greatest(r.confidence,0.95) as confidence,
+    r.coordinate_source,r.updated_by,r.created_at,r.updated_at,
+    count(*) over (
+      partition by private.be_location_alias_normalize_v28(r.address_original),
+                   private.be_location_alias_normalize_v28(r.township)
+    ) as duplicate_count,
+    row_number() over (
+      partition by private.be_location_alias_normalize_v28(r.address_original),
+                   private.be_location_alias_normalize_v28(r.township)
+      order by r.confidence desc,r.updated_at desc,r.delivery_way_id desc
+    ) as choice_rank
+  from public.be_delivery_location_registry r
+  where r.review_status='ACCEPTED'
+    and btrim(r.address_original)<>''
+    and r.latitude is not null
+    and r.longitude is not null
+) ranked
+where choice_rank=1
 on conflict (alias_key,township_key,merchant_id) do update set
   latitude=case when excluded.confidence>=be_location_aliases.confidence then excluded.latitude else be_location_aliases.latitude end,
   longitude=case when excluded.confidence>=be_location_aliases.confidence then excluded.longitude else be_location_aliases.longitude end,
   confidence=greatest(be_location_aliases.confidence,excluded.confidence),
-  usage_count=be_location_aliases.usage_count+1,
+  usage_count=greatest(be_location_aliases.usage_count,excluded.usage_count),
   last_verified_at=greatest(be_location_aliases.last_verified_at,excluded.last_verified_at);
 
 create or replace function public.be_location_alias_resolve_v28(
