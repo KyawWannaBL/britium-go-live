@@ -111,6 +111,8 @@ const NAYPYITAW_BRANCH_SERVICE_AREA = keySet([
 // to be recognized by the exact-tariff branch below.
 const YANGON_BRITIUM_OUTREACH_SERVICE_AREA = keySet([
   "Yangon", "Rangoon", "ရန်ကုန်",
+  "Hlaing Tharyar", "Hlaing Thayar", "Hlaing Thaya", "Hlaingtharya (East)", "Hlaingtharya (West)",
+  "လှိုင်သာယာ", "လှိုင်သာယာ (အရှေ့)", "လှိုင်သာယာ (အနောက်)",
   "Thanlyin", "Syriam", "သန်လျင်",
   "Thongwa", "Thone Gwa", "သုံးခွ",
 ]);

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"utf8");
 const importer=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBulkImport.tsx"),"utf8");
+const inboundConverter=readFileSync(resolve(root,"src/lib/inboundManifestConverter.ts"),"utf8");
 const location=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
 const migration=readFileSync(resolve(root,"supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
 const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
@@ -17,6 +18,8 @@ const checks=[
   ["legacy 10-column sheets remain valid for a selected pickup",/REGISTRATION_COLUMN_KEYS/.test(importer)&&/missingBulkRoutingHeaders/.test(importer)&&/bulkMode && missingBulkRoutingHeaders/.test(importer)],
   ["header discovery scans first 25 rows",/matrix\.slice\(0, 25\)/.test(importer)],
   ["CSV and Excel use the same parser",/\.\(xlsx\|xls\|csv\)/.test(importer)&&/import\("xlsx"\)/.test(importer)&&/parseOsImportMatrix/.test(importer)],
+  ["inbound manifest converts to the Waybill generation schema",/CONVERT INBOUND TO WAYBILL/.test(importer)&&/convertInboundManifestMatrix/.test(importer)&&/WAYBILL_GENERATE_HEADERS/.test(inboundConverter)&&/Inboundmanifest_template\.xlsx/.test(inboundConverter)],
+  ["inbound conversion uses postal matching and routes Hlaing Tharyar East-West to Britium",/resolvePostalCode/.test(inboundConverter)&&/Hlaing Tharyar/.test(inboundConverter)&&/Hlaingtharya\(East\)/.test(readFileSync(resolve(root,"src/lib/postalCodeData.ts"),"utf8"))&&/Britium Express/.test(inboundConverter)],
   ["All OS and Dedicated OS filters",/ALL_OS/.test(importer)&&/DEDICATED_OS/.test(importer)&&/merchantFilter/.test(importer)],
   ["timeline and complete-partial filters",/fromDate/.test(importer)&&/toDate/.test(importer)&&/pickupStatus/.test(importer)&&/rowStatus/.test(importer)],
   ["spreadsheet fills existing registration state",/async function applyOsImport/.test(page)&&/fillImportedPickupRows/.test(page)&&/setRows\(firstDraft\.rows\)/.test(page)],

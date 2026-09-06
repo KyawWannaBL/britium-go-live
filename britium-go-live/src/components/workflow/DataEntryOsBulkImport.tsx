@@ -9,6 +9,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
+import { convertInboundManifestMatrix, inboundWaybillFileName, WAYBILL_GENERATE_HEADERS } from "@/lib/inboundManifestConverter";
 
 export type OsBulkPickup = {
   pickup_id: string;
@@ -456,6 +457,7 @@ function authorizedCount(pickup: OsBulkPickup) {
 
 export default function DataEntryOsBulkImport({ pickups, selectedPickupId, sequenceFloorByPickup = {}, busy = false, onPickupChange, onApply }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const inboundInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [filename, setFilename] = useState("");
   const [rows, setRows] = useState<OsImportRow[]>([]);
@@ -599,6 +601,35 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
     }
   }
 
+  async function convertInboundManifest(file?: File) {
+    if (!file) return;
+    setFileBusy(true);
+    setMessage("Converting inbound manifest with the Myanmar postal master...");
+    try {
+      if (!/\.(xlsx|xls|csv)$/i.test(file.name)) throw new Error("Choose an XLSX, XLS, or CSV inbound manifest.");
+      if (file.size > 15 * 1024 * 1024) throw new Error("The inbound manifest is larger than 15 MB.");
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, raw: false });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) throw new Error("The inbound workbook has no worksheet.");
+      const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false });
+      const converted = convertInboundManifestMatrix(matrix);
+      const output = XLSX.utils.book_new();
+      const sheet = XLSX.utils.aoa_to_sheet([WAYBILL_GENERATE_HEADERS, ...converted.rows]);
+      sheet["!cols"] = [18, 22, 22, 18, 30, 34, 46, 18, 54, 16, 16, 34, 16, 16, 16, 32].map((wch) => ({ wch }));
+      sheet["!autofilter"] = { ref: `A1:P${converted.rows.length + 1}` };
+      XLSX.utils.book_append_sheet(output, sheet, "Data Entry");
+      const bytes = XLSX.write(output, { bookType: "xlsx", type: "array" });
+      downloadBlob(inboundWaybillFileName(file.name), new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+      setMessage(`Converted ${converted.convertedCount} inbound row(s). ${converted.exactPostalCount} exact ward/postal matches; ${converted.unresolvedCount} unresolved location(s) remain blank for review. Hlaing Tharyar East/West route to Britium Express.`);
+    } catch (error: any) {
+      setMessage(error?.message || "The inbound manifest could not be converted.");
+    } finally {
+      setFileBusy(false);
+      if (inboundInputRef.current) inboundInputRef.current.value = "";
+    }
+  }
+
   async function applyRows() {
     if (!targetReady) {
       setMessage(bulkMode
@@ -680,6 +711,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void downloadXlsxTemplate()} disabled={fileBusy} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>XLSX TEMPLATE</button>
                     <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>CSV TEMPLATE</button>
+                    <label className="cursor-pointer rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-[10px] font-black text-emerald-200"><FileSpreadsheet size={13} className="mr-1 inline"/>CONVERT INBOUND TO WAYBILL<input ref={inboundInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void convertInboundManifest(event.target.files?.[0])}/></label>
                     <label className="cursor-pointer rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#071521]"><Upload size={13} className="mr-1 inline"/>ATTACH SPREADSHEET<input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void parseFile(event.target.files?.[0])}/></label>
                   </div>
                 </div>
