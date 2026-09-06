@@ -9,7 +9,9 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { convertInboundManifestMatrix, inboundWaybillFileName, WAYBILL_GENERATE_HEADERS } from "@/lib/inboundManifestConverter";
+import { POSTAL_CODE_REGIONS, POSTAL_CODE_ROWS, POSTAL_CODE_TOWNSHIPS } from "@/lib/postalCodeData";
+import { resolvePostalCode } from "@/lib/postalCodeResolver";
+import { resolveDataEntryServiceProvider } from "@/lib/dataEntryServiceProviderRouting";
 
 export type OsBulkPickup = {
   pickup_id: string;
@@ -29,7 +31,10 @@ export type OsImportRow = {
   sourceRowNumber: number;
   recipientName: string;
   recipientPhone: string;
+  city: string;
   townshipProvider: string;
+  ward: string;
+  postalCode: string;
   actualWeight: number | "";
   deliveryAddress: string;
   serviceType: string;
@@ -75,7 +80,10 @@ type ColumnKey =
   | "merchantName"
   | "recipientName"
   | "recipientPhone"
+  | "city"
   | "townshipProvider"
+  | "ward"
+  | "postalCode"
   | "actualWeight"
   | "deliveryAddress"
   | "serviceType"
@@ -89,7 +97,10 @@ const TEMPLATE_HEADERS = [
   "ကုန်သည်အမည် / ကုန်သည် ID\n(Merchant Name / Merchant ID)",
   "လက်ခံသူအမည်\n(Receiver Name)",
   "လက်ခံသူဖုန်း\n(Receiver Phone)",
+  "မြို့ / တိုင်းဒေသကြီး / ပြည်နယ်\n(City / Region)",
   "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)",
+  "ရပ်ကွက် / ကျေးရွာအုပ်စု\n(Ward / Village Tract)",
+  "စာတိုက်သင်္ကေတ\n(Postal Code)",
   "အမှန်တကယ်အလေးချိန် (KG)\n(Actual Weight)",
   "လက်ခံသူလိပ်စာ\n(Receiver Address)",
   "ဝန်ဆောင်မှုအမျိုးအစား\n(Service Type)",
@@ -104,7 +115,10 @@ const COLUMN_ALIASES: Record<ColumnKey, string[]> = {
   merchantName: ["merchant name", "merchant id", "os name", "os id", "ကုန်သည်အမည်", "ကုန်သည် id"],
   recipientName: ["receiver name", "recipient name", "လက်ခံသူအမည်"],
   recipientPhone: ["receiver phone", "recipient phone", "လက်ခံသူဖုန်း"],
+  city: ["city dropdown", "city region", "city", "region", "မြို့ တိုင်းဒေသကြီး ပြည်နယ်", "တိုင်းဒေသကြီး", "ပြည်နယ်"],
   townshipProvider: ["township / service provider", "township service provider", "delivery township", "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ", "မြို့နယ်"],
+  ward: ["ward village tract", "ward", "quarter", "village tract", "ရပ်ကွက် ကျေးရွာအုပ်စု", "ရပ်ကွက်", "ကျေးရွာအုပ်စု"],
+  postalCode: ["postal code auto", "postal code", "postcode", "zip code", "စာတိုက်သင်္ကေတ"],
   actualWeight: ["actual weight", "weight kg", "weight", "အမှန်တကယ်အလေးချိန်"],
   deliveryAddress: ["receiver address", "recipient address", "delivery address", "လက်ခံသူလိပ်စာ"],
   serviceType: ["service type", "ဝန်ဆောင်မှုအမျိုးအစား"],
@@ -117,6 +131,7 @@ const COLUMN_ALIASES: Record<ColumnKey, string[]> = {
 const REGISTRATION_COLUMN_KEYS: ColumnKey[] = [
   "recipientName",
   "recipientPhone",
+  "city",
   "townshipProvider",
   "actualWeight",
   "deliveryAddress",
@@ -128,6 +143,50 @@ const REGISTRATION_COLUMN_KEYS: ColumnKey[] = [
 ];
 
 const BULK_ROUTING_COLUMN_KEYS: ColumnKey[] = ["wayId", "merchantName"];
+
+type InboundManifestColumn =
+  | "wayId"
+  | "merchantName"
+  | "recipientName"
+  | "recipientPhone"
+  | "recipientTown"
+  | "deliveryAddress"
+  | "itemPrice"
+  | "deliveryFee"
+  | "weight"
+  | "finalCod";
+
+const INBOUND_MANIFEST_ALIASES: Record<InboundManifestColumn, string[]> = {
+  wayId: ["way id", "delivery way id"],
+  merchantName: ["merchant", "merchant name", "os name"],
+  recipientName: ["recipient name", "receiver name"],
+  recipientPhone: ["recipient phone", "receiver phone"],
+  recipientTown: ["recipient town", "receiver town", "township", "town"],
+  deliveryAddress: ["recipient address", "receiver address", "delivery address"],
+  itemPrice: ["item price", "item value"],
+  deliveryFee: ["deli fee os", "delivery fee os", "os set price"],
+  weight: ["actual weight", "weight"],
+  finalCod: ["final cod", "final collection amount"],
+};
+
+const CONVERTED_DATA_ENTRY_HEADERS = [
+  "Way ID / Pickup ID",
+  "Merchant Name",
+  "Receiver Name",
+  "Receiver Phone",
+  "City (Dropdown)",
+  "Township (Dropdown)",
+  "Ward / Village Tract (Dropdown)",
+  "Postal Code (Auto)",
+  "Receiver Address",
+  "Actual Weight (KG)",
+  "Service Type",
+  "Payment Type",
+  "Item Price",
+  "OS Set Price",
+  "Merchant Tier",
+  "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)",
+] as const;
 
 const MYANMAR_DIGITS: Record<string, string> = {
   "၀": "0", "၁": "1", "၂": "2", "၃": "3", "၄": "4",
@@ -153,6 +212,15 @@ function identifyColumn(value: unknown): ColumnKey | null {
   if (!header) return null;
   for (const [key, aliases] of Object.entries(COLUMN_ALIASES) as Array<[ColumnKey, string[]]>) {
     if (aliases.some((alias) => header.includes(normalized(alias)))) return key;
+  }
+  return null;
+}
+
+function identifyInboundManifestColumn(value: unknown): InboundManifestColumn | null {
+  const header = normalized(value);
+  if (!header) return null;
+  for (const [key, aliases] of Object.entries(INBOUND_MANIFEST_ALIASES) as Array<[InboundManifestColumn, string[]]>) {
+    if (aliases.some((alias) => header === normalized(alias) || header.includes(normalized(alias)))) return key;
   }
   return null;
 }
@@ -209,6 +277,178 @@ function routingKey(value: unknown) {
   return clean(value)
     .toLowerCase()
     .replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+}
+
+function dropdownEnglish(value: unknown) {
+  return clean(value).split(/\s+\/\s+/)[0]?.trim() || "";
+}
+
+function canonicalLocationPair(cityValue: unknown, townshipValue: unknown) {
+  const city = dropdownEnglish(cityValue);
+  const township = dropdownEnglish(townshipValue);
+  const inferred = resolvePostalCode(`${clean(cityValue)} ${clean(townshipValue)}`, township);
+  const inferredTownship = inferred.matchLevel !== "UNRESOLVED" ? inferred.township : "";
+  const inferredRegion = inferred.matchLevel !== "UNRESOLVED" ? inferred.region : "";
+  const cityIndex = POSTAL_CODE_REGIONS.findIndex(([en, mm]) => routingKey(en) === routingKey(city) || routingKey(mm) === routingKey(clean(cityValue)));
+  const townshipMatch = POSTAL_CODE_TOWNSHIPS.find(([en, mm]) =>
+    en !== "-" && mm !== "-" && (
+      routingKey(en) === routingKey(township)
+      || routingKey(mm) === routingKey(clean(townshipValue))
+      || routingKey(en) === routingKey(inferredTownship)
+    )
+  );
+  const resolvedCityIndex = cityIndex >= 0
+    ? cityIndex
+    : POSTAL_CODE_REGIONS.findIndex(([en]) => routingKey(en) === routingKey(inferredRegion));
+  return {
+    city: resolvedCityIndex >= 0 ? POSTAL_CODE_REGIONS[resolvedCityIndex][0] : city,
+    township: townshipMatch?.[0] || inferredTownship || township,
+    pairMatches: resolvedCityIndex >= 0 && Boolean(townshipMatch) && townshipMatch?.[2] === resolvedCityIndex,
+    recognizedCity: resolvedCityIndex >= 0,
+    recognizedTownship: Boolean(townshipMatch),
+  };
+}
+
+function wardSelection(value: unknown) {
+  const raw = clean(value);
+  const postalCode = raw.match(/\[([0-9]{5,8})\]\s*$/)?.[1] || "";
+  const ward = raw.includes(" • ") ? raw.split(" • ").slice(1).join(" • ").replace(/\s*\[[0-9]{5,8}\]\s*$/, "").trim() : raw;
+  return { ward, postalCode };
+}
+
+function canonicalWardPostal(cityValue: unknown, townshipValue: unknown, wardValue: unknown, postalValue: unknown) {
+  const location = canonicalLocationPair(cityValue, townshipValue);
+  const selected = wardSelection(wardValue);
+  const postalCode = clean(postalValue) || selected.postalCode;
+  const cityIndex = POSTAL_CODE_REGIONS.findIndex(([en]) => routingKey(en) === routingKey(location.city));
+  const townshipIndexes = POSTAL_CODE_TOWNSHIPS
+    .map(([en, , regionIndex], index) => ({ en, regionIndex, index }))
+    .filter((item) => item.regionIndex === cityIndex && routingKey(item.en) === routingKey(location.township))
+    .map((item) => item.index);
+  const match = POSTAL_CODE_ROWS.find(([townshipIndex, wardEn, code, wardMm]) =>
+    townshipIndexes.includes(townshipIndex)
+    && (!postalCode || code === postalCode)
+    && (routingKey(wardEn) === routingKey(selected.ward) || routingKey(wardMm) === routingKey(selected.ward))
+  );
+  return {
+    ward: match ? (/[\u1000-\u109f]/.test(selected.ward) ? match[3] : match[1]) : selected.ward,
+    postalCode: match?.[2] || postalCode,
+    recognized: Boolean(match),
+    coreRegion: ["Yangon Region", "Mandalay Region", "Naypyitaw Union Territory"].includes(location.city),
+  };
+}
+
+function bilingualRegion(region: string, regionMm: string) {
+  return [region, regionMm].filter(Boolean).join(" / ");
+}
+
+function normalizedHlaingtharyaTownship(township: string, townshipMm: string) {
+  const combined = `${township} ${townshipMm}`;
+  if (/hlaing\s*thar(?:ya|yar)|hlaingtharya|လှိုင်သာယာ/i.test(combined)) {
+    return { township: "Hlaingtharya Township", townshipMm: "လှိုင်သာယာ မြို့နယ်" };
+  }
+  return {
+    township: !township ? "" : /\btownship\b/i.test(township) ? township : `${township} Township`.trim(),
+    townshipMm: !townshipMm ? "" : townshipMm.includes("မြို့နယ်") ? townshipMm : `${townshipMm} မြို့နယ်`.trim(),
+  };
+}
+
+function providerDisplayName(providerCode: string) {
+  if (providerCode === "BRITIUM") return "Britium Express";
+  if (providerCode === "DK DELIVERY") return "DK Delivery";
+  if (providerCode === "NPT BRANCH") return "NPT Branch";
+  if (providerCode === "ROYAL EXPRESS") return "Royal Express";
+  if (providerCode === "H.TERMINAL DROP-OFF") return "Highway Terminal Drop-off";
+  return "";
+}
+
+export function convertInboundManifestMatrix(matrix: unknown[][]) {
+  let headerIndex = -1;
+  let columns = new Map<InboundManifestColumn, number>();
+  matrix.slice(0, 30).forEach((values, rowIndex) => {
+    const candidate = new Map<InboundManifestColumn, number>();
+    values.forEach((value, columnIndex) => {
+      const key = identifyInboundManifestColumn(value);
+      if (key && !candidate.has(key)) candidate.set(key, columnIndex);
+    });
+    if (candidate.size > columns.size) {
+      headerIndex = rowIndex;
+      columns = candidate;
+    }
+  });
+  const required: InboundManifestColumn[] = ["wayId", "merchantName", "recipientName", "recipientPhone", "deliveryAddress"];
+  const missing = required.filter((key) => !columns.has(key));
+  if (headerIndex < 0 || missing.length) {
+    throw new Error(`Inbound Manifest header was not recognized${missing.length ? `; missing ${missing.join(", ")}` : ""}.`);
+  }
+
+  const output: unknown[][] = [[...CONVERTED_DATA_ENTRY_HEADERS]];
+  let exactPostalMatches = 0;
+  let townshipOnlyMatches = 0;
+  let unresolvedLocations = 0;
+  matrix.slice(headerIndex + 1).forEach((values) => {
+    const value = (key: InboundManifestColumn) => columns.has(key) ? values[columns.get(key)!] : "";
+    const wayId = clean(value("wayId"));
+    if (!wayId || !values.some((cell) => clean(cell))) return;
+
+    const address = clean(value("deliveryAddress"));
+    const recipientTown = clean(value("recipientTown"));
+    const postal = resolvePostalCode(address, recipientTown);
+    if (postal.matchLevel === "EXACT_QUARTER") exactPostalMatches += 1;
+    else if (postal.matchLevel === "TOWNSHIP_ONLY") townshipOnlyMatches += 1;
+    else unresolvedLocations += 1;
+
+    const townshipNames = normalizedHlaingtharyaTownship(postal.township, postal.townshipMm);
+    const city = bilingualRegion(postal.region, postal.regionMm);
+    const township = [townshipNames.township, townshipNames.townshipMm].filter(Boolean).join(" / ");
+    const ward = postal.matchLevel === "EXACT_QUARTER"
+      ? `${townshipNames.townshipMm || postal.townshipMm} • ${postal.quarterMm || postal.quarter} [${postal.postalCode}]`
+      : "";
+    const exactCollection = parseAmount(value("finalCod")) || parseAmount(value("itemPrice"));
+    const routing = resolveDataEntryServiceProvider(
+      postal.townshipMm || postal.township || recipientTown,
+      address,
+      [],
+      { fallbackUnknownToRoyal: true, itemPrice: exactCollection },
+    );
+
+    output.push([
+      wayId,
+      clean(value("merchantName")),
+      clean(value("recipientName")),
+      parsePhone(value("recipientPhone")),
+      city,
+      township,
+      ward,
+      postal.postalCode,
+      address,
+      parseAmount(value("weight")),
+      "STANDARD",
+      "EXACT_COLLECTION_AMOUNT",
+      exactCollection,
+      0,
+      "STANDARD",
+      providerDisplayName(routing.providerCode),
+    ]);
+  });
+
+  if (output.length === 1) throw new Error("No parcel rows were found below the Inbound Manifest header.");
+  if (output.length - 1 > MAX_BULK_UPLOAD_ROWS) throw new Error(`Convert no more than ${MAX_BULK_UPLOAD_ROWS} parcel rows at one time.`);
+  return {
+    matrix: output,
+    rowCount: output.length - 1,
+    exactPostalMatches,
+    townshipOnlyMatches,
+    unresolvedLocations,
+  };
+}
+
+export function convertedInboundFilename(inputName: string) {
+  const base = inputName.replace(/\.xlsx?$/i, "");
+  const converted = base
+    .replace(/[_ -]*(?:pening|pending)\s*&\s*rto$/i, "")
+    .replace(/[_ -]*pendingrto$/i, "");
+  return `${converted || base}_inboundlist_A.xlsx`;
 }
 
 function parcelReferenceDateToken(value: unknown) {
@@ -359,11 +599,20 @@ export function buildOsImportPlan(
   return { batches, issues, previewRows };
 }
 
-function classifyRow(row: Omit<OsImportRow, "completionStatus" | "issues">) {
+function classifyRow(row: Omit<OsImportRow, "completionStatus" | "issues">, requireWardPostal = false) {
   const issues: string[] = [];
   if (!row.recipientName) issues.push("Receiver name is missing");
   if (!row.recipientPhone) issues.push("Receiver phone is missing");
+  if (!row.city) issues.push("City / region is missing");
   if (!row.townshipProvider) issues.push("Township / provider is missing");
+  const location = canonicalLocationPair(row.city, row.townshipProvider);
+  if (row.city && !location.recognizedCity) issues.push("City / region is not in the approved dropdown list");
+  if (row.townshipProvider && !location.recognizedTownship) issues.push("Township is not in the approved dropdown list");
+  if (location.recognizedCity && location.recognizedTownship && !location.pairMatches) issues.push("Township does not belong to the selected City / region");
+  const wardPostal = canonicalWardPostal(row.city, row.townshipProvider, row.ward, row.postalCode);
+  if (requireWardPostal && wardPostal.coreRegion && !row.ward) issues.push("Ward / Village Tract is required for Yangon, Mandalay, and Naypyitaw");
+  if (requireWardPostal && wardPostal.coreRegion && !row.postalCode) issues.push("Postal Code is required for Yangon, Mandalay, and Naypyitaw");
+  if ((row.ward || row.postalCode) && !wardPostal.recognized) issues.push("Ward and Postal Code do not match the selected City and Township");
   if (row.actualWeight === "" || row.actualWeight <= 0) issues.push("Actual weight must be greater than zero");
   if (!row.deliveryAddress) issues.push("Receiver address is missing");
   if (!["STANDARD", "EXPRESS", "SAME_DAY", "NEXT_DAY", "ECONOMY"].includes(row.serviceType)) issues.push("Service type is not recognized");
@@ -406,6 +655,21 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
     const value = (key: ColumnKey) => bestColumns.has(key) ? values[bestColumns.get(key)!] : "";
     const itemPrice = parseAmount(value("itemPrice"));
     const osSetPrice = parseAmount(value("osSetPrice"));
+    const rawAddress = clean(value("deliveryAddress"));
+    const rawWard = clean(value("ward"));
+    const rawPostal = clean(value("postalCode"));
+    // Recover the canonical City/Township from the address/ward/postal evidence
+    // before classification. This removes the need for operators to repair a
+    // missing or malformed Township / Provider cell row by row.
+    const postalEvidence = resolvePostalCode(
+      [rawAddress, rawWard, rawPostal, value("city")].filter(Boolean).join(", "),
+      value("townshipProvider"),
+    );
+    const location = canonicalLocationPair(
+      value("city") || postalEvidence.region,
+      postalEvidence.township || value("townshipProvider"),
+    );
+    const wardPostal = canonicalWardPostal(location.city, location.township, rawWard, rawPostal);
     const base = {
       wayId: clean(value("wayId")),
       merchantName: clean(value("merchantName")),
@@ -413,19 +677,24 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
       sourceRowNumber: bestIndex + offset + 2,
       recipientName: clean(value("recipientName")),
       recipientPhone: parsePhone(value("recipientPhone")),
-      townshipProvider: clean(value("townshipProvider")),
+      city: location.city,
+      townshipProvider: location.township,
+      ward: wardPostal.ward,
+      postalCode: wardPostal.postalCode,
       actualWeight: parseAmount(value("actualWeight")),
-      deliveryAddress: clean(value("deliveryAddress")),
+      deliveryAddress: rawAddress,
       serviceType: normalizeServiceType(value("serviceType")),
       paymentType: normalizePaymentType(value("paymentType"), itemPrice, osSetPrice),
       itemPrice,
       osSetPrice,
       merchantTier: normalizeTier(value("merchantTier")),
     };
-    const classification = classifyRow(base);
+    const classification = classifyRow(base, bestColumns.has("ward") || bestColumns.has("postalCode"));
     rows.push({ ...base, ...classification });
   });
-  if (!rows.length) throw new Error("No data rows were found below the header.");
+  if (!rows.length) {
+    throw new Error("The template is empty. Enter at least one parcel on row 2 or below before uploading.");
+  }
   if (rows.length > MAX_BULK_UPLOAD_ROWS) throw new Error(`Import no more than ${MAX_BULK_UPLOAD_ROWS} rows in one spreadsheet.`);
   return { rows, missingHeaders, missingBulkRoutingHeaders, headerRowNumber: bestIndex + 1 };
 }
@@ -457,7 +726,7 @@ function authorizedCount(pickup: OsBulkPickup) {
 
 export default function DataEntryOsBulkImport({ pickups, selectedPickupId, sequenceFloorByPickup = {}, busy = false, onPickupChange, onApply }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const inboundInputRef = useRef<HTMLInputElement | null>(null);
+  const converterInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [filename, setFilename] = useState("");
   const [rows, setRows] = useState<OsImportRow[]>([]);
@@ -565,6 +834,40 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
     }
   }
 
+  async function convertInboundManifest(file?: File) {
+    if (!file) return;
+    setFileBusy(true);
+    setMessage("");
+    try {
+      if (!/\.xlsx?$/i.test(file.name)) throw new Error("Choose the Inbound Manifest XLSX file.");
+      if (file.size > 15 * 1024 * 1024) throw new Error("The spreadsheet is larger than 15 MB.");
+      const XLSX = await import("xlsx");
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, raw: false });
+      const sheetName = workbook.SheetNames[0];
+      if (!sheetName) throw new Error("The workbook has no worksheet.");
+      const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false });
+      const converted = convertInboundManifestMatrix(matrix);
+      const worksheet = XLSX.utils.aoa_to_sheet(converted.matrix);
+      worksheet["!cols"] = [18, 22, 22, 18, 32, 36, 48, 16, 72, 18, 17, 30, 16, 16, 16, 30].map((wch) => ({ wch }));
+      worksheet["!autofilter"] = { ref: `A1:P${converted.rowCount + 1}` };
+      const outputWorkbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(outputWorkbook, worksheet, "Data Entry");
+      const bytes = XLSX.write(outputWorkbook, { type: "array", bookType: "xlsx", compression: true });
+      downloadBlob(
+        convertedInboundFilename(file.name),
+        new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+      );
+      setMessage(
+        `Converted ${converted.rowCount} row(s): ${converted.exactPostalMatches} exact postal matches, ${converted.townshipOnlyMatches} township matches, ${converted.unresolvedLocations} unresolved. Attach the downloaded file here; core-area unresolved addresses will use the existing Google validation queue.`,
+      );
+    } catch (error: any) {
+      setMessage(error?.message || "The Inbound Manifest could not be converted.");
+    } finally {
+      setFileBusy(false);
+      if (converterInputRef.current) converterInputRef.current.value = "";
+    }
+  }
+
   function downloadCsvTemplate() {
     const fillerCount = TEMPLATE_HEADERS.length - 1;
     const matrix = [
@@ -580,53 +883,11 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
   async function downloadXlsxTemplate() {
     setFileBusy(true);
     try {
-      const XLSX = await import("xlsx");
-      const worksheet = XLSX.utils.aoa_to_sheet([
-        ["BRITIUM VENTURES — DATA ENTRY TEMPLATE"],
-        ["Myanmar / English parcel registration sheet"],
-        ["Bulk upload requires Way ID / Pickup ID and Merchant Name / Merchant ID on every row."],
-        [...TEMPLATE_HEADERS],
-      ]);
-      worksheet["!merges"] = [
-        { s: { r: 0, c: 0 }, e: { r: 0, c: TEMPLATE_HEADERS.length - 1 } },
-        { s: { r: 1, c: 0 }, e: { r: 1, c: TEMPLATE_HEADERS.length - 1 } },
-        { s: { r: 2, c: 0 }, e: { r: 2, c: TEMPLATE_HEADERS.length - 1 } },
-      ];
-      worksheet["!cols"] = TEMPLATE_HEADERS.map((header) => ({ wch: Math.min(34, Math.max(18, header.length / 2)) }));
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Data Entry");
-      XLSX.writeFile(workbook, "Britium_Data_Entry_Formregistration_Template.xlsx", { compression: true });
+      const response = await fetch("/templates/Britium_Data_Entry_Formregistration_Template.xlsx", { cache: "no-store" });
+      if (!response.ok) throw new Error("The controlled Excel template could not be downloaded.");
+      downloadBlob("Britium_Data_Entry_Formregistration_Template.xlsx", await response.blob());
     } finally {
       setFileBusy(false);
-    }
-  }
-
-  async function convertInboundManifest(file?: File) {
-    if (!file) return;
-    setFileBusy(true);
-    setMessage("Converting inbound manifest with the Myanmar postal master...");
-    try {
-      if (!/\.(xlsx|xls|csv)$/i.test(file.name)) throw new Error("Choose an XLSX, XLS, or CSV inbound manifest.");
-      if (file.size > 15 * 1024 * 1024) throw new Error("The inbound manifest is larger than 15 MB.");
-      const XLSX = await import("xlsx");
-      const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true, raw: false });
-      const sheetName = workbook.SheetNames[0];
-      if (!sheetName) throw new Error("The inbound workbook has no worksheet.");
-      const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false });
-      const converted = convertInboundManifestMatrix(matrix);
-      const output = XLSX.utils.book_new();
-      const sheet = XLSX.utils.aoa_to_sheet([WAYBILL_GENERATE_HEADERS, ...converted.rows]);
-      sheet["!cols"] = [18, 22, 22, 18, 30, 34, 46, 18, 54, 16, 16, 34, 16, 16, 16, 32].map((wch) => ({ wch }));
-      sheet["!autofilter"] = { ref: `A1:P${converted.rows.length + 1}` };
-      XLSX.utils.book_append_sheet(output, sheet, "Data Entry");
-      const bytes = XLSX.write(output, { bookType: "xlsx", type: "array" });
-      downloadBlob(inboundWaybillFileName(file.name), new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
-      setMessage(`Converted ${converted.convertedCount} inbound row(s). ${converted.exactPostalCount} exact ward/postal matches; ${converted.unresolvedCount} unresolved location(s) remain blank for review. Hlaing Tharyar East/West route to Britium Express.`);
-    } catch (error: any) {
-      setMessage(error?.message || "The inbound manifest could not be converted.");
-    } finally {
-      setFileBusy(false);
-      if (inboundInputRef.current) inboundInputRef.current.value = "";
     }
   }
 
@@ -709,9 +970,9 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div><div className="text-xs font-black">Spreadsheet</div><div className="mt-1 text-[10px] text-[#8db5d1]">Upload up to {MAX_BULK_UPLOAD_ROWS} complete or partial rows. The system processes them in consecutive batches of {SAFE_TRANSACTION_ROWS}; partial rows stay editable.</div></div>
                   <div className="flex flex-wrap gap-2">
+                    <label className="cursor-pointer rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-[10px] font-black text-emerald-200"><FileSpreadsheet size={13} className="mr-1 inline"/>CONVERT INBOUND MANIFEST<input ref={converterInputRef} type="file" accept=".xlsx,.xls" className="hidden" onChange={(event) => void convertInboundManifest(event.target.files?.[0])}/></label>
                     <button type="button" onClick={() => void downloadXlsxTemplate()} disabled={fileBusy} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>XLSX TEMPLATE</button>
                     <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>CSV TEMPLATE</button>
-                    <label className="cursor-pointer rounded-lg border border-emerald-400/50 bg-emerald-500/15 px-3 py-2 text-[10px] font-black text-emerald-200"><FileSpreadsheet size={13} className="mr-1 inline"/>CONVERT INBOUND TO WAYBILL<input ref={inboundInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void convertInboundManifest(event.target.files?.[0])}/></label>
                     <label className="cursor-pointer rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#071521]"><Upload size={13} className="mr-1 inline"/>ATTACH SPREADSHEET<input ref={inputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={(event) => void parseFile(event.target.files?.[0])}/></label>
                   </div>
                 </div>
@@ -724,7 +985,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
 
                 {bulkMode && bulkPlan.issues.length ? <div className="mt-3 rounded-lg border border-rose-500/40 bg-rose-500/10 px-3 py-2 text-[10px] leading-5 text-rose-200"><AlertTriangle size={13} className="mr-1 inline"/>{bulkPlan.issues.slice(0, 8).join(" · ")}{bulkPlan.issues.length > 8 ? ` · +${bulkPlan.issues.length - 8} more` : ""}</div> : null}
 
-                {rows.length ? <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-[#1d4b70]"><table className="min-w-[1500px] text-left text-[10px]"><thead className="sticky top-0 bg-[#12314a]"><tr>{["Seq", "Row", "Way ID", "Merchant", "Matched pickup", "Receiver", "Phone", "Township / Provider", "Weight", "Address", "Service", "Payment", "Item", "OS Price", "Tier", "Status"].map((header) => <th key={header} className="px-3 py-2 font-black">{header}</th>)}</tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.sourceRowNumber} className="border-t border-[#1d4b70]"><td className="px-3 py-2">{row.targetSequence}</td><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="max-w-44 truncate px-3 py-2">{row.wayId || "—"}</td><td className="max-w-40 truncate px-3 py-2">{row.merchantName || "—"}</td><td className={`max-w-44 truncate px-3 py-2 font-black ${row.routingIssue ? "text-rose-300" : "text-cyan-200"}`} title={row.routingIssue}>{row.routingIssue || row.matchedPickupId || "Selected pickup"}</td><td className="max-w-40 truncate px-3 py-2">{row.recipientName || "—"}</td><td className="px-3 py-2">{row.recipientPhone || "—"}</td><td className="max-w-52 truncate px-3 py-2">{row.townshipProvider || "—"}</td><td className="px-3 py-2">{row.actualWeight || "—"}</td><td className="max-w-64 truncate px-3 py-2">{row.deliveryAddress || "—"}</td><td className="px-3 py-2">{row.serviceType}</td><td className="px-3 py-2">{row.paymentType}</td><td className="px-3 py-2">{row.itemPrice === "" ? "—" : row.itemPrice}</td><td className="px-3 py-2">{row.osSetPrice === "" ? "—" : row.osSetPrice}</td><td className="px-3 py-2">{row.merchantTier}</td><td className={`px-3 py-2 font-black ${row.completionStatus === "COMPLETE" && !row.routingIssue ? "text-emerald-300" : "text-amber-300"}`} title={[...row.issues, row.routingIssue].filter(Boolean).join("; ")}>{row.routingIssue ? "ROUTING ISSUE" : row.completionStatus}</td></tr>)}</tbody></table></div> : null}
+                {rows.length ? <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-[#1d4b70]"><table className="min-w-[1600px] text-left text-[10px]"><thead className="sticky top-0 bg-[#12314a]"><tr>{["Seq", "Row", "Way ID", "Merchant", "Matched pickup", "Receiver", "Phone", "City", "Township / Provider", "Weight", "Address", "Service", "Payment", "Item", "OS Price", "Tier", "Status"].map((header) => <th key={header} className="px-3 py-2 font-black">{header}</th>)}</tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.sourceRowNumber} className="border-t border-[#1d4b70]"><td className="px-3 py-2">{row.targetSequence}</td><td className="px-3 py-2">{row.sourceRowNumber}</td><td className="max-w-44 truncate px-3 py-2">{row.wayId || "—"}</td><td className="max-w-40 truncate px-3 py-2">{row.merchantName || "—"}</td><td className={`max-w-44 truncate px-3 py-2 font-black ${row.routingIssue ? "text-rose-300" : "text-cyan-200"}`} title={row.routingIssue}>{row.routingIssue || row.matchedPickupId || "Selected pickup"}</td><td className="max-w-40 truncate px-3 py-2">{row.recipientName || "—"}</td><td className="px-3 py-2">{row.recipientPhone || "—"}</td><td className="max-w-40 truncate px-3 py-2">{row.city || "—"}</td><td className="max-w-52 truncate px-3 py-2">{row.townshipProvider || "—"}</td><td className="px-3 py-2">{row.actualWeight || "—"}</td><td className="max-w-64 truncate px-3 py-2">{row.deliveryAddress || "—"}</td><td className="px-3 py-2">{row.serviceType}</td><td className="px-3 py-2">{row.paymentType}</td><td className="px-3 py-2">{row.itemPrice === "" ? "—" : row.itemPrice}</td><td className="px-3 py-2">{row.osSetPrice === "" ? "—" : row.osSetPrice}</td><td className="px-3 py-2">{row.merchantTier}</td><td className={`px-3 py-2 font-black ${row.completionStatus === "COMPLETE" && !row.routingIssue ? "text-emerald-300" : "text-amber-300"}`} title={[...row.issues, row.routingIssue].filter(Boolean).join("; ")}>{row.routingIssue ? "ROUTING ISSUE" : row.completionStatus}</td></tr>)}</tbody></table></div> : null}
               </section>
 
               <section className="rounded-xl border border-amber-400/35 bg-amber-400/5 p-4">

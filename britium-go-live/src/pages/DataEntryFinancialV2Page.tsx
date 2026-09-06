@@ -133,6 +133,8 @@ type ParcelRow = {
   sourceFileName: string;
   sourceRowNumber: number | null;
   sourceRowCount: number | null;
+  sourceWard: string;
+  sourcePostalCode: string;
   photoEvidenceMode: "PICKER_PHOTO" | "OS_SOFTCOPY";
   photoBypassReason: string;
   deliveryRegion: DataEntryRouteRegion;
@@ -411,6 +413,8 @@ function parcelRowFromProof(
     sourceFileName:text(proof.source_file_name||proof.financial_quote?.os_source_file_name),
     sourceRowNumber:positiveInt(proof.source_row_number||proof.financial_quote?.source_row_number)||null,
     sourceRowCount:positiveInt(proof.source_row_count||proof.financial_quote?.source_row_count)||null,
+    sourceWard:text(proof.financial_quote?.source_ward),
+    sourcePostalCode:text(proof.financial_quote?.source_postal_code),
     photoEvidenceMode,
     photoBypassReason:text(proof.photo_bypass_reason||proof.financial_quote?.photo_bypass_reason),
     deliveryRegion:text(proof.delivery_region||proof.financial_quote?.delivery_region||"UNRESOLVED").toUpperCase() as DataEntryRouteRegion,
@@ -755,6 +759,8 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         deliveryWayId={row.delivery_way_id}
         address={row.delivery_address}
         township={row.township}
+        ward={row.sourceWard}
+        postalCode={row.sourcePostalCode}
         autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
         deferInteractiveMap={row.importedFromOs}
         deferAutomaticResolution={row.importedFromOs}
@@ -850,13 +856,7 @@ export default function DataEntryFinancialV2Page() {
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
   const [visibleRowCount,setVisibleRowCount]=useState(20);
   const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
-  const importedLocationPatchQueueRef=useRef(new Map<string,Partial<ParcelRow>>());
-  const importedLocationPatchTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
-
-  useEffect(()=>()=>{
-    if(importedLocationPatchTimerRef.current) clearTimeout(importedLocationPatchTimerRef.current);
-    importedLocationPatchQueueRef.current.clear();
-  },[]);
+  const manualLocationCorrectionsRef=useRef(new Map<string,DeliveryLocation>());
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
@@ -866,13 +866,16 @@ export default function DataEntryFinancialV2Page() {
     return [pickup.pickup_id,Math.max(pickup.registered_parcels,draftMaximum)];
   })),[bulkImportDrafts,pickups]);
   const importedLocationSummary=useMemo(()=>{
-    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0};
+    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0,interrupted:0};
     for(const row of rows){
       if(!row.importedFromOs) continue;
       summary.total+=1;
       if(row.locationStatus==="SYNCED") summary.synced+=1;
       else if(row.locationStatus==="NOT_REQUIRED") summary.notRequired+=1;
-      else if(row.locationStatus==="REVIEW_REQUIRED") summary.review+=1;
+      else if(row.locationStatus==="REVIEW_REQUIRED"){
+        if(/timed out|validation failed|could not be loaded|unavailable/i.test(row.message)) summary.interrupted+=1;
+        else summary.review+=1;
+      }
       else summary.resolving+=1;
     }
     return summary;
@@ -1421,6 +1424,8 @@ export default function DataEntryFinancialV2Page() {
         sourceFileName:importPayload.fileName,
         sourceRowNumber:sourceRow.sourceRowNumber,
         sourceRowCount:importPayload.sourceRowCount,
+        sourceWard:sourceRow.ward,
+        sourcePostalCode:sourceRow.postalCode,
         photoEvidenceMode:importPayload.skipPhotoReview?"OS_SOFTCOPY":"PICKER_PHOTO",
         photoBypassReason:importPayload.skipPhotoReview?importPayload.photoBypassReason:"",
         locationStatus:(destination.mapRequired?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution,
@@ -1433,76 +1438,52 @@ export default function DataEntryFinancialV2Page() {
     return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
   }
 
-  function flushImportedLocationPatches(){
-    if(importedLocationPatchTimerRef.current){
-      clearTimeout(importedLocationPatchTimerRef.current);
-      importedLocationPatchTimerRef.current=null;
-    }
-    const queued=importedLocationPatchQueueRef.current;
-    if(!queued.size) return;
-    importedLocationPatchQueueRef.current=new Map();
-    const apply=(source:ParcelRow[])=>source.map((row)=>{
-      const patch=queued.get(`${row.pickup_id}:${row.parcel_sequence}`);
-      return patch?{...row,...patch}:row;
-    });
+  function patchImportedLocation(
+    pickupId:string,
+    parcelSequence:number,
+    patch:Partial<ParcelRow>,
+    expectedStatuses?:DataEntryLocationResolution[],
+  ){
+    const applyPatch=(row:ParcelRow)=>{
+      if(row.parcel_sequence!==parcelSequence) return row;
+      if(expectedStatuses&&!expectedStatuses.includes(row.locationStatus)) return row;
+      return {...row,...patch};
+    };
     setBulkImportDrafts((current)=>{
-      let changed=false;
-      const next=Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>{
-        const affectsDraft=draft.rows.some((row)=>queued.has(`${row.pickup_id}:${row.parcel_sequence}`));
-        if(!affectsDraft) return [pickupId,draft];
-        changed=true;
-        return [pickupId,{...draft,rows:apply(draft.rows)}];
-      }));
-      return changed?next:current;
+      const draft=current[pickupId];
+      if(!draft) return current;
+      return {...current,[pickupId]:{...draft,rows:draft.rows.map(applyPatch)}};
     });
-    setRows((current)=>current.some((row)=>queued.has(`${row.pickup_id}:${row.parcel_sequence}`))?apply(current):current);
-  }
-
-  function patchImportedLocation(pickupId:string,parcelSequence:number,patch:Partial<ParcelRow>){
-    const key=`${pickupId}:${parcelSequence}`;
-    importedLocationPatchQueueRef.current.set(key,{
-      ...(importedLocationPatchQueueRef.current.get(key)||{}),
-      ...patch,
-    });
-    if(importedLocationPatchTimerRef.current===null){
-      importedLocationPatchTimerRef.current=setTimeout(flushImportedLocationPatches,80);
-    }
+    setRows((current)=>current.map((row)=>row.pickup_id===pickupId?applyPatch(row):row));
   }
 
   async function validateImportedLocation(row:ParcelRow){
-    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"});
-    let found:DeliveryLocation|null=null;
+    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},["PENDING"]);
     try{
-      found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township},supabase);
+      const found=await Promise.race([
+        resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township,ward:row.sourceWard,postalCode:row.sourcePostalCode,merchantId:row.pickup_id,client:supabase}),
+        new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Location validation timed out after 20 seconds. Retry this row; only genuinely ambiguous addresses should use Review Excel.")),20000)),
+      ]);
       if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."});
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
         return;
       }
       const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";
       if(reviewRequired){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."});
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
         return;
       }
       const accepted={...found,originalAddress:row.delivery_address};
+      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)) return;
       await saveDeliveryLocation(supabase,accepted);
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."});
+      const manualOverride=manualLocationCorrectionsRef.current.get(row.delivery_way_id);
+      if(manualOverride){
+        await saveDeliveryLocation(supabase,manualOverride);
+        return;
+      }
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."},["PENDING","SEARCHING"]);
     }catch(error:any){
-      const failedCandidate=found&&validMyanmarCoordinate(found.longitude,found.latitude)
-        ?{...found,reviewStatus:"MANUAL_REVIEW" as const,reviewReason:"LOCATION_SAVE_FAILED"}
-        :null;
-      console.error("Imported location validation failed",{
-        deliveryWayId:row.delivery_way_id,
-        stage:failedCandidate?"save":"resolve",
-        code:error?.code||"",
-        message:error?.message||"",
-      });
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{
-        locationStatus:"REVIEW_REQUIRED",
-        locationCandidate:failedCandidate,
-        message:failedCandidate
-          ?"A reliable location was found, but Production could not save it. The suggested coordinates were preserved with LOCATION_SAVE_FAILED for retry."
-          :(error?.message||"Location validation failed. This row was added to the consolidated review workbook."),
-      });
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
     }
   }
 
@@ -1517,9 +1498,35 @@ export default function DataEntryFinancialV2Page() {
         await validateImportedLocation(job);
       }
     };
-    await Promise.all(Array.from({length:Math.min(3,jobs.length)},()=>worker()));
-    flushImportedLocationPatches();
+    // Four rows x three forward queries keeps Google request bursts below the
+    // browser-key quota while still completing large manifests promptly.
+    await Promise.all(Array.from({length:Math.min(4,jobs.length)},()=>worker()));
     setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);
+  }
+
+  async function retryImportedLocationSync(){
+    if(locationReviewBusy) return;
+    const retryable=rows.filter((row)=>
+      row.importedFromOs
+      && routeForRow(row,tariffOptions).mapRequired
+      && (row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING"||(
+        row.locationStatus==="REVIEW_REQUIRED"&&/timed out|validation failed|could not be loaded|unavailable|no reliable google location/i.test(row.message)
+      ))
+    );
+    if(!retryable.length){
+      setBulkMessage("No interrupted location validations remain. Use Review Excel only for genuinely ambiguous addresses.");
+      return;
+    }
+    setLocationReviewBusy(true);
+    setBulkMessage(`Retrying ${retryable.length} interrupted location validation(s)…`);
+    for(const row of retryable){
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"PENDING",message:"Queued for location validation retry."});
+    }
+    try{
+      await validateImportedLocations({retry:{pickupId:"retry",fileName:"",rows:retryable.map((row)=>({...row,locationStatus:"PENDING" as const})),tierAccess,saved:false}});
+    }finally{
+      setLocationReviewBusy(false);
+    }
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
@@ -1936,7 +1943,7 @@ export default function DataEntryFinancialV2Page() {
         "Corrected Latitude":"",
         "Corrected Longitude":"",
         "Action":"APPLY_CORRECTION",
-        "Reason":row.locationCandidate?.reviewReason||(
+        "Reason":row.locationCandidate?.reviewReason||row.message||(
           row.locationCandidate
             ? "AUTOMATIC_LOCATION_REQUIRES_REVIEW"
             : "NO_RELIABLE_COORDINATE_FOUND"
@@ -1982,6 +1989,7 @@ export default function DataEntryFinancialV2Page() {
         deliveryWayId:row.delivery_way_id,latitude,longitude,matchLevel:"MANUAL",confidence:1,
         coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
       };
+      manualLocationCorrectionsRef.current.set(row.delivery_way_id,locationCandidate);
       return {...row,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
     });
     setRows((current)=>applyToRows(current));
@@ -2010,7 +2018,7 @@ export default function DataEntryFinancialV2Page() {
           latitude:row.locationCandidate!.latitude,longitude:row.locationCandidate!.longitude,
           action:"SKIP_REVIEW",reason:"Operator bulk-accepted the suggested pin without further visual map review.",
         }));
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
           request_id:requestId("LOCATION_REVIEW_SKIP_ALL"),rows:batch,
         }});
         if(response.error) throw response.error;
@@ -2068,7 +2076,7 @@ export default function DataEntryFinancialV2Page() {
       const allResults:any[]=[];
       for(let offset=0;offset<payloadRows.length;offset+=200){
         const batch=payloadRows.slice(offset,offset+200);
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
           request_id:requestId("LOCATION_REVIEW_XLSX"),source_file_name:file.name,rows:batch,
         }});
         if(response.error) throw response.error;
@@ -2203,10 +2211,11 @@ export default function DataEntryFinancialV2Page() {
                 <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
                   {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
                     ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
-                    :`${importedLocationSummary.resolving} core-region rows are validating in a controlled background queue · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
+                    :`${importedLocationSummary.resolving} core-region rows are validating · ${importedLocationSummary.interrupted} interrupted and retryable · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={()=>void retryImportedLocationSync()} disabled={!(importedLocationSummary.resolving+importedLocationSummary.interrupted)||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-40"><RefreshCw size={14}/>RETRY LOCATION SYNC ({importedLocationSummary.resolving+importedLocationSummary.interrupted})</button>
                 <button type="button" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some((row)=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/50 bg-rose-400/10 px-4 py-2.5 text-[10px] font-black text-rose-100 disabled:opacity-40">SKIP ALL REVIEWS</button>
                 <button type="button" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2.5 text-[10px] font-black text-amber-100 disabled:opacity-40"><Download size={14}/>DOWNLOAD REVIEW EXCEL ({consolidatedLocationReviewRows.length})</button>
                 <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>

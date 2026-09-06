@@ -7,6 +7,7 @@ const readSource = (relativePath) =>
 
 const canonicalClient = readSource("src/integrations/supabase/client.ts");
 const loginSource = readSource("src/pages/Login.tsx");
+const authContextSource = readSource("src/contexts/AuthContext.tsx");
 
 const sourceRoot = path.resolve(__dirname, "../src");
 const sourceFiles = [];
@@ -84,6 +85,32 @@ assert.doesNotMatch(
   loginSource,
   /auth\.refresh\?\.\(/,
   "Login must not silently call a missing AuthContext method"
+);
+
+assert.match(
+  authContextSource,
+  /event === 'TOKEN_REFRESHED' && profileRef\.current\?\.authorized/,
+  "Token refreshes must preserve an already-authorized profile"
+);
+assert.match(
+  authContextSource,
+  /Profile refresh was temporarily unavailable; preserving the active session/,
+  "Transient profile refresh errors must preserve the active session"
+);
+assert.match(
+  authContextSource,
+  /error instanceof AccountAccessDeniedError/,
+  "Only an authoritative access denial may reject the active session"
+);
+assert.match(
+  authContextSource,
+  /globalThis\.setTimeout\(\(\) => \{[\s\S]*loadProfile\(newSession\.user\)/,
+  "Profile verification must run outside the Supabase auth callback"
+);
+assert.match(
+  authContextSource,
+  /requestId === profileRequestRef\.current/,
+  "Stale profile requests must not overwrite a newer session state"
 );
 
 console.log("Auth session contract regression check passed");

@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabaseClient';
 
@@ -45,6 +45,13 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+class AccountAccessDeniedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AccountAccessDeniedError';
+  }
+}
+
 async function loadProfile(user: User | null): Promise<UserProfile | null> {
   if (!user) return null;
   const { data, error } = await supabase.rpc('be_login_access_profile');
@@ -62,7 +69,9 @@ async function loadProfile(user: User | null): Promise<UserProfile | null> {
       TERRITORY_NOT_ASSIGNED: 'No active branch or township territory is assigned to this account.',
       AUTH_REQUIRED: 'Your authentication session is no longer valid.',
     };
-    throw new Error(messages[access.reason ?? ''] ?? 'This account is not authorized to use Britium Express.');
+    throw new AccountAccessDeniedError(
+      messages[access.reason ?? ''] ?? 'This account is not authorized to use Britium Express.'
+    );
   }
 
   return access;
@@ -72,16 +81,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
+  const profileRequestRef = useRef(0);
+
+  const commitProfile = (nextProfile: UserProfile | null) => {
+    profileRef.current = nextProfile;
+    setProfile(nextProfile);
+  };
+
+  const rejectSession = async (error: unknown) => {
+    console.warn('Session rejected by RLS login contract:', getErrorMessage(error));
+    setSession(null);
+    commitProfile(null);
+    await supabase.auth.signOut();
+  };
 
   const refreshProfile = async () => {
     const { data } = await supabase.auth.getSession();
     setSession(data.session);
     try {
-      setProfile(await loadProfile(data.session?.user ?? null));
+      commitProfile(await loadProfile(data.session?.user ?? null));
     } catch (error) {
-      await supabase.auth.signOut();
-      setSession(null);
-      setProfile(null);
+      if (error instanceof AccountAccessDeniedError) {
+        await rejectSession(error);
+      }
       throw error;
     }
   };
@@ -93,27 +116,56 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!active) return;
       setSession(data.session);
       try {
-        setProfile(await loadProfile(data.session?.user ?? null));
+        commitProfile(await loadProfile(data.session?.user ?? null));
       } catch (error) {
-        console.warn('Session rejected by RLS login contract:', getErrorMessage(error));
-        await supabase.auth.signOut();
-        setSession(null);
-        setProfile(null);
+        if (error instanceof AccountAccessDeniedError) {
+          await rejectSession(error);
+        } else {
+          console.warn('Profile verification was temporarily unavailable; preserving the active session:', getErrorMessage(error));
+        }
       }
-      setLoading(false);
+      if (active) setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT' || !newSession) {
+        setSession(null);
+        commitProfile(null);
+        setLoading(false);
+        return;
+      }
+
       setSession(newSession);
-      loadProfile(newSession?.user ?? null)
-        .then(setProfile)
-        .catch(async (error) => {
-          console.warn('Authentication state rejected:', getErrorMessage(error));
-          setSession(null);
-          setProfile(null);
-          await supabase.auth.signOut();
-        })
-        .finally(() => setLoading(false));
+
+      // A file-picker focus change can coincide with Supabase refreshing the JWT.
+      // The existing authorized profile remains valid; do not turn a transient
+      // profile RPC failure into an application sign-out.
+      if (event === 'TOKEN_REFRESHED' && profileRef.current?.authorized) {
+        setLoading(false);
+        return;
+      }
+
+      const requestId = ++profileRequestRef.current;
+      // Supabase advises keeping auth callbacks non-blocking. Deferring the RPC
+      // also prevents a file-picker focus event and token refresh from racing
+      // two profile requests that can overwrite each other.
+      globalThis.setTimeout(() => {
+        loadProfile(newSession.user)
+          .then((nextProfile) => {
+            if (requestId === profileRequestRef.current) commitProfile(nextProfile);
+          })
+          .catch(async (error) => {
+            if (requestId !== profileRequestRef.current) return;
+            if (error instanceof AccountAccessDeniedError) {
+              await rejectSession(error);
+            } else {
+              console.warn('Profile refresh was temporarily unavailable; preserving the active session:', getErrorMessage(error));
+            }
+          })
+          .finally(() => {
+            if (requestId === profileRequestRef.current) setLoading(false);
+          });
+      }, 0);
     });
 
     return () => {
@@ -136,7 +188,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signOut: async () => {
       await supabase.auth.signOut();
       setSession(null);
-      setProfile(null);
+      commitProfile(null);
     },
     refreshProfile
   }), [loading, session, profile]);
