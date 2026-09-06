@@ -508,7 +508,7 @@ export default function DataEntryLocationEditor({
     setBusy(true);
     setMessage("Recording the authorized location-review skip…");
     try {
-      const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+      const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
         request_id:`LOCATION_REVIEW_SKIP:${deliveryWayId}:${Date.now()}`,
         rows:[{
           delivery_way_id:deliveryWayId,

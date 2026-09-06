@@ -1413,8 +1413,15 @@ export default function DataEntryFinancialV2Page() {
 
   async function validateImportedLocation(row:ParcelRow){
     patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"});
+    let found:DeliveryLocation|null=null;
     try{
-      const found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township});
+      found=await resolveDeliveryLocation({
+        deliveryWayId:row.delivery_way_id,
+        address:row.delivery_address,
+        township:row.township,
+        merchantId:pickups.find((pickup)=>pickup.pickup_id===row.pickup_id)?.merchant_id||"",
+        client:supabase,
+      });
       if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
         patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."});
         return;
@@ -1428,7 +1435,22 @@ export default function DataEntryFinancialV2Page() {
       await saveDeliveryLocation(supabase,accepted);
       patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."});
     }catch(error:any){
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."});
+      const failedCandidate=found&&validMyanmarCoordinate(found.longitude,found.latitude)
+        ?{...found,reviewStatus:"MANUAL_REVIEW" as const,reviewReason:"LOCATION_SAVE_FAILED"}
+        :null;
+      console.error("Imported location validation failed",{
+        deliveryWayId:row.delivery_way_id,
+        stage:failedCandidate?"save":"resolve",
+        code:error?.code||"",
+        message:error?.message||"",
+      });
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{
+        locationStatus:"REVIEW_REQUIRED",
+        locationCandidate:failedCandidate,
+        message:failedCandidate
+          ?"A reliable location was found, but Production could not save it. The suggested coordinates were preserved with LOCATION_SAVE_FAILED for retry."
+          :(error?.message||"Location validation failed. This row was added to the consolidated review workbook."),
+      });
     }
   }
 
@@ -1935,7 +1957,7 @@ export default function DataEntryFinancialV2Page() {
           latitude:row.locationCandidate!.latitude,longitude:row.locationCandidate!.longitude,
           action:"SKIP_REVIEW",reason:"Operator bulk-accepted the suggested pin without further visual map review.",
         }));
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
           request_id:requestId("LOCATION_REVIEW_SKIP_ALL"),rows:batch,
         }});
         if(response.error) throw response.error;
@@ -1993,7 +2015,7 @@ export default function DataEntryFinancialV2Page() {
       const allResults:any[]=[];
       for(let offset=0;offset<payloadRows.length;offset+=200){
         const batch=payloadRows.slice(offset,offset+200);
-        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
+        const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
           request_id:requestId("LOCATION_REVIEW_XLSX"),source_file_name:file.name,rows:batch,
         }});
         if(response.error) throw response.error;

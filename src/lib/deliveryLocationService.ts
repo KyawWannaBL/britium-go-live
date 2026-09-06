@@ -574,28 +574,31 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(addressWithPostalEvidence, canonicalTownship));
   const verified = verifiedAddressLocation(originalAddress, input.township);
 
-  if (input.client && originalAddress.length >= 3) {
-    const { data: alias, error: aliasError } = await input.client.rpc("be_location_alias_lookup_v28", {
-      p_alias_text: originalAddress,
-      p_merchant_id: input.merchantId || null,
+  if (input.client?.rpc && originalAddress.length >= 3) {
+    const { data, error: aliasError } = await input.client.rpc("be_location_alias_resolve_v28", {
+      p_address: originalAddress,
+      p_township: input.township,
     });
-    if (!aliasError && alias?.matched && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
-      const requestedTownship = String(input.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
-      const learnedTownship = String(alias.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
-      if (!requestedTownship || !learnedTownship || requestedTownship === learnedTownship) {
+    if (aliasError) {
+      if (!["42883", "42501", "PGRST202"].includes(String(aliasError.code || ""))) {
+        console.warn("Learned location alias lookup failed; using Google.", aliasError.message);
+      }
+    } else {
+      const alias = data?.location;
+      if (alias && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
         return {
           deliveryWayId: input.deliveryWayId,
           latitude: Number(alias.latitude),
           longitude: Number(alias.longitude),
-          label: alias.label || originalAddress,
+          label: String(alias.provider_label || alias.address_alias || originalAddress),
           originalAddress,
-          englishAddress,
-          township: alias.township || input.township,
-          postalCode: postal.postalCode,
-          postalMatchLevel: postal.matchLevel,
-          matchLevel: "ADDRESS_EXACT" as const,
-          confidence: Number(alias.confidence || 0.95),
-          coordinateSource: "MERCHANT_LOCATION_ALIAS_V28",
+          englishAddress: String(alias.address_english || englishAddress),
+          township: String(alias.township || input.township),
+          postalCode: String(alias.postal_code || postal.postalCode || ""),
+          postalMatchLevel: (alias.postal_match_level || postal.matchLevel || "UNRESOLVED") as PostalMatch["matchLevel"],
+          matchLevel: (alias.match_level || "MANUAL") as DeliveryLocation["matchLevel"],
+          confidence: Math.max(0.95, Number(alias.confidence) || 1),
+          coordinateSource: "LEARNED_ADDRESS_ALIAS_V28",
           reviewStatus: "ACCEPTED" as const,
           reviewReason: "",
         };
