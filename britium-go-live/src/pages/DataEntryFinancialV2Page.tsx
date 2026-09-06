@@ -3,7 +3,7 @@ import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIco
 import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
 import { resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
-import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
+import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, SAFE_TRANSACTION_ROWS, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
@@ -850,7 +850,6 @@ export default function DataEntryFinancialV2Page() {
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
   const [visibleRowCount,setVisibleRowCount]=useState(20);
   const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
-  const manualLocationCorrectionsRef=useRef(new Map<string,DeliveryLocation>());
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
@@ -860,16 +859,13 @@ export default function DataEntryFinancialV2Page() {
     return [pickup.pickup_id,Math.max(pickup.registered_parcels,draftMaximum)];
   })),[bulkImportDrafts,pickups]);
   const importedLocationSummary=useMemo(()=>{
-    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0,interrupted:0};
+    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0};
     for(const row of rows){
       if(!row.importedFromOs) continue;
       summary.total+=1;
       if(row.locationStatus==="SYNCED") summary.synced+=1;
       else if(row.locationStatus==="NOT_REQUIRED") summary.notRequired+=1;
-      else if(row.locationStatus==="REVIEW_REQUIRED"){
-        if(/timed out|validation failed|could not be loaded|unavailable/i.test(row.message)) summary.interrupted+=1;
-        else summary.review+=1;
-      }
+      else if(row.locationStatus==="REVIEW_REQUIRED") summary.review+=1;
       else summary.resolving+=1;
     }
     return summary;
@@ -1250,32 +1246,58 @@ export default function DataEntryFinancialV2Page() {
   async function persistAllRows(reason:string){
     requireSaveReady();
     if(!selectedPickup) throw new Error("Select a pickup first.");
-    const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_batch_v22",{p_payload:{
-      request_id:requestId("FINANCIAL_V2_SAVE_ALL"),
-      pickup_id:selectedPickup.pickup_id,
-      reason,
-      rows:rows.map((row)=>({
-        ...payload(row,selectedPickup),
-        destination:selectedPickup.city||null,
-      })),
-    }});
-    if(response.error) throw response.error;
-    const result=response.data||{};
-    if(!result.ok || result.persisted===false){
-      const e=envelope(result);
-      throw new Error(envelopeMessage(e)||result?.errors?.[0]?.message||"Save All was not confirmed.");
+    const pendingRows=rows.filter((row)=>!row.saved);
+    if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0};
+    const batchCount=Math.ceil(pendingRows.length/SAFE_TRANSACTION_ROWS);
+    let savedCount=0;
+    const allSavedResults:any[]=[];
+    for(let offset=0;offset<pendingRows.length;offset+=SAFE_TRANSACTION_ROWS){
+      const batchRows=pendingRows.slice(offset,offset+SAFE_TRANSACTION_ROWS);
+      const batchNumber=Math.floor(offset/SAFE_TRANSACTION_ROWS)+1;
+      setBulkMessage(`Saving batch ${batchNumber}/${batchCount}: ${savedCount}/${pendingRows.length} row(s) committed.`);
+      const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_batch_v22",{p_payload:{
+        request_id:requestId(`FINANCIAL_V2_SAVE_ALL_BATCH_${batchNumber}`),
+        pickup_id:selectedPickup.pickup_id,
+        reason:`${reason} · consecutive batch ${batchNumber}/${batchCount}`,
+        rows:batchRows.map((row)=>({
+          ...payload(row,selectedPickup),
+          destination:selectedPickup.city||null,
+        })),
+      }});
+      if(response.error) throw new Error(`Batch ${batchNumber}/${batchCount} failed after ${savedCount} row(s) were committed: ${response.error.message}. Retry Save All to continue with unsaved rows only.`);
+      const result=response.data||{};
+      if(!result.ok || result.persisted===false){
+        const e=envelope(result);
+        throw new Error(`Batch ${batchNumber}/${batchCount} failed after ${savedCount} row(s) were committed: ${envelopeMessage(e)||result?.errors?.[0]?.message||"save was not confirmed"}. Retry Save All to continue with unsaved rows only.`);
+      }
+      const savedResults=Array.isArray(result.rows)?result.rows:[];
+      const savedBySequence=new Map(savedResults.map((item:any,index:number)=>[batchRows[index]?.parcel_sequence,item]));
+      const savedSequences=new Set(batchRows.map((row)=>row.parcel_sequence));
+      savedCount+=batchRows.length;
+      allSavedResults.push(...savedResults);
+      setRows((current)=>current.map((row)=>{
+        if(!savedSequences.has(row.parcel_sequence)) return row;
+        const savedResult=savedBySequence.get(row.parcel_sequence) as any;
+        return {
+          ...row,
+          saved:true,
+          delivery_way_id:text(savedResult?.canonical_way_id||row.delivery_way_id||`${row.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
+          calculation:{...row.calculation,...(savedResult?.data||{})},
+          message:`Saved in consecutive batch ${batchNumber}/${batchCount}.`,
+        };
+      }));
+      setBulkImportDrafts((current)=>{
+        const draft=current[selectedPickup.pickup_id];
+        if(!draft) return current;
+        return {...current,[selectedPickup.pickup_id]:{
+          ...draft,
+          rows:draft.rows.map((row)=>savedSequences.has(row.parcel_sequence)?{...row,saved:true,message:`Saved in consecutive batch ${batchNumber}/${batchCount}.`}:row),
+        }};
+      });
     }
-    const savedResults=Array.isArray(result.rows)?result.rows:[];
-    setRows((current)=>current.map((row,index)=>({
-      ...row,
-      saved:true,
-      delivery_way_id:text(savedResults[index]?.canonical_way_id||row.delivery_way_id||`${row.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
-      calculation:{...row.calculation,...(savedResults[index]?.data||{})},
-      message:"Saved by the atomic Save All operation.",
-    })));
     const maximumSavedSequence=rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
     setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,maximumSavedSequence)}:pickup));
-    return result;
+    return {ok:true,persisted:true,saved_count:savedCount,rows:allSavedResults,batch_count:batchCount};
   }
 
   async function saveAll(){
@@ -1290,9 +1312,12 @@ export default function DataEntryFinancialV2Page() {
           return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:true}}:current;
         });
       }
-      setBulkMessage(`Saved all ${Number(result.saved_count||rows.length)} row(s). The batch was committed atomically.`);
+      setBulkMessage(result.saved_count
+        ? `Saved ${Number(result.saved_count)} row(s) in ${Number(result.batch_count)} consecutive audited batch(es).`
+        : "All rows were already saved. No duplicate save was submitted."
+      );
     }catch(error:any){
-      setBulkMessage(error?.message||"Save All failed. No partial batch was kept.");
+      setBulkMessage(error?.message||"Save All failed. Successfully committed batches remain saved; retry to continue with unsaved rows only.");
     }finally{
       setBulkSaving(false);
     }
@@ -1401,52 +1426,33 @@ export default function DataEntryFinancialV2Page() {
     return staged.sort((a,b)=>a.parcel_sequence-b.parcel_sequence);
   }
 
-  function patchImportedLocation(
-    pickupId:string,
-    parcelSequence:number,
-    patch:Partial<ParcelRow>,
-    expectedStatuses?:DataEntryLocationResolution[],
-  ){
-    const applyPatch=(row:ParcelRow)=>{
-      if(row.parcel_sequence!==parcelSequence) return row;
-      if(expectedStatuses&&!expectedStatuses.includes(row.locationStatus)) return row;
-      return {...row,...patch};
-    };
+  function patchImportedLocation(pickupId:string,parcelSequence:number,patch:Partial<ParcelRow>){
     setBulkImportDrafts((current)=>{
       const draft=current[pickupId];
       if(!draft) return current;
-      return {...current,[pickupId]:{...draft,rows:draft.rows.map(applyPatch)}};
+      return {...current,[pickupId]:{...draft,rows:draft.rows.map((row)=>row.parcel_sequence===parcelSequence?{...row,...patch}:row)}};
     });
-    setRows((current)=>current.map((row)=>row.pickup_id===pickupId?applyPatch(row):row));
+    setRows((current)=>current.map((row)=>row.pickup_id===pickupId&&row.parcel_sequence===parcelSequence?{...row,...patch}:row));
   }
 
   async function validateImportedLocation(row:ParcelRow){
-    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},["PENDING"]);
+    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"});
     try{
-      const found=await Promise.race([
-        resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township}),
-        new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Location validation timed out after 10 seconds. Retry this row or correct it through Review Excel.")),10000)),
-      ]);
+      const found=await resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township});
       if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."});
         return;
       }
       const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";
       if(reviewRequired){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
+        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."});
         return;
       }
       const accepted={...found,originalAddress:row.delivery_address};
-      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)) return;
       await saveDeliveryLocation(supabase,accepted);
-      const manualOverride=manualLocationCorrectionsRef.current.get(row.delivery_way_id);
-      if(manualOverride){
-        await saveDeliveryLocation(supabase,manualOverride);
-        return;
-      }
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."},["PENDING","SEARCHING"]);
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."});
     }catch(error:any){
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
+      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."});
     }
   }
 
@@ -1461,33 +1467,8 @@ export default function DataEntryFinancialV2Page() {
         await validateImportedLocation(job);
       }
     };
-    await Promise.all(Array.from({length:Math.min(8,jobs.length)},()=>worker()));
+    await Promise.all(Array.from({length:Math.min(3,jobs.length)},()=>worker()));
     setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);
-  }
-
-  async function retryImportedLocationSync(){
-    if(locationReviewBusy) return;
-    const retryable=rows.filter((row)=>
-      row.importedFromOs
-      && routeForRow(row,tariffOptions).mapRequired
-      && (row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING"||(
-        row.locationStatus==="REVIEW_REQUIRED"&&/timed out|validation failed|could not be loaded|unavailable/i.test(row.message)
-      ))
-    );
-    if(!retryable.length){
-      setBulkMessage("No interrupted location validations remain. Use Review Excel only for genuinely ambiguous addresses.");
-      return;
-    }
-    setLocationReviewBusy(true);
-    setBulkMessage(`Retrying ${retryable.length} interrupted location validation(s)…`);
-    for(const row of retryable){
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"PENDING",message:"Queued for location validation retry."});
-    }
-    try{
-      await validateImportedLocations({retry:{pickupId:"retry",fileName:"",rows:retryable.map((row)=>({...row,locationStatus:"PENDING" as const})),tierAccess,saved:false}});
-    }finally{
-      setLocationReviewBusy(false);
-    }
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
@@ -1950,7 +1931,6 @@ export default function DataEntryFinancialV2Page() {
         deliveryWayId:row.delivery_way_id,latitude,longitude,matchLevel:"MANUAL",confidence:1,
         coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
       };
-      manualLocationCorrectionsRef.current.set(row.delivery_way_id,locationCandidate);
       return {...row,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
     });
     setRows((current)=>applyToRows(current));
@@ -2172,11 +2152,10 @@ export default function DataEntryFinancialV2Page() {
                 <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
                   {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
                     ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
-                    :`${importedLocationSummary.resolving} core-region rows are validating · ${importedLocationSummary.interrupted} interrupted and retryable · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
+                    :`${importedLocationSummary.resolving} core-region rows are validating in a controlled background queue · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={()=>void retryImportedLocationSync()} disabled={!(importedLocationSummary.resolving+importedLocationSummary.interrupted)||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-40"><RefreshCw size={14}/>RETRY LOCATION SYNC ({importedLocationSummary.resolving+importedLocationSummary.interrupted})</button>
                 <button type="button" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some((row)=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/50 bg-rose-400/10 px-4 py-2.5 text-[10px] font-black text-rose-100 disabled:opacity-40">SKIP ALL REVIEWS</button>
                 <button type="button" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2.5 text-[10px] font-black text-amber-100 disabled:opacity-40"><Download size={14}/>DOWNLOAD REVIEW EXCEL ({consolidatedLocationReviewRows.length})</button>
                 <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>

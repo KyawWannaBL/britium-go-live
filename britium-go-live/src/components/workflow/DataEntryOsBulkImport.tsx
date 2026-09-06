@@ -57,6 +57,8 @@ export type OsImportApplyPayload = {
 };
 
 export const BULK_UPLOAD_PICKUP_ID = "__BULK_UPLOAD__";
+export const MAX_BULK_UPLOAD_ROWS = 500;
+export const SAFE_TRANSACTION_ROWS = 200;
 
 type Props = {
   pickups: OsBulkPickup[];
@@ -423,7 +425,7 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
     rows.push({ ...base, ...classification });
   });
   if (!rows.length) throw new Error("No data rows were found below the header.");
-  if (rows.length > 200) throw new Error("Import no more than 200 rows in one spreadsheet.");
+  if (rows.length > MAX_BULK_UPLOAD_ROWS) throw new Error(`Import no more than ${MAX_BULK_UPLOAD_ROWS} rows in one spreadsheet.`);
   return { rows, missingHeaders, missingBulkRoutingHeaders, headerRowNumber: bestIndex + 1 };
 }
 
@@ -674,7 +676,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
 
               <section className="rounded-xl border border-[#1d4b70] bg-[#0b2236] p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><div className="text-xs font-black">Spreadsheet</div><div className="mt-1 text-[10px] text-[#8db5d1]">The uploaded CSV/XLSX may contain complete or partial rows; partial rows stay editable.</div></div>
+                  <div><div className="text-xs font-black">Spreadsheet</div><div className="mt-1 text-[10px] text-[#8db5d1]">Upload up to {MAX_BULK_UPLOAD_ROWS} complete or partial rows. The system processes them in consecutive batches of {SAFE_TRANSACTION_ROWS}; partial rows stay editable.</div></div>
                   <div className="flex flex-wrap gap-2">
                     <button type="button" onClick={() => void downloadXlsxTemplate()} disabled={fileBusy} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>XLSX TEMPLATE</button>
                     <button type="button" onClick={downloadCsvTemplate} className="rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]"><Download size={13} className="mr-1 inline"/>CSV TEMPLATE</button>
