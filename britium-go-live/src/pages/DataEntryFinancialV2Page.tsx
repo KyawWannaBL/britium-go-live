@@ -113,7 +113,6 @@ type ParcelRow = {
 
 
   service_type: string;
-77712d3877da6fae0192148645f9903175fbc4f6
   amount_entry_type: AmountType;
   item_price: number | "";
   delivery_charges: number | "";
