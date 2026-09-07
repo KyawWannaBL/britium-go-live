@@ -2,7 +2,7 @@ import pg from 'pg';
 import fetch from 'node-fetch';
 
 const { Client } = pg;
-const GOOGLE_API_KEY = 'AIzaSyAiDLK1HT_nXMG_BwvVObbQydFjL5ZiDPs'; 
+const GOOGLE_API_KEY = 'process.env.GOOGLE_MAPS_API_KEY'; 
 const TARGET_TABLE = 'be_portal_pickup_requests';
 
 async function syncCoordinates() {
