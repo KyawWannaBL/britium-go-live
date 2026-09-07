@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
+import OptimizeDispatchButton from '../components/OptimizeDispatchButton';
 import {
   RefreshCw,
   Route,
@@ -110,7 +111,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
     </section>
   );
 }
-
 
 function buildDispatchAllocationPayload(rows: any[]) {
   return rows.map((row) => {
@@ -379,9 +379,9 @@ export default function WayplanCommandCenterPage() {
     }
     await guardedBrowserPrint({
       documentType: "MANIFEST",
-      documentNo: manifestNo || selectedManifest?.manifest_no || selectedManifest?.manifestNo || selectedManifest?.wayplan_id || selectedManifest?.batch_id || "MANIFEST-UNKNOWN",
-      actorEmail: user?.email || "operator@britiumexpress.com",
-      actorRole: userRole || "operator",
+      documentNo: activeWayplan?.wayplan_id || "MANIFEST-UNKNOWN",
+      actorEmail: "operator@britiumexpress.com",
+      actorRole: "operator",
       reason: "Manifest Print Studio batch print",
     });
   }
@@ -479,8 +479,16 @@ export default function WayplanCommandCenterPage() {
                 <button onClick={toggleAll} style={btn("plain")}>
                   <CheckCircle2 size={15} /> {selectedRows.length === readyRows.length && readyRows.length ? "Clear" : "Select All"}
                 </button>
-                <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>
-                  <Route size={15} /> Generate Wayplan
+                <OptimizeDispatchButton 
+                  selectedParcels={selectedRows} 
+                  selectedRider={riderCode} 
+                  onComplete={() => {
+                    setSelected({});
+                    loadAll();
+                  }} 
+                />
+                <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("plain")}>
+                  <Route size={15} /> Manual Gen
                 </button>
               </div>
             </div>
