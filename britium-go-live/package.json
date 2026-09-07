@@ -13,6 +13,11 @@
     "verify:login-profile-contract": "node scripts/verify-login-profile-contract.cjs",
     "verify:postal-code-contract": "node scripts/verify-postal-code-contract.mjs",
     "verify:data-entry-bulk-contract": "node scripts/verify-data-entry-bulk-contract.mjs",
+    "verify:data-entry-os-import-contract": "node scripts/verify-data-entry-os-import-contract.mjs",
+    "verify:data-entry-provider-routing-contract": "node scripts/verify-data-entry-provider-routing-contract.mjs",
+    "verify:data-entry-location-save-contract": "node scripts/verify-data-entry-location-save-contract.mjs",
+    "verify:location-alias-contract": "node scripts/verify-location-alias-contract.mjs",
+    "verify:data-entry-routing-wayplan-contract": "node scripts/verify-data-entry-routing-wayplan-contract.mjs",
     "verify:supabase-proxy": "node scripts/verify-supabase-proxy.cjs"
   },
   "dependencies": {
@@ -52,12 +57,17 @@
     "axios": "^1.7.9",
     "class-variance-authority": "^0.7.1",
     "cmdk": "^1.1.1",
+    "csv-parser": "^3.2.1",
     "embla-carousel-react": "^8.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^12.40.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.29.0",
+    "mysql2": "^3.24.3",
     "next-themes": "^0.4.6",
+    "node-fetch": "^3.3.2",
+    "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
@@ -83,10 +93,21 @@
     "@types/mapbox-gl": "^3.4.1",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
+    "@vercel/node": "^12.0.1",
     "@vitejs/plugin-react": "^5.1.1",
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.3",
     "vite": "^8.0.16",
     "vite-tsconfig-paths": "^6.1.1"
-  }
+  },
+  "description": "[![Coverage Status](https://coveralls.io/repos/github/supabase/cli/badge.svg?branch=main)](https://coveralls.io/github/supabase/cli?branch=main)",
+  "main": "eslint.config.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "lib": "lib"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

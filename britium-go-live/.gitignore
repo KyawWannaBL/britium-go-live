@@ -25,3 +25,5 @@ _archive_old_versions/
 *.bak*
 *.backup*
 *.before*
+supabase.exe
+supabase_latest.tar.gz

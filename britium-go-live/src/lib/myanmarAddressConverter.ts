@@ -43,6 +43,7 @@ const ADDRESS_REPLACEMENTS: Array<[RegExp, string]> = [
   [/အင်းစိန်မြို့နယ်|အင်းစိန်/g, "Insein Township"],
   [/မင်္ဂလာဒုံမြို့နယ်|မင်္ဂလာဒုံ/g, "Mingaladon Township"],
   [/ရွှေပြည်သာမြို့နယ်|ရွှေပြည်သာ/g, "Shwepyitha Township"],
+  [/ပင်လုံ\s*(?:လမ်းမကြီး|လမ်း)?/g, "Pinlon Road"],
   [/လမ်းသွယ်/g, "Lane"],
   [/လမ်းမကြီး/g, "Main Road"],
   [/လမ်း/g, "Road"],

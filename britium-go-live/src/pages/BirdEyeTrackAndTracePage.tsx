@@ -1,9 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import mapboxgl from 'mapbox-gl';
-import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/lib/supabaseClient';
-
-mapboxgl.accessToken = import.meta.env.VITE_MAPBOX_TOKEN; // .env တွင် Mapbox Token ထည့်ထားရန်
 
 export default function BirdEyeTrackAndTracePage({ branchCode }) {
   const mapContainer = useRef(null);
@@ -12,19 +8,56 @@ export default function BirdEyeTrackAndTracePage({ branchCode }) {
   const [activeRiders, setActiveRiders] = useState(0);
 
   useEffect(() => {
-    if (map.current) return; // Initialize map only once
-    
-    map.current = new mapboxgl.Map({
-      container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/navigation-night-v1', // Dark Theme for Dispatch
-      center: [96.1561, 16.8053], // Yangon Center (Default)
-      zoom: 12
-    });
+    // Dynamically load the Google Maps JavaScript API
+    const loadGoogleMaps = () => {
+      if (window.google?.maps) return Promise.resolve();
+      if (document.querySelector('#google-maps-script')) {
+        return new Promise((resolve) => {
+          document.querySelector('#google-maps-script').addEventListener('load', resolve);
+        });
+      }
+      return new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.id = 'google-maps-script';
+        script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=marker`;
+        script.async = true;
+        script.defer = true;
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    };
 
-    // 1. Initial Data Load
-    loadInitialRiders();
+    const initMap = async () => {
+      await loadGoogleMaps();
 
-    // 2. Subscribe to Supabase Realtime Updates
+      if (map.current) return; // Initialize map only once
+
+      map.current = new window.google.maps.Map(mapContainer.current, {
+        center: { lat: 16.8053, lng: 96.1561 }, // Yangon Center
+        zoom: 12,
+        mapId: 'DISPATCH_DARK_MAP', // Required for AdvancedMarkerElement
+        disableDefaultUI: true,
+        // Google Maps Dark Theme to match Mapbox 'navigation-night-v1'
+        styles: [
+          { elementType: "geometry", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.stroke", stylers: [{ color: "#242f3e" }] },
+          { elementType: "labels.text.fill", stylers: [{ color: "#746855" }] },
+          { featureType: "administrative.locality", elementType: "labels.text.fill", stylers: [{ color: "#d59563" }] },
+          { featureType: "road", elementType: "geometry", stylers: [{ color: "#38414e" }] },
+          { featureType: "road", elementType: "geometry.stroke", stylers: [{ color: "#212a37" }] },
+          { featureType: "road", elementType: "labels.text.fill", stylers: [{ color: "#9ca5b3" }] },
+          { featureType: "water", elementType: "geometry", stylers: [{ color: "#17263c" }] },
+          { featureType: "water", elementType: "labels.text.fill", stylers: [{ color: "#515c6d" }] },
+          { featureType: "water", elementType: "labels.text.stroke", stylers: [{ color: "#17263c" }] }
+        ],
+      });
+
+      loadInitialRiders();
+    };
+
+    initMap();
+
     const channel = supabase.channel('public:be_live_rider_locations')
       .on('postgres_changes', { 
         event: 'UPDATE', 
@@ -53,21 +86,28 @@ export default function BirdEyeTrackAndTracePage({ branchCode }) {
 
   const updateRiderMarker = (riderData) => {
     const { rider_id, current_lat, current_lng, heading } = riderData;
+    const position = { lat: current_lat, lng: current_lng };
     
     // Existing Marker ကို Update လုပ်ခြင်း
     if (markersRef.current[rider_id]) {
-      markersRef.current[rider_id].setLngLat([current_lng, current_lat]);
-      markersRef.current[rider_id].setRotation(heading || 0);
+      markersRef.current[rider_id].position = position;
+      
+      if (markersRef.current[rider_id].content) {
+        markersRef.current[rider_id].content.style.transform = `rotate(${heading || 0}deg)`;
+      }
     } else {
       // Marker အသစ်ဖန်တီးခြင်း
       const el = document.createElement('div');
       el.className = 'w-8 h-8 bg-blue-600 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white';
+      el.style.transform = `rotate(${heading || 0}deg)`;
+      el.style.transition = 'transform 0.3s ease'; // Smooth rotation
       el.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M12 2L2 22l10-3 10 3L12 2z"/></svg>`;
       
-      const marker = new mapboxgl.Marker({ element: el, rotationAlignment: 'map' })
-        .setLngLat([current_lng, current_lat])
-        .setRotation(heading || 0)
-        .addTo(map.current);
+      const marker = new window.google.maps.marker.AdvancedMarkerElement({
+        map: map.current,
+        position: position,
+        content: el,
+      });
         
       markersRef.current[rider_id] = marker;
     }
@@ -75,7 +115,7 @@ export default function BirdEyeTrackAndTracePage({ branchCode }) {
 
   return (
     <div className="relative w-full h-screen">
-      {/* Mapbox Container */}
+      {/* Google Maps Container */}
       <div ref={mapContainer} className="absolute inset-0" />
       
       {/* Dispatch Overlay Panel */}

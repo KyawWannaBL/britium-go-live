@@ -1,208 +1,193 @@
-// ─────────────────────────────────────────────────────────────────────────────
-// AuthContext.tsx — Britium Express Authentication Provider
-// Uses Supabase Auth + user_profiles table for role resolution
-// ─────────────────────────────────────────────────────────────────────────────
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  useCallback,
-} from "react";
-import { supabase } from "../lib/supabaseClient";
-import { ROLE_PORTALS } from "../lib/config";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { Session, User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabaseClient';
 
-// ── Types ─────────────────────────────────────────────────────────────────────
-export interface BritiumUser {
-  id: string;
-  email: string;
-  full_name: string;
-  phone?: string;
-  role: string;
-  status: string;
-  position?: string;
-  branch_location?: string;
-  must_change_password: boolean;
-  avatar_url?: string;
-  language_preference: string;
-  created_at: string;
-}
+const getErrorMessage = (error: any): string => {
+  if (typeof error === 'string') return error;
+  if (error?.message) return error.message;
+  if (error?.error_description) return error.error_description;
+  if (error instanceof Error) return error.message;
+  return "An unexpected error occurred.";
+};
 
-interface AuthState {
-  user: BritiumUser | null;
-  loading: boolean;
-}
-
-interface AuthContextValue extends AuthState {
-  login: (email: string, password: string) => Promise<LoginResult>;
-  logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
-  portalRoute: string;
-}
-
-interface LoginResult {
-  success: boolean;
-  user?: BritiumUser;
-  error?: string;
+export type UserProfile = {
+  user_id?: string;
+  auth_user_id?: string;
+  full_name?: string;
+  email?: string;
+  role?: string;
+  branch_code?: string;
+  status?: string;
+  authorized?: boolean;
   must_change_password?: boolean;
-}
+  territories?: Array<{
+    scope_type: 'GLOBAL' | 'BRANCH' | 'TOWNSHIP';
+    branch_id?: string | null;
+    branch_code?: string | null;
+    township_key?: string | null;
+    can_read: boolean;
+    can_create: boolean;
+    can_update: boolean;
+    can_delete: boolean;
+  }>;
+};
 
-// ── Context ───────────────────────────────────────────────────────────────────
+type AuthContextValue = {
+  loading: boolean;
+  session: Session | null;
+  user: User | null;
+  profile: UserProfile | null;
+  role: string;
+  signIn: (email: string, password: string) => Promise<void>;
+  signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+};
+
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
-// ── Profile loader ────────────────────────────────────────────────────────────
-async function loadProfile(userId: string): Promise<Record<string, unknown> | null> {
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("*")
-    .eq("id", userId)
-    .maybeSingle();
-  if (error) throw error;
-  return data;
+class AccountAccessDeniedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'AccountAccessDeniedError';
+  }
 }
 
-function buildUser(
-  authUser: { id: string; email?: string; user_metadata?: Record<string, unknown> },
-  profile: Record<string, unknown> | null
-): BritiumUser {
-  const role = String(profile?.role ?? "rider").toLowerCase();
-  return {
-    id: authUser.id,
-    email: String(authUser.email ?? profile?.email ?? ""),
-    full_name: String(
-      profile?.full_name ??
-        (authUser.user_metadata as Record<string, unknown>)?.full_name ??
-        ""
-    ),
-    phone: profile?.phone ? String(profile.phone) : undefined,
-    role,
-    status: String(profile?.status ?? "active"),
-    position: profile?.position ? String(profile.position) : undefined,
-    branch_location: profile?.branch_location
-      ? String(profile.branch_location)
-      : undefined,
-    must_change_password: Boolean(
-      profile?.must_change_password ?? profile?.force_password_change ?? false
-    ),
-    avatar_url: profile?.avatar_url ? String(profile.avatar_url) : undefined,
-    language_preference: String(profile?.language_preference ?? "en"),
-    created_at: String(profile?.created_at ?? new Date().toISOString()),
-  };
+async function loadProfile(user: User | null): Promise<UserProfile | null> {
+  if (!user) return null;
+  const { data, error } = await supabase.rpc('be_login_access_profile');
+
+  if (error) {
+    throw new Error(`Unable to verify account access: ${getErrorMessage(error)}`);
+  }
+
+  const access = (data ?? {}) as UserProfile & { reason?: string };
+  if (!access.authorized) {
+    const messages: Record<string, string> = {
+      ACCOUNT_NOT_REGISTERED: 'This login is not registered as a Britium Express account.',
+      ACCOUNT_INACTIVE: 'This Britium Express account is inactive.',
+      ROLE_NOT_ASSIGNED: 'No authorized role is assigned to this account.',
+      TERRITORY_NOT_ASSIGNED: 'No active branch or township territory is assigned to this account.',
+      AUTH_REQUIRED: 'Your authentication session is no longer valid.',
+    };
+    throw new AccountAccessDeniedError(
+      messages[access.reason ?? ''] ?? 'This account is not authorized to use Britium Express.'
+    );
+  }
+
+  return access;
 }
 
-// ── Provider ──────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, loading: true });
+  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<Session | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const profileRef = useRef<UserProfile | null>(null);
 
-  const hydrateSession = useCallback(
-    async (session: { user?: { id: string; email?: string; user_metadata?: Record<string, unknown> } } | null) => {
-      if (!session?.user) {
-        setState({ user: null, loading: false });
+  const commitProfile = (nextProfile: UserProfile | null) => {
+    profileRef.current = nextProfile;
+    setProfile(nextProfile);
+  };
+
+  const rejectSession = async (error: unknown) => {
+    console.warn('Session rejected by RLS login contract:', getErrorMessage(error));
+    setSession(null);
+    commitProfile(null);
+    await supabase.auth.signOut();
+  };
+
+  const refreshProfile = async () => {
+    const { data } = await supabase.auth.getSession();
+    setSession(data.session);
+    try {
+      commitProfile(await loadProfile(data.session?.user ?? null));
+    } catch (error) {
+      if (error instanceof AccountAccessDeniedError) {
+        await rejectSession(error);
+      }
+      throw error;
+    }
+  };
+
+  useEffect(() => {
+    let active = true;
+
+    supabase.auth.getSession().then(async ({ data }) => {
+      if (!active) return;
+      setSession(data.session);
+      try {
+        commitProfile(await loadProfile(data.session?.user ?? null));
+      } catch (error) {
+        if (error instanceof AccountAccessDeniedError) {
+          await rejectSession(error);
+        } else {
+          console.warn('Profile verification was temporarily unavailable; preserving the active session:', getErrorMessage(error));
+        }
+      }
+      if (active) setLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (event === 'SIGNED_OUT' || !newSession) {
+        setSession(null);
+        commitProfile(null);
+        setLoading(false);
         return;
       }
-      try {
-        const profile = await loadProfile(session.user.id);
-        const user = buildUser(session.user, profile);
-        setState({ user, loading: false });
-      } catch (err) {
-        console.error("[AuthContext] Failed to load profile:", err);
-        // Fallback – keep auth but with minimal data
-        setState({
-          user: buildUser(session.user, null),
-          loading: false,
-        });
-      }
-    },
-    []
-  );
 
-  // Boot: restore existing session
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (mounted) await hydrateSession(session);
-    })();
+      setSession(newSession);
 
-    // Subscribe to auth changes
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (mounted) await hydrateSession(session);
+      // A file-picker focus change can coincide with Supabase refreshing the JWT.
+      // The existing authorized profile remains valid; do not turn a transient
+      // profile RPC failure into an application sign-out.
+      if (event === 'TOKEN_REFRESHED' && profileRef.current?.authorized) {
+        setLoading(false);
+        return;
       }
-    );
+
+      loadProfile(newSession?.user ?? null)
+        .then(commitProfile)
+        .catch(async (error) => {
+          if (error instanceof AccountAccessDeniedError) {
+            await rejectSession(error);
+          } else {
+            console.warn('Profile refresh was temporarily unavailable; preserving the active session:', getErrorMessage(error));
+          }
+        })
+        .finally(() => setLoading(false));
+    });
 
     return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
+      active = false;
+      sub.subscription.unsubscribe();
     };
-  }, [hydrateSession]);
-
-  // ── login ───────────────────────────────────────────────────────────────────
-  const login = useCallback(
-    async (email: string, password: string): Promise<LoginResult> => {
-      setState((s) => ({ ...s, loading: true }));
-      try {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
-        });
-        if (error) throw new Error(error.message);
-        if (!data.user || !data.session) throw new Error("No session returned.");
-
-        const profile = await loadProfile(data.user.id);
-        const user = buildUser(data.user, profile);
-        setState({ user, loading: false });
-
-        return {
-          success: true,
-          user,
-          must_change_password: user.must_change_password,
-        };
-      } catch (err) {
-        setState((s) => ({ ...s, loading: false }));
-        return {
-          success: false,
-          error: err instanceof Error ? err.message : "Login failed",
-        };
-      }
-    },
-    []
-  );
-
-  // ── logout ──────────────────────────────────────────────────────────────────
-  const logout = useCallback(async () => {
-    await supabase.auth.signOut();
-    setState({ user: null, loading: false });
-    window.location.href = "/login";
   }, []);
 
-  // ── refreshUser ─────────────────────────────────────────────────────────────
-  const refreshUser = useCallback(async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) await hydrateSession(session);
-  }, [hydrateSession]);
+  const value = useMemo<AuthContextValue>(() => ({
+    loading,
+    session,
+    user: session?.user ?? null,
+    profile,
+    role: profile?.role ?? 'guest',
+    signIn: async (email, password) => {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      await refreshProfile();
+    },
+    signOut: async () => {
+      await supabase.auth.signOut();
+      setSession(null);
+      setProfile(null);
+    },
+    refreshProfile
+  }), [loading, session, profile]);
 
-  const portalRoute =
-    (state.user ? ROLE_PORTALS[state.user.role] : null) ?? "/login";
-
-  return (
-    <AuthContext.Provider
-      value={{ ...state, login, logout, refreshUser, portalRoute }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// ── Hook ──────────────────────────────────────────────────────────────────────
-export function useAuth(): AuthContextValue {
+export function useAuth() {
   const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error("useAuth must be used inside <AuthProvider>");
+  if (!ctx) throw new Error('useAuth must be used inside AuthProvider');
   return ctx;
 }
 
-export default AuthContext;
+export { getErrorMessage };

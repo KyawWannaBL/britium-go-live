@@ -1,0 +1,19 @@
+    // 1. Check if the address exists in your alias dictionary FIRST
+    const aliasCheck = await pool.query(
+      `SELECT resolved_latitude, resolved_longitude FROM be_location_aliases WHERE merchant_input = $1`,
+      [row.delivery_address]
+    );
+
+    if (aliasCheck.rowCount > 0) {
+      const { resolved_latitude, resolved_longitude } = aliasCheck.rows[0];
+      
+      await pool.query(
+        `UPDATE public.be_portal_pickup_requests 
+         SET suggested_latitude = $1, suggested_longitude = $2, geocode_status = 'ALIAS_MATCHED', updated_at = NOW() 
+         WHERE pickup_id = $3`,
+        [resolved_latitude, resolved_longitude, row.pickup_id]
+      );
+      
+      console.log(`✅ Auto-resolved alias for: ${row.delivery_address}`);
+      continue; // Skip Mapbox API call and move to the next parcel
+    }
