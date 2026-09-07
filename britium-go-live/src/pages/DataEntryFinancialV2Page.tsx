@@ -330,7 +330,6 @@ function payload(row: ParcelRow, pickup: Pickup) {
     handoff_station_code: row.handoffStationCode || null,
     handoff_station_name: row.handoffStationName || null,
     service_type: row.service_type || "STANDARD",
-77712d3877da6fae0192148645f9903175fbc4f6
     amount_entry_type: row.amount_entry_type,
     item_price: row.item_price === "" ? null : Number(row.item_price),
     delivery_charges: row.delivery_charges === "" ? null : Number(row.delivery_charges),
@@ -471,7 +470,6 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   const selected = useMemo(()=>(tariffOptions as TariffOption[]).find((option) =>
     option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
   ),[row.service_provider_code,row.township,tariffOptions]);
-77712d3877da6fae0192148645f9903175fbc4f6
   const choose = (option: TariffOption) => {
     const nextRoute=resolveDataEntryServiceProvider(option.destination_name,row.delivery_address,tariffOptions,{
       fallbackUnknownToRoyal:true,
@@ -483,7 +481,6 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
       service_provider_code: option.provider_code,
 
       ...routingPatch(nextRoute,{...row,township:option.destination_name}),
-77712d3877da6fae0192148645f9903175fbc4f6
       delivery_charges: tariffRate(option, row.customer_tier),
       message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was applied.`,
     });
@@ -515,7 +512,6 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
           {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","GRS"].includes(provider.provider_code)).map((provider) => (
 
           {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
-77712d3877da6fae0192148645f9903175fbc4f6
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
               {provider.display_name} · {provider.active_tariff_count}
             </button>
@@ -567,7 +563,6 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
   const type = row.amount_entry_type as AmountType;
   const route = routeForRow(row,tariffOptions);
   const stationReady = handoffStationReady(row,route);
-77712d3877da6fae0192148645f9903175fbc4f6
   const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
@@ -731,7 +726,6 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
           <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
             const customer_tier=e.target.value;
             const option=(tariffOptions as TariffOption[]).find((item)=>item.destination_name===row.township&&(!row.service_provider_code||item.provider_code===row.service_provider_code));
-77712d3877da6fae0192148645f9903175fbc4f6
             const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
             updateRow(index,{customer_tier,tier_override,...(option?{delivery_charges:tariffRate(option,customer_tier)}:{})});
           }}>
@@ -753,7 +747,6 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             <option value="NEXT_DAY">NEXT DAY</option>
             <option value="ECONOMY">ECONOMY</option>
           </select>
-77712d3877da6fae0192148645f9903175fbc4f6
         </Field>
         <Field label="ငွေကောက်ခံပုံ">
           <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
@@ -821,7 +814,6 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
         onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
         onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
       />
-77712d3877da6fae0192148645f9903175fbc4f6
 
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
@@ -837,7 +829,6 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
             updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
           }}/></Field>:null}
           {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-77712d3877da6fae0192148645f9903175fbc4f6
           {isExact(type) ? <Field label="အတိအကျ / COD စုစုပေါင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
           <Field label="CBM ထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
           <Field label="အခြားထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
@@ -1198,7 +1189,6 @@ export default function DataEntryFinancialV2Page() {
       setRows(workspace.rows);
       setRowsPickupId(pickup.pickup_id);
     }catch(error:any){setRows([]);setRowsPickupId("");setMessage(error?.message||"Unable to load pickup proof rows.");}
-77712d3877da6fae0192148645f9903175fbc4f6
     finally{setLoadingRows(false);}
   }
 
@@ -1224,7 +1214,6 @@ export default function DataEntryFinancialV2Page() {
       const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
       const resolvedRegion=text(e.data?.delivery_region||resolution.delivery_region).toUpperCase() as DataEntryRouteRegion;
       const resolvedMode=text(e.data?.delivery_route_mode||resolution.delivery_route_mode).toUpperCase() as DataEntryDeliveryMode;
-77712d3877da6fae0192148645f9903175fbc4f6
       updateRow(index,{
         calculating:false,
         calculation:{...e.data,server_resolution:resolution},
@@ -1234,7 +1223,6 @@ export default function DataEntryFinancialV2Page() {
         ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
         ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
         ...(resolvedMode?{deliveryMode:resolvedMode}:{}),
-77712d3877da6fae0192148645f9903175fbc4f6
         message:e.ok
           ? `Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`
           :(envelopeMessage(e)||"Calculation failed.")
@@ -1247,7 +1235,6 @@ export default function DataEntryFinancialV2Page() {
       updateRow(index,{calculating:false,message:error?.message||"Backend calculation failed."});
       return false;
     }
-77712d3877da6fae0192148645f9903175fbc4f6
   }
 
   async function reviewPhoto(index:number, action:"APPROVE"|"REJECT"){
@@ -2301,7 +2288,6 @@ export default function DataEntryFinancialV2Page() {
         {rows.slice(0,visibleRowCount).map((row,index)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={index} updateRow={updateRow} calculate={calculateRow} save={saveRow} reviewPhoto={reviewPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>visibleRowCount?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center"><div className="text-xs font-bold text-cyan-100">Showing {visibleRowCount} of {rows.length} parcels to keep Data Entry responsive.</div><button type="button" onClick={()=>setVisibleRowCount((count)=>Math.min(rows.length,count+20))} className="mt-3 rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d]">SHOW NEXT {Math.min(20,rows.length-visibleRowCount)} PARCELS</button></div>:null}
       </>}
-77712d3877da6fae0192148645f9903175fbc4f6
     </div>
   );
 
