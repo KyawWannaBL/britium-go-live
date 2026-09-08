@@ -1,4 +1,4 @@
-const fs = require('fs');
+import fs from 'fs';
 const file = './src/components/workflow/DataEntryOsBulkImport.tsx';
 
 try {

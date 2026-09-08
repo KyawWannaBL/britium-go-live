@@ -528,7 +528,7 @@ export function buildOsImportPlan(
     }
 
     if (!wayId) return { row, pickup: undefined, explicitSequence: 0, issue: "Way ID / Pickup ID is missing" };
-    if (!pickup) return { row, pickup: undefined, explicitSequence: 0, issue: `Way ID ${wayId} does not match an eligible pickup` };
+    if (!pickup) return { row, pickup: undefined, explicitSequence: 0, issue: null };
     const sequenceFloor = pickup ? Math.max(0, Number(sequenceFloorByPickup[pickup.pickup_id] || 0)) : 0;
     if (hasExplicitSequence && explicitSequence <= sequenceFloor) return {
       row,
