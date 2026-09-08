@@ -1005,7 +1005,7 @@ export default function DataEntryFinancialV2Page() {
       __proof_url:await displayPhotoUrl(proofUrl(proof)),
     })));
     const observedCount=resolvedProofs.reduce((maximum:number,item:any)=>Math.max(maximum,positiveInt(item.parcel_sequence)),0);
-    const count=authorizedParcelCount(pickup,observedCount);
+    let count = authorizedParcelCount(pickup,observedCount);
     if (!count) count = 9999; /* Forced capacity for standalone inbound manifests */
     const nextRows=Array.from({length:count},(_,offset)=>{
       const sequence=offset+1;
