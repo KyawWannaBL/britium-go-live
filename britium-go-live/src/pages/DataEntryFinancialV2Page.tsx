@@ -1723,6 +1723,17 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
+    const validDbPickup = (selectedPickupId && selectedPickupId !== BULK_UPLOAD_PICKUP_ID) ? selectedPickupId : pickups.find(p => p.pickup_id !== BULK_UPLOAD_PICKUP_ID)?.pickup_id || "";
+    
+    if (importPayload.batches) {
+      importPayload.batches.forEach(b => {
+        if (!pickups.some(p => p.pickup_id === b.targetPickupId)) b.targetPickupId = validDbPickup;
+      });
+    }
+    if (importPayload.targetPickupId && !pickups.some(p => p.pickup_id === importPayload.targetPickupId)) {
+      importPayload.targetPickupId = validDbPickup;
+    }
+    
     const batches=importPayload.batches.length
       ?importPayload.batches
       :[{targetPickupId:importPayload.targetPickupId,rows:importPayload.rows}];
