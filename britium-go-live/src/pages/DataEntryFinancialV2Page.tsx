@@ -903,22 +903,27 @@ function BritiumQuickTools() {
 
       const pickupId = customPickupId.trim();
 
-      // This dynamically creates the correct ID-001 sequential numbering you requested!
       const waybillRows = rows.map((row: any, index: number) => {
         const seq = row["Seq"] || index + 1;
+        // Use custom container ID if provided, otherwise preserve existing Way IDs if AUTO is typed
+        const finalWayId = (pickupId.toUpperCase() !== 'AUTO') 
+          ? `${pickupId}-${String(seq).padStart(3, '0')}` 
+          : (row["Way ID"] || row["Tracking Number"] || "");
+
         return {
-          "Seq": seq,
-          "Way ID": `${pickupId}-${String(seq).padStart(3, '0')}`,
-          "Merchant": row["Merchant"] || row["Sender"] || "",
-          "Matched pickup": pickupId,
+          "Way ID": finalWayId,
+          "Merchant Name / Merchant ID": row["Merchant"] || row["Sender"] || row["Merchant Name / Merchant ID"] || "",
           "Receiver": row["Receiver"] || row["Customer Name"] || "",
           "Phone": row["Phone"] || "",
-          "City": row["City"] || "Yangon Region",
-          "Township / Provider": row["Township/ Provider"] || row["Township"] || "",
-          "Weight": row["Weight"] || "-",
-          "Address": row["Address"] || "",
-          "Service": row["Service"] || "STANDARD",
-          "Payment": row["Payment"] || "EXACT"
+          "City / Region": row["City"] || row["City / Region"] || "Yangon Region",
+          "Township / Service Provider": row["Township/ Provider"] || row["Township"] || row["Township / Service Provider"] || "",
+          "Weight": row["Weight"] || row["Actual Weight (kg)"] || "1",
+          "Address": row["Address"] || row["Delivery Address"] || "",
+          "Service Type": row["Service"] || row["Service Type"] || "STANDARD",
+          "Payment Type": row["Payment"] || row["Payment Type"] || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
+          "Item Price": row["Item Price"] || row["Item"] || "",
+          "OS Set Price": row["OS Set Price"] || row["Delivery Charges"] || "",
+          "Merchant Tier": row["Merchant Tier"] || "STANDARD"
         };
       });
 
@@ -927,7 +932,7 @@ function BritiumQuickTools() {
       XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Converted Data");
       
       const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' });
-      downloadFile(excelBuffer, `Waybill_${pickupId}_${file.name}`);
+      downloadFile(excelBuffer, `OS_Template_${pickupId}_${file.name}`);
       setStatusText('Template converted successfully!');
     } catch (error) {
       console.error(error);
