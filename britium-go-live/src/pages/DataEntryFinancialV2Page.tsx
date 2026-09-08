@@ -897,7 +897,7 @@ function BritiumQuickTools() {
         "Seq": row["Seq"] || index + 1,
         "Way ID": row["Way ID"] || row["Tracking Number"] || "",
         "Merchant": row["Merchant"] || row["Sender"] || "",
-        "Matched pickup": row["Matched pickup"] || "__BULK_UPLOAD__",
+        "Matched pickup": row["Matched pickup"] || (String(row["Way ID"] || row["Tracking Number"] || "").includes("-") ? String(row["Way ID"] || row["Tracking Number"] || "").split("-").slice(0, -1).join("-") : "") || "",
         "Receiver": row["Receiver"] || row["Customer Name"] || "",
         "Phone": row["Phone"] || "",
         "City": row["City"] || "Yangon Region",
