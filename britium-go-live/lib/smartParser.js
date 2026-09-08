@@ -1,4 +1,5 @@
 import prisma from '@/lib/prisma'; 
+import { autoAssignWayplan } from '@/lib/zoneMapper'; // Import the new routing engine
 
 export async function processBulkUpload(excelData, currentBatchId) {
   const existingMerchants = await prisma.merchant.findMany({
@@ -6,7 +7,6 @@ export async function processBulkUpload(excelData, currentBatchId) {
   });
 
   async function autoDetectMerchant(excelRow) {
-    // Recognize both standard formats and Waybill Template formats
     const rawOrderId = excelRow['Order ID'] || excelRow['Way ID / Pickup ID'] || '';
     const rawSenderName = excelRow['Sender Name'] || excelRow['Merchant Name'] || '';
     const rawSenderPhone = excelRow['Sender Phone'] || excelRow['Merchant Phone'] || '';
@@ -45,11 +45,18 @@ export async function processBulkUpload(excelData, currentBatchId) {
   for (const row of excelData) {
     const detectedCode = await autoDetectMerchant(row);
     
+    // --- WAYPLAN AUTO-ASSIGNMENT ---
+    // Extract the township from either the Waybill or Inbound Manifest template format
+    const dropOffTownship = row['Township (Dropdown)'] || row['Township / Service Provider'] || row['Recipient Town'] || '';
+    const assignedZone = autoAssignWayplan(dropOffTownship);
+    
     processedParcels.push({
       merchant_code: detectedCode,
       recipient_name: row['Recipient Name'] || row['Receiver Name'] || 'Unknown',
       delivery_address: row['Address'] || row['Receiver Address'] || 'Unknown Address',
       batch_id: currentBatchId, 
+      delivery_zone: assignedZone, // Saves the automatically calculated zone
+      wayplan_id: `WP-${assignedZone}-${new Date().toISOString().slice(0, 10)}`, // Generates a daily route ID
       status: 'PENDING_REVIEW'
     });
   }
