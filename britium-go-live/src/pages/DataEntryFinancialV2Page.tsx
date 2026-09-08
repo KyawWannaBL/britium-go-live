@@ -824,6 +824,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
 function BritiumQuickTools() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusText, setStatusText] = useState('');
+  const [customPickupId, setCustomPickupId] = useState('');
   
   const geocodeInputRef = useRef<HTMLInputElement>(null);
   const convertInputRef = useRef<HTMLInputElement>(null);
@@ -884,6 +885,13 @@ function BritiumQuickTools() {
     const file = event.target.files?.[0];
     if (!file) return;
 
+    if (!customPickupId.trim()) {
+      setStatusText('⚠️ Enter the Remarkable Name / Pickup ID first!');
+      setTimeout(() => setStatusText(''), 3000);
+      if (convertInputRef.current) convertInputRef.current.value = '';
+      return;
+    }
+
     setIsProcessing(true);
     setStatusText('Converting template formatting...');
 
@@ -893,27 +901,33 @@ function BritiumQuickTools() {
       const workbook = XLSX.read(data, { type: 'array' });
       const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[workbook.SheetNames[0]]);
 
-      const waybillRows = rows.map((row: any, index: number) => ({
-        "Seq": row["Seq"] || index + 1,
-        "Way ID": row["Way ID"] || row["Tracking Number"] || "",
-        "Merchant": row["Merchant"] || row["Sender"] || "",
-        "Matched pickup": row["Matched pickup"] || (String(row["Way ID"] || row["Tracking Number"] || "").includes("-") ? String(row["Way ID"] || row["Tracking Number"] || "").split("-").slice(0, -1).join("-") : "") || "",
-        "Receiver": row["Receiver"] || row["Customer Name"] || "",
-        "Phone": row["Phone"] || "",
-        "City": row["City"] || "Yangon Region",
-        "Township / Provider": row["Township/ Provider"] || row["Township"] || "",
-        "Weight": row["Weight"] || "-",
-        "Address": row["Address"] || "",
-        "Service": row["Service"] || "STANDARD",
-        "Payment": row["Payment"] || "EXACT"
-      }));
+      const pickupId = customPickupId.trim();
+
+      // This dynamically creates the correct ID-001 sequential numbering you requested!
+      const waybillRows = rows.map((row: any, index: number) => {
+        const seq = row["Seq"] || index + 1;
+        return {
+          "Seq": seq,
+          "Way ID": `${pickupId}-${String(seq).padStart(3, '0')}`,
+          "Merchant": row["Merchant"] || row["Sender"] || "",
+          "Matched pickup": pickupId,
+          "Receiver": row["Receiver"] || row["Customer Name"] || "",
+          "Phone": row["Phone"] || "",
+          "City": row["City"] || "Yangon Region",
+          "Township / Provider": row["Township/ Provider"] || row["Township"] || "",
+          "Weight": row["Weight"] || "-",
+          "Address": row["Address"] || "",
+          "Service": row["Service"] || "STANDARD",
+          "Payment": row["Payment"] || "EXACT"
+        };
+      });
 
       const newWorkbook = XLSX.utils.book_new();
       const newWorksheet = XLSX.utils.json_to_sheet(waybillRows);
       XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Converted Data");
       
       const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' });
-      downloadFile(excelBuffer, `Waybill_Converted_${file.name}`);
+      downloadFile(excelBuffer, `Waybill_${pickupId}_${file.name}`);
       setStatusText('Template converted successfully!');
     } catch (error) {
       console.error(error);
@@ -935,20 +949,22 @@ function BritiumQuickTools() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 rounded-xl border border-[#2b6388] bg-[#0c1e2c] p-4 shadow-2xl">
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 rounded-xl border border-[#2b6388] bg-[#0c1e2c] p-4 shadow-2xl w-72">
       <div className="mb-1 text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">
         Data Processing Tools
       </div>
       
-      <input type="file" accept=".xlsx, .xls" ref={geocodeInputRef} onChange={handleAutoGeocode} className="hidden" />
-      <button 
-        onClick={() => geocodeInputRef.current?.click()}
-        disabled={isProcessing}
-        className="rounded bg-[#1a3a53] px-4 py-2 text-xs font-bold text-white hover:bg-[#2b6388] disabled:opacity-50"
-      >
-        🎯 Auto-Geocode Review File
-      </button>
-
+      <div className="flex flex-col gap-1 mb-2">
+        <label className="text-[10px] font-bold text-[#8db4ce]">Remarkable Name (Bulk Container ID)</label>
+        <input 
+          type="text" 
+          value={customPickupId} 
+          onChange={e => setCustomPickupId(e.target.value)} 
+          placeholder="e.g. INBOUND-0609"
+          className="w-full rounded border border-[#1a3a5c] bg-[#061524] px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-[#f6b84b]"
+        />
+      </div>
+      
       <input type="file" accept=".xlsx, .xls" ref={convertInputRef} onChange={handleTemplateConvert} className="hidden" />
       <button 
         onClick={() => convertInputRef.current?.click()}
@@ -958,8 +974,17 @@ function BritiumQuickTools() {
         📄 Convert Manifest to Waybill
       </button>
 
+      <input type="file" accept=".xlsx, .xls" ref={geocodeInputRef} onChange={handleAutoGeocode} className="hidden" />
+      <button 
+        onClick={() => geocodeInputRef.current?.click()}
+        disabled={isProcessing}
+        className="rounded bg-[#1a3a53] px-4 py-2 text-xs font-bold text-white hover:bg-[#2b6388] disabled:opacity-50"
+      >
+        🎯 Auto-Geocode Review File
+      </button>
+
       {statusText && (
-        <div className="mt-2 text-center text-[10px] text-[#8db4ce] animate-pulse">
+        <div className="mt-2 text-center text-[10px] font-bold text-[#f6b84b] animate-pulse">
           {statusText}
         </div>
       )}
