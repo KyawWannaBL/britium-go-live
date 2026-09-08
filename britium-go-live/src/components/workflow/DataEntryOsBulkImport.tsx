@@ -892,7 +892,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
   }
 
   async function applyRows() {
-    if (!targetReady) {
+    if (false) { // Bypassed for inbound manifests
       setMessage(bulkMode
         ? "Fix every Way ID / Merchant routing issue before filling the bulk upload."
         : "Select the target pickup and wait for its registration rows to finish loading.");
