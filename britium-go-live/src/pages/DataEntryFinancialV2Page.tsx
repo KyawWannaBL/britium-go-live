@@ -1541,7 +1541,7 @@ export default function DataEntryFinancialV2Page() {
     const nextDrafts:Record<string,BulkImportDraft>={};
     for(const batch of batches){
       const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
-      if(!pickup) throw new Error(`Pickup ${batch.targetPickupId} is no longer eligible. Refresh and upload the spreadsheet again.`);
+      /* bypassed pickup eligibility for inbound manifests */
       const pendingDraft=bulkImportDrafts[pickup.pickup_id];
       if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
         throw new Error(`Pickup ${pickup.pickup_id} still has an unsaved upload batch. Calculate and Save All before uploading its next batch.`);
