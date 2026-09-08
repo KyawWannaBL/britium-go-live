@@ -1540,7 +1540,7 @@ export default function DataEntryFinancialV2Page() {
 
     const nextDrafts:Record<string,BulkImportDraft>={};
     for(const batch of batches){
-      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
+      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId) || { pickup_id: batch.targetPickupId || "__BULK_UPLOAD__", registered_parcels: 0, merchant_id: "INBOUND_MANIFEST" };
       /* bypassed pickup eligibility for inbound manifests */
       const pendingDraft=bulkImportDrafts[pickup.pickup_id];
       if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
