@@ -4,14 +4,17 @@ const file = './src/components/workflow/DataEntryOsBulkImport.tsx';
 try {
   let code = fs.readFileSync(file, 'utf8');
   
-  // Replace the strict validation error with a bypassed comment
-  code = code.replace(
-    /issue:\s*`Way ID \$\{wayId\} does not match an eligible pickup`/g, 
-    "/* bypassed pickup validation for inbound manifests */"
-  );
+  // Replace the strict error message with 'null' to bypass the error flag
+  const searchStr = 'issue: `Way ID ${wayId} does not match an eligible pickup`';
+  const replaceStr = 'issue: null /* Bypassed for Inbound Manifests */';
   
-  fs.writeFileSync(file, code);
-  console.log("✅ Strict pickup validation successfully bypassed!");
+  if (code.includes(searchStr)) {
+    code = code.replace(searchStr, replaceStr);
+    fs.writeFileSync(file, code);
+    console.log("✅ Original UI restored and strict pickup validation bypassed!");
+  } else {
+    console.log("⚠️ Could not find the string. The file might already be patched.");
+  }
 } catch (error) {
   console.error("Error patching file:", error);
 }
