@@ -899,30 +899,33 @@ function BritiumQuickTools() {
       const XLSX: any = await import("xlsx");
       const data = await file.arrayBuffer();
       const workbook = XLSX.read(data, { type: 'array' });
-      const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[workbook.SheetNames[0]]);
+      const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
 
       const pickupId = customPickupId.trim();
 
       const waybillRows = rows.map((row: any, index: number) => {
-        const seq = row["Seq"] || index + 1;
+        const seq = row["Seq"] || row["No"] || row["Row"] || index + 1;
         const finalWayId = (pickupId.toUpperCase() !== 'AUTO') 
           ? `${pickupId}-${String(seq).padStart(3, '0')}` 
-          : (row["Way ID"] || row["Tracking Number"] || "");
+          : (row["Way ID"] || row["Way ID / Pickup ID"] || row["Tracking Number"] || "");
 
         return {
-          "Way ID": finalWayId,
-          "Merchant Name / Merchant ID": row["Merchant"] || row["Sender"] || row["Merchant Name / Merchant ID"] || "",
-          "လက်ခံသူအမည် (Receiver Name)": row["Receiver"] || row["Customer Name"] || row["လက်ခံသူအမည် (Receiver Name)"] || row["Receiver Name"] || "",
-          "လက်ခံသူဖုန်း (Receiver Phone)": row["Phone"] || row["လက်ခံသူဖုန်း (Receiver Phone)"] || row["Receiver Phone"] || "",
-          "City / Region": row["City"] || row["City / Region"] || "Yangon Region",
-          "Township / Service Provider": row["Township/ Provider"] || row["Township"] || row["Township / Service Provider"] || "",
-          "Weight": row["Weight"] || row["Actual Weight (kg)"] || "1",
-          "လက်ခံသူလိပ်စာ (Receiver Address)": row["Address"] || row["Delivery Address"] || row["လက်ခံသူလိပ်စာ (Receiver Address)"] || row["Receiver Address"] || "",
+          "Way ID / Pickup ID": finalWayId,
+          "Merchant Name": row["Merchant"] || row["Merchant Name"] || row["Sender"] || "",
+          "Receiver Name": row["Receiver"] || row["Receiver Name"] || row["Customer Name"] || row["လက်ခံသူအမည် (Receiver Name)"] || "",
+          "Receiver Phone": row["Phone"] || row["Receiver Phone"] || row["လက်ခံသူဖုန်း (Receiver Phone)"] || "",
+          "City (Dropdown)": row["City"] || row["City (Dropdown)"] || "Yangon Region",
+          "Township (Dropdown)": row["Township"] || row["Township (Dropdown)"] || "",
+          "Ward / Village Tract (Dropdown)": row["Ward"] || row["Ward / Village Tract (Dropdown)"] || "",
+          "Postal Code (Auto)": row["Postal Code"] || row["Postal Code (Auto)"] || "",
+          "Receiver Address": row["Address"] || row["Receiver Address"] || row["Delivery Address"] || row["လက်ခံသူလိပ်စာ (Receiver Address)"] || "",
+          "Actual Weight (KG)": row["Weight"] || row["Actual Weight (KG)"] || row["Actual Weight (kg)"] || "1",
           "Service Type": row["Service"] || row["Service Type"] || "STANDARD",
           "Payment Type": row["Payment"] || row["Payment Type"] || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
           "Item Price": row["Item Price"] || row["Item"] || "",
-          "OS Set Price": row["OS Set Price"] || row["Delivery Charges"] || "",
-          "Merchant Tier": row["Merchant Tier"] || "STANDARD"
+          "OS Set Price": row["OS Price"] || row["OS Set Price"] || row["Delivery Charges"] || "",
+          "Merchant Tier": row["Tier"] || row["Merchant Tier"] || "STANDARD",
+          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": row["Township/ Provider"] || row["Township / Provider"] || row["မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)"] || ""
         };
       });
 
