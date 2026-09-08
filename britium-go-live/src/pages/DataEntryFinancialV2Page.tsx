@@ -905,7 +905,6 @@ function BritiumQuickTools() {
 
       const waybillRows = rows.map((row: any, index: number) => {
         const seq = row["Seq"] || index + 1;
-        // Use custom container ID if provided, otherwise preserve existing Way IDs if AUTO is typed
         const finalWayId = (pickupId.toUpperCase() !== 'AUTO') 
           ? `${pickupId}-${String(seq).padStart(3, '0')}` 
           : (row["Way ID"] || row["Tracking Number"] || "");
@@ -913,12 +912,12 @@ function BritiumQuickTools() {
         return {
           "Way ID": finalWayId,
           "Merchant Name / Merchant ID": row["Merchant"] || row["Sender"] || row["Merchant Name / Merchant ID"] || "",
-          "Receiver": row["Receiver"] || row["Customer Name"] || "",
-          "Phone": row["Phone"] || "",
+          "လက်ခံသူအမည် (Receiver Name)": row["Receiver"] || row["Customer Name"] || row["လက်ခံသူအမည် (Receiver Name)"] || row["Receiver Name"] || "",
+          "လက်ခံသူဖုန်း (Receiver Phone)": row["Phone"] || row["လက်ခံသူဖုန်း (Receiver Phone)"] || row["Receiver Phone"] || "",
           "City / Region": row["City"] || row["City / Region"] || "Yangon Region",
           "Township / Service Provider": row["Township/ Provider"] || row["Township"] || row["Township / Service Provider"] || "",
           "Weight": row["Weight"] || row["Actual Weight (kg)"] || "1",
-          "Address": row["Address"] || row["Delivery Address"] || "",
+          "လက်ခံသူလိပ်စာ (Receiver Address)": row["Address"] || row["Delivery Address"] || row["လက်ခံသူလိပ်စာ (Receiver Address)"] || row["Receiver Address"] || "",
           "Service Type": row["Service"] || row["Service Type"] || "STANDARD",
           "Payment Type": row["Payment"] || row["Payment Type"] || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
           "Item Price": row["Item Price"] || row["Item"] || "",
