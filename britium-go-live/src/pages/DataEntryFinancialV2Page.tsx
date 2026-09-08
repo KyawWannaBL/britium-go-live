@@ -903,29 +903,43 @@ function BritiumQuickTools() {
 
       const pickupId = customPickupId.trim();
 
+      // Smart engine that hunts for data regardless of exact column spelling or language
+      const fuzzyGet = (row: any, keywords: string[]) => {
+        const keys = Object.keys(row);
+        for (const kw of keywords) {
+          const matchedKey = keys.find(k => k.toLowerCase().includes(kw.toLowerCase()));
+          if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== "") {
+            return String(row[matchedKey]).trim();
+          }
+        }
+        return "";
+      };
+
       const waybillRows = rows.map((row: any, index: number) => {
         const seq = row["Seq"] || row["No"] || row["Row"] || index + 1;
         const finalWayId = (pickupId.toUpperCase() !== 'AUTO') 
           ? `${pickupId}-${String(seq).padStart(3, '0')}` 
-          : (row["Way ID"] || row["Way ID / Pickup ID"] || row["Tracking Number"] || "");
+          : fuzzyGet(row, ["way id", "tracking", "pickup id"]);
+
+        const township = fuzzyGet(row, ["township", "မြို့နယ်", "provider"]);
 
         return {
           "Way ID / Pickup ID": finalWayId,
-          "Merchant Name": row["Merchant"] || row["Merchant Name"] || row["Sender"] || "",
-          "Receiver Name": row["Receiver"] || row["Receiver Name"] || row["Customer Name"] || row["လက်ခံသူအမည် (Receiver Name)"] || "",
-          "Receiver Phone": row["Phone"] || row["Receiver Phone"] || row["လက်ခံသူဖုန်း (Receiver Phone)"] || "",
-          "City (Dropdown)": row["City"] || row["City (Dropdown)"] || "Yangon Region",
-          "Township (Dropdown)": row["Township"] || row["Township (Dropdown)"] || "",
-          "Ward / Village Tract (Dropdown)": row["Ward"] || row["Ward / Village Tract (Dropdown)"] || "",
-          "Postal Code (Auto)": row["Postal Code"] || row["Postal Code (Auto)"] || "",
-          "Receiver Address": row["Address"] || row["Receiver Address"] || row["Delivery Address"] || row["လက်ခံသူလိပ်စာ (Receiver Address)"] || "",
-          "Actual Weight (KG)": row["Weight"] || row["Actual Weight (KG)"] || row["Actual Weight (kg)"] || "1",
-          "Service Type": row["Service"] || row["Service Type"] || "STANDARD",
-          "Payment Type": row["Payment"] || row["Payment Type"] || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
-          "Item Price": row["Item Price"] || row["Item"] || "",
-          "OS Set Price": row["OS Price"] || row["OS Set Price"] || row["Delivery Charges"] || "",
-          "Merchant Tier": row["Tier"] || row["Merchant Tier"] || "STANDARD",
-          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": row["Township/ Provider"] || row["Township / Provider"] || row["မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)"] || ""
+          "Merchant Name": fuzzyGet(row, ["merchant", "sender", "ကုန်သည်"]),
+          "Receiver Name": fuzzyGet(row, ["receiver", "customer", "အမည်", "name"]),
+          "Receiver Phone": fuzzyGet(row, ["phone", "contact", "ဖုန်း"]),
+          "City (Dropdown)": fuzzyGet(row, ["city", "region", "တိုင်း", "ပြည်နယ်"]) || "Yangon Region",
+          "Township (Dropdown)": township,
+          "Ward / Village Tract (Dropdown)": fuzzyGet(row, ["ward", "ရပ်ကွက်"]),
+          "Postal Code (Auto)": fuzzyGet(row, ["postal", "zip", "စာတိုက်"]),
+          "Receiver Address": fuzzyGet(row, ["address", "လိပ်စာ", "delivery"]),
+          "Actual Weight (KG)": fuzzyGet(row, ["weight", "kg", "အလေးချိန်"]) || "1",
+          "Service Type": fuzzyGet(row, ["service", "ဝန်ဆောင်မှု"]) || "STANDARD",
+          "Payment Type": fuzzyGet(row, ["payment", "ငွေပေးချေမှု"]) || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
+          "Item Price": fuzzyGet(row, ["item", "cod", "တန်ဖိုး", "price"]),
+          "OS Set Price": fuzzyGet(row, ["os set", "delivery charge", "deli", "ပို့ဆောင်ခ"]),
+          "Merchant Tier": fuzzyGet(row, ["tier", "အဆင့်"]) || "STANDARD",
+          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": township
         };
       });
 
