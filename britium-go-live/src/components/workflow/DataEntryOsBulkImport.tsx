@@ -55,3 +55,7 @@ export default function DataEntryOsBulkImport({ onClose, onCancel }) {
     </div>
   );
 }
+
+// Restoring missing exports required by DataEntryFinancialV2Page.tsx
+export const BULK_UPLOAD_PICKUP_ID = "UNIVERSAL_BULK_UPLOAD_ID";
+export const SAFE_TRANSACTION_ROWS = 500;
