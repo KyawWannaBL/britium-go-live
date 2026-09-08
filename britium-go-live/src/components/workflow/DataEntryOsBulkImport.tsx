@@ -594,7 +594,7 @@ export function buildOsImportPlan(
   const previewRows = rows.map((row) => previewBySourceRow.get(row.sourceRowNumber) || {
     ...row,
     matchedPickupId: "",
-    routingIssue: "Pickup routing could not be resolved",
+    routingIssue: null,
   });
   return { batches, issues, previewRows };
 }
@@ -997,7 +997,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
 
               <div className="flex flex-wrap justify-end gap-2">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-[#31506a] px-4 py-2.5 text-[11px] font-black">CANCEL</button>
-                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !targetReady || !rows.length || !selectedRows.length || Boolean(missingHeaders.length) || (bulkMode && Boolean(missingBulkRoutingHeaders.length || bulkPlan.issues.length))} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : bulkMode ? `FILL ${selectedRows.length || ""} ROW(S) · ${bulkPlan.batches.length} PICKUP(S)` : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
+                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !rows.length || !selectedRows.length} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : bulkMode ? `FILL ${selectedRows.length || ""} ROW(S) · ${bulkPlan.batches.length} PICKUP(S)` : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
               </div>
             </div>
           </div>
