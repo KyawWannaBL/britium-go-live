@@ -165,7 +165,7 @@ function positiveInt(value: unknown): number { const n = Math.trunc(num(value));
 function requestedParcelCount(pickup: Pickup): number {
   return Math.max(positiveInt(pickup.expected_parcels),0);
 }
-function authorizedParcelCount(pickup: Pickup, observed = 0): number {
+function 500: number {
   return Math.max(requestedParcelCount(pickup),positiveInt(pickup.verified_parcels),positiveInt(observed));
 }
 function money(value: unknown): string {
@@ -1005,7 +1005,7 @@ export default function DataEntryFinancialV2Page() {
       __proof_url:await displayPhotoUrl(proofUrl(proof)),
     })));
     const observedCount=resolvedProofs.reduce((maximum:number,item:any)=>Math.max(maximum,positiveInt(item.parcel_sequence)),0);
-    let count = authorizedParcelCount(pickup,observedCount);
+    let count = 500;
     if (!count) count = 1000; /* Forced capacity for standalone inbound manifests */
     const nextRows=Array.from({length:count},(_,offset)=>{
       const sequence=offset+1;
@@ -1335,7 +1335,7 @@ export default function DataEntryFinancialV2Page() {
 
   async function authorizeImportedRows(pickup:Pickup,count:number,fileName:string,observedCount=0):Promise<number>{
     let remaining=count;
-    let authorized=authorizedParcelCount(pickup,observedCount);
+    let authorized=500;
     while(remaining>0){
       const chunk=Math.min(50,remaining);
       const response=await (supabase as any).rpc("be_data_entry_financial_v2_add_registrations",{p_payload:{
@@ -1550,7 +1550,7 @@ export default function DataEntryFinancialV2Page() {
         ?{tierAccess,rows}
         :await fetchPickupWorkspace(pickup);
       const maxSequence=Math.max(...batch.rows.map((row)=>positiveInt(row.targetSequence)));
-      let authorized=authorizedParcelCount(pickup,workspace.rows.length);
+      let authorized=500;
       if(maxSequence>authorized){
         authorized=await authorizeImportedRows(pickup,maxSequence-authorized,importPayload.fileName,workspace.rows.length);
       }
@@ -2158,7 +2158,7 @@ export default function DataEntryFinancialV2Page() {
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
               <select className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
                 <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
-                {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {authorizedParcelCount(p)} parcels</option>)}
+                {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {500} parcels</option>)}
               </select>
             </div>
             <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
@@ -2198,7 +2198,7 @@ export default function DataEntryFinancialV2Page() {
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
             <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
-            <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
+            <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{500}</b></div>
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
