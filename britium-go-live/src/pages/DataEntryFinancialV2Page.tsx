@@ -742,6 +742,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
               });
             }}>
               <option value="">Choose the physical station…</option>
+              <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · match Way ID + Merchant</option>
               {DATA_ENTRY_HANDOFF_STATIONS.map((station)=><option key={station.code} value={station.code}>{station.name}</option>)}
             </select>
           </Field>
@@ -817,6 +818,152 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
 
       {row.message ? <div className="mt-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
     </section>
+  );
+}
+
+function BritiumQuickTools() {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [statusText, setStatusText] = useState('');
+  
+  const geocodeInputRef = useRef<HTMLInputElement>(null);
+  const convertInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAutoGeocode = async (event: any) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    setStatusText('Reading Location Review Excel...');
+
+    try {
+      const XLSX: any = await import("xlsx");
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json<any>(worksheet);
+
+      setStatusText('Geocoding missing addresses...');
+      let updatedCount = 0;
+
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row['Action'] === 'APPLY_CORRECTION' && (!row['Corrected Latitude'] || !row['Corrected Longitude'])) {
+          const address = `${row['Delivery Address'] || ''}, ${row['Township'] || ''}, Yangon, Myanmar`;
+          
+          const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
+          const geoData = await res.json();
+
+          if (geoData && geoData.length > 0) {
+            row['Corrected Latitude'] = parseFloat(geoData[0].lat);
+            row['Corrected Longitude'] = parseFloat(geoData[0].lon);
+            updatedCount++;
+          }
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+
+      setStatusText(`Writing file... (${updatedCount} fixed)`);
+      
+      const newWorksheet = XLSX.utils.json_to_sheet(rows);
+      workbook.Sheets[sheetName] = newWorksheet;
+      const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+      
+      downloadFile(excelBuffer, `Fixed_${file.name}`);
+      setStatusText(`Success! Fixed ${updatedCount} locations.`);
+    } catch (error) {
+      console.error(error);
+      setStatusText('Error processing file.');
+    } finally {
+      setTimeout(() => { setIsProcessing(false); setStatusText(''); }, 3000);
+      if (geocodeInputRef.current) geocodeInputRef.current.value = '';
+    }
+  };
+
+  const handleTemplateConvert = async (event: any) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsProcessing(true);
+    setStatusText('Converting template formatting...');
+
+    try {
+      const XLSX: any = await import("xlsx");
+      const data = await file.arrayBuffer();
+      const workbook = XLSX.read(data, { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[workbook.SheetNames[0]]);
+
+      const waybillRows = rows.map((row: any, index: number) => ({
+        "Seq": row["Seq"] || index + 1,
+        "Way ID": row["Way ID"] || row["Tracking Number"] || "",
+        "Merchant": row["Merchant"] || row["Sender"] || "",
+        "Matched pickup": row["Matched pickup"] || "__BULK_UPLOAD__",
+        "Receiver": row["Receiver"] || row["Customer Name"] || "",
+        "Phone": row["Phone"] || "",
+        "City": row["City"] || "Yangon Region",
+        "Township / Provider": row["Township/ Provider"] || row["Township"] || "",
+        "Weight": row["Weight"] || "-",
+        "Address": row["Address"] || "",
+        "Service": row["Service"] || "STANDARD",
+        "Payment": row["Payment"] || "EXACT"
+      }));
+
+      const newWorkbook = XLSX.utils.book_new();
+      const newWorksheet = XLSX.utils.json_to_sheet(waybillRows);
+      XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Converted Data");
+      
+      const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' });
+      downloadFile(excelBuffer, `Waybill_Converted_${file.name}`);
+      setStatusText('Template converted successfully!');
+    } catch (error) {
+      console.error(error);
+      setStatusText('Error converting template.');
+    } finally {
+      setTimeout(() => { setIsProcessing(false); setStatusText(''); }, 3000);
+      if (convertInputRef.current) convertInputRef.current.value = '';
+    }
+  };
+
+  const downloadFile = (buffer: any, filename: string) => {
+    const data = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(data);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 rounded-xl border border-[#2b6388] bg-[#0c1e2c] p-4 shadow-2xl">
+      <div className="mb-1 text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">
+        Data Processing Tools
+      </div>
+      
+      <input type="file" accept=".xlsx, .xls" ref={geocodeInputRef} onChange={handleAutoGeocode} className="hidden" />
+      <button 
+        onClick={() => geocodeInputRef.current?.click()}
+        disabled={isProcessing}
+        className="rounded bg-[#1a3a53] px-4 py-2 text-xs font-bold text-white hover:bg-[#2b6388] disabled:opacity-50"
+      >
+        🎯 Auto-Geocode Review File
+      </button>
+
+      <input type="file" accept=".xlsx, .xls" ref={convertInputRef} onChange={handleTemplateConvert} className="hidden" />
+      <button 
+        onClick={() => convertInputRef.current?.click()}
+        disabled={isProcessing}
+        className="rounded bg-[#1a3a53] px-4 py-2 text-xs font-bold text-white hover:bg-[#2b6388] disabled:opacity-50"
+      >
+        📄 Convert Manifest to Waybill
+      </button>
+
+      {statusText && (
+        <div className="mt-2 text-center text-[10px] text-[#8db4ce] animate-pulse">
+          {statusText}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2300,6 +2447,8 @@ export default function DataEntryFinancialV2Page() {
         </div>
         <div className="mx-auto max-w-[1900px] p-5">{workspace}</div>
       </div>:null}
+
+      <BritiumQuickTools />
     </div>
   );
 }
