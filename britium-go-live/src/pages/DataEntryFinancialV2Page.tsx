@@ -954,8 +954,7 @@ function BritiumQuickTools() {
           "Item Price": fuzzyGet(row, ["item", "cod", "တန်ဖိုး", "price"]),
           "OS Set Price": fuzzyGet(row, ["os set", "delivery charge", "deli", "ပို့ဆောင်ခ"]),
           "Merchant Tier": fuzzyGet(row, ["tier", "အဆင့်"]) || "STANDARD",
-          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ
-(Township / Service Provider)": rawTownship
+          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": rawTownship
         };
       });
 
