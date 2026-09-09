@@ -898,14 +898,13 @@ function BritiumQuickTools() {
 
     const rawId = document.getElementById("customPickupIdInput") ? (document.getElementById("customPickupIdInput") as HTMLInputElement).value : customPickupId;
     if (!rawId.trim()) {
-      setStatusText('⚠️ Enter the Remarkable Name / Pickup ID first!');
+      setStatusText('⚠️ Enter the Target Pickup ID first!');
       setTimeout(() => setStatusText(''), 3000);
-      if (convertInputRef.current) convertInputRef.current.value = '';
       return;
     }
 
     setIsProcessing(true);
-    setStatusText('Smart Extracting Townships...');
+    setStatusText('Applying Option 1: Consolidated Mode...');
 
     try {
       const XLSX: any = await import("xlsx");
@@ -950,16 +949,22 @@ function BritiumQuickTools() {
           }
         }
 
+        // OPTION 1 LOGIC: Embed original merchant securely into the Address field for the physical label
+        const realMerchant = fuzzyGet(row, ["merchant", "sender", "ကုန်သည်"]);
+        const safeAddress = (realMerchant && realMerchant !== "-") 
+          ? `[Sender: ${realMerchant}] ${rawAddress}` 
+          : rawAddress;
+
         return {
           "Way ID / Pickup ID": finalWayId,
-          "Merchant Name": fuzzyGet(row, ["merchant", "sender", "ကုန်သည်"]),
+          "Merchant Name": "CONSOLIDATED-BULK", 
           "Receiver Name": fuzzyGet(row, ["receiver", "customer", "အမည်", "name"]),
           "Receiver Phone": fuzzyGet(row, ["phone", "contact", "ဖုန်း"]),
           "City (Dropdown)": fuzzyGet(row, ["city", "region", "တိုင်း", "ပြည်နယ်"]) || "Yangon Region",
           "Township (Dropdown)": rawTownship,
           "Ward / Village Tract (Dropdown)": fuzzyGet(row, ["ward", "ရပ်ကွက်"]),
           "Postal Code (Auto)": fuzzyGet(row, ["postal", "zip", "စာတိုက်"]),
-          "Receiver Address": rawAddress,
+          "Receiver Address": safeAddress, 
           "Actual Weight (KG)": fuzzyGet(row, ["weight", "kg", "အလေးချိန်"]) || "1",
           "Service Type": fuzzyGet(row, ["service", "ဝန်ဆောင်မှု"]) || "STANDARD",
           "Payment Type": fuzzyGet(row, ["payment", "ငွေပေးချေမှု"]) || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -975,14 +980,13 @@ function BritiumQuickTools() {
       XLSX.utils.book_append_sheet(newWorkbook, newWorksheet, "Converted Data");
       
       const excelBuffer = XLSX.write(newWorkbook, { bookType: 'xlsx', type: 'array' });
-      downloadFile(excelBuffer, `OS_Template_${pickupId}_${file.name}`);
-      setStatusText('Template converted successfully!');
+      downloadFile(excelBuffer, `OS_Template_Option1_${file.name}`);
+      setStatusText('Option 1 File Ready!');
     } catch (error) {
       console.error(error);
       setStatusText('Error converting template.');
     } finally {
       setTimeout(() => { setIsProcessing(false); setStatusText(''); }, 3000);
-      if (convertInputRef.current) convertInputRef.current.value = '';
     }
   };
 
@@ -1751,10 +1755,18 @@ export default function DataEntryFinancialV2Page() {
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
     const validDbPickup = (selectedPickupId && selectedPickupId !== BULK_UPLOAD_PICKUP_ID) ? selectedPickupId : pickups.find(p => p.pickup_id !== BULK_UPLOAD_PICKUP_ID)?.pickup_id || "";
+    const targetPickupData = pickups.find(p => p.pickup_id === validDbPickup);
     
     if (importPayload.batches) {
       importPayload.batches.forEach(b => {
         if (!pickups.some(p => p.pickup_id === b.targetPickupId)) b.targetPickupId = validDbPickup;
+        // Option 1 Override: Force all rows to inherit the container's identity safely
+        if (targetPickupData && b.rows) {
+          b.rows.forEach(r => {
+            r.merchantId = targetPickupData.merchant_id;
+            r.merchantName = targetPickupData.merchant_name;
+          });
+        }
       });
     }
     if (importPayload.targetPickupId && !pickups.some(p => p.pickup_id === importPayload.targetPickupId)) {
