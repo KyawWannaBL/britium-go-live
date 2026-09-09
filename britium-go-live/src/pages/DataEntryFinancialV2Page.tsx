@@ -1,3 +1,4 @@
+import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
@@ -2219,10 +2220,12 @@ export default function DataEntryFinancialV2Page() {
           englishAddress:row.delivery_address,township:row.township,matchLevel:"MANUAL",confidence:1,
         }),
         deliveryWayId:row.delivery_way_id,latitude,longitude,matchLevel:"MANUAL",confidence:1,
+        originalAddress:text(result.delivery_address)||row.delivery_address,
+        township:text(result.township)||row.township,
         coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
       };
       manualLocationCorrectionsRef.current.set(row.delivery_way_id,locationCandidate);
-      return {...row,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
+      return {...row,township:text(result.township)||row.township,delivery_address:text(result.delivery_address)||row.delivery_address,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
     });
     setRows((current)=>applyToRows(current));
     setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[
@@ -2269,7 +2272,8 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function uploadConsolidatedLocationReview(file?:File){
-    if(!file) return;
+    if(!file||locationReviewBusy) return;
+    let appliedCount=0;
     setLocationReviewBusy(true);
     setBulkMessage("");
     try{
@@ -2280,31 +2284,7 @@ export default function DataEntryFinancialV2Page() {
       const imported=XLSX.utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:"",raw:false});
       if(!imported.length) throw new Error("The Location Review sheet contains no rows.");
       const knownRows=new Map([...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows].map((row)=>[row.delivery_way_id,row]));
-      const payloadRows=imported.map((entry,index)=>{
-        const deliveryWayId=text(entry["Delivery Way ID"]).trim();
-        const current=knownRows.get(deliveryWayId);
-        if(!deliveryWayId||!current) throw new Error(`Excel row ${index+2}: Delivery Way ID is missing or is not in the current authorized review workspace.`);
-        const action=text(entry["Action"]||"APPLY_CORRECTION").trim().toUpperCase();
-        if(!["APPLY_CORRECTION","SKIP_REVIEW"].includes(action)) throw new Error(`Excel row ${index+2}: Action must be APPLY_CORRECTION or SKIP_REVIEW.`);
-        const correctedLat=Number(entry["Corrected Latitude"]);
-        const correctedLng=Number(entry["Corrected Longitude"]);
-        const suggestedLat=Number(entry["Suggested Latitude"]||current.locationCandidate?.latitude);
-        const suggestedLng=Number(entry["Suggested Longitude"]||current.locationCandidate?.longitude);
-        const latitude=action==="SKIP_REVIEW"?suggestedLat:correctedLat;
-        const longitude=action==="SKIP_REVIEW"?suggestedLng:correctedLng;
-        if(!validMyanmarCoordinate(longitude,latitude)) throw new Error(`Excel row ${index+2}: enter valid Myanmar latitude and longitude values for ${deliveryWayId}.`);
-        return {
-          delivery_way_id:deliveryWayId,
-          pickup_id:text(entry["Pickup ID"]),
-          parcel_sequence:positiveInt(entry["Parcel Sequence"]),
-          township:current.township,
-          delivery_address:current.delivery_address,
-          latitude,longitude,action,
-          reason:text(entry["Reason"]||"Location corrected through consolidated review workbook").trim(),
-          source_file_name:file.name,
-          source_row_number:index+2,
-        };
-      });
+      const payloadRows=parseLocationReviewWorkbook(imported,pickups,knownRows,file.name);
       const allResults:any[]=[];
       for(let offset=0;offset<payloadRows.length;offset+=200){
         const batch=payloadRows.slice(offset,offset+200);
@@ -2313,13 +2293,17 @@ export default function DataEntryFinancialV2Page() {
         }});
         if(response.error) throw response.error;
         if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||`Location review batch ${Math.floor(offset/200)+1} failed.`);
-        allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
+        const completed=Array.isArray(response.data.rows)?response.data.rows:[];
+        allResults.push(...completed);
+        appliedCount+=completed.length;
+        applyLocationReviewResults(completed);
+        setLocationReloadToken((token)=>token+1);
+        setBulkMessage(`Applied ${appliedCount}/${payloadRows.length} reviewed locations. Completed batches are saved on the server.`);
       }
-      applyLocationReviewResults(allResults);
       setLocationReloadToken((token)=>token+1);
-      setBulkMessage(`Applied and audited ${allResults.length} reviewed location(s). These rows are now ready for Calculate All, Save All, and way generation.`);
+      setBulkMessage(`Applied and audited ${allResults.length} reviewed location(s). Corrections are saved on the server. Open the matching pickup to continue. This location-only workbook does not restore unsaved prices or parcel details.`);
     }catch(error:any){
-      setBulkMessage(error?.message||"Unable to apply the location-review workbook.");
+      setBulkMessage(`${appliedCount} correction(s) saved before interruption. ${error?.message||"Unable to apply the location-review workbook."} You can upload the corrected workbook again without repeating the original location review.`);
     }finally{
       setLocationReviewBusy(false);
       if(locationReviewInputRef.current) locationReviewInputRef.current.value="";
@@ -2435,6 +2419,11 @@ export default function DataEntryFinancialV2Page() {
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
 
+          <div data-location-review-recovery="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
+            <div className="mb-3 text-[11px] leading-5 text-amber-100">Resume location review after a crash or sign-in: upload your corrected review workbook directly. Select the original pickup date range above. Completed corrections stay saved; you do not need to repeat the original location review.</div>
+                <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
+          </div>
+
           {importedLocationSummary.total?<div data-bulk-location-readiness-v19="true" className={`mt-4 rounded-xl border p-4 ${importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total?"border-emerald-400/40 bg-emerald-500/10":"border-amber-300/40 bg-amber-400/10"}`}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -2450,7 +2439,6 @@ export default function DataEntryFinancialV2Page() {
                 <button type="button" onClick={()=>void retryImportedLocationSync()} disabled={!(importedLocationSummary.resolving+importedLocationSummary.interrupted)||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-40"><RefreshCw size={14}/>RETRY LOCATION SYNC ({importedLocationSummary.resolving+importedLocationSummary.interrupted})</button>
                 <button type="button" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some((row)=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-rose-300/50 bg-rose-400/10 px-4 py-2.5 text-[10px] font-black text-rose-100 disabled:opacity-40">SKIP ALL REVIEWS</button>
                 <button type="button" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} className="inline-flex items-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2.5 text-[10px] font-black text-amber-100 disabled:opacity-40"><Download size={14}/>DOWNLOAD REVIEW EXCEL ({consolidatedLocationReviewRows.length})</button>
-                <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
               </div>
             </div>
             <div className="mt-3 rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[10px] leading-5 text-amber-100">Download combines every current pickup row requiring location review into one workbook. Correct latitude/longitude and re-upload it here. Files above 200 rows are applied automatically in consecutive audited batches.</div>
