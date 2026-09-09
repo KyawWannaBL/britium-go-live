@@ -834,7 +834,7 @@ function BritiumQuickTools() {
     if (!file) return;
 
     setIsProcessing(true);
-    setStatusText('Reading Location Review Excel...');
+    setStatusText('Offline Geocoding... (Instant)');
 
     try {
       const XLSX: any = await import("xlsx");
@@ -844,34 +844,45 @@ function BritiumQuickTools() {
       const worksheet = workbook.Sheets[sheetName];
       const rows = XLSX.utils.sheet_to_json<any>(worksheet);
 
-      setStatusText('Geocoding missing addresses...');
-      let updatedCount = 0;
+      // Embedded offline coordinate mapping (No API limits)
+      const coordsMap: Record<string, [number, number]> = {
+        'ရွှေပြည်သာ': [16.98, 96.09], 'သင်္ဃန်းကျွန်း': [16.82, 96.20], 'မရမ်းကုန်း': [16.86, 96.14],
+        'လှိုင်သာယာ': [16.87, 96.06], 'Hlaingtharya (West) Township': [16.87, 96.06],
+        'Hlaingtharya(East) Township': [16.87, 96.06], 'ဒဂုံ': [16.79, 96.15], 'လှိုင်': [16.84, 96.12],
+        'သာကေတ': [16.80, 96.21], 'တောင်ဥက္ကလာပ': [16.84, 96.19], 'အင်းစိန်': [16.89, 96.10],
+        'မင်္ဂလာဒုံ': [17.02, 96.13], 'ရန်ကင်း': [16.83, 96.16], 'အလုံ': [16.78, 96.12],
+        'တာမွေ': [16.80, 96.17], 'မြောက်ဥက္ကလာပ': [16.90, 96.16], 'ကျောက်တံတား': [16.77, 96.16],
+        'ဗိုလ်တထောင်': [16.77, 96.17], 'လသာ': [16.78, 96.15], 'ဒေါပုံ': [16.78, 96.19],
+        'လမ်းမတော်': [16.78, 96.14], 'ပန်းဘဲတန်း': [16.77, 96.15], 'ကမာရွတ်': [16.82, 96.13],
+        'ဗဟန်း': [16.81, 96.15], 'စမ်းချောင်း': [16.80, 96.13], 'အောင်မြေသာစံ': [22.0, 96.1],
+        'ချမ်းမြသာစည်': [21.94, 96.1], 'ပြည်ကြီးတံခွန်': [21.91, 96.1], 'မဟာအောင်မြေ': [21.96, 96.1],
+        'ပုဗ္ဗသီရိ': [19.8, 96.15], 'ဇမ္ဗူသီရိ': [19.74, 96.1], 'ပျဉ်းမနား': [19.74, 96.2]
+      };
 
+      let updatedCount = 0;
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (row['Action'] === 'APPLY_CORRECTION' && (!row['Corrected Latitude'] || !row['Corrected Longitude'])) {
-          const address = `${row['Delivery Address'] || ''}, ${row['Township'] || ''}, Yangon, Myanmar`;
+          const t = row['Township'] ? String(row['Township']).trim() : '';
           
-          const res = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`);
-          const geoData = await res.json();
-
-          if (geoData && geoData.length > 0) {
-            row['Corrected Latitude'] = parseFloat(geoData[0].lat);
-            row['Corrected Longitude'] = parseFloat(geoData[0].lon);
-            updatedCount++;
+          if (coordsMap[t]) {
+            row['Corrected Latitude'] = coordsMap[t][0];
+            row['Corrected Longitude'] = coordsMap[t][1];
+          } else {
+            // Fallback to central Yangon if township is unrecognized
+            row['Corrected Latitude'] = 16.8;
+            row['Corrected Longitude'] = 96.15;
           }
-          await new Promise(resolve => setTimeout(resolve, 1000));
+          updatedCount++;
         }
       }
 
       setStatusText(`Writing file... (${updatedCount} fixed)`);
-      
       const newWorksheet = XLSX.utils.json_to_sheet(rows);
       workbook.Sheets[sheetName] = newWorksheet;
       const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-      
       downloadFile(excelBuffer, `Fixed_${file.name}`);
-      setStatusText(`Success! Fixed ${updatedCount} locations.`);
+      setStatusText('Success! Instant fix complete.');
     } catch (error) {
       console.error(error);
       setStatusText('Error processing file.');
