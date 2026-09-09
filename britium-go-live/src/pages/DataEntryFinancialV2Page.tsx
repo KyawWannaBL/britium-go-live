@@ -94,6 +94,7 @@ type Pickup = {
 };
 
 type ParcelRow = {
+  sourceMerchantName?: string;
   pickup_id: string;
   parcel_sequence: number;
   delivery_way_id: string;
@@ -310,6 +311,7 @@ function payload(row: ParcelRow, pickup: Pickup) {
     parcel_sequence: row.parcel_sequence,
     delivery_way_id: row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence),
     merchant_id: pickup.merchant_id || null,
+    source_merchant_name: row.sourceMerchantName || null,
     recipient_name: row.recipient_name || null,
     recipient_phone: row.recipient_phone || null,
     township: row.township || null,
@@ -374,6 +376,7 @@ function parcelRowFromProof(
     pickup_id:pickup.pickup_id,
     parcel_sequence:sequence,
     delivery_way_id:text(proof.delivery_way_id)||canonicalWayId(pickup.pickup_id,sequence),
+    sourceMerchantName:text(proof.financial_quote?.source_merchant_name || proof.merchant_id),
     proof_url:text(proof.__proof_url),
     proof_ref:text(proof.__proof_ref),
     photo_status:text(proof.review_status||proof.photo_status||proof.status||"PENDING_REVIEW").toUpperCase(),
@@ -957,10 +960,10 @@ function BritiumQuickTools() {
 
         return {
           "Way ID / Pickup ID": finalWayId,
-          "Merchant Name": "CONSOLIDATED-BULK", 
+          "Merchant Name": realMerchant,
           "Receiver Name": fuzzyGet(row, ["receiver", "customer", "အမည်", "name"]),
           "Receiver Phone": fuzzyGet(row, ["phone", "contact", "ဖုန်း"]),
-          "City (Dropdown)": fuzzyGet(row, ["city", "region", "တိုင်း", "ပြည်နယ်"]) || "Yangon Region",
+          "City (Dropdown)": fuzzyGet(row, ["city", "region", "တိုင်း", "ပြည်နယ်"]) || "",
           "Township (Dropdown)": rawTownship,
           "Ward / Village Tract (Dropdown)": fuzzyGet(row, ["ward", "ရပ်ကွက်"]),
           "Postal Code (Auto)": fuzzyGet(row, ["postal", "zip", "စာတိုက်"]),
@@ -1618,6 +1621,7 @@ export default function DataEntryFinancialV2Page() {
         pickup_id:pickup.pickup_id,
         parcel_sequence:sequence,
         delivery_way_id:canonicalWayId(pickup.pickup_id,sequence),
+        sourceMerchantName:sourceRow.merchantName,
         recipient_name:sourceRow.recipientName,
         recipient_phone:sourceRow.recipientPhone,
         township:destination.township,
@@ -1754,25 +1758,6 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function applyOsImport(importPayload:OsImportApplyPayload){
-    const validDbPickup = (selectedPickupId && selectedPickupId !== BULK_UPLOAD_PICKUP_ID) ? selectedPickupId : pickups.find(p => p.pickup_id !== BULK_UPLOAD_PICKUP_ID)?.pickup_id || "";
-    const targetPickupData = pickups.find(p => p.pickup_id === validDbPickup);
-    
-    if (importPayload.batches) {
-      importPayload.batches.forEach(b => {
-        if (!pickups.some(p => p.pickup_id === b.targetPickupId)) b.targetPickupId = validDbPickup;
-        // Option 1 Override: Force all rows to inherit the container's identity safely
-        if (targetPickupData && b.rows) {
-          b.rows.forEach(r => {
-            r.merchantId = targetPickupData.merchant_id;
-            r.merchantName = targetPickupData.merchant_name;
-          });
-        }
-      });
-    }
-    if (importPayload.targetPickupId && !pickups.some(p => p.pickup_id === importPayload.targetPickupId)) {
-      importPayload.targetPickupId = validDbPickup;
-    }
-    
     const batches=importPayload.batches.length
       ?importPayload.batches
       :[{targetPickupId:importPayload.targetPickupId,rows:importPayload.rows}];
@@ -1783,8 +1768,12 @@ export default function DataEntryFinancialV2Page() {
 
     const nextDrafts:Record<string,BulkImportDraft>={};
     for(const batch of batches){
-      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId) || { pickup_id: batch.targetPickupId || "__BULK_UPLOAD__", registered_parcels: 0, merchant_id: "INBOUND_MANIFEST" };
-      /* bypassed pickup eligibility for inbound manifests */
+      const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
+      if (!pickup) throw new Error(`Pickup ${batch.targetPickupId} was not found. Select an existing pickup; mixed merchants require a BLK container.`);
+      const merchantKey=(value:unknown)=>text(value).trim().toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g,"");
+      if (merchantKey(pickup.merchant_id)!=="blk" && batch.rows.some(row=>![merchantKey(pickup.merchant_id),merchantKey(pickup.merchant_name)].includes(merchantKey(row.merchantName)))) {
+        throw new Error("Mixed merchants require a Consolidated Bulk (BLK) pickup. Original merchant names must be retained.");
+      }
       const pendingDraft=bulkImportDrafts[pickup.pickup_id];
       if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
         throw new Error(`Pickup ${pickup.pickup_id} still has an unsaved upload batch. Calculate and Save All before uploading its next batch.`);
