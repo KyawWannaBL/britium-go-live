@@ -896,7 +896,8 @@ function BritiumQuickTools() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!customPickupId.trim()) {
+    const rawId = document.getElementById("customPickupIdInput") ? (document.getElementById("customPickupIdInput") as HTMLInputElement).value : customPickupId;
+    if (!rawId.trim()) {
       setStatusText('⚠️ Enter the Remarkable Name / Pickup ID first!');
       setTimeout(() => setStatusText(''), 3000);
       if (convertInputRef.current) convertInputRef.current.value = '';
@@ -912,7 +913,7 @@ function BritiumQuickTools() {
       const workbook = XLSX.read(data, { type: 'array' });
       const rows = XLSX.utils.sheet_to_json<any>(workbook.Sheets[workbook.SheetNames[0]], { defval: "" });
 
-      const pickupId = customPickupId.trim();
+      const pickupId = rawId.trim();
 
       const fuzzyGet = (row: any, keywords: string[]) => {
         const keys = Object.keys(row);
@@ -1005,7 +1006,7 @@ function BritiumQuickTools() {
         <label className="text-[10px] font-bold text-[#8db4ce]">Remarkable Name (Bulk Container ID)</label>
         <input 
           type="text" 
-          value={customPickupId} 
+          defaultValue={customPickupId} id="customPickupIdInput" 
           onChange={e => setCustomPickupId(e.target.value)} 
           placeholder="e.g. INBOUND-0609"
           className="w-full rounded border border-[#1a3a5c] bg-[#061524] px-2 py-1.5 text-xs font-bold text-white outline-none focus:border-[#f6b84b]"
