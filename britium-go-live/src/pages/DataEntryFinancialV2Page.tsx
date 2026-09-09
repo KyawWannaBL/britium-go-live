@@ -893,7 +893,7 @@ function BritiumQuickTools() {
     }
 
     setIsProcessing(true);
-    setStatusText('Extracting Townships...');
+    setStatusText('Smart Extracting Townships...');
 
     try {
       const XLSX: any = await import("xlsx");
@@ -925,7 +925,6 @@ function BritiumQuickTools() {
         let rawTownship = fuzzyGet(row, ["township", "မြို့နယ်", "provider"]);
         const rawAddress = fuzzyGet(row, ["address", "လိပ်စာ", "delivery"]);
 
-        // Automatic Township Extractor
         if (!rawTownship || rawTownship === "-" || rawTownship.trim() === "") {
           for (const t of knownTownships) {
             if (rawAddress.includes(t)) {
@@ -955,7 +954,8 @@ function BritiumQuickTools() {
           "Item Price": fuzzyGet(row, ["item", "cod", "တန်ဖိုး", "price"]),
           "OS Set Price": fuzzyGet(row, ["os set", "delivery charge", "deli", "ပို့ဆောင်ခ"]),
           "Merchant Tier": fuzzyGet(row, ["tier", "အဆင့်"]) || "STANDARD",
-          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": rawTownship
+          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ
+(Township / Service Provider)": rawTownship
         };
       });
 
