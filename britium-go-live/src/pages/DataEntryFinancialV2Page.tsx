@@ -893,7 +893,7 @@ function BritiumQuickTools() {
     }
 
     setIsProcessing(true);
-    setStatusText('Converting template formatting...');
+    setStatusText('Extracting Townships...');
 
     try {
       const XLSX: any = await import("xlsx");
@@ -903,7 +903,6 @@ function BritiumQuickTools() {
 
       const pickupId = customPickupId.trim();
 
-      // Smart engine that hunts for data regardless of exact column spelling or language
       const fuzzyGet = (row: any, keywords: string[]) => {
         const keys = Object.keys(row);
         for (const kw of keywords) {
@@ -915,13 +914,30 @@ function BritiumQuickTools() {
         return "";
       };
 
+      const knownTownships = ["ရွှေပြည်သာ", "သင်္ဃန်းကျွန်း", "မရမ်းကုန်း", "လှိုင်သာယာ", "အင်းစိန်", "မင်္ဂလာဒုံ", "မြောက်ဥက္ကလာပ", "တောင်ဥက္ကလာပ", "သာကေတ", "ဒေါပုံ", "ပုဇွန်တောင်", "ဗိုလ်တထောင်", "ကျောက်တံတား", "ပန်းဘဲတန်း", "လသာ", "လမ်းမတော်", "အလုံ", "ကြည့်မြင်တိုင်", "စမ်းချောင်း", "ဗဟန်း", "ဒဂုံ", "ကမာရွတ်", "လှိုင်", "တောင်ဒဂုံ", "မြောက်ဒဂုံ", "အရှေ့ဒဂုံ", "ဒဂုံဆိပ်ကမ်း", "မင်္ဂလာတောင်ညွန့်", "တာမွေ", "ရန်ကင်း", "ပုဗ္ဗသီရိ", "ဇမ္ဗူသီရိ", "အောင်မြေသာစံ", "ချမ်းမြသာစည်"];
+
       const waybillRows = rows.map((row: any, index: number) => {
         const seq = row["Seq"] || row["No"] || row["Row"] || index + 1;
         const finalWayId = (pickupId.toUpperCase() !== 'AUTO') 
           ? `${pickupId}-${String(seq).padStart(3, '0')}` 
           : fuzzyGet(row, ["way id", "tracking", "pickup id"]);
 
-        const township = fuzzyGet(row, ["township", "မြို့နယ်", "provider"]);
+        let rawTownship = fuzzyGet(row, ["township", "မြို့နယ်", "provider"]);
+        const rawAddress = fuzzyGet(row, ["address", "လိပ်စာ", "delivery"]);
+
+        // Automatic Township Extractor
+        if (!rawTownship || rawTownship === "-" || rawTownship.trim() === "") {
+          for (const t of knownTownships) {
+            if (rawAddress.includes(t)) {
+              rawTownship = t;
+              break;
+            }
+          }
+          if (!rawTownship || rawTownship === "-") {
+            const match = rawAddress.match(/([^\s၊,]+)(?=\s*မြို့နယ်)/);
+            if (match) rawTownship = match[1].trim();
+          }
+        }
 
         return {
           "Way ID / Pickup ID": finalWayId,
@@ -929,17 +945,17 @@ function BritiumQuickTools() {
           "Receiver Name": fuzzyGet(row, ["receiver", "customer", "အမည်", "name"]),
           "Receiver Phone": fuzzyGet(row, ["phone", "contact", "ဖုန်း"]),
           "City (Dropdown)": fuzzyGet(row, ["city", "region", "တိုင်း", "ပြည်နယ်"]) || "Yangon Region",
-          "Township (Dropdown)": township,
+          "Township (Dropdown)": rawTownship,
           "Ward / Village Tract (Dropdown)": fuzzyGet(row, ["ward", "ရပ်ကွက်"]),
           "Postal Code (Auto)": fuzzyGet(row, ["postal", "zip", "စာတိုက်"]),
-          "Receiver Address": fuzzyGet(row, ["address", "လိပ်စာ", "delivery"]),
+          "Receiver Address": rawAddress,
           "Actual Weight (KG)": fuzzyGet(row, ["weight", "kg", "အလေးချိန်"]) || "1",
           "Service Type": fuzzyGet(row, ["service", "ဝန်ဆောင်မှု"]) || "STANDARD",
           "Payment Type": fuzzyGet(row, ["payment", "ငွေပေးချေမှု"]) || "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
           "Item Price": fuzzyGet(row, ["item", "cod", "တန်ဖိုး", "price"]),
           "OS Set Price": fuzzyGet(row, ["os set", "delivery charge", "deli", "ပို့ဆောင်ခ"]),
           "Merchant Tier": fuzzyGet(row, ["tier", "အဆင့်"]) || "STANDARD",
-          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": township
+          "မြို့နယ် / ဝန်ဆောင်မှုပေးသူ\n(Township / Service Provider)": rawTownship
         };
       });
 
