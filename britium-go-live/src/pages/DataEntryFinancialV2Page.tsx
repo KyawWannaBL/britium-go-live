@@ -1415,17 +1415,21 @@ export default function DataEntryFinancialV2Page() {
       let cursor=0;
       const total=rows.length;
       const sourceRows=[...rows];
+      const sourcePickup=selectedPickup!;
+      const sourcePayloads=sourceRows.map(row=>JSON.stringify(payload(row,sourcePickup)));
+      const failures:string[]=[];
       const results=new Map<number,{ok:boolean;patch:Partial<ParcelRow>}>();
       const worker=async()=>{
         while(cursor<total){
           const index=cursor++;
           const row=sourceRows[index];
           try{
-            const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup!)});
+            const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])});
+            let timer:ReturnType<typeof setTimeout>|undefined;
             const r=await Promise.race([
               calculationRequest,
-              new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),30000)),
-            ]);
+              new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),30000);}),
+            ]).finally(()=>{if(timer!==undefined) clearTimeout(timer);});
             if(r.error) throw r.error;
             const e=envelope(r.data);
             const resolution=e.raw?.server_resolution||{};
@@ -1443,8 +1447,10 @@ export default function DataEntryFinancialV2Page() {
               message:e.ok?`Calculation completed. Tier source: ${text(resolution.customer_tier_source)||"server"}.`:(envelopeMessage(e)||"Calculation failed."),
             }});
             if(e.ok) calculated+=1;
+            else failures.push(`Parcel ${row.parcel_sequence}: ${envelopeMessage(e)||"Calculation failed."}`);
           }catch(error:any){
-            results.set(index,{ok:false,patch:{calculating:false,message:error?.message||"Backend calculation failed."}});
+            failures.push(`Parcel ${row.parcel_sequence}: ${error?.message||"Backend calculation failed."}`);
+            results.set(index,{ok:false,patch:{calculating:false,calculation:{},message:error?.message||"Backend calculation failed."}});
           }
           completed+=1;
           if(completed===total||completed%6===0) setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
@@ -1454,12 +1460,13 @@ export default function DataEntryFinancialV2Page() {
       setRows(current=>current.map((row,index)=>{
         const result=results.get(index);
         if(!result) return row;
-        if(row!==sourceRows[index]) return {...row,calculating:false,message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
+        if(row.pickup_id!==sourceRows[index]?.pickup_id || row.parcel_sequence!==sourceRows[index]?.parcel_sequence) return row;
+        if(JSON.stringify(payload(row,sourcePickup))!==sourcePayloads[index]) return {...row,calculating:false,calculation:{},message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
         return {...row,...result.patch};
       }));
       setBulkMessage(calculated===rows.length
-        ? `Calculated all ${rows.length} authorized registration row(s).`
-        : `Calculated ${calculated} of ${rows.length} row(s). Review the failed rows before Save All.`
+        ? `Attempted all ${total} row(s). ${calculated} successful responses. Any rows edited during calculation are marked for recalculation.`
+        : `Attempted all ${total} row(s): ${calculated} successful responses; ${failures.length} failed. ${failures.join(" | ")}`
       );
     }finally{
       setBulkCalculating(false);
