@@ -404,7 +404,11 @@ export function convertInboundManifestMatrix(matrix: unknown[][]) {
     const ward = postal.matchLevel === "EXACT_QUARTER"
       ? `${townshipNames.townshipMm || postal.townshipMm} • ${postal.quarterMm || postal.quarter} [${postal.postalCode}]`
       : "";
-    const exactCollection = parseAmount(value("finalCod")) || parseAmount(value("itemPrice"));
+    // Final COD is authoritative when the column exists, including explicit zero.
+    // Missing values stay missing; never charge the item price to a prepaid recipient.
+    const exactCollection = columns.has("finalCod")
+      ? parseAmount(value("finalCod"))
+      : parseAmount(value("itemPrice"));
     const routing = resolveDataEntryServiceProvider(
       postal.townshipMm || postal.township || recipientTown,
       address,
