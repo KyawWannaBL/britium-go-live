@@ -1,4 +1,5 @@
 import { supabase } from "./supabaseClient";
+import { MAX_PROOF_BYTES, withTimeout } from "./photoUpload";
 import type {
   FailureReason,
   RiderNextAction,
@@ -521,6 +522,9 @@ export async function uploadRiderProof(
   if (!file.type.startsWith("image/")) {
     throw new Error("Only image proof files are allowed.");
   }
+  if (file.size >= MAX_PROOF_BYTES) {
+    throw new Error("Photo must be compressed below 1 MB before upload.");
+  }
 
   const {
     data: { user },
@@ -539,13 +543,13 @@ export async function uploadRiderProof(
     `${Date.now()}-${crypto.randomUUID()}-${safeStorageName(file.name)}`,
   ].join("/");
 
-  const { error } = await supabase.storage
-    .from("rider-proofs")
-    .upload(path, file, {
+  const { error } = await withTimeout(
+    supabase.storage.from("rider-proofs").upload(path, file, {
       upsert: false,
       contentType: file.type || "image/jpeg",
       cacheControl: "3600",
-    });
+    }),
+  );
 
   if (error) throw new Error(error.message);
 

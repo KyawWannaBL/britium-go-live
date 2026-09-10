@@ -16,6 +16,70 @@ import type {
   RiderNextAction,
   RiderTask,
 } from "../types";
+import { compressProofPhoto, MAX_PROOF_BYTES } from "../lib/photoUpload";
+
+function ProofPhotoPicker({
+  label,
+  uploadedUrl,
+  busy,
+  onApprove,
+  onSelection,
+}: {
+  label: string;
+  uploadedUrl: string;
+  busy: boolean;
+  onApprove: (file: File) => Promise<void>;
+  onSelection: () => void;
+}) {
+  const [candidate, setCandidate] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [preparing, setPreparing] = useState(false);
+  const [error, setError] = useState("");
+
+  React.useEffect(() => () => {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+  }, [previewUrl]);
+
+  const selectPhoto = async (file?: File) => {
+    if (!file) return;
+    onSelection();
+    setError("");
+    setPreparing(true);
+    try {
+      const compressed = await compressProofPhoto(file);
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      setCandidate(compressed);
+      setPreviewUrl(URL.createObjectURL(compressed));
+    } catch (cause) {
+      setCandidate(null);
+      setError(errorText(cause));
+    } finally {
+      setPreparing(false);
+    }
+  };
+
+  return <div style={{ margin: "8px 0 12px" }}>
+    <label style={{ display: "block", fontSize: 12, fontWeight: 700 }}>{label}</label>
+    <input type="file" accept="image/*" capture="environment" disabled={busy || preparing}
+      onChange={(event) => { void selectPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ margin: "8px 0" }}/>
+    {preparing && <div style={{ color: "#475569", fontSize: 12 }}>{bi("Preparing preview without blocking…", "preview ပြင်ဆင်နေသည်…")}</div>}
+    {error && <ErrorBox message={error}/>}
+    {previewUrl && candidate && <div style={{ border: "2px solid #f59e0b", borderRadius: 10, padding: 8 }}>
+      <img src={previewUrl} alt="Selected proof preview" style={{ width: "100%", maxHeight: 220, objectFit: "contain", borderRadius: 8 }}/>
+      <div style={{ margin: "6px 0", fontSize: 12, fontWeight: 700 }}>
+        {bi("Preview only — not uploaded", "preview သာဖြစ်ပြီး မတင်ရသေးပါ")} · {Math.ceil(candidate.size / 1024)} KB (&lt; {Math.floor(MAX_PROOF_BYTES / 1000)} KB)
+      </div>
+      <button type="button" disabled={busy} onClick={async () => {
+        setError("");
+        try { await onApprove(candidate); setCandidate(null); setPreviewUrl(""); }
+        catch (cause) { setError(errorText(cause)); }
+      }} style={{ padding: "9px 12px", border: 0, borderRadius: 8, background: "#d97706", color: "white", fontWeight: 800 }}>
+        {busy ? bi("Uploading…", "တင်နေသည်…") : bi("Approve photo & upload", "ဓာတ်ပုံကို အတည်ပြုပြီး တင်မည်")}
+      </button>
+    </div>}
+    {uploadedUrl && !candidate && <div style={{ color: "#047857", fontSize: 12, fontWeight: 700 }}>{bi("Approved photo uploaded — ready to save", "အတည်ပြုဓာတ်ပုံ တင်ပြီး သိမ်းရန်အသင့်")}</div>}
+  </div>;
+}
 
 const FAILURE_LABELS: Record<FailureReason, string> = {
   recipient_not_available: bi(
@@ -561,6 +625,7 @@ function PickupVerificationModal({
       updateRow(index, { proofUrl: url });
     } catch (error) {
       setFormError(errorText(error));
+      throw error;
     } finally {
       setUploadingIndex(null);
     }
@@ -685,46 +750,19 @@ function PickupVerificationModal({
             Parcel photo / ပါဆယ်ဓာတ်ပုံ
           </label>
 
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            disabled={uploadingIndex !== null}
-            onChange={(event) =>
-              handleUpload(
-                index,
-                event.target.files?.[0]
-              )
-            }
+          <ProofPhotoPicker
+            label={bi("Select, preview, then approve this parcel photo", "ဓာတ်ပုံရွေး၊ preview ကြည့်ပြီး အတည်ပြုပါ")}
+            uploadedUrl={row.proofUrl}
+            busy={uploadingIndex === index}
+            onApprove={(file) => handleUpload(index, file)}
+            onSelection={() => updateRow(index, { proofUrl: "" })}
           />
-
-          <div
-            style={{
-              marginTop: 6,
-              color: row.proofUrl
-                ? "#047857"
-                : "#64748b",
-              fontSize: 12,
-            }}
-          >
-            {uploadingIndex === index
-              ? bi("Uploading…", "ဓာတ်ပုံတင်နေသည်…")
-              : row.proofUrl
-              ? bi("Photo uploaded", "ဓာတ်ပုံ တင်ပြီးပါပြီ")
-              : bi("Photo required", "ဓာတ်ပုံ လိုအပ်ပါသည်")}
-          </div>
 
           {row.proofUrl && (
             <img
               src={row.proofUrl}
-              alt={`Parcel ${index + 1} proof`}
-              style={{
-                width: "100%",
-                maxHeight: 180,
-                marginTop: 8,
-                objectFit: "cover",
-                borderRadius: 8,
-              }}
+              alt={`Parcel ${index + 1} uploaded proof`}
+              style={{ width: "100%", maxHeight: 180, marginTop: 8, objectFit: "contain", borderRadius: 8 }}
             />
           )}
         </div>
@@ -836,6 +874,7 @@ function DeliveryModal({
       setProofUrl(url);
     } catch (error) {
       setFormError(errorText(error));
+      throw error;
     }
   };
 
@@ -954,43 +993,16 @@ function DeliveryModal({
       <label style={{ fontSize: 12, fontWeight: 700 }}>
         Proof of delivery / ပို့ဆောင်မှုအထောက်အထား
       </label>
-      <input
-        type="file"
-        accept="image/*"
-        capture="environment"
-        disabled={upload.isPending}
-        onChange={(event) =>
-          handleUpload(event.target.files?.[0])
-        }
-        style={{ margin: "8px 0" }}
+      <ProofPhotoPicker
+        label={bi("Select a photo, inspect the preview, then explicitly approve upload", "ဓာတ်ပုံရွေး၊ preview စစ်ပြီး upload ကို အတည်ပြုပါ")}
+        uploadedUrl={proofUrl}
+        busy={upload.isPending}
+        onApprove={handleUpload}
+        onSelection={() => setProofUrl("")}
       />
 
-      <div
-        style={{
-          marginBottom: 12,
-          color: proofUrl ? "#047857" : "#64748b",
-          fontSize: 12,
-        }}
-      >
-        {upload.isPending
-          ? bi("Uploading…", "ဓာတ်ပုံတင်နေသည်…")
-          : proofUrl
-          ? bi("Photo uploaded", "ဓာတ်ပုံ တင်ပြီးပါပြီ")
-          : bi("Photo required", "ဓာတ်ပုံ လိုအပ်ပါသည်")}
-      </div>
-
       {proofUrl && (
-        <img
-          src={proofUrl}
-          alt="Proof of delivery / ပို့ဆောင်မှုအထောက်အထား"
-          style={{
-            width: "100%",
-            maxHeight: 200,
-            marginBottom: 12,
-            objectFit: "cover",
-            borderRadius: 8,
-          }}
-        />
+        <img src={proofUrl} alt="Uploaded proof of delivery" style={{ width: "100%", maxHeight: 200, marginBottom: 12, objectFit: "contain", borderRadius: 8 }}/>
       )}
 
       <label style={{ fontSize: 12, fontWeight: 700 }}>
