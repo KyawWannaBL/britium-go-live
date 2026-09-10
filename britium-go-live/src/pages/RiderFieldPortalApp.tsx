@@ -40,6 +40,7 @@ import { getRiderSupabase, riderSupabaseConfigured } from "../lib/riderPortalSup
 
 import { supabase } from "../integrations/supabase/client";
 import AssignmentNotificationSound from "../components/AssignmentNotificationSound";
+import { compressRiderPhoto, MAX_RIDER_PROOF_BYTES, withRiderUploadTimeout } from "../lib/riderPhotoUpload";
 
 type View =
   | "wall"
@@ -529,6 +530,8 @@ type ParcelVerificationRow = {
   reviewedAt?: string;
   photoFile?: File;
   previewUrl?: string;
+  photoApproved?: boolean;
+  photoPreparing?: boolean;
 };
 
 function safeNumber(value: unknown, fallback = 0) {
@@ -601,7 +604,6 @@ function verifiedCount(rows: ParcelVerificationRow[]) {
 
 function validateParcelPhoto(file: File) {
   if (!file.type.startsWith("image/")) return { ok: false, reason: "Only image files are allowed." };
-  if (file.size < 80 * 1024) return { ok: false, reason: "Photo file is too small and may be unclear. Capture a clearer image." };
   if (file.size > 15 * 1024 * 1024) return { ok: false, reason: "Photo exceeds the 15 MB upload limit." };
   return { ok: true, reason: "" };
 }
@@ -1612,6 +1614,9 @@ function FieldPortal() {
   const [codCollected, setCodCollected] = useState("0");
   const [proofUrl, setProofUrl] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofPreviewUrl, setProofPreviewUrl] = useState("");
+  const [proofApproved, setProofApproved] = useState(false);
+  const [proofPreparing, setProofPreparing] = useState(false);
   const [remark, setRemark] = useState("");
   const [exceptionReason, setExceptionReason] = useState("CUSTOMER_NOT_AVAILABLE");
   const [pickupSearch, setPickupSearch] = useState("");
@@ -1883,6 +1888,9 @@ function FieldPortal() {
     setCodCollected(String(Number(job.rider_cod_amount || job.cod_amount || job.item_price || 0)));
     setProofUrl("");
     setProofFile(null);
+    setProofPreviewUrl("");
+    setProofApproved(false);
+    setProofPreparing(false);
     setRemark("");
     setExceptionReason("CUSTOMER_NOT_AVAILABLE");
     setPickupSearch("");
@@ -1922,9 +1930,9 @@ function FieldPortal() {
       return false;
     }
 
-    if (!row.photoFile && !row.photoUrl) {
-      if (!silent) alert("Please Attach Photo or Capture photo before verification.");
-      setError("Please Attach Photo or Capture photo before verification.");
+    if ((!row.photoFile || !row.photoApproved) && !row.photoUrl) {
+      if (!silent) alert("Select a photo, inspect its preview, then approve it before upload.");
+      setError("Photo preview approval is required before upload.");
       return false;
     }
 
@@ -1945,12 +1953,12 @@ function FieldPortal() {
         const safeName = row.photoFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
         const storagePath = `pickup-proofs/${currentPickupId}/${itemNo}-${Date.now()}-${safeName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await withRiderUploadTimeout(supabase.storage
           .from("rider-proofs")
           .upload(storagePath, row.photoFile, {
             cacheControl: "3600",
             upsert: true,
-          });
+          }));
 
         if (uploadError) throw uploadError;
 
@@ -2002,6 +2010,8 @@ function FieldPortal() {
         rejectionReason: "",
         reuploadRequired: false,
         uploadError: "",
+        photoFile: undefined,
+        photoApproved: false,
       } as any);
 
       setMessage(`Parcel ${itemNo} photo uploaded and sent to Data Entry for review.`);
@@ -2041,7 +2051,7 @@ function FieldPortal() {
 
     const incompleteRows = rowsToUpload.filter((row) => {
       const weight = Number(row.weightKg || 0);
-      return !Number.isFinite(weight) || weight <= 0 || (!row.photoFile && !row.photoUrl);
+      return !Number.isFinite(weight) || weight <= 0 || ((!row.photoFile || !row.photoApproved) && !row.photoUrl);
     });
 
     if (incompleteRows.length) {
@@ -2098,43 +2108,85 @@ function FieldPortal() {
     }
   }
 
-  function handleParcelPhoto(rowId: string, e: React.ChangeEvent<HTMLInputElement>) {
+  async function handleParcelPhoto(rowId: string, e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
+    e.currentTarget.value = "";
     if (!file || !selectedJob) return;
+
+    const oldRow = parcelRows.find((row) => row.id === rowId);
+    if (oldRow?.previewUrl?.startsWith("blob:")) URL.revokeObjectURL(oldRow.previewUrl);
+    updateParcelRow(rowId, {
+      photoName: "",
+      photoFile: undefined,
+      previewUrl: "",
+      photoUrl: "",
+      photoApproved: false,
+      photoPreparing: true,
+      uploadStatus: "preparing",
+      uploadError: "",
+      reviewStatus: "PENDING_SELECTION",
+      verified: false,
+    });
 
     const quality = validateParcelPhoto(file);
     if (!quality.ok) {
       setError(quality.reason);
       alert(quality.reason);
-      e.currentTarget.value = "";
+      updateParcelRow(rowId, { photoPreparing: false, uploadStatus: "failed", uploadError: quality.reason });
       return;
     }
 
-    const previewUrl = URL.createObjectURL(file);
-
-    updateParcelRow(rowId, {
-      photoName: file.name,
-      photoFile: file,
-      previewUrl,
-      photoUrl: previewUrl,
-      uploadStatus: "idle",
-      uploadError: "",
-      reviewStatus: "PENDING_UPLOAD",
-      rejectionReason: "",
-      reuploadRequired: false,
-      verified: false,
-    } as any);
-
-    setMessage(`Photo selected for parcel ${rowId}. Click VERIFY to upload.`);
+    try {
+      const compressed = await compressRiderPhoto(file);
+      const previewUrl = URL.createObjectURL(compressed);
+      updateParcelRow(rowId, {
+        photoName: compressed.name,
+        photoFile: compressed,
+        previewUrl,
+        photoUrl: "",
+        photoApproved: false,
+        photoPreparing: false,
+        uploadStatus: "awaiting_approval",
+        uploadError: "",
+        reviewStatus: "PENDING_APPROVAL",
+        rejectionReason: "",
+        reuploadRequired: false,
+        verified: false,
+      });
+      setMessage(`Compressed preview ready for parcel ${rowId}. Approve it before upload.`);
+    } catch (compressionError: any) {
+      updateParcelRow(rowId, { photoPreparing: false, uploadStatus: "failed", uploadError: compressionError?.message || "Compression failed" });
+      setError(compressionError?.message || "Photo compression failed.");
+    }
   }
 
-  function handleProof(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file || !selectedJob) return;
+  function approveParcelPhoto(rowId: string) {
+    updateParcelRow(rowId, { photoApproved: true, uploadStatus: "idle", reviewStatus: "PENDING_UPLOAD" });
+    setMessage(`Photo approved for parcel ${rowId}. It is ready to upload.`);
+  }
 
-    setProofFile(file);
-    setProofUrl(URL.createObjectURL(file));
-    setMessage(`Proof selected for ${pickupId(selectedJob)}. It will upload when submitted.`);
+  async function handleProof(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.currentTarget.value = "";
+    if (!file || !selectedJob) return;
+    if (proofPreviewUrl.startsWith("blob:")) URL.revokeObjectURL(proofPreviewUrl);
+    setProofFile(null);
+    setProofUrl("");
+    setProofPreviewUrl("");
+    setProofApproved(false);
+    setProofPreparing(true);
+    setError("");
+    try {
+      const compressed = await compressRiderPhoto(file);
+      setProofFile(compressed);
+      setProofPreviewUrl(URL.createObjectURL(compressed));
+      setMessage(`Compressed proof preview ready for ${pickupId(selectedJob)}. Approve it before submitting.`);
+    } catch (compressionError: any) {
+      setProofFile(null);
+      setError(compressionError?.message || "Photo compression failed.");
+    } finally {
+      setProofPreparing(false);
+    }
   }
 
 
@@ -2147,12 +2199,12 @@ function FieldPortal() {
     const storagePath =
       `workflow-proofs/${pickupIdValue}/${workflowMode}-${Date.now()}-${safeName}`;
 
-    const { error: uploadError } = await supabase.storage
+    const { error: uploadError } = await withRiderUploadTimeout(supabase.storage
       .from("rider-proofs")
       .upload(storagePath, file, {
         cacheControl: "3600",
         upsert: true,
-      });
+      }));
 
     if (uploadError) throw uploadError;
 
@@ -2227,8 +2279,8 @@ function FieldPortal() {
         return;
       }
 
-      if (!proof) {
-        setError("Delivery proof photo is required.");
+      if (!proof && (!proofFile || !proofApproved)) {
+        setError("Select, preview, and approve the delivery proof photo before submitting.");
         return;
       }
 
@@ -2255,8 +2307,8 @@ function FieldPortal() {
         return;
       }
 
-      if (rule.requirePhoto && !proofFile && !proofUrl) {
-        setError("Photo proof is required for the selected exception.");
+      if (rule.requirePhoto && !proofUrl && (!proofFile || !proofApproved)) {
+        setError("Select, preview, and approve the exception proof photo before submitting.");
         return;
       }
 
@@ -2280,7 +2332,7 @@ function FieldPortal() {
     setError("");
 
     try {
-      if (proofFile) {
+      if (proofFile && proofApproved) {
         proof = await uploadWorkflowProof(id, modal || "workflow", proofFile);
         payload.proof_url = proof;
       }
@@ -2723,26 +2775,34 @@ function FieldPortal() {
                               <div>
                                 <label>Cargo photo</label>
                                 {(row.previewUrl || row.photoUrl) && (
-                                  <a href={row.photoUrl || row.previewUrl} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: 8 }}>
-                                    <img src={row.photoUrl || row.previewUrl} alt={row.parcelId} style={{ width: "100%", height: 180, objectFit: "contain", background: C.bg, borderRadius: 12, border: `1px solid ${C.border}` }} />
+                                  <a href={row.previewUrl || row.photoUrl} target="_blank" rel="noreferrer" style={{ display: "block", marginBottom: 8 }}>
+                                    <img src={row.previewUrl || row.photoUrl} alt={`${row.parcelId} proof preview`} style={{ width: "100%", height: 180, objectFit: "contain", background: C.bg, borderRadius: 12, border: `1px solid ${row.photoApproved || row.photoUrl ? C.green : C.gold}` }} />
                                   </a>
                                 )}
                                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, minWidth: 280 }}>
                                   <label style={{ ...buttonStyle("plain"), width: "100%", minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0, fontSize: 12, paddingLeft: 8, paddingRight: 8 }}>
                                     <Camera size={15} /> Capture
-                                    <input type="file" accept="image/*" capture="environment" onChange={(e) => handleParcelPhoto(row.id, e)} style={{ display: "none" }} />
+                                    <input type="file" accept="image/*" capture="environment" disabled={busy || row.photoPreparing} onChange={(e) => void handleParcelPhoto(row.id, e)} style={{ display: "none" }} />
                                   </label>
                                   <label style={{ ...buttonStyle("plain"), width: "100%", minHeight: 40, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", margin: 0, fontSize: 12, paddingLeft: 8, paddingRight: 8 }}>
                                     Attach
-                                    <input type="file" accept="image/*" onChange={(e) => handleParcelPhoto(row.id, e)} style={{ display: "none" }} />
+                                    <input type="file" accept="image/*" disabled={busy || row.photoPreparing} onChange={(e) => void handleParcelPhoto(row.id, e)} style={{ display: "none" }} />
                                   </label>
                                 </div>
+                                {row.photoPreparing && <div style={{ color: C.blue, fontSize: 11, marginTop: 6 }}>Compressing in a background worker…</div>}
+                                {row.previewUrl && row.photoFile && !row.photoApproved && !row.photoPreparing && (
+                                  <div style={{ border: `1px solid ${C.gold}`, borderRadius: 10, padding: 8, marginTop: 8 }}>
+                                    <div style={{ color: C.gold, fontSize: 11, marginBottom: 7 }}>Preview only — not uploaded · {Math.ceil(row.photoFile.size / 1024)} KB (&lt; {Math.floor(MAX_RIDER_PROOF_BYTES / 1000)} KB)</div>
+                                    <button type="button" onClick={() => approveParcelPhoto(row.id)} disabled={busy} style={{ ...buttonStyle("gold"), width: "100%" }}>APPROVE PHOTO</button>
+                                  </div>
+                                )}
+                                {row.photoApproved && row.photoFile && <div style={{ color: C.green, fontSize: 11, marginTop: 6 }}>Photo approved — ready to upload</div>}
                                 {row.uploadStatus === "uploading" && <div style={{ color: C.gold, fontSize: 11, marginTop: 6 }}>Uploading...</div>}
                                 {row.uploadStatus === "uploaded" && <div style={{ color: C.green, fontSize: 11, marginTop: 6 }}>Upload success</div>}
                                 {row.uploadStatus === "failed" && <div style={{ color: C.red, fontSize: 11, marginTop: 6 }}>{row.uploadError || "Upload failed"}</div>}
                                 {row.reuploadRequired && <div style={{ color: C.red, fontSize: 12, marginTop: 6, fontWeight: 700 }}>Rejected: {row.rejectionReason || "Photo is unclear or required information is missing."}</div>}
                               </div>
-                              <button type="button" disabled={busy || uploadingAll} onClick={() => verifyParcelRow(row.id)} style={{ ...buttonStyle(row.reuploadRequired ? "red" : row.verified ? "green" : "gold"), opacity: busy || uploadingAll ? 0.58 : 1 }}>{row.uploadStatus === "uploading" ? "UPLOADING..." : row.reuploadRequired ? "RE-UPLOAD" : row.verified ? "APPROVED" : "UPLOAD FOR REVIEW"}</button>
+                              <button type="button" disabled={busy || uploadingAll || row.photoPreparing || (!row.photoUrl && !row.photoApproved)} onClick={() => verifyParcelRow(row.id)} style={{ ...buttonStyle(row.reuploadRequired ? "red" : row.verified ? "green" : "gold"), opacity: busy || uploadingAll || row.photoPreparing || (!row.photoUrl && !row.photoApproved) ? 0.58 : 1 }}>{row.uploadStatus === "uploading" ? "UPLOADING..." : row.reuploadRequired ? "RE-UPLOAD" : row.verified ? "APPROVED" : "UPLOAD FOR REVIEW"}</button>
                             </div>
                             <div><label>Remarks</label><input value={row.remarks} onChange={(e) => updateParcelRow(row.id, { remarks: e.target.value })} placeholder="Fragile / special handling note..." style={inputStyle()} /></div>
                           </div>
@@ -2759,8 +2819,11 @@ function FieldPortal() {
                 <div><label>Recipient name</label><input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} style={inputStyle()} /></div>
                 <div><label>Recipient phone</label><input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} style={inputStyle()} /></div>
                 <div><label>COD collected amount</label><input value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
-                <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" onChange={handleProof} style={inputStyle()} /></div>
-                {proofUrl && <Badge color={C.green}>Proof attached</Badge>}
+                <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
+                {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
+                {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
+                {proofFile && !proofApproved && <button type="button" onClick={() => setProofApproved(true)} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
+                {proofApproved && <Badge color={C.green}>Approved — ready to upload and submit</Badge>}
               </div>
             )}
 
@@ -2809,11 +2872,15 @@ function FieldPortal() {
                     type="file"
                     accept="image/*"
                     capture="environment"
-                    onChange={handleProof}
+                    disabled={busy || proofPreparing}
+                    onChange={(event) => void handleProof(event)}
                     style={inputStyle()}
                   />
                 </div>
-                {proofUrl && <Badge color={C.green}>Proof attached</Badge>}
+                {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
+                {proofPreviewUrl && <img src={proofPreviewUrl} alt="Exception proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
+                {proofFile && !proofApproved && <button type="button" onClick={() => setProofApproved(true)} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
+                {proofApproved && <Badge color={C.green}>Approved — ready to upload and submit</Badge>}
               </div>
             )}
 
@@ -2836,7 +2903,7 @@ function FieldPortal() {
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
               <button type="button" disabled={busy} onClick={() => setModal(null)} style={buttonStyle("ghost")}>Cancel</button>
-              <button type="button" onClick={submitModal} disabled={busy} style={buttonStyle(modal === "exception" ? "red" : "gold")}><UploadCloud size={16} /> {busy ? "Submitting..." : "Submit"}</button>
+              <button type="button" onClick={submitModal} disabled={busy || proofPreparing || Boolean(proofFile && !proofApproved)} style={{ ...buttonStyle(modal === "exception" ? "red" : "gold"), opacity: busy || proofPreparing || Boolean(proofFile && !proofApproved) ? 0.58 : 1 }}><UploadCloud size={16} /> {busy ? "Submitting..." : "Submit"}</button>
             </div>
           </Card>
         </div>
