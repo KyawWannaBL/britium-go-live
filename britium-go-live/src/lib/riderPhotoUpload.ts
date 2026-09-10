@@ -8,22 +8,31 @@ type WorkerResponse = {
   error?: string;
 };
 
-export async function compressRiderPhoto(file: File): Promise<File> {
+export async function compressRiderPhoto(file: File, signal?: AbortSignal): Promise<File> {
   if (!file.type.startsWith("image/")) throw new Error("Only image files are allowed.");
   const worker = new Worker(new URL("../workers/photoCompression.worker.ts", import.meta.url), { type: "module" });
   const id = crypto.randomUUID();
   try {
     const buffer = await file.arrayBuffer();
     const response = await new Promise<WorkerResponse>((resolve, reject) => {
-      const timer = window.setTimeout(() => reject(new Error("Photo compression timed out. Please retry.")), 60_000);
+      let settled = false;
+      const finish = (callback: () => void) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        signal?.removeEventListener("abort", abort);
+        callback();
+      };
+      const abort = () => finish(() => reject(new DOMException("Photo operation cancelled.", "AbortError")));
+      const timer = window.setTimeout(() => finish(() => reject(new Error("Photo compression timed out. Please retry."))), 60_000);
+      if (signal?.aborted) return abort();
+      signal?.addEventListener("abort", abort, { once: true });
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
         if (event.data.id !== id) return;
-        window.clearTimeout(timer);
-        resolve(event.data);
+        finish(() => resolve(event.data));
       };
       worker.onerror = () => {
-        window.clearTimeout(timer);
-        reject(new Error("Photo compression worker failed. Please retry or capture a new photo."));
+        finish(() => reject(new Error("Photo compression worker failed. Please retry or capture a new photo.")));
       };
       worker.postMessage({ id, buffer, mimeType: file.type }, [buffer]);
     });
@@ -42,10 +51,35 @@ export async function withRiderUploadTimeout<T>(request: PromiseLike<T>, timeout
     return await Promise.race([
       Promise.resolve(request),
       new Promise<T>((_, reject) => {
-        timer = setTimeout(() => reject(new Error("Photo upload timed out after 120 seconds. Check your connection and retry; nothing was saved.")), timeoutMs);
+        timer = setTimeout(() => reject(new Error("Upload confirmation timed out. The upload may have completed. Check its status before retrying.")), timeoutMs);
       }),
     ]);
   } finally {
     if (timer) clearTimeout(timer);
+  }
+}
+
+export async function confirmRiderStorageUpload<T extends { error?: unknown }>(options: {
+  path: string;
+  pending: Map<string, PromiseLike<T>>;
+  objectExists: () => Promise<boolean>;
+  upload: () => PromiseLike<T>;
+  timeoutMs?: number;
+}) {
+  if (await options.objectExists()) return;
+  let request = options.pending.get(options.path);
+  if (!request) {
+    request = options.upload();
+    options.pending.set(options.path, request);
+    void Promise.resolve(request).then(
+      () => { if (options.pending.get(options.path) === request) options.pending.delete(options.path); },
+      () => { if (options.pending.get(options.path) === request) options.pending.delete(options.path); },
+    );
+  }
+  try {
+    const result = await withRiderUploadTimeout(request, options.timeoutMs);
+    if (result.error && !(await options.objectExists())) throw result.error;
+  } catch (error) {
+    if (!(await options.objectExists())) throw error;
   }
 }

@@ -1,6 +1,6 @@
 // @ts-nocheck
 // BRITIUM_PRIMARY_FIELD_VERIFICATION_GUARD_V10_1
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Bell,
@@ -40,7 +40,7 @@ import { getRiderSupabase, riderSupabaseConfigured } from "../lib/riderPortalSup
 
 import { supabase } from "../integrations/supabase/client";
 import AssignmentNotificationSound from "../components/AssignmentNotificationSound";
-import { compressRiderPhoto, MAX_RIDER_PROOF_BYTES, withRiderUploadTimeout } from "../lib/riderPhotoUpload";
+import { compressRiderPhoto, confirmRiderStorageUpload, MAX_RIDER_PROOF_BYTES } from "../lib/riderPhotoUpload";
 
 type View =
   | "wall"
@@ -532,6 +532,8 @@ type ParcelVerificationRow = {
   previewUrl?: string;
   photoApproved?: boolean;
   photoPreparing?: boolean;
+  photoOperationId?: string;
+  storagePath?: string;
 };
 
 function safeNumber(value: unknown, fallback = 0) {
@@ -1617,6 +1619,58 @@ function FieldPortal() {
   const [proofPreviewUrl, setProofPreviewUrl] = useState("");
   const [proofApproved, setProofApproved] = useState(false);
   const [proofPreparing, setProofPreparing] = useState(false);
+  const [proofOperationId, setProofOperationId] = useState("");
+  const selectedJobRef = useRef<RiderJob | null>(null);
+  const modalRef = useRef<ModalMode>(null);
+  const parcelPhotoOperations = useRef(new Map<string, { id: string; jobId: string; modal: ModalMode; controller: AbortController; previewUrl?: string }>());
+  const workflowPhotoOperation = useRef<{ id: string; jobId: string; modal: ModalMode; controller: AbortController; previewUrl?: string } | null>(null);
+  const pendingUploads = useRef(new Map<string, Promise<any>>());
+  const modalSubmissionId = useRef("");
+
+  selectedJobRef.current = selectedJob;
+  modalRef.current = modal;
+
+  function cancelPhotoOperations() {
+    parcelPhotoOperations.current.forEach((operation) => {
+      operation.controller.abort();
+      if (operation.previewUrl) URL.revokeObjectURL(operation.previewUrl);
+    });
+    parcelPhotoOperations.current.clear();
+    workflowPhotoOperation.current?.controller.abort();
+    if (workflowPhotoOperation.current?.previewUrl) URL.revokeObjectURL(workflowPhotoOperation.current.previewUrl);
+    workflowPhotoOperation.current = null;
+  }
+
+  useEffect(() => () => cancelPhotoOperations(), []);
+
+  function closeModal() {
+    cancelPhotoOperations();
+    setProofFile(null);
+    setProofUrl("");
+    setProofPreviewUrl("");
+    setProofApproved(false);
+    setProofPreparing(false);
+    setProofOperationId("");
+    setModal(null);
+    modalSubmissionId.current = "";
+  }
+
+  async function storageObjectExists(storagePath: string) {
+    const folder = storagePath.slice(0, storagePath.lastIndexOf("/"));
+    const filename = storagePath.slice(storagePath.lastIndexOf("/") + 1);
+    const result = await supabase.storage.from("rider-proofs").list(folder, { search: filename, limit: 1 });
+    if (result.error) throw result.error;
+    return result.data?.some((item: any) => item.name === filename) === true;
+  }
+
+  async function confirmStorageUpload(storagePath: string, file: File) {
+    await confirmRiderStorageUpload({
+      path: storagePath,
+      pending: pendingUploads.current,
+      objectExists: () => storageObjectExists(storagePath),
+      upload: () => supabase.storage.from("rider-proofs").upload(storagePath, file, { cacheControl: "3600", upsert: false }),
+    });
+  }
   const [remark, setRemark] = useState("");
   const [exceptionReason, setExceptionReason] = useState("CUSTOMER_NOT_AVAILABLE");
   const [pickupSearch, setPickupSearch] = useState("");
@@ -1879,6 +1933,8 @@ function FieldPortal() {
   }
 
   async function openModal(job: RiderJob, mode: ModalMode) {
+    cancelPhotoOperations();
+    modalSubmissionId.current = crypto.randomUUID();
     setSelectedJob(job);
     setModal(mode);
     const nextCount = String(job.expected_parcels || job.delivery_line_count || 1);
@@ -1891,6 +1947,7 @@ function FieldPortal() {
     setProofPreviewUrl("");
     setProofApproved(false);
     setProofPreparing(false);
+    setProofOperationId("");
     setRemark("");
     setExceptionReason("CUSTOMER_NOT_AVAILABLE");
     setPickupSearch("");
@@ -1950,17 +2007,13 @@ function FieldPortal() {
       let publicUrl = row.photoUrl || "";
 
       if (row.photoFile) {
-        const safeName = row.photoFile.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-        const storagePath = `pickup-proofs/${currentPickupId}/${itemNo}-${Date.now()}-${safeName}`;
+        const operationId = row.photoOperationId;
+        if (!operationId) throw new Error("Approve the current photo before upload.");
+        const storagePath = row.storagePath || `pickup-proofs/${currentPickupId}/${itemNo}-${operationId}.jpg`;
+        await confirmStorageUpload(storagePath, row.photoFile);
 
-        const { error: uploadError } = await withRiderUploadTimeout(supabase.storage
-          .from("rider-proofs")
-          .upload(storagePath, row.photoFile, {
-            cacheControl: "3600",
-            upsert: true,
-          }));
-
-        if (uploadError) throw uploadError;
+        const activeOperation = parcelPhotoOperations.current.get(rowId);
+        if (!selectedJobRef.current || pickupId(selectedJobRef.current) !== currentPickupId || modalRef.current !== "pickup" || activeOperation?.id !== operationId) return false;
 
         const { data: publicData } = supabase.storage
           .from("rider-proofs")
@@ -1978,6 +2031,7 @@ function FieldPortal() {
           proof_url: publicUrl,
           proof_photo_path: publicUrl,
           remark: row.remarks || null,
+          idempotency_key: operationId,
         },
       });
 
@@ -1994,6 +2048,7 @@ function FieldPortal() {
           uploaded_by: session?.normalizedLogin || session?.worker_code || session?.login || "RIDER",
           uploaded_role: "RIDER",
           remarks: row.remarks || null,
+          idempotency_key: operationId,
         },
       });
 
@@ -2122,12 +2177,16 @@ function FieldPortal() {
       photoUrl: "",
       photoApproved: false,
       photoPreparing: true,
+      photoOperationId: "",
+      storagePath: "",
       uploadStatus: "preparing",
       uploadError: "",
       reviewStatus: "PENDING_SELECTION",
       verified: false,
     });
 
+    parcelPhotoOperations.current.get(rowId)?.controller.abort();
+    parcelPhotoOperations.current.delete(rowId);
     const quality = validateParcelPhoto(file);
     if (!quality.ok) {
       setError(quality.reason);
@@ -2136,9 +2195,20 @@ function FieldPortal() {
       return;
     }
 
+    const jobId = pickupId(selectedJob);
+    const operation = { id: crypto.randomUUID(), jobId, modal: "pickup" as ModalMode, controller: new AbortController() };
+    parcelPhotoOperations.current.set(rowId, operation);
+    updateParcelRow(rowId, { photoOperationId: operation.id });
     try {
-      const compressed = await compressRiderPhoto(file);
+      const compressed = await compressRiderPhoto(file, operation.controller.signal);
+      const current = parcelPhotoOperations.current.get(rowId);
+      if (current?.id !== operation.id || current.jobId !== pickupId(selectedJobRef.current || {}) || modalRef.current !== "pickup") return;
       const previewUrl = URL.createObjectURL(compressed);
+      if (parcelPhotoOperations.current.get(rowId)?.id !== operation.id) {
+        URL.revokeObjectURL(previewUrl);
+        return;
+      }
+      operation.previewUrl = previewUrl;
       updateParcelRow(rowId, {
         photoName: compressed.name,
         photoFile: compressed,
@@ -2152,16 +2222,21 @@ function FieldPortal() {
         rejectionReason: "",
         reuploadRequired: false,
         verified: false,
+        photoOperationId: operation.id,
+        storagePath: `pickup-proofs/${jobId.replace(/[^a-zA-Z0-9_-]/g, "_")}/${rowId.replace(/[^a-zA-Z0-9_-]/g, "_")}-${operation.id}.jpg`,
       });
       setMessage(`Compressed preview ready for parcel ${rowId}. Approve it before upload.`);
     } catch (compressionError: any) {
+      if (parcelPhotoOperations.current.get(rowId)?.id !== operation.id || compressionError?.name === "AbortError") return;
       updateParcelRow(rowId, { photoPreparing: false, uploadStatus: "failed", uploadError: compressionError?.message || "Compression failed" });
       setError(compressionError?.message || "Photo compression failed.");
     }
   }
 
   function approveParcelPhoto(rowId: string) {
-    updateParcelRow(rowId, { photoApproved: true, uploadStatus: "idle", reviewStatus: "PENDING_UPLOAD" });
+    const operation = parcelPhotoOperations.current.get(rowId);
+    if (!operation || operation.jobId !== pickupId(selectedJobRef.current || {}) || modalRef.current !== "pickup") return;
+    updateParcelRow(rowId, { photoApproved: true, uploadStatus: "idle", reviewStatus: "PENDING_UPLOAD", photoOperationId: operation.id });
     setMessage(`Photo approved for parcel ${rowId}. It is ready to upload.`);
   }
 
@@ -2175,38 +2250,52 @@ function FieldPortal() {
     setProofPreviewUrl("");
     setProofApproved(false);
     setProofPreparing(true);
+    setProofOperationId("");
     setError("");
+    workflowPhotoOperation.current?.controller.abort();
+    const jobId = pickupId(selectedJob);
+    const operation = { id: crypto.randomUUID(), jobId, modal, controller: new AbortController() };
+    workflowPhotoOperation.current = operation;
     try {
-      const compressed = await compressRiderPhoto(file);
+      const compressed = await compressRiderPhoto(file, operation.controller.signal);
+      if (workflowPhotoOperation.current?.id !== operation.id || pickupId(selectedJobRef.current || {}) !== jobId || modalRef.current !== operation.modal) return;
+      const previewUrl = URL.createObjectURL(compressed);
+      if (workflowPhotoOperation.current?.id !== operation.id) {
+        URL.revokeObjectURL(previewUrl);
+        return;
+      }
+      operation.previewUrl = previewUrl;
       setProofFile(compressed);
-      setProofPreviewUrl(URL.createObjectURL(compressed));
+      setProofPreviewUrl(previewUrl);
+      setProofOperationId(operation.id);
       setMessage(`Compressed proof preview ready for ${pickupId(selectedJob)}. Approve it before submitting.`);
     } catch (compressionError: any) {
+      if (workflowPhotoOperation.current?.id !== operation.id || compressionError?.name === "AbortError") return;
       setProofFile(null);
       setError(compressionError?.message || "Photo compression failed.");
     } finally {
-      setProofPreparing(false);
+      if (workflowPhotoOperation.current?.id === operation.id) setProofPreparing(false);
     }
+  }
+
+  function approveWorkflowProof() {
+    const operation = workflowPhotoOperation.current;
+    if (!operation || operation.id !== proofOperationId || operation.jobId !== pickupId(selectedJobRef.current || {}) || operation.modal !== modalRef.current) return;
+    setProofApproved(true);
+    setMessage("Photo approved — ready to upload and submit.");
   }
 
 
   async function uploadWorkflowProof(
     pickupIdValue: string,
     workflowMode: string,
-    file: File
+    file: File,
+    operationId: string,
   ) {
-    const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath =
-      `workflow-proofs/${pickupIdValue}/${workflowMode}-${Date.now()}-${safeName}`;
-
-    const { error: uploadError } = await withRiderUploadTimeout(supabase.storage
-      .from("rider-proofs")
-      .upload(storagePath, file, {
-        cacheControl: "3600",
-        upsert: true,
-      }));
-
-    if (uploadError) throw uploadError;
+    const safePickupId = pickupIdValue.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const safeMode = workflowMode.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const storagePath = `workflow-proofs/${safePickupId}/${safeMode}-${operationId}.jpg`;
+    await confirmStorageUpload(storagePath, file);
 
     const { data } = supabase.storage
       .from("rider-proofs")
@@ -2226,6 +2315,7 @@ function FieldPortal() {
     }
 
     const id = pickupId(selectedJob);
+    const submittedPhotoOperationId = proofOperationId;
     const codRequired = Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0);
     let action = "";
     let payload: Record<string, any> = {};
@@ -2333,7 +2423,10 @@ function FieldPortal() {
 
     try {
       if (proofFile && proofApproved) {
-        proof = await uploadWorkflowProof(id, modal || "workflow", proofFile);
+        if (!submittedPhotoOperationId) throw new Error("The approved photo operation is no longer active.");
+        proof = await uploadWorkflowProof(id, modal || "workflow", proofFile, submittedPhotoOperationId);
+        const activeOperation = workflowPhotoOperation.current;
+        if (!activeOperation || activeOperation.id !== submittedPhotoOperationId || activeOperation.jobId !== pickupId(selectedJobRef.current || {}) || activeOperation.modal !== modalRef.current) return;
         payload.proof_url = proof;
       }
 
@@ -2347,6 +2440,8 @@ function FieldPortal() {
         remark: note,
         remarks: note,
         proof_url: proof,
+        idempotency_key: submittedPhotoOperationId || modalSubmissionId.current,
+        photo_operation_id: submittedPhotoOperationId || null,
         ...payload,
       };
 
@@ -2385,7 +2480,7 @@ function FieldPortal() {
       }
 
       setMessage(`${id} updated: ${(data as any)?.action || action}`);
-      setModal(null);
+      closeModal();
       setSelectedJob(null);
       setProofFile(null);
       setProofUrl("");
@@ -2694,7 +2789,7 @@ function FieldPortal() {
           <Card style={{ width: modal === "pickup" ? "min(1180px, 100%)" : "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
               <div><strong>{modal === "pickup" ? "Verify pickup" : modal === "delivery" ? "Verify delivery" : "Submit exception"}</strong><div style={{ color: C.sub }}>{pickupId(selectedJob)}</div></div>
-              <button onClick={() => setModal(null)} style={buttonStyle("ghost")}><X size={16} /></button>
+              <button onClick={closeModal} style={buttonStyle("ghost")}><X size={16} /></button>
             </div>
 
             {modal === "pickup" && (
@@ -2822,7 +2917,7 @@ function FieldPortal() {
                 <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
                 {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
                 {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
-                {proofFile && !proofApproved && <button type="button" onClick={() => setProofApproved(true)} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
+                {proofFile && !proofApproved && <button type="button" onClick={approveWorkflowProof} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
                 {proofApproved && <Badge color={C.green}>Approved — ready to upload and submit</Badge>}
               </div>
             )}
@@ -2879,7 +2974,7 @@ function FieldPortal() {
                 </div>
                 {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
                 {proofPreviewUrl && <img src={proofPreviewUrl} alt="Exception proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
-                {proofFile && !proofApproved && <button type="button" onClick={() => setProofApproved(true)} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
+                {proofFile && !proofApproved && <button type="button" onClick={approveWorkflowProof} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
                 {proofApproved && <Badge color={C.green}>Approved — ready to upload and submit</Badge>}
               </div>
             )}
@@ -2902,7 +2997,7 @@ function FieldPortal() {
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
-              <button type="button" disabled={busy} onClick={() => setModal(null)} style={buttonStyle("ghost")}>Cancel</button>
+              <button type="button" disabled={busy} onClick={closeModal} style={buttonStyle("ghost")}>Cancel</button>
               <button type="button" onClick={submitModal} disabled={busy || proofPreparing || Boolean(proofFile && !proofApproved)} style={{ ...buttonStyle(modal === "exception" ? "red" : "gold"), opacity: busy || proofPreparing || Boolean(proofFile && !proofApproved) ? 0.58 : 1 }}><UploadCloud size={16} /> {busy ? "Submitting..." : "Submit"}</button>
             </div>
           </Card>
