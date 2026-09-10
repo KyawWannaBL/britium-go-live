@@ -1,5 +1,5 @@
 import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
@@ -167,8 +167,8 @@ function positiveInt(value: unknown): number { const n = Math.trunc(num(value));
 function requestedParcelCount(pickup: Pickup): number {
   return Math.max(positiveInt(pickup.expected_parcels),0);
 }
-function authorizedParcelCount(pickup: Pickup, observed = 0): number { return 5000; 
-  return Math.max(requestedParcelCount(pickup),positiveInt(pickup.verified_parcels),positiveInt(observed));
+function authorizedParcelCount(pickup: Pickup, observed = 0): number {
+  return Math.max(requestedParcelCount(pickup),positiveInt(pickup.verified_parcels),positiveInt(pickup.registered_parcels),positiveInt(observed));
 }
 function money(value: unknown): string {
   if (value === "" || value == null) return "—";
@@ -533,10 +533,10 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
-  const route = routeForRow(row,tariffOptions);
+  const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   const stationReady = handoffStationReady(row,route);
   const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
@@ -823,7 +823,7 @@ function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tar
       {row.message ? <div className="mt-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
     </section>
   );
-}
+});
 
 function BritiumQuickTools() {
   const [isProcessing, setIsProcessing] = useState(false);
@@ -1082,7 +1082,9 @@ export default function DataEntryFinancialV2Page() {
   const [additionalReason,setAdditionalReason]=useState("");
   const [addingRegistration,setAddingRegistration]=useState(false);
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
-  const [visibleRowCount,setVisibleRowCount]=useState(20);
+  const PAGE_SIZE=10;
+  const [pageIndex,setPageIndex]=useState(0);
+  const pageStart=Math.min(pageIndex,Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1))*PAGE_SIZE;
   const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
   const manualLocationCorrectionsRef=useRef(new Map<string,DeliveryLocation>());
 
@@ -1113,13 +1115,26 @@ export default function DataEntryFinancialV2Page() {
     const unique=new Map<string,ParcelRow>();
     for(const row of combined) unique.set(`${row.pickup_id}:${row.parcel_sequence}`,row);
     return [...unique.values()].filter((row)=>
-      routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="REVIEW_REQUIRED"
+      row.locationStatus==="REVIEW_REQUIRED"&&routeForRow(row,tariffOptions).mapRequired
     );
   },[bulkImportDrafts,rows,tariffOptions]);
 
-  function updateRow(index:number,patch:Partial<ParcelRow>){
-    setRows(current=>current.map((row,i)=>i===index?{...row,...patch,message:patch.message??""}:row));
-  }
+  const updateRow=useCallback((index:number,patch:Partial<ParcelRow>)=>{
+    setRows(current=>{
+      const row=current[index];
+      if(!row) return current;
+      const next={...patch,message:patch.message??""};
+      if(Object.entries(next).every(([key,value])=>Object.is((row as any)[key],value))) return current;
+      const updated=current.slice();
+      updated[index]={...row,...next};
+      return updated;
+    });
+  },[]);
+  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto});
+  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto};});
+  const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
+  const saveEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveRow(...args),[]);
+  const reviewEditorPhoto=useCallback((...args:any[])=>rowActionsRef.current.reviewPhoto(...args),[]);
 
   async function loadStartup(){
     setLoading(true); setMessage("");
@@ -1233,8 +1248,7 @@ export default function DataEntryFinancialV2Page() {
       __proof_url:await displayPhotoUrl(proofUrl(proof)),
     })));
     const observedCount=resolvedProofs.reduce((maximum:number,item:any)=>Math.max(maximum,positiveInt(item.parcel_sequence)),0);
-    let count = authorizedParcelCount(pickup,observedCount);
-    if (!count) count = 1000; /* Forced capacity for standalone inbound manifests */
+    const count = authorizedParcelCount(pickup,observedCount);
     const nextRows=Array.from({length:count},(_,offset)=>{
       const sequence=offset+1;
       const proof=resolvedProofs
@@ -1464,7 +1478,7 @@ export default function DataEntryFinancialV2Page() {
     if(missingStations.length){
       const first=missingStations[0];
       const firstIndex=rows.findIndex((item)=>item.pickup_id===first.pickup_id&&item.parcel_sequence===first.parcel_sequence);
-      setVisibleRowCount((current)=>Math.max(current,firstIndex+1));
+      setPageIndex(Math.floor(firstIndex/PAGE_SIZE));
       window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
       throw new Error(`Parcel ${first.parcel_sequence}: choose Aung Mingalar, Dagon Ayar/Thiri, or enter the other highway station before saving.`);
     }
@@ -1475,7 +1489,7 @@ export default function DataEntryFinancialV2Page() {
       const resolving=unresolvedLocations.filter((row)=>row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING").length;
       const review=unresolvedLocations.filter((row)=>row.locationStatus==="REVIEW_REQUIRED").length;
       const firstIndex=rows.findIndex((item)=>item.pickup_id===first.pickup_id&&item.parcel_sequence===first.parcel_sequence);
-      setVisibleRowCount((current)=>Math.max(current,firstIndex+1));
+      setPageIndex(Math.floor(firstIndex/PAGE_SIZE));
       window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
       throw new Error(`Core-region location sync incomplete: ${mapLocations.length-unresolvedLocations.length}/${mapLocations.length} synchronized, ${resolving} still resolving, ${review} need review. Parcel ${first.parcel_sequence} is the first unresolved row; use Retry Location Sync or Apply coordinates for a corrected pin.`);
     }
@@ -2312,7 +2326,7 @@ export default function DataEntryFinancialV2Page() {
 
   useEffect(()=>{void loadStartup();},[]);
   useEffect(()=>{
-    setVisibleRowCount(20);
+    setPageIndex(0);
     if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
     const draft=bulkImportDrafts[selectedPickupId];
     if(draft){
@@ -2340,8 +2354,14 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(0,visibleRowCount).map((row,index)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={index} updateRow={updateRow} calculate={calculateRow} save={saveRow} reviewPhoto={reviewPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
-        {rows.length>visibleRowCount?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center"><div className="text-xs font-bold text-cyan-100">Showing {visibleRowCount} of {rows.length} parcels to keep Data Entry responsive.</div><button type="button" onClick={()=>setVisibleRowCount((count)=>Math.min(rows.length,count+20))} className="mt-3 rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d]">SHOW NEXT {Math.min(20,rows.length-visibleRowCount)} PARCELS</button></div>:null}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
+          <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every parcel.</div>
+          <div className="mt-3 flex justify-center gap-3">
+            <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart/PAGE_SIZE-1))} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">PREVIOUS</button>
+            <button type="button" disabled={pageStart+PAGE_SIZE>=rows.length} onClick={()=>setPageIndex(pageStart/PAGE_SIZE+1)} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
+          </div>
+        </div>:null}
       </>}
     </div>
   );
