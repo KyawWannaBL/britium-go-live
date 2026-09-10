@@ -1,3 +1,4 @@
+import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
 import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
 import { memo, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Calculator, Download, FileSpreadsheet, Image as ImageIcon, Loader2, Maximize2, Plus, RefreshCw, Save, Upload, X } from "lucide-react";
@@ -40,7 +41,7 @@ const AMOUNT_TYPES = [
 const COLLECTION_METHOD_MY: Record<AmountType,string> = {
   ITEM_PRICE_PLUS_DECLARED_DELIVERY:"ပစ္စည်းတန်ဖိုး + သတ်မှတ်ထားသော ပို့ဆောင်ခ",
   DELIVERY_CHARGE_ONLY:"ပို့ဆောင်ခသာ",
-  EXACT_COLLECTION_AMOUNT:"အတိအကျ ကောက်ခံမည့်ငွေ",
+  EXACT_COLLECTION_AMOUNT:"အတိအကျ ကောက်ခံရမည့်ငွေပမာဏ",
 };
 
 type AmountType = typeof AMOUNT_TYPES[number];
@@ -363,7 +364,7 @@ function parcelRowFromProof(
     ? "EXACT_COLLECTION_AMOUNT"
     : AMOUNT_TYPES.includes(rawAmountType as AmountType)
       ? rawAmountType
-      : "ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
+      : defaultAmountEntryType(proof.financial_quote?.source_merchant_name || proof.merchant_id || pickup.merchant_id)) as AmountType;
   const savedTier=text(proof.customer_tier).toUpperCase();
   const customerTier=savedTier||tierAccess.resolved_customer_tier||"STANDARD";
   const legacyAdditional=num(proof.additional_customer_charge);
@@ -1626,7 +1627,7 @@ export default function DataEntryFinancialV2Page() {
         : pickupTierAccess.resolved_customer_tier||"STANDARD";
       const amountType=(AMOUNT_TYPES.includes(sourceRow.paymentType as AmountType)
         ?sourceRow.paymentType
-        :"ITEM_PRICE_PLUS_DECLARED_DELIVERY") as AmountType;
+        :defaultAmountEntryType(sourceRow.merchantName || pickup.merchant_id)) as AmountType;
       const routedItemPrice=amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"";
       const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions);
       const tariffOption=destination.option as TariffOption|null;

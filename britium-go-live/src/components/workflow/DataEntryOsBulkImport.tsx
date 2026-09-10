@@ -1,3 +1,4 @@
+import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -263,13 +264,12 @@ function normalizeServiceType(value: unknown) {
   return clean(value).toUpperCase();
 }
 
-function normalizePaymentType(value: unknown, itemPrice: number | "", osSetPrice: number | "") {
+function normalizePaymentType(value: unknown, itemPrice: number | "", osSetPrice: number | "", merchant?: unknown) {
   const payment = normalized(value);
   if (payment.includes("exact") || payment.includes("အတိအကျ") || payment.includes("cash on delivery") || /\bcod\b/.test(payment)) return "EXACT_COLLECTION_AMOUNT";
   if (payment.includes("delivery charge only") || payment.includes("delivery fee only") || payment.includes("delivery only") || payment.includes("ပို့ဆောင်ခသာ")) return "DELIVERY_CHARGE_ONLY";
   if (payment.includes("item") || payment.includes("ပစ္စည်း") || payment.includes("ကုန်ပစ္စည်း")) return "ITEM_PRICE_PLUS_DECLARED_DELIVERY";
-  if (!payment && itemPrice === "" && osSetPrice !== "") return "DELIVERY_CHARGE_ONLY";
-  if (!payment && (itemPrice !== "" || osSetPrice !== "")) return "ITEM_PRICE_PLUS_DECLARED_DELIVERY";
+  if (!payment) return defaultAmountEntryType(merchant);
   return clean(value).toUpperCase();
 }
 
@@ -409,6 +409,10 @@ export function convertInboundManifestMatrix(matrix: unknown[][]) {
     const exactCollection = columns.has("finalCod")
       ? parseAmount(value("finalCod"))
       : parseAmount(value("itemPrice"));
+    const defaultType = defaultAmountEntryType(value("merchantName"));
+    // Explicit prepaid zero overrides defaults to avoid collecting again.
+    const paymentType = exactCollection === 0 && columns.has("finalCod")
+      ? "EXACT_COLLECTION_AMOUNT" : defaultType;
     const routing = resolveDataEntryServiceProvider(
       postal.townshipMm || postal.township || recipientTown,
       address,
@@ -428,9 +432,9 @@ export function convertInboundManifestMatrix(matrix: unknown[][]) {
       address,
       parseAmount(value("weight")),
       "STANDARD",
-      "EXACT_COLLECTION_AMOUNT",
-      exactCollection,
-      0,
+      paymentType,
+      paymentType === "EXACT_COLLECTION_AMOUNT" ? exactCollection : parseAmount(value("itemPrice")),
+      paymentType === "EXACT_COLLECTION_AMOUNT" ? 0 : parseAmount(value("deliveryFee")),
       "STANDARD",
       providerDisplayName(routing.providerCode),
     ]);
@@ -688,7 +692,7 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
       actualWeight: parseAmount(value("actualWeight")),
       deliveryAddress: rawAddress,
       serviceType: normalizeServiceType(value("serviceType")),
-      paymentType: normalizePaymentType(value("paymentType"), itemPrice, osSetPrice),
+      paymentType: normalizePaymentType(value("paymentType"), itemPrice, osSetPrice, value("merchantName")),
       itemPrice,
       osSetPrice,
       merchantTier: normalizeTier(value("merchantTier")),
