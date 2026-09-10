@@ -703,6 +703,29 @@ export function parseOsImportMatrix(matrix: unknown[][]) {
   return { rows, missingHeaders, missingBulkRoutingHeaders, headerRowNumber: bestIndex + 1 };
 }
 
+
+// Accept warehouse inventory directly, while retaining the standard template parser.
+export function parseUploadMatrix(matrix: unknown[][]) {
+  const inventoryHeader = matrix.slice(0,30).findIndex((values) => {
+    const keys = new Set(values.map(identifyInboundManifestColumn).filter(Boolean));
+    return ["wayId","merchantName","recipientName","recipientPhone","recipientTown","deliveryAddress","finalCod"].every((key) => keys.has(key as InboundManifestColumn));
+  });
+  if (inventoryHeader < 0) return {...parseOsImportMatrix(matrix), convertedInventory:false};
+  const wayColumn=matrix[inventoryHeader].findIndex((value)=>identifyInboundManifestColumn(value)==="wayId");
+  const sourceRows=new Map<string,number>();
+  matrix.slice(inventoryHeader+1).forEach((values,offset)=>{
+    if(!values.some((value)=>clean(value))) return;
+    const wayId=clean(values[wayColumn]).toUpperCase();
+    const sourceRow=inventoryHeader+offset+2;
+    if(!wayId) throw new Error(`Row ${sourceRow}: Way ID is required. No rows were imported.`);
+    if(sourceRows.has(wayId)) throw new Error(`Duplicate Way ID ${wayId} at rows ${sourceRows.get(wayId)} and ${sourceRow}. No rows were imported.`);
+    sourceRows.set(wayId,sourceRow);
+  });
+  const converted=convertInboundManifestMatrix(matrix);
+  const parsed=parseOsImportMatrix(converted.matrix);
+  return {...parsed,convertedInventory:true,rows:parsed.rows.map((row)=>({...row,sourceRowNumber:sourceRows.get(clean(row.wayId).toUpperCase())!}))};
+}
+
 function csvCell(value: unknown) {
   const raw = String(value ?? "");
   return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
@@ -818,14 +841,14 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
       const sheetName = workbook.SheetNames[0];
       if (!sheetName) throw new Error("The workbook has no worksheet.");
       const matrix = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false });
-      const parsed = parseOsImportMatrix(matrix);
+      const parsed = parseUploadMatrix(matrix);
       setFilename(file.name);
       setRows(parsed.rows);
       setMissingHeaders(parsed.missingHeaders);
       setMissingBulkRoutingHeaders(parsed.missingBulkRoutingHeaders);
       setOpen(true);
       const incomplete = parsed.rows.filter((row) => row.completionStatus === "PARTIAL").length;
-      setMessage(`Loaded ${parsed.rows.length} row(s): ${parsed.rows.length - incomplete} complete, ${incomplete} partial.`);
+      setMessage(`${parsed.convertedInventory ? "Inventory format recognized and converted automatically. " : ""}Loaded ${parsed.rows.length} row(s): ${parsed.rows.length - incomplete} complete, ${incomplete} partial. Missing details remain blank for review. Explicit zero Final COD is preserved.`);
     } catch (error: any) {
       setFilename("");
       setRows([]);
@@ -896,7 +919,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
   }
 
   async function applyRows() {
-    if (false) { // Bypassed for inbound manifests
+    if (!targetReady) {
       setMessage(bulkMode
         ? "Fix every Way ID / Merchant routing issue before filling the bulk upload."
         : "Select the target pickup and wait for its registration rows to finish loading.");
@@ -1001,7 +1024,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
 
               <div className="flex flex-wrap justify-end gap-2">
                 <button type="button" onClick={() => setOpen(false)} className="rounded-lg border border-[#31506a] px-4 py-2.5 text-[11px] font-black">CANCEL</button>
-                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !rows.length || !selectedRows.length} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : bulkMode ? `FILL ${selectedRows.length || ""} ROW(S) · ${bulkPlan.batches.length} PICKUP(S)` : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
+                <button type="button" onClick={() => void applyRows()} disabled={fileBusy || busy || !rows.length || !selectedRows.length || !targetReady} className="rounded-lg bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{fileBusy ? "PREPARING…" : bulkMode ? `FILL ${selectedRows.length || ""} ROW(S) · ${bulkPlan.batches.length} PICKUP(S)` : `FILL ${selectedRows.length || ""} ROW(S)`}</button>
               </div>
             </div>
           </div>
