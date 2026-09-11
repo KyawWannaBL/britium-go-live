@@ -150,6 +150,7 @@ type ParcelRow = {
   locationCandidate?: DeliveryLocation | null;
   saved: boolean;
   skipped?: boolean;
+  calculationFailed?: boolean;
 };
 
 type BulkImportDraft = {
@@ -1320,6 +1321,7 @@ export default function DataEntryFinancialV2Page() {
       updateRow(index,{
         calculating:false,
         calculation:{...e.data,server_resolution:resolution},
+        calculationFailed:!e.ok,
         ...(resolvedTier?{customer_tier:resolvedTier}:{}),
         ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
         ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
@@ -1330,7 +1332,7 @@ export default function DataEntryFinancialV2Page() {
       });
       return e.ok;
     }catch(error:any){
-      updateRow(index,{calculating:false,message:error?.message||"Backend calculation failed."});
+      updateRow(index,{calculating:false,calculationFailed:true,message:error?.message||"Backend calculation failed."});
       return false;
     }
   }
@@ -1450,6 +1452,7 @@ export default function DataEntryFinancialV2Page() {
             results.set(index,{ok:e.ok,patch:{
               calculating:false,
               calculation:{...e.data,server_resolution:resolution},
+        calculationFailed:!e.ok,
               ...(resolvedTier?{customer_tier:resolvedTier}:{}),
               ...(resolvedProvider?{service_provider_code:resolvedProvider}:{}),
               ...(resolvedRegion?{deliveryRegion:resolvedRegion}:{}),
@@ -1460,7 +1463,7 @@ export default function DataEntryFinancialV2Page() {
             else failures.push(`Parcel ${row.parcel_sequence}: ${envelopeMessage(e)||"Calculation failed."}`);
           }catch(error:any){
             failures.push(`Parcel ${row.parcel_sequence}: ${error?.message||"Backend calculation failed."}`);
-            results.set(index,{ok:false,patch:{calculating:false,calculation:{},message:error?.message||"Backend calculation failed."}});
+            results.set(index,{ok:false,patch:{calculating:false,calculationFailed:true,calculation:{},message:error?.message||"Backend calculation failed."}});
           }
           completed+=1;
           if(completed===total||completed%2===0) setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
@@ -1471,7 +1474,7 @@ export default function DataEntryFinancialV2Page() {
         const result=results.get(index);
         if(!result || row.skipped) return row;
         if(row.pickup_id!==sourceRows[index]?.pickup_id || row.parcel_sequence!==sourceRows[index]?.parcel_sequence) return row;
-        if(JSON.stringify(payload(row,sourcePickup))!==sourcePayloads[index]) return {...row,calculating:false,calculation:{},message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
+        if(JSON.stringify(payload(row,sourcePickup))!==sourcePayloads[index]) return {...row,calculating:false,calculationFailed:true,calculation:{},message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
         return {...row,...result.patch};
       }));
       setBulkMessage(`Attempted ${completed} row(s): ${calculated} successful; ${failures.length} failed; ${sourceRows.filter(r=>r.skipped).length} skipped pending clarification. ${failures.slice(0,8).join(" | ")}${failures.length>8?" · Additional errors are shown on their parcel rows.":""}`);
@@ -1482,6 +1485,7 @@ export default function DataEntryFinancialV2Page() {
 
   function rowSaveObstacle(row:ParcelRow):string {
     if(row.skipped) return "Pending clarification";
+    if(row.calculationFailed || row.calculation?.validation_status==="ERROR") return row.message||"Financial calculation needs correction. Recalculate this parcel.";
     if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged) return "Photo approval required";
     if(row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10)) return "OS evidence source or reason is incomplete";
     const route=routeForRow(row,tariffOptions);
@@ -1489,6 +1493,23 @@ export default function DataEntryFinancialV2Page() {
     if(!handoffStationReady(row,route)) return "Highway terminal name and charge required";
     if(route.mapRequired&&row.locationStatus!=="SYNCED") return "Location needs synchronization or review";
     return "";
+  }
+
+  function downloadUnresolvedRows(){
+    const unresolved=rows.filter(row=>!row.saved&&Boolean(rowSaveObstacle(row)));
+    const content={pickup_id:selectedPickupId,exported_at:new Date().toISOString(),rows:unresolved.map(row=>({
+      parcel_sequence:row.parcel_sequence,delivery_way_id:row.delivery_way_id,
+      source_file:row.sourceFileName,source_row:row.sourceRowNumber,
+      merchant:row.sourceMerchantName,township:row.township,provider:row.service_provider_code,
+      customer_tier:row.customer_tier,recipient_name:row.recipient_name,recipient_phone:row.recipient_phone,
+      address:row.delivery_address,item_price:row.item_price,delivery_charges:row.delivery_charges,
+      amount_entry_type:row.amount_entry_type,exact_collection:row.merchant_stated_total_amount,
+      highway_station:row.handoffStationName,location_status:row.locationStatus,
+      skipped:Boolean(row.skipped),error:row.message||rowSaveObstacle(row)
+    }))};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(content,null,2)],{type:"application/json"}));
+    const link=document.createElement("a");link.href=url;link.download="Britium_Unresolved_Rows_"+selectedPickupId+".json";
+    document.body.appendChild(link);link.click();link.remove();window.setTimeout(()=>URL.revokeObjectURL(url),1000);
   }
 
   async function preserveBlockedDrafts(blocked:ParcelRow[]){
@@ -2423,6 +2444,7 @@ export default function DataEntryFinancialV2Page() {
             </div>
             <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
             <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+            <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
             <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
             <button
               type="button"
@@ -2562,6 +2584,7 @@ export default function DataEntryFinancialV2Page() {
             <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f6b84b]">Full Registration</div><div className="mt-1 text-lg font-black">{selectedPickupId} · {rows.length} parcels</div></div>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+            <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
               <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
               <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-lg border border-[#ff6b6b]/40 bg-[#3a1e28] px-4 py-2 text-[11px] font-black text-[#ff9aa2]"><X size={14}/>CLOSE</button>
             </div>
