@@ -2,6 +2,8 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Loader2, PackageCheck, QrCode, RefreshCw, ScanLine, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
+import { normalizeWarehouseScan } from "@/lib/warehouseScan";
 const C = { bg: "#061524", panel: "#0b2236", border: "#1a3a5c", gold: "#f6b84b", text: "#eef8ff", success: "#22c55e", error: "#ff4f86", info: "#38bdf8" };
 
 // EXACT MAPPING FROM YOUR PROCESS_STATUS_MASTER JSON
@@ -13,6 +15,7 @@ const EVENTS = [
 ];
 
 export default function WarehouseOperations() {
+  const scanBusy=useRef(false);
   const [rows, setRows] = useState<any[]>([]);
   const [scanCode, setScanCode] = useState("");
   const [eventType, setEventType] = useState("RECEIVED_AT_ORIGIN");
@@ -40,7 +43,11 @@ export default function WarehouseOperations() {
 
   // --- THE UNIVERSAL WORKFLOW ENGINE CONNECTION ---
   async function runScan(code = scanCode) {
-    const clean = String(code || "").trim();
+    if(scanBusy.current) return;
+    let clean:string;
+    try {clean=normalizeWarehouseScan(code);}
+    catch(error:any){setMessage({type:"error",text:error.message});return;}
+    scanBusy.current=true;
     if (!clean) return setMessage({ type: "error", text: "Scan ID required." });
 
     setLoading(true); setMessage(null);
@@ -62,6 +69,7 @@ export default function WarehouseOperations() {
     } catch (e: any) {
       setMessage({ type: "error", text: e?.message || "Warehouse scan failed." });
     } finally {
+      scanBusy.current=false;
       setLoading(false);
     }
   }
@@ -85,8 +93,12 @@ export default function WarehouseOperations() {
 
         <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 20, padding: 22 }}>
           <h2 style={{ marginTop: 0 }}>QR / Barcode Terminal</h2>
+          <WarehouseCameraScanner disabled={loading} onDetected={code=>setScanCode(code)} />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 12 }}>
             <input 
+              disabled={loading}
+              aria-label="Scanned pickup ID or waybill"
+              onKeyDown={e=>{if(e.key==="Enter" && !e.repeat){e.preventDefault();void runScan();}}}
               value={scanCode} 
               onChange={(e) => setScanCode(e.target.value)} 
               placeholder="Scan Pickup ID or Waybill..." 
