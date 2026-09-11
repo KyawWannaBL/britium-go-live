@@ -169,7 +169,7 @@ function preferredTariff(
   return [...matches].sort((left, right) => priority(left.provider_code)-priority(right.provider_code))[0] || null;
 }
 
-export function resolveDataEntryServiceProvider(
+function computeDataEntryServiceProvider(
   townshipValue: unknown,
   deliveryAddress: unknown,
   tariffOptions: DataEntryProviderTariffOption[],
@@ -269,6 +269,22 @@ export function resolveDataEntryServiceProvider(
     option,
     postal,
   };
+}
+
+const routingCache = new WeakMap<DataEntryProviderTariffOption[], Map<string, DataEntryProviderRouting>>();
+export function resolveDataEntryServiceProvider(
+  township: unknown, address: unknown, tariffs: DataEntryProviderTariffOption[],
+  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown } = {},
+): DataEntryProviderRouting {
+  let cache = routingCache.get(tariffs);
+  if (!cache) { cache = new Map(); routingCache.set(tariffs, cache); }
+  const key = JSON.stringify([township, address, options.itemPrice, options.ward, options.postalCode]);
+  const existing = cache.get(key);
+  if (existing) return existing;
+  const result = computeDataEntryServiceProvider(township, address, tariffs, options);
+  if (cache.size >= 1024) cache.delete(cache.keys().next().value!);
+  cache.set(key, result);
+  return result;
 }
 
 export function providerRoutingMessage(route: DataEntryProviderRouting): string {

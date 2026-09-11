@@ -46,6 +46,10 @@ try {
   const rates = [{destination_key:'HLAING',destination_name:'လှိုင်',provider_code:'BRITIUM'}];
   assert.equal(route('Hlaing', 'Mandalay', rates).providerCode, 'BRITIUM');
   assert.equal(route('Hlaingtharya (West)', '', []).providerCode, 'BRITIUM');
+  const cached = route('Hlaing', 'Yangon', rates);
+  for (let i=0;i<10000;i++) assert.strictEqual(route('Hlaing', 'Yangon', rates), cached);
+  assert.notStrictEqual(route('Hlaing', 'Different address', rates), cached);
+  assert.notStrictEqual(route('Hlaing', 'Yangon', [...rates]), cached);
   console.log(`PASS: ${checked} bilingual master locations, postal evidence, ambiguous wards, manual Unknown and core routing.`);
 } finally {
   rmSync(temp, {recursive:true, force:true});

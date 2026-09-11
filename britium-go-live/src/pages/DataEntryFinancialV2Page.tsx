@@ -1,3 +1,6 @@
+import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
+import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
+import BufferedDataEntryInput from "@/components/BufferedDataEntryInput";
 import { locationReadiness } from "@/lib/dataEntryLocationReadiness";
 import { calculateWithTimeoutRetry } from "@/lib/dataEntryCalculationRetry";
 import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
@@ -451,13 +454,15 @@ function MoneyBox({ label, value, highlight = false }: { label: string; value: u
 
 function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOptions }: any) {
   const [open, setOpen] = useState(false);
+  const [draftTownship, setDraftTownship] = useState(row.township);
+  useEffect(() => { setDraftTownship(row.township); }, [row.township]);
   const [providerFilter, setProviderFilter] = useState(() => row.service_provider_code || "ALL");
   const route = useMemo(()=>resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
     fallbackUnknownToRoyal:true,
     itemPrice:row.item_price,
   }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   useEffect(()=>{if(!open)setProviderFilter(row.service_provider_code||"ALL");},[row.service_provider_code,open]);
-  const query = text(row.township).trim().toLowerCase();
+  const query = text(draftTownship).trim().toLowerCase();
   const masterMatches = useMemo(() => open ? searchMasterLocations(query) : [], [open, query]);
   const chooseMaster = (location: MasterLocationOption) => {
     const township = location.townshipMm || location.township;
@@ -488,7 +493,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     });
     setOpen(false);
   };
-  const typeTownship = (township: string) => {
+  const commitTownship = (township: string) => {
     const nextRoute=resolveDataEntryServiceProvider(township,row.delivery_address,tariffOptions,{
       fallbackUnknownToRoyal:true,
       itemPrice:row.item_price,
@@ -499,7 +504,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
       township,
       message:providerRoutingMessage(nextRoute),
     }:{...routingPatch(nextRoute,{...row,township}),township,message:providerRoutingMessage(nextRoute)});
-    setOpen(true);
+    setOpen(false);
   };
   return (
     <Field label="မြို့နယ် / ဝန်ဆောင်မှုပေးသူ">
@@ -520,11 +525,12 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
         </div>
         <input
           className={inputClass}
-          value={row.township}
+          value={draftTownship}
           autoComplete="off"
           placeholder="မြို့နယ်၊ ရပ်ကွက်၊ ကျေးရွာအုပ်စု / Township, ward, village tract…"
           onFocus={() => setOpen(true)}
-          onChange={(event) => typeTownship(event.target.value)}
+          onChange={(event) => { setDraftTownship(event.target.value); setOpen(true); }}
+          onBlur={() => { if(draftTownship!==row.township) commitTownship(draftTownship); else setOpen(false); }}
           onKeyDown={(event) => {
             if (event.key === "Escape") setOpen(false);
             if (event.key === "Enter" && open) {
@@ -606,6 +612,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>
 
+      <DeliveryAddressHistory wayId={row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}/>
       <fieldset disabled={busy || row.skipped || row.checking} className="min-w-0">
       {row.photoUnavailableAcknowledged ? (
         <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
@@ -712,12 +719,12 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
       </div>:null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Field label="လက်ခံသူအမည်"><input className={inputClass} value={row.recipient_name} onChange={(e) => updateRow(index,{recipient_name:e.target.value})}/></Field>
-        <Field label="လက်ခံသူဖုန်း"><input className={inputClass} value={row.recipient_phone} onChange={(e) => updateRow(index,{recipient_phone:e.target.value})}/></Field>
+        <Field label="လက်ခံသူအမည်"><BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value) => updateRow(index,{recipient_name:value})}/></Field>
+        <Field label="လက်ခံသူဖုန်း"><BufferedDataEntryInput className={inputClass} value={row.recipient_phone} onCommit={(value) => updateRow(index,{recipient_phone:value})}/></Field>
         <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
-        <Field label="အမှန်တကယ်အလေးချိန် (kg)"><input type="number" step="0.01" className={inputClass} value={row.weight_kg} onChange={(e)=>updateRow(index,{weight_kg:e.target.value===""?"":Number(e.target.value)})}/></Field>
-        <Field label="လက်ခံသူလိပ်စာ"><textarea rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>{
-          const delivery_address=e.target.value;
+        <Field label="အမှန်တကယ်အလေးချိန် (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
+        <Field label="လက်ခံသူလိပ်စာ"><BufferedDataEntryInput multiline rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onCommit={(value)=>{
+          const delivery_address=value;
           const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
           const option=nextRoute.option as TariffOption|null;
           updateRow(index,nextRoute.providerCode?{
@@ -1141,12 +1148,14 @@ export default function DataEntryFinancialV2Page() {
     setRows(current=>{
       const row=current[index];
       if(!row) return current;
+      const editableKeys: (keyof ParcelRow)[] = ['recipient_name','recipient_phone','township','delivery_address','weight_kg','customer_tier','service_type','amount_entry_type','item_price','delivery_charges','merchant_stated_total_amount','cbm_surcharge','other_surcharge','handoffStationName','handoffStationCode','sourceWard','sourcePostalCode','service_provider_code'];
+      const entryChanged = editableKeys.some(key => patch[key] !== undefined && patch[key] !== row[key]);
       const destinationChanged=(patch.township!==undefined&&patch.township!==row.township)
         ||(patch.delivery_address!==undefined&&patch.delivery_address!==row.delivery_address)
         ||(patch.sourceWard!==undefined&&patch.sourceWard!==row.sourceWard)
         ||(patch.sourcePostalCode!==undefined&&patch.sourcePostalCode!==row.sourcePostalCode)
         ||(patch.service_provider_code!==undefined&&patch.service_provider_code!==row.service_provider_code);
-      const next={...patch,message:patch.message??"",...(destinationChanged?{
+      const next={...patch,message:patch.message??"",...(entryChanged?{saved:false,calculation:{},calculationFailed:false}:{}),...(destinationChanged?{
         saved:false,calculation:{},calculationFailed:false,locationCandidate:null,
         locationStatus:((patch.deliveryMode||row.deliveryMode)==="DOORSTEP_MAP"?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution
       }:{})};
@@ -1298,13 +1307,27 @@ export default function DataEntryFinancialV2Page() {
     const held=await (supabase as any).from("be_data_entry_pending_drafts").select("parcel_sequence,snapshot,skipped").eq("pickup_id",pickup.pickup_id);
     if(held.error) throw held.error;
     const heldBySequence=new Map<number,any>((held.data||[]).map((d:any)=>[d.parcel_sequence,d]));
-    return {tierAccess:nextTierAccess,rows:nextRows.map(row=>{
+    const restoredRows=nextRows.map(row=>{
       const draft=heldBySequence.get(row.parcel_sequence);
       const persisted=(proofResponses.find(r=>r.source==="be_data_entry_parcel_details")?.response.data||[]).some((d:any)=>Number(d.parcel_sequence)===row.parcel_sequence);
       if(!draft || persisted) return row;
-      return {...row,...draft.snapshot,pickup_id:pickup.pickup_id,parcel_sequence:row.parcel_sequence,
+      const restored={...row,...draft.snapshot,pickup_id:pickup.pickup_id,parcel_sequence:row.parcel_sequence,
         saved:false,skipped:draft.skipped,checking:false,calculating:false,calculation:{},
         message:draft.skipped?"Pending clarification saved. Resume when details are available.":"Draft restored. Review and save."};
+      return {...restored,...routingPatch(routeForRow(restored,tariffOptions),restored)};
+    });
+    const locations=new Map<string,any>();
+    for(let offset=0;offset<restoredRows.length;offset+=100){
+      const result=await (supabase as any).rpc("be_delivery_location_batch_v10",{p_delivery_way_ids:restoredRows.slice(offset,offset+100).map(row=>row.delivery_way_id)});
+      if(result.error) throw result.error;
+      for(const location of result.data||[]) if(location.review_status==="ACCEPTED") locations.set(location.delivery_way_id,location);
+    }
+    return {tierAccess:nextTierAccess,rows:restoredRows.map(row=>{
+      const location=locations.get(row.delivery_way_id);
+      if(!location || !validMyanmarCoordinate(Number(location.longitude),Number(location.latitude))) return row;
+      // Keep parcel text and finance intact; recover the accepted pin only for the same address/township.
+      if(location.address_original!==row.delivery_address || location.township!==row.township) return row;
+      return {...row,locationStatus:row.deliveryMode==="DOORSTEP_MAP"?"SYNCED" as const:"NOT_REQUIRED" as const,locationCandidate:{deliveryWayId:row.delivery_way_id,label:location.address_original,originalAddress:location.address_original,englishAddress:location.address_english||location.address_original,township:location.township,latitude:Number(location.latitude),longitude:Number(location.longitude),matchLevel:location.match_level,confidence:Number(location.confidence),coordinateSource:location.coordinate_source,reviewStatus:location.review_status}};
     })};
   }
 
@@ -1556,12 +1579,12 @@ export default function DataEntryFinancialV2Page() {
       const group=blocked.slice(offset,offset+SAFE_TRANSACTION_ROWS);
       const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert(group.map(row=>({
         owner_id:data.user!.id,pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,
-        skipped:true,updated_at:new Date().toISOString(),
-        snapshot:{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:rowSaveObstacle(row)}
+        skipped:Boolean(row.skipped),updated_at:new Date().toISOString(),
+        snapshot:{...row,skipped:Boolean(row.skipped),saved:false,checking:false,calculating:false,calculation:{},message:rowSaveObstacle(row)}
       })),{onConflict:"owner_id,pickup_id,parcel_sequence"});
       if(result.error) throw new Error("Pending parcels could not be preserved: "+result.error.message);
       const keys=new Set(group.map(row=>row.pickup_id+":"+row.parcel_sequence));
-      setRows(current=>current.map(row=>keys.has(row.pickup_id+":"+row.parcel_sequence)?{...row,skipped:true,message:"Pending draft saved: "+rowSaveObstacle(row)+". Use Resume after clarification."}:row));
+      setRows(current=>current.map(row=>keys.has(row.pickup_id+":"+row.parcel_sequence)?{...row,message:"Pending draft saved: "+rowSaveObstacle(row)+". Correct the issue and retry Calculate All / Save All."}:row));
     }
   }
 
@@ -1890,6 +1913,8 @@ export default function DataEntryFinancialV2Page() {
         saved:false,
       };
     }
+
+    await persistDataEntryDrafts(supabase, Object.values(nextDrafts).flatMap(draft => draft.rows));
 
     const pickupOrder=batches.map((batch)=>batch.targetPickupId);
     const firstPickupId=pickupOrder[0];
@@ -2302,7 +2327,7 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
-  function applyLocationReviewResults(results:any[]){
+  async function applyLocationReviewResults(results:any[]){
     const resultById=new Map(results.map((result)=>[text(result.delivery_way_id),result]));
     const applyToRows=(sourceRows:ParcelRow[])=>sourceRows.map((row)=>{
       const result=resultById.get(row.delivery_way_id);
@@ -2320,8 +2345,10 @@ export default function DataEntryFinancialV2Page() {
         coordinateSource:text(result.coordinate_source)||"DATA_ENTRY_MANUAL_BULK_CORRECTION",reviewStatus:"ACCEPTED",
       };
       manualLocationCorrectionsRef.current.set(row.delivery_way_id,locationCandidate);
-      return {...row,township:text(result.township)||row.township,delivery_address:text(result.delivery_address)||row.delivery_address,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
+      const corrected={...row,township:text(result.township)||row.township,delivery_address:text(result.delivery_address)||row.delivery_address};
+      return {...corrected,...routingPatch(routeForRow(corrected,tariffOptions),corrected),saved:false,calculation:{},calculationFailed:false,locationStatus:"SYNCED" as const,locationCandidate,message:"Location accepted from the consolidated review workbook and synchronized with Wayplan."};
     });
+    await persistDataEntryDrafts(supabase, applyToRows(rows).filter(row=>resultById.has(row.delivery_way_id)));
     setRows((current)=>applyToRows(current));
     setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[
       pickupId,{...draft,rows:applyToRows(draft.rows)},
@@ -2355,7 +2382,7 @@ export default function DataEntryFinancialV2Page() {
         if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||"Bulk location-review skip failed.");
         allResults.push(...(Array.isArray(response.data.rows)?response.data.rows:[]));
       }
-      applyLocationReviewResults(allResults);
+      await applyLocationReviewResults(allResults);
       setLocationReloadToken((token)=>token+1);
       const remaining=consolidatedLocationReviewRows.length-allResults.length;
       setBulkMessage(`Accepted and audited ${allResults.length} suggested pin(s) without further review.${remaining>0?` ${remaining} row(s) still need corrected coordinates.`:" All location-review rows are now ready for way generation."}`);
@@ -2391,7 +2418,7 @@ export default function DataEntryFinancialV2Page() {
         const completed=Array.isArray(response.data.rows)?response.data.rows:[];
         allResults.push(...completed);
         appliedCount+=completed.length;
-        applyLocationReviewResults(completed);
+        await applyLocationReviewResults(completed);
         setLocationReloadToken((token)=>token+1);
         setBulkMessage(`Applied ${appliedCount}/${payloadRows.length} reviewed locations. Completed batches are saved on the server.`);
       }
@@ -2435,7 +2462,7 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
           <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">

@@ -20,7 +20,8 @@
     "verify:data-entry-routing-wayplan-contract": "node scripts/verify-data-entry-routing-wayplan-contract.mjs",
     "verify:rider-photo-workflow": "node --experimental-strip-types scripts/verify-rider-photo-workflow.mjs",
     "verify:supabase-proxy": "node scripts/verify-supabase-proxy.cjs",
-    "verify:national-location-master": "node scripts/verify-national-location-master.mjs"
+    "verify:national-location-master": "node scripts/verify-national-location-master.mjs",
+    "verify:draft-recovery": "node scripts/verify-draft-recovery.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
