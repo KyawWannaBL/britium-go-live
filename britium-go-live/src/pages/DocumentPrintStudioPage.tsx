@@ -1,1 +1,1 @@
-export { default } from "@/pages/BritiumUnifiedPrintStudioV33";
+export { default } from "@/pages/WaybillStudioPage";
