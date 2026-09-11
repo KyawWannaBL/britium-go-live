@@ -49,10 +49,10 @@ function key(value: unknown) {
   return withAsciiDigits(value)
     .toLowerCase()
     .replace(/\bvillage\s*tract\b/g, " ")
-    .replace(/\b(?:township|town|quarter|ward|section)\b/g, " ")
+    .replace(/\b(?:township|town|quarter|ward|section|village)\b/g, " ")
     // Remove the postal-source "No" label without corrupting North, Nono, or other names.
     .replace(/\bno\.?(?=\s|\(|\[|\d|$)/g, " ")
-    .replace(/ကျေးရွာအုပ်စု|ရပ်ကွက်|မြို့နယ်|မြို့/g, " ")
+    .replace(/ကျေးရွာအုပ်စု|ကျေးရွာ|ရပ်ကွက်|မြို့နယ်|မြို့/g, " ")
     .replace(/[^a-z0-9\u1000-\u109f]+/g, "");
 }
 
@@ -88,7 +88,10 @@ function regionKeys(region: string, regionMm: string) {
   ].filter((candidate) => candidate.length >= 3))];
 }
 
-const rows: PostalRow[] = POSTAL_CODE_ROWS.map(([townshipIndex, quarter, postalCode, quarterMm]) => {
+// Keep the source intact. Placeholder township records cannot establish parentage.
+const rows: PostalRow[] = POSTAL_CODE_ROWS.filter(([townshipIndex]) =>
+  Boolean(key(POSTAL_CODE_TOWNSHIPS[townshipIndex][0])),
+).map(([townshipIndex, quarter, postalCode, quarterMm]) => {
   const [township, townshipMm, regionIndex] = POSTAL_CODE_TOWNSHIPS[townshipIndex];
   const [region, regionMm] = POSTAL_CODE_REGIONS[regionIndex];
   const quarterKeys = [...new Set([key(quarter), key(quarterMm)])]
@@ -99,7 +102,7 @@ const rows: PostalRow[] = POSTAL_CODE_ROWS.map(([townshipIndex, quarter, postalC
     townshipMm,
     quarter,
     quarterMm,
-    postalCode,
+    postalCode: postalCode.padStart(7, "0"),
     region,
     regionMm,
     townshipKeys: [...new Set([key(township), key(townshipMm)].filter(Boolean))],
@@ -216,7 +219,39 @@ function exactMatch(row: PostalRow): PostalMatch {
   };
 }
 
-export function resolvePostalCode(address: unknown, township: unknown): PostalMatch {
+const quarterRowsByKey = new Map<string, PostalRow[]>();
+const postalRowsByCode = new Map<string, PostalRow[]>();
+for (const row of rows) {
+  for (const k of row.quarterKeys) quarterRowsByKey.set(k, [...(quarterRowsByKey.get(k) || []), row]);
+  postalRowsByCode.set(row.postalCode, [...(postalRowsByCode.get(row.postalCode) || []), row]);
+}
+
+export type MasterLocationOption = PostalMatch & { id: string };
+const masterTownships: MasterLocationOption[] = [...new Map(rows.map(row => {
+  const id = `${row.region}\u0000${row.township}`;
+  return [id, { ...exactMatch(row), id, postalCode: "", quarter: "", quarterMm: "", matchLevel: "TOWNSHIP_ONLY" as const }];
+})).values()];
+
+/** Only invoked by an open search field; never render the full national directory. */
+export function searchMasterLocations(query: string, limit = 20): MasterLocationOption[] {
+  const q = key(query);
+  const cap = Math.min(50, Math.max(1, limit));
+  const found: MasterLocationOption[] = [];
+  for (const town of masterTownships) {
+    if (!q || key(town.township).includes(q) || key(town.townshipMm).includes(q)) found.push(town);
+    if (found.length >= cap) return found;
+  }
+  if (q.length < 2) return found;
+  for (const row of rows) {
+    if (row.postalCode === q || row.quarterKeys.some(k => k.includes(q))) {
+      found.push({ ...exactMatch(row), id: `${row.postalCode}:${row.township}` });
+      if (found.length >= cap) break;
+    }
+  }
+  return found;
+}
+
+export function resolvePostalCode(address: unknown, township: unknown, evidence: { ward?: unknown; postalCode?: unknown } = {}): PostalMatch {
   const addressKey = key(address);
   const townshipKey = key(township);
   const directRows = rowsForTownshipKey(townshipKey);
@@ -224,6 +259,21 @@ export function resolvePostalCode(address: unknown, township: unknown): PostalMa
   // the address in that case can mistake a short township name inside a region.
   const addressRows = townshipKey ? rowsMentionedInAddress(addressKey) : [];
   let townshipRows = directRows;
+
+  // Spreadsheet ward/village and postal columns are exact evidence, not fuzzy
+  // substrings. Repeated names need a parent township or region to disambiguate.
+  // An explicit township always wins over a contradictory postal code.
+  if (!/^unknown$/i.test(String(township ?? "").trim())) {
+    const suppliedCode = withAsciiDigits(evidence.postalCode).trim();
+    let exactRows = /^\d{6,7}$/.test(suppliedCode) ? (postalRowsByCode.get(suppliedCode.padStart(7, "0")) || []) : [];
+    const wardKey = key(evidence.ward);
+    const namedRows = quarterRowsByKey.get(wardKey || (!directRows.length ? townshipKey : "")) || [];
+    if (exactRows.length && namedRows.length) exactRows = exactRows.filter(row => namedRows.includes(row));
+    else if (!exactRows.length) exactRows = namedRows;
+    if (directRows.length) exactRows = exactRows.filter(row => directRows.includes(row));
+    exactRows = filterByRegionEvidence(exactRows, addressKey);
+    if (exactRows.length === 1) return exactMatch(exactRows[0]);
+  }
 
   if (directRows.length && addressRows.length) {
     const intersection = directRows.filter((row) => addressRows.includes(row));

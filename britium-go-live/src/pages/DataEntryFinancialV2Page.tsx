@@ -1,6 +1,7 @@
 import { locationReadiness } from "@/lib/dataEntryLocationReadiness";
 import { calculateWithTimeoutRetry } from "@/lib/dataEntryCalculationRetry";
 import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
+import { searchMasterLocations, type MasterLocationOption } from "@/lib/postalCodeResolver";
 import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
 import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
 import { memo, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
@@ -189,8 +190,8 @@ function requestId(prefix: string): string {
 function canonicalWayId(pickupId: string, sequence: number): string {
   return `${pickupId}-${String(sequence).padStart(3,"0")}`;
 }
-function resolveImportedDestination(value: unknown,address: unknown,itemPrice: unknown,options: TariffOption[]) {
-  return resolveDataEntryServiceProvider(value,address,options,{fallbackUnknownToRoyal:true,itemPrice});
+function resolveImportedDestination(value: unknown,address: unknown,itemPrice: unknown,options: TariffOption[],ward?: unknown,postalCode?: unknown) {
+  return resolveDataEntryServiceProvider(value,address,options,{fallbackUnknownToRoyal:true,itemPrice,ward,postalCode});
 }
 function routeForRow(row: ParcelRow, options: TariffOption[]): DataEntryProviderRouting {
   return resolveDataEntryServiceProvider(row.township,row.delivery_address,options,{
@@ -457,6 +458,18 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   useEffect(()=>{if(!open)setProviderFilter(row.service_provider_code||"ALL");},[row.service_provider_code,open]);
   const query = text(row.township).trim().toLowerCase();
+  const masterMatches = useMemo(() => open ? searchMasterLocations(query) : [], [open, query]);
+  const chooseMaster = (location: MasterLocationOption) => {
+    const township = location.townshipMm || location.township;
+    const nextRoute = resolveDataEntryServiceProvider(township, row.delivery_address, tariffOptions, { itemPrice: row.item_price });
+    updateRow(index, {
+      ...routingPatch(nextRoute, {...row, township}),
+      sourceWard: location.quarterMm || location.quarter,
+      sourcePostalCode: location.postalCode,
+      message: `Master location: ${location.regionMm || location.region}. ${providerRoutingMessage(nextRoute)}${nextRoute.option ? "" : " Delivery rate remains subject to the approved tariff."}`,
+    });
+    setOpen(false);
+  };
   const matches = useMemo(()=>(tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
     .filter((option) => !query || option.destination_name.toLowerCase().includes(query) || option.provider_name.toLowerCase().includes(query))
@@ -509,16 +522,29 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
           className={inputClass}
           value={row.township}
           autoComplete="off"
-          placeholder="မြို့နယ်အမည် စတင်ရိုက်ထည့်ပါ…"
+          placeholder="မြို့နယ်၊ ရပ်ကွက်၊ ကျေးရွာအုပ်စု / Township, ward, village tract…"
           onFocus={() => setOpen(true)}
           onChange={(event) => typeTownship(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") setOpen(false);
-            if (event.key === "Enter" && open && matches[0]) { event.preventDefault(); choose(matches[0]); }
+            if (event.key === "Enter" && open) {
+              event.preventDefault();
+              // Never choose the first of several same-name geographic results.
+              if (masterMatches.length === 1) chooseMaster(masterMatches[0]);
+              else if (!masterMatches.length && matches.length === 1) choose(matches[0]);
+            }
           }}
         />
-        {open && matches.length ? (
+        {open && (matches.length || masterMatches.length) ? (
           <div className="absolute z-50 mt-1 max-h-72 w-full min-w-[360px] overflow-auto rounded-xl border border-[#3aa7de]/50 bg-[#071b2b] p-1 shadow-2xl">
+            {masterMatches.length > 0 && <div className="px-3 py-2 text-[10px] text-cyan-200">National location master · Select the matching township and region</div>}
+            {masterMatches.map(location => (
+              <button key={`master:${location.id}`} type="button" onMouseDown={event => event.preventDefault()} onClick={() => chooseMaster(location)} className="block w-full rounded-lg px-3 py-2 text-left hover:bg-[#12314a]">
+                <b className="block text-[12px] text-white">{location.quarterMm || location.townshipMm} · {location.quarter || location.township}</b>
+                <span className="text-[10px] text-[#8db4ce]">{location.townshipMm} / {location.township} · {location.regionMm} / {location.region} {location.postalCode}</span>
+              </button>
+            ))}
+            {matches.length > 0 && <div className="px-3 py-2 text-[10px] text-amber-200">Approved service and tariff entries</div>}
             {matches.map((option) => (
               <button key={option.destination_key} type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)} className="flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2 text-left hover:bg-[#12314a]">
                 <span><b className="block text-[12px] text-white">{option.destination_name}</b><span className="text-[10px] text-[#8db4ce]">{option.provider_name} · Rack {option.rack_code || "—"}</span></span>
@@ -1116,7 +1142,10 @@ export default function DataEntryFinancialV2Page() {
       const row=current[index];
       if(!row) return current;
       const destinationChanged=(patch.township!==undefined&&patch.township!==row.township)
-        ||(patch.delivery_address!==undefined&&patch.delivery_address!==row.delivery_address);
+        ||(patch.delivery_address!==undefined&&patch.delivery_address!==row.delivery_address)
+        ||(patch.sourceWard!==undefined&&patch.sourceWard!==row.sourceWard)
+        ||(patch.sourcePostalCode!==undefined&&patch.sourcePostalCode!==row.sourcePostalCode)
+        ||(patch.service_provider_code!==undefined&&patch.service_provider_code!==row.service_provider_code);
       const next={...patch,message:patch.message??"",...(destinationChanged?{
         saved:false,calculation:{},calculationFailed:false,locationCandidate:null,
         locationStatus:((patch.deliveryMode||row.deliveryMode)==="DOORSTEP_MAP"?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution
@@ -1678,7 +1707,7 @@ export default function DataEntryFinancialV2Page() {
         ?sourceRow.paymentType
         :defaultAmountEntryType(sourceRow.merchantName || pickup.merchant_id)) as AmountType;
       const routedItemPrice=amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"";
-      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions);
+      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions,sourceRow.ward,sourceRow.postalCode);
       const tariffOption=destination.option as TariffOption|null;
       const tariffDelivery:number|""=tariffOption?tariffRate(tariffOption,customerTier):"";
       const declaredDelivery:number|""=sourceRow.osSetPrice;

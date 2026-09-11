@@ -173,11 +173,11 @@ export function resolveDataEntryServiceProvider(
   townshipValue: unknown,
   deliveryAddress: unknown,
   tariffOptions: DataEntryProviderTariffOption[],
-  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown } = {},
+  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown } = {},
 ): DataEntryProviderRouting {
   const raw = String(townshipValue ?? "").trim();
   const cleanTownship = stripServiceProviderDecoration(raw);
-  const postal = resolvePostalCode(deliveryAddress, cleanTownship);
+  const postal = resolvePostalCode(deliveryAddress, cleanTownship, options);
   if (/^unknown$/i.test(raw)) return {township:"Unknown",providerCode:"",routeRegion:"UNRESOLVED",deliveryMode:"UNRESOLVED",mapRequired:false,stationRequired:false,reason:"UNRESOLVED",option:null,postal};
   if (/^(ဂိတ်ချ|H\.TERMINAL DROP-OFF|highway terminal drop-off)$/i.test(raw)) return {township:"ဂိတ်ချ",providerCode:"H.TERMINAL DROP-OFF",routeRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",mapRequired:false,stationRequired:true,reason:"OUTSIDE_CORE_HIGHWAY_STATION",option:null,postal};
 
@@ -196,8 +196,7 @@ export function resolveDataEntryServiceProvider(
   let mapRequired = false;
   let stationRequired = false;
   const recognizedDestination = postal.matchLevel !== "UNRESOLVED"
-    || exactMatches.length > 0
-    || Boolean(options.fallbackUnknownToRoyal && cleanTownship);
+    || exactMatches.length > 0;
 
   if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
     routeRegion = "OUTSIDE_CORE";
