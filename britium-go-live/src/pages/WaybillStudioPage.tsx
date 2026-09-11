@@ -235,7 +235,7 @@ function normalized(row: PrintRow, type: DocType) {
   const cod = hasExplicitCod ? Number(first(row,"cod_amount","total_cod","waybill_total_cod","actual_collect")) : Math.max(0, itemPrice + deliveryFee + surcharge - prepaid);
 
   return {
-    scanNo: docNo(row,type),
+    scanNo: type==="WAYBILL" ? text(row,"source_waybill_no") || docNo(row,type) : docNo(row,type),
     no: type==="WAYBILL" ? text(row,"source_waybill_no") || docNo(row,type) : docNo(row,type),
     merchant: text(row, "merchant_name", "merchantName", "merchant_code") || "Britium Merchant",
     merchantPhone: text(row, "merchant_phone", "merchantPhone", "sender_phone", "customer_phone"),
@@ -786,7 +786,7 @@ export default function BritiumUnifiedPrintStudioV33() {
     try {
       const uniqueRows=[...new Map(targetRows.map(row=>[docNo(row,"WAYBILL"),row])).values()];
       win.document.body.textContent = "Preparing barcodes and QR codes locally…";
-      await prepareWaybillCodes(uniqueRows.map(row=>docNo(row,"WAYBILL")));
+      await prepareWaybillCodes(uniqueRows.map(row=>normalized(row,"WAYBILL").scanNo));
       if(win.closed) throw new Error("Print window closed before authorization. No new release was requested.");
       const {data,error}=await (supabase as any).rpc("be_waybill_print_release_v2",{
         p_way_ids:uniqueRows.map(row=>docNo(row,"WAYBILL")),p_paper_size:paper,p_label_size:label

@@ -45,6 +45,7 @@ export default function WarehousePage() {
   const [query, setQuery] = useState("");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
+  const [scanChoices,setScanChoices]=useState<any>(null);
 
   const rows = snapshot.rows || [];
   const stats = snapshot.stats || {};
@@ -77,7 +78,7 @@ export default function WarehousePage() {
     return data.user.email;
   };
 
-  const doScan = async (kind: "inbound" | "dispatch" | "return", code?: string) => {
+  const doScan = async (kind: "inbound" | "dispatch" | "return", code?: string, chosen?: any) => {
     if(scanBusy.current) return;
     let tracking:string;
     try {tracking=normalizeWarehouseScan(code || scanCode || "");}
@@ -91,6 +92,22 @@ export default function WarehousePage() {
     setLoading(true);
     try {
       const email = await actor();
+      let match=chosen;
+      if(!match){
+        const lookup=await supabase.rpc("be_warehouse_resolve_scan_v3",{p_scan:tracking});
+        if(lookup.error) throw lookup.error;
+        const matches=lookup.data?.matches || [];
+        if(!matches.length) throw new Error("Waybill not found: "+tracking);
+        if(matches.length>1){
+          setScanChoices({kind,matches});
+          setMessage("This Way ID belongs to more than one pickup. Choose the parcel below before saving.");
+          return;
+        }
+        match=matches[0];
+      }
+      tracking=match.canonical_id;
+      const displayId=match.waybill_no;
+      setScanChoices(null);
       let res: any;
 
       if (kind === "inbound") {
@@ -125,8 +142,8 @@ export default function WarehousePage() {
 
       setMessage(
         kind === "return"
-          ? `Return scan saved for ${tracking}. Attempt ${data.attempt_no || ""}${data.is_rto ? " → RTO" : " → priority for next wayplan"}.`
-          : `${kind.toUpperCase()} scan saved for ${tracking}.`
+          ? `Return scan saved for ${displayId}. Attempt ${data.attempt_count || ""}${data.rto ? " → RTO" : " → priority for next wayplan"}.`
+          : `${kind.toUpperCase()} scan saved for ${displayId}.`
       );
 
       setScanCode("");
@@ -304,6 +321,15 @@ export default function WarehousePage() {
 
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
+        {scanChoices && <div role="dialog" aria-label="Choose matching pickup" className="mb-4 rounded border border-amber-500 p-3">
+          <p>Choose the pickup printed on this parcel:</p>
+          {scanChoices.matches.map((m:any)=><button key={m.canonical_id} disabled={loading}
+            className="m-1 rounded bg-sky-700 p-3"
+            onClick={()=>void doScan(scanChoices.kind,m.canonical_id,m)}>
+            {m.waybill_no} · Pickup {m.pickup_id} · {m.canonical_id}
+          </button>)}
+          <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
+        </div>
         <WarehouseCameraScanner disabled={loading} onDetected={code=>{setScanCode(code);setMessage("Read "+code+". Choose Inbound, Dispatch or Return to save.");}} />
         <label className="mb-3 block text-sm">Scanner Enter action:
           <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
@@ -317,7 +343,7 @@ export default function WarehousePage() {
             autoComplete="off" autoCapitalize="off" spellCheck={false}
             disabled={loading}
             value={scanCode}
-            onChange={(e) => setScanCode(e.target.value)}
+            onChange={(e) => {setScanCode(e.target.value);setScanChoices(null);}}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.repeat) {e.preventDefault();void doScan(scanMode);}
             }}
