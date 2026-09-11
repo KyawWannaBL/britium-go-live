@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 export const WAYBILL_TOWNSHIP_ONLY_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_ONLY_V3_20260826";
 export const WAYBILL_DESTINATION_RAIL_BUILD = "BRITIUM_WAYBILL_DESTINATION_RAIL_V1_20260826";
 import { authorizePrintV33, waybillStudioSnapshotV125 } from "@/lib/britiumCompleteWireupApiV33";
@@ -230,7 +231,8 @@ function normalized(row: PrintRow, type: DocType) {
   const surcharge = amount(row, "surcharge", "overweight_charge", "extra_charge");
   const prepaid = amount(row, "prepaid", "prepaid_amount", "prepaid_to_os");
   const explicitCod = amount(row, "actual_collect", "cod_amount", "total_cod", "waybill_total_cod");
-  const cod = explicitCod || Math.max(0, itemPrice + deliveryFee + surcharge - prepaid);
+  const hasExplicitCod=["actual_collect","cod_amount","total_cod","waybill_total_cod"].some(key=>row[key]!==null && row[key]!==undefined && String(row[key]).trim()!=="" && Number.isFinite(Number(row[key])));
+  const cod = hasExplicitCod ? Number(first(row,"actual_collect","cod_amount","total_cod","waybill_total_cod")) : Math.max(0, itemPrice + deliveryFee + surcharge - prepaid);
 
   return {
     no: docNo(row, type),
@@ -625,6 +627,8 @@ function sharedLabelCss() {
 }
 
 export default function BritiumUnifiedPrintStudioV33() {
+  const [pdfBusy,setPdfBusy]=useState(false);
+  const pdfOperation=useRef(false);
   const [docType, setDocType] = useState<DocType>("WAYBILL");
   const [paper, setPaper] = useState<Paper>("4x6");
   const [label, setLabel] = useState<Label>("4x6");
@@ -705,22 +709,45 @@ export default function BritiumUnifiedPrintStudioV33() {
     if (blocked.length) alert(["Print control:", "", ...blocked].join("\n"));
   }
 
-  function printRows(targetRows: PrintRow[]) {
+  async function savePdf(targetRows: PrintRow[]) {
+    if(pdfOperation.current || !targetRows.length || docType!=="WAYBILL") return;
+    const win=window.open("", "_blank", "width=1100,height=820");
+    if(!win){setMessage("Allow pop-ups for this site, then try Print / Save PDF again.");return;}
+    win.document.write("<html><body><p>Authorizing selected waybills…</p></body></html>");
+    win.document.close();
+    pdfOperation.current=true;setPdfBusy(true);
+    try {
+      const {data,error}=await (supabase as any).rpc("be_superadmin_waybill_pdf_authorize_v1",{
+        p_way_ids:targetRows.map(row=>docNo(row,"WAYBILL")),p_paper_size:paper,p_label_size:label
+      });
+      if(error) throw error;
+      if(!data?.allowed || Number(data.authorized_count)!==new Set(targetRows.map(row=>docNo(row,"WAYBILL"))).size)
+        throw new Error("PDF print authorization was not confirmed.");
+      if(win.closed) throw new Error("The print window was closed. Open Print / Save PDF again.");
+      printRows(targetRows,win);
+      setMessage("In the print dialog, choose Save as PDF. Use scale 100%, no margins, and disable headers and footers. Authorization is logged; canceling the dialog does not create a PDF.");
+    } catch(error:any) {win.close();setMessage(error?.message||"PDF printing failed.");}
+    finally {pdfOperation.current=false;setPdfBusy(false);}
+  }
+
+  function printRows(targetRows: PrintRow[], preparedWindow?: Window) {
     const html = buildPrintHtml(targetRows);
-    const win = window.open("", "_blank", "width=1100,height=820");
+    const win = preparedWindow || window.open("", "_blank", "width=1100,height=820");
     if (!win) {
       alert("The browser blocked the print window. Allow pop-ups for Britium Go-Live and try again.");
       return;
     }
 
+    win.document.open();
     win.document.write(html);
     win.document.close();
     win.focus();
 
     const printAfterImages = async () => {
       const images = Array.from(win.document.images);
-      await Promise.all(
-        images.map(
+      await Promise.race([Promise.all([
+        win.document.fonts.ready,
+        ...images.map(
           (image) =>
             new Promise<void>((resolve) => {
               if (image.complete) resolve();
@@ -730,8 +757,8 @@ export default function BritiumUnifiedPrintStudioV33() {
               }
             }),
         ),
-      );
-      window.setTimeout(() => win.print(), 180);
+      ]),new Promise<void>(resolve=>window.setTimeout(resolve,15000))]);
+      if(!win.closed) window.setTimeout(() => win.print(), 180);
     };
 
     window.setTimeout(() => void printAfterImages(), 120);
@@ -844,6 +871,7 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
               <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
+              <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Superadmin: Print / Save PDF"}</Button>
               <Button tone="gold" onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
               <Button tone="gold" disabled={!visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
             </div>
