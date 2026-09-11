@@ -646,11 +646,40 @@ export default function BritiumUnifiedPrintStudioV33() {
         p_way_ids:ids,p_request_only:true,p_reason:reprintReason.trim()
       });
       if(error) throw error;
-      setMessage(data.blocked.map((b:any)=>b.waybill_no+": "+b.message).join(" | "));
+      setMessage(`${ids.length} selected waybill(s): reprint requests submitted. Review Reprint permission & history below. Superadmin can approve selected pending requests together.`);
       await refreshPrintAudit();
     } catch(error:any){setMessage(error.message||"Reprint request failed.");}
     finally {pdfOperation.current=false;setPdfBusy(false);}
   }
+  async function approveSelectedReprints() {
+    if (pdfOperation.current || !printAudit.can_approve || !selectedRows.length) return;
+    pdfOperation.current=true; setPdfBusy(true);
+    let approved=0; let failed=0;
+    try {
+      const ids=[...new Set(selectedRows.map(row=>docNo(row,"WAYBILL")))];
+      const {data,error}=await (supabase as any).rpc("be_waybill_reprint_status_v2",{p_way_ids:ids});
+      if(error) throw error;
+      setPrintAudit(data);
+      if(!data?.can_approve) throw new Error("Superadmin permission is required.");
+      const pending=(data.requests||[]).filter((r:any)=>ids.includes(r.document_no) && r.approval_status==="PENDING" && !r.consumed_at);
+      if(!pending.length){setMessage("No pending reprint requests for the selected waybills. Refresh history to check approvals.");return;}
+      const requesters=[...new Set(pending.map((r:any)=>r.requested_by))].join(", ");
+      if(!window.confirm("Approve "+pending.length+" pending reprint request(s) for the selected waybill numbers? Requester(s): "+requesters+". Each recorded reason is listed in Reprint permission & history. Each approval permits one release. This does not print yet.")) return;
+      for(let i=0;i<pending.length;i+=4){
+        const results=await Promise.allSettled(pending.slice(i,i+4).map(async(r:any)=>{
+          const {error}=await (supabase as any).rpc("be_waybill_reprint_decide_v2",{p_request_id:r.id,p_decision:"APPROVED",p_note:"Superadmin confirmed selected reprints in Waybill Studio"});
+          if(error) throw error;
+        }));
+        approved+=results.filter(r=>r.status==="fulfilled").length;
+        failed+=results.filter(r=>r.status==="rejected").length;
+        setMessage("Approving selected reprints: "+Math.min(i+4,pending.length)+"/"+pending.length+" processed; "+approved+" approved; "+failed+" failed.");
+      }
+      await refreshPrintAudit();
+      setMessage(approved+" reprint(s) approved; "+failed+" failed. Keep the 3-up layout and click Print / Save PDF. Only approved releases will print.");
+    } catch(error:any){setMessage(error.message||"Approval confirmation unavailable. Refresh history before retrying.");}
+    finally{pdfOperation.current=false;setPdfBusy(false);}
+  }
+
   async function decideReprint(request:any,decision:"APPROVED"|"REJECTED") {
     if(pdfOperation.current) return;
     if(!window.confirm(decision+" one reprint for "+request.document_no+" requested by "+request.requested_by+"? Reason: "+request.request_reason)) return;
@@ -894,6 +923,7 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
               <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
+              {printAudit.can_approve && <Button tone="green" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={()=>void approveSelectedReprints()}>Approve selected reprints</Button>}
               <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Print / Save PDF"}</Button>
               <Button tone="gold" disabled={pdfBusy || !selectedRows.length} onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
               <Button tone="gold" disabled={pdfBusy || !visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
@@ -908,7 +938,7 @@ export default function BritiumUnifiedPrintStudioV33() {
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Selected:</b> {selected.length}</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Pickup:</b> {activePickupId || "All live rows"}</div>
           </div>
-          <p className="mt-3 rounded-xl border border-amber-700/50 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{message} {layout.description}</p>
+          <p className="mt-3 rounded-xl border border-amber-700/50 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{message.length > 800 ? message.slice(0,800)+"… See the approval table below." : message} {layout.description}</p>
         </section>
 
         {docType==="WAYBILL" && <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
