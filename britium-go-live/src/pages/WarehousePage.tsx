@@ -329,7 +329,7 @@ export default function WarehousePage() {
             {m.waybill_no} · Pickup {m.pickup_id} · {m.canonical_id}
           </button>)}
           <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
-        </div>
+        </div>}
         <WarehouseCameraScanner disabled={loading} onDetected={code=>{setScanCode(code);setMessage("Read "+code+". Choose Inbound, Dispatch or Return to save.");}} />
         <label className="mb-3 block text-sm">Scanner Enter action:
           <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
