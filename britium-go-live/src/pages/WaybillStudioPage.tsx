@@ -1,3 +1,4 @@
+import { renderAuthorizedPrint } from "@/lib/authorizedPrintPreview";
 import { supabase } from "@/integrations/supabase/client";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 export const WAYBILL_TOWNSHIP_ONLY_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_ONLY_V3_20260826";
@@ -742,7 +743,7 @@ export default function BritiumUnifiedPrintStudioV33() {
       }
     }
 
-    if (allowed.length) printRows(allowed);
+    if (allowed.length) await printRows(allowed);
     if (blocked.length) alert(["Print control:", "", ...blocked].join("\n"));
   }
 
@@ -750,8 +751,8 @@ export default function BritiumUnifiedPrintStudioV33() {
     if(pdfOperation.current || !targetRows.length || docType!=="WAYBILL") return;
     const win=window.open("", "_blank", "width=1100,height=820");
     if(!win){setMessage("Allow pop-ups for this site, then try Print / Save PDF again.");return;}
-    win.document.write("<html><body><p>Authorizing selected waybills…</p></body></html>");
-    win.document.close();
+    win.stop();
+    win.document.body.textContent = "Authorizing selected waybills…";
     pdfOperation.current=true;setPdfBusy(true);
     try {
       const uniqueRows=[...new Map(targetRows.map(row=>[docNo(row,"WAYBILL"),row])).values()];
@@ -764,47 +765,26 @@ export default function BritiumUnifiedPrintStudioV33() {
       if(releasedRows.length!==releases.length) throw new Error("Print release response mismatch. Check print history before retrying.");
       if(releasedRows.length) {
         if(win.closed) throw new Error("Print window closed after authorization. Request a reprint with the reason before retrying.");
-        printRows(releasedRows,win);
+        await printRows(releasedRows,win);
       } else win.close();
-      setMessage(releasedRows.length+" waybill(s) released; "+(data.blocked?.length||0)+" blocked pending approval. Print one copy. A cancelled/failed print still requires a reason and new approval to retry.");
-      await refreshPrintAudit();
-    } catch(error:any) {win.close();setMessage(error?.message||"Print confirmation unavailable. Check print history before retrying.");}
+      setMessage(releasedRows.length+" waybill(s) released; "+(data.blocked?.length||0)+" blocked pending approval. Use Print / Save PDF in the preview window. A cancelled/failed print still requires a reason and new approval to retry.");
+      await refreshPrintAudit().catch(() => { /* The authorized preview remains usable if history refresh fails. */ });
+    } catch(error:any) {
+      const message = error?.message || "Print confirmation unavailable. Check print history before retrying.";
+      if (!win.closed) win.document.body.textContent = message;
+      setMessage(message);
+    }
     finally {pdfOperation.current=false;setPdfBusy(false);}
   }
 
-  function printRows(targetRows: PrintRow[], preparedWindow?: Window) {
+  async function printRows(targetRows: PrintRow[], preparedWindow?: Window) {
     const html = buildPrintHtml(targetRows);
     const win = preparedWindow || window.open("", "_blank", "width=1100,height=820");
     if (!win) {
-      alert("The browser blocked the print window. Allow pop-ups for Britium Go-Live and try again.");
-      return;
+      throw new Error("The browser blocked the print window. Allow pop-ups for Britium Express.");
     }
-
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    win.addEventListener("afterprint",()=>win.close(),{once:true});
-
-    const printAfterImages = async () => {
-      const images = Array.from(win.document.images);
-      await Promise.race([Promise.all([
-        win.document.fonts.ready,
-        ...images.map(
-          (image) =>
-            new Promise<void>((resolve) => {
-              if (image.complete) resolve();
-              else {
-                image.onload = () => resolve();
-                image.onerror = () => resolve();
-              }
-            }),
-        ),
-      ]),new Promise<void>(resolve=>window.setTimeout(resolve,15000))]);
-      if(!win.closed) window.setTimeout(() => win.print(), 180);
-    };
-
-    window.setTimeout(() => void printAfterImages(), 120);
+    if (!preparedWindow) win.stop();
+    await renderAuthorizedPrint(win, html, targetRows.length);
   }
 
   function buildPrintHtml(targetRows: PrintRow[]) {
