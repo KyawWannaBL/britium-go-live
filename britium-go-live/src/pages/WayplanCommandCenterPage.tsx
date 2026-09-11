@@ -12,6 +12,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import MultiVanPlanner from "@/components/MultiVanPlanner";
 import { routeOrder } from "@/lib/dispatchAllocation";
 import { guardedBrowserPrint } from "@/lib/documentPrintGuard";
 
@@ -177,7 +178,7 @@ export default function WayplanCommandCenterPage() {
     try {
       const [regionResult, queueResult, wayplanResult] = await Promise.all([
         supabase.rpc("be_wayplan_region_options_v19"),
-        supabase.rpc("be_dispatch_ready_queue_v19", { p_limit: 300, p_region_code: selectedRegion }),
+        supabase.rpc("be_multi_van_queue", { p_region: selectedRegion }),
         supabase.rpc("be_wayplan_command_center", { p_limit: 100 }),
       ]);
 
@@ -468,6 +469,7 @@ export default function WayplanCommandCenterPage() {
           </div>
         </Card>
 
+        <MultiVanPlanner rows={selectedRows.length ? selectedRows : readyRows} region={selectedRegion} onSaved={() => void loadAll()} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }} className="wayplan-grid">
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
@@ -480,9 +482,7 @@ export default function WayplanCommandCenterPage() {
                 <button onClick={toggleAll} style={btn("plain")}>
                   <CheckCircle2 size={15} /> {selectedRows.length === readyRows.length && readyRows.length ? "Clear" : "Select All"}
                 </button>
-                <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>
-                  <Route size={15} /> Generate Wayplan
-                </button>
+                
               </div>
             </div>
 
@@ -534,32 +534,6 @@ export default function WayplanCommandCenterPage() {
           </Card>
 
           <div style={{ display: "grid", gap: 16 }}>
-            <Card>
-              <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Assignment Control</h2>
-              <div style={{ display: "grid", gap: 10 }}>
-                <label>Vehicle Code<input value={vehicleCode} onChange={(e) => setVehicleCode(e.target.value)} style={input()} /></label>
-                <label>Vehicle Name<input value={vehicleName} onChange={(e) => setVehicleName(e.target.value)} style={input()} /></label>
-                <label>Driver Code<input value={driverCode} onChange={(e) => setDriverCode(e.target.value)} style={input()} /></label>
-                <label>Driver Name<input value={driverName} onChange={(e) => setDriverName(e.target.value)} style={input()} /></label>
-                <label>Rider Code<input value={riderCode} onChange={(e) => setRiderCode(e.target.value)} style={input()} /></label>
-                <label>Rider Name<input value={riderName} onChange={(e) => setRiderName(e.target.value)} style={input()} /></label>
-                <label>Helper Code<input value={helperCode} onChange={(e) => setHelperCode(e.target.value)} style={input()} /></label>
-                <label>Helper Name<input value={helperName} onChange={(e) => setHelperName(e.target.value)} style={input()} /></label>
-              </div>
-
-              <div style={{ marginTop: 12, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <Card style={{ padding: 12, background: C.panel2 }}>
-                  <small style={{ color: C.sub }}>Selected Stops</small>
-                  <strong style={{ color: C.gold, fontSize: 22 }}>{selectedRows.length}</strong>
-                </Card>
-                <Card style={{ padding: 12, background: C.panel2 }}>
-                  <small style={{ color: C.sub }}>Selected COD</small>
-                  <strong style={{ color: C.green, fontSize: 16 }}>{money(selectedTotalCod)}</strong>
-                </Card>
-              </div>
-              <div style={{ color: C.sub, fontSize: 12, marginTop: 8 }}>Weight: {selectedTotalWeight.toLocaleString()} kg</div>
-            </Card>
-
             <Card>
               <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
 
@@ -667,7 +641,7 @@ export default function WayplanCommandCenterPage() {
                 {manifestStops.length ? manifestStops.map((stop: Row, i: number) => (
                   <tr key={stop.id || `${stop.delivery_way_id}-${i}`} style={{ borderTop: `1px solid ${C.border}` }}>
                     <td style={{ padding: 8 }}>{stop.stop_sequence || i + 1}</td>
-                    <td style={{ padding: 8, color: C.gold, fontWeight: 900 }}>{text(stop.delivery_way_id || stop.waybill_no)}</td>
+                    <td style={{ padding: 8, color: C.gold, fontWeight: 900 }}>{text(stop.waybill_no || stop.delivery_way_id)}</td>
                     <td style={{ padding: 8 }}>{text(stop.recipient_name)}</td>
                     <td style={{ padding: 8 }}>{text(stop.recipient_phone)}</td>
                     <td style={{ padding: 8 }}>{text(stop.township)}</td>
@@ -691,3 +665,4 @@ export default function WayplanCommandCenterPage() {
     </main>
   );
 }
+
