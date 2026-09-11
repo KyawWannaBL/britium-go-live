@@ -88,7 +88,8 @@
     "vaul": "^1.1.2",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zustand": "^5.0.14",
+    "jsbarcode": "3.12.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
