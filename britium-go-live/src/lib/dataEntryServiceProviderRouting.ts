@@ -1,3 +1,4 @@
+import { distinctDagonTownship } from "@/lib/distinctDagonTownship";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
 
@@ -187,6 +188,8 @@ function computeDataEntryServiceProvider(
 ): DataEntryProviderRouting {
   const raw = String(townshipValue ?? "").trim();
   let cleanTownship = stripServiceProviderDecoration(raw);
+  const dagonTownship = distinctDagonTownship(cleanTownship, deliveryAddress);
+  if (dagonTownship) cleanTownship = dagonTownship;
   const postal = resolvePostalCode(deliveryAddress, cleanTownship, options);
   if (/^unknown$/i.test(raw)) return {township:"Unknown",providerCode:"",routeRegion:"UNRESOLVED",deliveryMode:"UNRESOLVED",mapRequired:false,stationRequired:false,reason:"UNRESOLVED",option:null,postal};
   if (/^(ဂိတ်ချ|H\.TERMINAL DROP-OFF|highway terminal drop-off)$/i.test(raw)) return {township:"ဂိတ်ချ",providerCode:"H.TERMINAL DROP-OFF",routeRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",mapRequired:false,stationRequired:true,reason:"OUTSIDE_CORE_HIGHWAY_STATION",option:null,postal};
@@ -195,7 +198,7 @@ function computeDataEntryServiceProvider(
   const isAyeyarwadyRegion=/^(ဧရာဝတီတိုင်း(?:ဒေသကြီး)?|(?:Ayeyarwady|Ayeyarwaddy|Irrawaddy) Region)$/i.test(cleanTownship);
   const inputKey=compactLocationKey(cleanTownship);
   const directMatches=tariffOptions.filter(option=>[compactLocationKey(option.destination_name),compactLocationKey(option.destination_key)].includes(inputKey)&&Boolean(inputKey));
-  const explicitTownship=directMatches.length>0||[NAYPYITAW_ROYAL_EXCEPTIONS,MANDALAY_DK_SERVICE_AREA,NAYPYITAW_BRANCH_SERVICE_AREA,YANGON_BRITIUM_OUTREACH_SERVICE_AREA].some(set=>set.has(inputKey));
+  const explicitTownship=Boolean(dagonTownship)||directMatches.length>0||[NAYPYITAW_ROYAL_EXCEPTIONS,MANDALAY_DK_SERVICE_AREA,NAYPYITAW_BRANCH_SERVICE_AREA,YANGON_BRITIUM_OUTREACH_SERVICE_AREA].some(set=>set.has(inputKey));
   const candidateKeys = new Set((explicitTownship
     ? [inputKey]
     : [inputKey,compactLocationKey(postal.township),compactLocationKey(postal.townshipMm)]).filter(Boolean));
@@ -225,7 +228,7 @@ function computeDataEntryServiceProvider(
     routeRegion = "NAYPYITAW";
     deliveryMode = "DOORSTEP_MAP";
     mapRequired = true;
-  } else if ([...candidateKeys].some((candidate) => YANGON_BRITIUM_OUTREACH_SERVICE_AREA.has(candidate))) {
+  } else if (dagonTownship || [...candidateKeys].some((candidate) => YANGON_BRITIUM_OUTREACH_SERVICE_AREA.has(candidate))) {
     providerCode = "BRITIUM";
     reason = "EXACT_BRITIUM_ROUTE";
     routeRegion = "YANGON";
@@ -266,7 +269,7 @@ function computeDataEntryServiceProvider(
 
   const option = preferredTariff(exactMatches, providerCode);
   const prefersMyanmar = /[\u1000-\u109f]/.test(raw || String(deliveryAddress ?? ""));
-  const township = option?.destination_name
+  const township = dagonTownship || option?.destination_name
     || (explicitTownship ? cleanTownship : (prefersMyanmar ? postal.townshipMm : postal.township))
     || cleanTownship;
 

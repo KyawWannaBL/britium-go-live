@@ -1,3 +1,4 @@
+import { distinctDagonTownship } from "@/lib/distinctDagonTownship";
 import { POSTAL_CODE_REGIONS, POSTAL_CODE_ROWS, POSTAL_CODE_TOWNSHIPS } from "@/lib/postalCodeData";
 
 export type PostalMatch = {
@@ -269,6 +270,7 @@ function rowsExplicitlyMentionedInAddress(address: unknown) {
 
 export function resolvePostalCode(address: unknown, township: unknown, evidence: { ward?: unknown; postalCode?: unknown } = {}): PostalMatch {
   const addressKey = key(address);
+  township = distinctDagonTownship(township, address) || township;
   const townshipKey = key(township);
   const directRows = rowsForTownshipKey(townshipKey);
   // With no township, require a complete destination segment or an explicit
