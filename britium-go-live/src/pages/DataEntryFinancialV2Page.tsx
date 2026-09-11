@@ -1516,8 +1516,8 @@ export default function DataEntryFinancialV2Page() {
     const heldCount=rows.filter(row=>row.skipped).length+blocked.length;
     const pendingRows=rows.filter((row)=>!row.saved&&!rowSaveObstacle(row));
     if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0,held_count:heldCount};
-    const batches=consecutivePendingBatches(pendingRows,SAFE_TRANSACTION_ROWS);
-    const batchCount=batches.length;
+    const batches=consecutivePendingBatches(pendingRows,Math.min(5,SAFE_TRANSACTION_ROWS));
+    let batchCount=batches.length;
     let savedCount=0;
     const allSavedResults:any[]=[];
     for(let batchIndex=0;batchIndex<batches.length;batchIndex++){
@@ -1533,6 +1533,16 @@ export default function DataEntryFinancialV2Page() {
           destination:selectedPickup.city||null,
         })),
       }});
+      // A PostgreSQL statement cancellation rolls back this transaction. Split only
+      // this confirmed database timeout; never replay an uncertain network result.
+      if((response.error?.code==="57014"||/canceling statement due to statement timeout/i.test(response.error?.message||""))&&batchRows.length>1){
+        const middle=Math.ceil(batchRows.length/2);
+        batches.splice(batchIndex,1,batchRows.slice(0,middle),batchRows.slice(middle));
+        batchCount=batches.length;
+        batchIndex-=1;
+        setBulkMessage(`Database canceled a slow batch; retrying it as smaller transactions. ${savedCount} row(s) remain committed.`);
+        continue;
+      }
       if(response.error) throw new Error(`Batch ${batchNumber}/${batchCount} failed after ${savedCount} row(s) were committed: ${response.error.message}. Retry Save All to continue with unsaved rows only.`);
       const result=response.data||{};
       if(!result.ok || result.persisted===false){
