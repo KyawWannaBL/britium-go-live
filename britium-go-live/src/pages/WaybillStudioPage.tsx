@@ -1,3 +1,4 @@
+import { localBarcodeUrl, localQrUrl, prepareWaybillCodes } from "@/lib/waybillLocalCodes";
 import { renderAuthorizedPrint } from "@/lib/authorizedPrintPreview";
 import { supabase } from "@/integrations/supabase/client";
 import React, { useEffect, useMemo, useState, useRef } from "react";
@@ -194,13 +195,9 @@ function esc(value: unknown) {
     .replace(/'/g, "&#039;");
 }
 
-function qrUrl(value: string) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=0&data=${encodeURIComponent(value)}`;
-}
+function qrUrl(value: string) { return localQrUrl(value); }
 
-function barcodeUrl(value: string) {
-  return `https://bwipjs-api.metafloor.com/?bcid=code128&text=${encodeURIComponent(value)}&scale=2&height=10&includetext=false&backgroundcolor=FFFFFF`;
-}
+function barcodeUrl(value: string) { return localBarcodeUrl(value); }
 
 function waybillTownshipOnly(row: PrintRow): string {
   const candidates = [
@@ -785,6 +782,9 @@ export default function BritiumUnifiedPrintStudioV33() {
     pdfOperation.current=true;setPdfBusy(true);
     try {
       const uniqueRows=[...new Map(targetRows.map(row=>[docNo(row,"WAYBILL"),row])).values()];
+      win.document.body.textContent = "Preparing barcodes and QR codes locally…";
+      await prepareWaybillCodes(uniqueRows.map(row=>docNo(row,"WAYBILL")));
+      if(win.closed) throw new Error("Print window closed before authorization. No new release was requested.");
       const {data,error}=await (supabase as any).rpc("be_waybill_print_release_v2",{
         p_way_ids:uniqueRows.map(row=>docNo(row,"WAYBILL")),p_paper_size:paper,p_label_size:label
       });
