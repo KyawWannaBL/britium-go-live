@@ -170,7 +170,9 @@ function text(row: PrintRow, ...keys: string[]) {
 
 function amount(row: PrintRow, ...keys: string[]) {
   for (const key of keys) {
-    const value = Number(row?.[key]);
+    const raw = row?.[key];
+    if(raw===null || raw===undefined || String(raw).trim()==="") continue;
+    const value = Number(raw);
     if (Number.isFinite(value)) return value;
   }
   return 0;
@@ -228,12 +230,13 @@ function normalized(row: PrintRow, type: DocType) {
   const deliveryFee = amount(row, "delivery_fee", "deliveryFee", "printed_waybill_delivery_charge", "deli_fee");
   const surcharge = amount(row, "surcharge", "overweight_charge", "extra_charge");
   const prepaid = amount(row, "prepaid", "prepaid_amount", "prepaid_to_os");
-  const explicitCod = amount(row, "actual_collect", "cod_amount", "total_cod", "waybill_total_cod");
-  const hasExplicitCod=["actual_collect","cod_amount","total_cod","waybill_total_cod"].some(key=>row[key]!==null && row[key]!==undefined && String(row[key]).trim()!=="" && Number.isFinite(Number(row[key])));
-  const cod = hasExplicitCod ? Number(first(row,"actual_collect","cod_amount","total_cod","waybill_total_cod")) : Math.max(0, itemPrice + deliveryFee + surcharge - prepaid);
+  const explicitCod = amount(row, "cod_amount", "total_cod", "waybill_total_cod", "actual_collect");
+  const hasExplicitCod=["cod_amount","total_cod","waybill_total_cod","actual_collect"].some(key=>row[key]!==null && row[key]!==undefined && String(row[key]).trim()!=="" && Number.isFinite(Number(row[key])));
+  const cod = hasExplicitCod ? Number(first(row,"cod_amount","total_cod","waybill_total_cod","actual_collect")) : Math.max(0, itemPrice + deliveryFee + surcharge - prepaid);
 
   return {
-    no: docNo(row, type),
+    scanNo: docNo(row,type),
+    no: type==="WAYBILL" ? text(row,"source_waybill_no") || docNo(row,type) : docNo(row,type),
     merchant: text(row, "merchant_name", "merchantName", "merchant_code") || "Britium Merchant",
     merchantPhone: text(row, "merchant_phone", "merchantPhone", "sender_phone", "customer_phone"),
     merchantAddress: text(row, "merchant_address", "sender_address", "pickup_address"),
@@ -264,8 +267,8 @@ function render4x3(row: PrintRow, type: DocType) {
   return `<article class="be-label be-4x3">
     <header class="w43-head">
       <div class="w43-brand">${brandMark()}<div><strong>BRITIUM EXPRESS</strong><small>Hotline: 09-897447744</small></div></div>
-      <div class="w43-code"><img class="barcode" src="${barcodeUrl(d.no)}" alt="Barcode"><b>${esc(d.no)}</b></div>
-      <img class="qr" src="${qrUrl(d.no)}" alt="QR code">
+      <div class="w43-code"><img class="barcode" src="${barcodeUrl(d.scanNo)}" alt="Barcode"><b>${esc(d.no)}</b>${d.no!==d.scanNo ? '<small style="display:block;font-size:6pt">Scan ref: '+esc(d.scanNo)+'</small>' : ""}</div>
+      <img class="qr" src="${qrUrl(d.scanNo)}" alt="QR code">
     </header>
     <div class="w43-body">
       <section class="w43-person">
@@ -292,8 +295,8 @@ function render4x2(row: PrintRow, type: DocType) {
     <div class="w42-main">
       <header class="w42-head">
         <div class="w42-brand"><b>4D</b>${brandMark()}<div><strong>BRITIUM EXPRESS DELIVERY SERVICE</strong><small>09 - 897447744</small><small>OS : ${esc(d.merchant)}</small></div></div>
-        <div class="w42-code"><img class="barcode" src="${barcodeUrl(d.no)}" alt="Barcode"><b>${esc(d.no)}</b></div>
-        <img class="qr" src="${qrUrl(d.no)}" alt="QR code">
+        <div class="w42-code"><img class="barcode" src="${barcodeUrl(d.scanNo)}" alt="Barcode"><b>${esc(d.no)}</b>${d.no!==d.scanNo ? '<small style="display:block;font-size:6pt">Scan ref: '+esc(d.scanNo)+'</small>' : ""}</div>
+        <img class="qr" src="${qrUrl(d.scanNo)}" alt="QR code">
       </header>
       <div class="w42-body">
         <div class="vertical-label">Recipient :</div>
@@ -313,20 +316,20 @@ function render4x2(row: PrintRow, type: DocType) {
 function renderCompact(row: PrintRow, type: DocType) {
   const d = normalized(row, type);
   return `<article class="be-label be-compact">
-    <header class="compact-head"><div class="compact-brand">${brandMark()}<div><strong>BRITIUM EXPRESS</strong><span>DELIVERY SERVICE</span><small>09-897447744</small></div></div><img class="qr" src="${qrUrl(d.no)}" alt="QR code"></header>
+    <header class="compact-head"><div class="compact-brand">${brandMark()}<div><strong>BRITIUM EXPRESS</strong><span>DELIVERY SERVICE</span><small>09-897447744</small></div></div><img class="qr" src="${qrUrl(d.scanNo)}" alt="QR code"></header>
     <section class="compact-info"><p>Merchant : ${esc(d.merchant)}</p><p>Recipient : ${esc(d.recipient)}</p><p>Remarks : ${esc(d.remarks)}</p></section>
     <section class="compact-bottom"><div><p>Item Price : ${money(d.itemPrice)}</p><p>Deli Fee : ${money(d.deliveryFee)}</p></div><div class="cod-box"><small>COD</small><strong>${money(d.cod)}</strong></div></section>
-    <footer class="compact-footer"><img class="barcode" src="${barcodeUrl(d.no)}" alt="Barcode"><small>${esc(d.createdAt)}</small></footer>
+    <footer class="compact-footer"><img class="barcode" src="${barcodeUrl(d.scanNo)}" alt="Barcode"><small>${esc(d.createdAt)}</small></footer>
   </article>`;
 }
 
 function renderMicro(row: PrintRow, type: DocType) {
   const d = normalized(row, type);
   return `<article class="be-label be-micro">
-    <header class="micro-head"><div>${brandMark()}<b>BRITIUM EXPRESS</b></div><img class="qr" src="${qrUrl(d.no)}" alt="QR code"></header>
+    <header class="micro-head"><div>${brandMark()}<b>BRITIUM EXPRESS</b></div><img class="qr" src="${qrUrl(d.scanNo)}" alt="QR code"></header>
     <div class="micro-person"><p><b>M:</b> ${esc(d.merchant)}</p><p><b>R:</b> ${esc(d.recipient)}</p><p>${esc(d.recipientPhone)}</p></div>
     <div class="micro-money"><span>Fee ${money(d.deliveryFee)}</span><strong>COD ${money(d.cod)}</strong></div>
-    <footer class="micro-code"><img class="barcode" src="${barcodeUrl(d.no)}" alt="Barcode"><b>${esc(d.no)}</b></footer>
+    <footer class="micro-code"><img class="barcode" src="${barcodeUrl(d.scanNo)}" alt="Barcode"><b>${esc(d.no)}</b>${d.no!==d.scanNo ? '<small style="display:block;font-size:6pt">Scan ref: '+esc(d.scanNo)+'</small>' : ""}</footer>
   </article>`;
 }
 
@@ -347,7 +350,7 @@ function render4x6(row: PrintRow, type: DocType) {
       </div>
       <div class="full-code">
         <time>${esc(d.createdAt)}</time>
-        <img class="qr" src="${qrUrl(d.no)}" alt="QR code">
+        <img class="qr" src="${qrUrl(d.scanNo)}" alt="QR code">
         <strong>${esc(d.no)}</strong>
       </div>
     </header>
