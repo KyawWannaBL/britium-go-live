@@ -1,1 +1,0 @@
-Supabase SQL Editor accepts SQL statements, not local file paths. Open the migration .sql file and paste its complete contents.

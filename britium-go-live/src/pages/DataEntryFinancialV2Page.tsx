@@ -436,7 +436,7 @@ function parcelRowFromProof(
     handoffStationCode:text(proof.handoff_station_code||proof.financial_quote?.handoff_station_code).toUpperCase(),
     handoffStationName:text(proof.handoff_station_name||proof.financial_quote?.handoff_station_name),
     locationStatus:proof.location_required===false||proof.financial_quote?.location_required===false?"NOT_REQUIRED":"PENDING",
-    saved:Boolean(proof.saved_at||proof.delivery_way_id),
+    saved:Boolean(proof.saved_at),
   };
 }
 
@@ -1721,7 +1721,7 @@ export default function DataEntryFinancialV2Page() {
       const sequence=offset+1;
       const existing=existingBySequence.get(sequence)||parcelRowFromProof(pickup,pickupTierAccess,{},sequence);
       const sourceRow=sourceBySequence.get(sequence);
-      if(!sourceRow) return existing;
+      if(!sourceRow || existing.saved) return existing;
       const requestedTier=text(sourceRow.merchantTier||"STANDARD").toUpperCase();
       const customerTier=pickupTierAccess.can_select_tier
         ? requestedTier

@@ -1,1 +1,0 @@
--- (Run this file in your Supabase SQL Editor to apply the schema you provided)

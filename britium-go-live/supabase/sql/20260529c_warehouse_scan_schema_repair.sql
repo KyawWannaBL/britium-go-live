@@ -1,1 +1,0 @@
--- Paste the same SQL from Supabase here.
