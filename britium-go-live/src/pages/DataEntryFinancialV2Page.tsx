@@ -1,3 +1,4 @@
+import { calculateWithTimeoutRetry } from "@/lib/dataEntryCalculationRetry";
 import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
 import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
 import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
@@ -1314,14 +1315,7 @@ export default function DataEntryFinancialV2Page() {
     const row=rows[index]; if(!row || row.skipped) return false;
     updateRow(index,{calculating:true,calculation:{},message:""});
     try{
-      const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
-      const r=await Promise.race([
-        calculationRequest,
-        new Promise<never>((_,reject)=>window.setTimeout(
-          ()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),
-          30000,
-        )),
-      ]);
+      const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)}));
       if(r.error) throw r.error;
       const e=envelope(r.data);
       const resolution=e.raw?.server_resolution||{};
@@ -1451,12 +1445,7 @@ export default function DataEntryFinancialV2Page() {
           const row=sourceRows[index];
           if(row.skipped) continue;
           try{
-            const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])});
-            let timer:ReturnType<typeof setTimeout>|undefined;
-            const r=await Promise.race([
-              calculationRequest,
-              new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error("Calculation timed out after 30 seconds. Retry this parcel.")),30000);}),
-            ]).finally(()=>{if(timer!==undefined) clearTimeout(timer);});
+            const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])}));
             if(r.error) throw r.error;
             const e=envelope(r.data);
             const resolution=e.raw?.server_resolution||{};
@@ -1480,10 +1469,10 @@ export default function DataEntryFinancialV2Page() {
             results.set(index,{ok:false,patch:{calculating:false,calculation:{},message:error?.message||"Backend calculation failed."}});
           }
           completed+=1;
-          if(completed===total||completed%6===0) setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
+          if(completed===total||completed%2===0) setBulkMessage(`Calculating parcels: ${completed}/${total} completed · ${calculated} successful.`);
         }
       };
-      await Promise.all(Array.from({length:Math.min(6,total)},()=>worker()));
+      await Promise.all(Array.from({length:Math.min(2,total)},()=>worker()));
       setRows(current=>current.map((row,index)=>{
         const result=results.get(index);
         if(!result || row.skipped) return row;
