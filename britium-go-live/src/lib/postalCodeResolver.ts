@@ -251,13 +251,29 @@ export function searchMasterLocations(query: string, limit = 20): MasterLocation
   return found;
 }
 
+
+function rowsExplicitlyMentionedInAddress(address: unknown) {
+  const recipient = String(address ?? "").replace(/\[\s*sender\s*:[^\]]*\]/gi, "");
+  const segments = recipient.split(/[,၊;\n။]+/).map(key);
+  const prefixes = [...recipient.matchAll(/(?:မြို့နယ်|\btownship\b)/gi)]
+    .map(match => key(recipient.slice(0, match.index)));
+  const names=[...new Set([...townshipRowsByKey.keys(), ...townshipAliases.keys()])].filter(name=>name.length>=4);
+  const selected=new Set(names.filter(name=>segments.includes(name)));
+  for(const prefix of prefixes){
+    const matches=names.filter(name=>prefix.endsWith(name));
+    const longest=Math.max(0,...matches.map(name=>name.length));
+    matches.filter(name=>name.length===longest).forEach(name=>selected.add(name));
+  }
+  return uniqueRows([...selected].map(rowsForTownshipKey));
+}
+
 export function resolvePostalCode(address: unknown, township: unknown, evidence: { ward?: unknown; postalCode?: unknown } = {}): PostalMatch {
   const addressKey = key(address);
   const townshipKey = key(township);
   const directRows = rowsForTownshipKey(townshipKey);
-  // A blank/placeholder township is not enough evidence to infer a code. Scanning
-  // the address in that case can mistake a short township name inside a region.
-  const addressRows = townshipKey ? rowsMentionedInAddress(addressKey) : [];
+  // With no township, require a complete destination segment or an explicit
+  // township suffix. This avoids region and street-name substring guesses.
+  const addressRows = townshipKey ? rowsMentionedInAddress(addressKey) : rowsExplicitlyMentionedInAddress(address);
   let townshipRows = directRows;
 
   // Spreadsheet ward/village and postal columns are exact evidence, not fuzzy

@@ -509,7 +509,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     <Field label="မြို့နယ် / ဝန်ဆောင်မှုပေးသူ">
       <div className="relative">
         <div className="mb-2 flex flex-wrap gap-1.5">
-          <button type="button" className="rounded-full border border-amber-300 px-3 py-1 text-xs text-amber-100" onClick={()=>{
+          <button type="button" aria-pressed={row.township==="Unknown"} className={`rounded-full border px-3 py-1 text-xs ${row.township==="Unknown" ? "border-amber-300 bg-amber-400/20 text-amber-100" : "border-[#2a5272] text-[#8db4ce]"}`} onClick={()=>{
             updateRow(index,{township:"Unknown",service_provider_code:"",deliveryRegion:"UNRESOLVED",deliveryMode:"UNRESOLVED",locationStatus:"NOT_REQUIRED",handoffStationCode:"",handoffStationName:"",calculation:{},message:"Pending clarification with customer or merchant. Select a confirmed destination before final calculation and waybill generation."});setOpen(false);
           }}>Unknown / စုံစမ်းရန်</button>
           <button type="button" className="rounded-full border border-cyan-300 px-3 py-1 text-xs text-cyan-100" onClick={()=>{
