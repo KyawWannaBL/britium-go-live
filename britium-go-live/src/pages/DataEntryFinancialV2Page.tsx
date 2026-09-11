@@ -9,7 +9,6 @@ import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, SAFE_TRANSACTION_ROWS, ty
 import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
-  dataEntryHandoffStationCharge,
   providerRoutingMessage,
   resolveDataEntryServiceProvider,
   type DataEntryDeliveryMode,
@@ -213,7 +212,7 @@ function routingPatch(route: DataEntryProviderRouting,row: ParcelRow): Partial<P
 function handoffStationReady(row: ParcelRow,route: DataEntryProviderRouting): boolean {
   if(!route.stationRequired) return true;
   if(!DATA_ENTRY_HANDOFF_STATIONS.some((station)=>station.code===row.handoffStationCode)) return false;
-  return row.handoffStationCode!=="OTHER"||row.handoffStationName.trim().length>=3;
+  return row.handoffStationName.trim().length>=3 && row.delivery_charges!=="" && Number.isSafeInteger(Number(row.delivery_charges)) && Number(row.delivery_charges)>=0;
 }
 function routeReady(row: ParcelRow, options: TariffOption[]): boolean {
   const route=routeForRow(row,options);
@@ -327,6 +326,7 @@ function payload(row: ParcelRow, pickup: Pickup) {
     location_required: row.deliveryMode === "DOORSTEP_MAP",
     handoff_station_code: row.handoffStationCode || null,
     handoff_station_name: row.handoffStationName || null,
+    ...(row.deliveryMode==="HIGHWAY_BUS_STATION"?{handoff_delivery_charge:row.delivery_charges===""?null:Number(row.delivery_charges)}:{}),
     service_type: row.service_type || "STANDARD",
     amount_entry_type: row.amount_entry_type,
     item_price: row.item_price === "" ? null : Number(row.item_price),
@@ -393,7 +393,7 @@ function parcelRowFromProof(
     service_type:text(proof.service_type||proof.financial_quote?.service_type||"STANDARD").toUpperCase(),
     amount_entry_type:editableAmountType,
     item_price:proof.item_price??"",
-    delivery_charges:proof.delivery_charges??proof.delivery_fee??"",
+    delivery_charges:proof.financial_quote?.handoff_delivery_charge??proof.delivery_charges??proof.delivery_fee??"",
     merchant_stated_total_amount:proof.merchant_stated_total_amount??"",
     cbm_surcharge:proof.cbm_surcharge??0,
     other_surcharge:proof.other_surcharge??0,
@@ -491,6 +491,12 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     <Field label="မြို့နယ် / ဝန်ဆောင်မှုပေးသူ">
       <div className="relative">
         <div className="mb-2 flex flex-wrap gap-1.5">
+          <button type="button" className="rounded-full border border-amber-300 px-3 py-1 text-xs text-amber-100" onClick={()=>{
+            updateRow(index,{township:"Unknown",service_provider_code:"",deliveryRegion:"UNRESOLVED",deliveryMode:"UNRESOLVED",locationStatus:"NOT_REQUIRED",handoffStationCode:"",handoffStationName:"",calculation:{},message:"Pending clarification with customer or merchant. Select a confirmed destination before final calculation and waybill generation."});setOpen(false);
+          }}>Unknown / စုံစမ်းရန်</button>
+          <button type="button" className="rounded-full border border-cyan-300 px-3 py-1 text-xs text-cyan-100" onClick={()=>{
+            updateRow(index,{township:"ဂိတ်ချ",service_provider_code:"H.TERMINAL DROP-OFF",deliveryRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",locationStatus:"NOT_REQUIRED",handoffStationCode:"OTHER",handoffStationName:"",delivery_charges:"",calculation:{},message:"Enter the highway terminal name and delivery charge."});setOpen(false);
+          }}>Highway terminal drop-off / အဝေးပြေးဂိတ်ချ</button>
           <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
           {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
@@ -734,29 +740,14 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
       {route.stationRequired?<div data-highway-station-selection-v19="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
         <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway bus-station handoff / အဝေးပြေးဂိတ်ချ</div>
         <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-          <Field label="Handoff station">
-            <select className={`${inputClass} !bg-white !text-black`} value={row.handoffStationCode} onChange={(event)=>{
-              const handoffStationCode=event.target.value;
-              const known=DATA_ENTRY_HANDOFF_STATIONS.find((station)=>station.code===handoffStationCode);
-              const stationCharge=dataEntryHandoffStationCharge(handoffStationCode);
-              updateRow(index,{
-                handoffStationCode,
-                handoffStationName:handoffStationCode==="OTHER"?row.handoffStationName:(known?.name||""),
-                ...(stationCharge==null?{}:{delivery_charges:stationCharge}),
-                message:handoffStationCode?"Highway handoff station selected. Save will retain this audited station assignment.":"Choose the physical highway handoff station before saving.",
-              });
-            }}>
-              <option value="">Choose the physical station…</option>
-              <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · match Way ID + Merchant</option>
-              {DATA_ENTRY_HANDOFF_STATIONS.map((station)=><option key={station.code} value={station.code}>{station.name}</option>)}
-            </select>
+          <Field label="Highway terminal name / အဝေးပြေးဂိတ်အမည်">
+            <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationCode:"OTHER",handoffStationName:event.target.value,calculation:{}})} placeholder="Type the terminal / gate name"/>
           </Field>
-          {row.handoffStationCode==="OTHER"?<Field label="Other station name (4,000 Ks)">
-            <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationName:event.target.value})} placeholder="Enter the exact station / gate name"/>
-          </Field>:<div className="rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[11px] text-amber-100">{row.handoffStationName||"A station must be selected because this parcel has no item price, address, or Royal route."}</div>}
+          <Field label="Delivery charges (MMK) / ပို့ဆောင်ခ">
+            <input className={inputClass} type="number" min="0" step="1" value={row.delivery_charges} onChange={(event)=>updateRow(index,{delivery_charges:event.target.value===""?"":Number(event.target.value),calculation:{}})} placeholder="Enter delivery charges"/>
+          </Field>
         </div>
-        {stationReady?<div className="mt-2 text-[10px] font-bold text-amber-100">Station charge: {money(dataEntryHandoffStationCharge(row.handoffStationCode))} — Aung Mingalar 3,000 Ks; Dagon Ayar/Thiri and other stations 4,000 Ks.</div>:null}
-        {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Select Aung Mingalar, Dagon Ayar/Thiri, or enter another station name before Calculate/Save.</div>:null}
+        {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Enter a terminal name (at least 3 characters) and a non-negative whole-MMK delivery charge before Calculate/Save.</div>:null}
       </div>:null}
 
       <DataEntryLocationEditor
