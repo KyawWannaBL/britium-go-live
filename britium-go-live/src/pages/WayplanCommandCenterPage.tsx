@@ -198,7 +198,7 @@ export default function WayplanCommandCenterPage() {
       setReadyRows(Array.isArray(q) ? q : []);
       setSelected({});
       setWayplans(filteredWayplans);
-      setActiveWayplan(filteredWayplans.length ? filteredWayplans[0] : null);
+      setActiveWayplan(filteredWayplans.find(w => w.wayplan_status !== "CANCELLED") || null);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Could not load dispatch / wayplan data.");
@@ -434,7 +434,7 @@ export default function WayplanCommandCenterPage() {
               <button onClick={printManifest} style={btn("gold")}>
                 <Printer size={16} /> Print Manifest
               </button>
-              <button onClick={dispatchWayplan} disabled={loading || !activeWayplan} style={btn("green")}>
+              <button onClick={dispatchWayplan} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}>
                 <Send size={16} /> Dispatch Wayplan
               </button>
             </div>
@@ -558,16 +558,16 @@ export default function WayplanCommandCenterPage() {
                 </label>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan} style={btn("green")}>
+                  <button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}>
                     Dispatch
                   </button>
-                  <button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan} style={btn("blue")}>
+                  <button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("blue")}>
                     Complete
                   </button>
-                  <button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan} style={btn("plain")}>
+                  <button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("plain")}>
                     Hold
                   </button>
-                  <button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan} style={btn("gold")}>
+                  <button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("gold")}>
                     Reopen
                   </button>
                 </div>
