@@ -1,0 +1,118 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500&display=swap");
+
+/* ─── 1. UNIFORM POPPINS FONT & NO BOLD ─── */
+* {
+  font-family: 'Poppins', sans-serif !important;
+}
+
+/* Remove extreme bolding. Convert all heavy fonts to a standard flat weight */
+.font-black, .font-extrabold, .font-bold, .font-semibold, strong, b {
+  font-weight: 400 !important; 
+}
+
+/* Remove stretched tracking */
+.tracking-widest, .tracking-wider, .tracking-wide {
+  letter-spacing: normal !important;
+}
+
+/* ─── 2. UNIFORM FONT SIZING (14px) ─── */
+body, p, span, label, input, select, textarea, button, td, th, a, li, div {
+  font-size: 14px !important;
+  line-height: 1.5 !important;
+}
+
+/* Keep headers slightly distinguished but NOT bold */
+h1, h2, h3, h4, .text-2xl, .text-xl, .text-lg, .text-\[20px\] {
+  font-size: 16px !important;
+  font-weight: 500 !important;
+  margin-bottom: 0.5rem !important;
+}
+
+/* Protect icon sizes */
+svg { font-size: inherit !important; }
+
+/* ─── 3. UNIFORM ALIGNMENT ─── */
+th, td, label, p, h1, h2, h3, h4, input, select {
+  text-align: left !important;
+}
+
+/* Buttons must stay centered */
+button, button span, .text-center {
+  text-align: center !important;
+  justify-content: center !important;
+}
+
+/* ─── 4. FULL-WIDTH LAYOUT CONTAINERS ─── */
+html, body, #root {
+  background-color: #061524 !important;
+  color: #eef8ff !important;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; 
+}
+
+main > div, main > section, main [class*="max-w-"], main .container, main .mx-auto, #root main > div > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+main form .grid { gap: 1.5rem !important; }
+
+/* ─── 5. FORCE DARK THEME GLOBALLY ─── */
+main .bg-white, main .bg-slate-50, main .bg-slate-100, main .bg-white\/76, main .bg-white\/80 {
+  background-color: #0b2236 !important;
+  border-color: #1a3a5c !important;
+  background-image: none !important;
+  color: #eef8ff !important;
+}
+
+main .text-\[\#0d2c54\], main .text-slate-800, main .text-slate-900, main .text-black { color: #eef8ff !important; }
+main .text-slate-500, main .text-slate-600, main .text-gray-500, main .text-\[\#4d7a9b\] { color: #90b4ce !important; }
+
+/* ─── 6. GLOBAL SCROLLBAR ─── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #061524; border-left: 1px solid #1a3a5c; border-top: 1px solid #1a3a5c; }
+::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 5px; border: 2px solid #061524; }
+::-webkit-scrollbar-thumb:hover { background: #f6b84b; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; border: none; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 4px; border: none; }
+
+@layer base {
+  * { @apply border-[#1a3a5c] outline-[#1a3a5c]/50; }
+  html { @apply scroll-smooth antialiased; }
+  body { @apply bg-[#061524] text-[#eef8ff]; }
+}
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+
+  aside,
+  nav,
+  button,
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  main,
+  section,
+  div {
+    box-shadow: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}

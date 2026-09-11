@@ -1,0 +1,28 @@
+V61.3.3 CODE REVIEW
+
+Resolved defects
+1. Supabase SQL Editor cannot execute a local file path; the package now states to paste complete SQL contents.
+2. V61.3.1 required an exact active 'Insein' row and aborted when production contained no unambiguous exact row.
+3. Registered/unregistered merchant tier handling is explicit and limited to STANDARD, ROYAL, COMMITMENT.
+
+Tariff safety
+- Deterministic normalization strips only Township/Tsp suffix and repeated spaces.
+- No fuzzy, region-wide, or cross-tier fallback.
+- Missing Insein is repaired only from an internally consistent active 4,500-MMK tier band.
+- STANDARD must match 4,500 base, 3 kg included, 500 per extra kg.
+- ROYAL and COMMITMENT preserve existing tier-specific base/included-weight/refund parameters; a missing row may be derived only from the same tier's unique active 4,500-MMK band.
+- Exact Insein rows are backed up before change.
+
+Financial behavior
+- Receiver COD includes weight/CBM/other customer-paid delivery surcharges for item+delivery and delivery-only types.
+- Britium entitlement includes base tariff plus the same surcharges.
+- Merchant settlement is not charged those surcharges twice.
+- Parcel mutation mode remains MUTATION_SHADOW.
+
+SQL EDITOR AUTHENTICATION DEFECT FIXED
+Previous V61.3.2 self-verification called be_data_entry_financial_v2_schema() before
+establishing the SQL Editor service-role test claim. Supabase SQL Editor has no end-user JWT,
+so be_data_entry_require_access_v57 correctly raised AUTHENTICATION_REQUIRED.
+V61.3.3 sets request.jwt.claim.role=service_role transaction-locally before both authenticated
+RPC self-tests. The claim is discarded at COMMIT/ROLLBACK and does not alter runtime grants,
+RLS, user permissions, MUTATION_SHADOW, or financial write activation.

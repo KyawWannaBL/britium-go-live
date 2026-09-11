@@ -1,0 +1,6 @@
+weight_bracket_code,weight_from_kg,weight_to_kg,description
+W00_01,0,1,0-1 kg
+W01_03,1.01,3,>1-3 kg
+W03_05,3.01,5,>3-5 kg
+W05_10,5.01,10,>5-10 kg
+W10_20,10.01,20,>10-20 kg

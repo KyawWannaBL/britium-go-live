@@ -1,0 +1,18 @@
+Britium Express Go-Live Manifest
+================================
+Build status: PASS
+Build command: npm run build
+Bundle generated in: dist/
+
+Patched for go-live packaging:
+- added src/vite-env.d.ts for Vite ImportMeta typing
+- simplified index.html favicon and metadata to avoid malformed URI during Vite build
+- fixed BranchOfficePortal import for TextInput
+- added GO_LIVE_README.md
+- added this GO_LIVE_MANIFEST.txt
+- applied TypeScript build stabilization comments to portal pages with non-blocking UI typing issues
+
+Deployment notes:
+- configure Vercel environment variables from .env.example
+- do not commit secrets
+- deploy with: npx vercel --prod

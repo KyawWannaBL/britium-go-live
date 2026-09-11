@@ -1,0 +1,16 @@
+# A string used to distinguish different Supabase projects on the same host.
+# Updated to match your current development branch.
+project_id = "branch_office_nav_fixes"
+
+[db]
+# Port to use for the local database URL. 
+# Changed from 54322 to 54326 to avoid the "port is already allocated" error.
+port = 54326
+# Port used by db diff command to initialize the shadow database.
+shadow_port = 54320
+major_version = 17
+
+[db.pooler]
+enabled = false
+# This was already set to 54329 in your file, which is fine.
+port = 54329

@@ -1,0 +1,5 @@
+service_type,name_en,name_mm,description,is_active
+STANDARD,Standard Delivery,စံပို့ဆောင်ရေး,Regular domestic parcel delivery,true
+EXPRESS,Express Delivery,အမြန်ပို့ဆောင်ရေး,Priority domestic delivery,true
+SAME_DAY,Same Day Delivery,နေ့ချင်းပို့,Same day within supported metro zone,false
+CARGO,Cargo / Bulky,ကုန်တင် / ကြီးမားပစ္စည်း,Large or heavy item delivery,false

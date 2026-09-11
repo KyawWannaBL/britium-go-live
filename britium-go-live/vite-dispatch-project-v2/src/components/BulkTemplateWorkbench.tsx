@@ -1,0 +1,596 @@
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../integrations/supabase/client";
+
+
+
+function getEffectivePickupId(selectedPickupId?: string): string {
+  try {
+    return selectedPickupId || window.localStorage.getItem("be_selected_pickup_id") || "";
+  } catch {
+    return selectedPickupId || "";
+  }
+}
+
+const controlStyle: React.CSSProperties = {
+  height: 44,
+  minHeight: 44,
+  width: "100%",
+  minWidth: 220,
+  borderRadius: 14,
+  border: "1px solid rgba(228, 183, 46, 0.36)",
+  background: "rgba(15, 29, 51, 0.88)",
+  color: "#ffffff",
+  fontWeight: 800,
+  padding: "0 14px",
+  outline: "none",
+};
+
+const buttonEqualStyle: React.CSSProperties = {
+  height: 44,
+  minHeight: 44,
+  borderRadius: 14,
+  border: "1px solid rgba(228, 183, 46, 0.36)",
+  background: "rgba(228, 183, 46, 0.92)",
+  color: "#07111f",
+  fontWeight: 950,
+  padding: "0 16px",
+  whiteSpace: "nowrap",
+};
+type PickupOption = {
+  pickup_id?: string;
+  canonical_pickup_id?: string;
+  merchant_code?: string;
+  merchant_name?: string;
+  branch_code?: string;
+  status?: string;
+  pickup_township?: string;
+  pickup_city?: string;
+  pickup_address?: string;
+  sender_phone?: string;
+  parcel_count?: number;
+  cod_amount?: number;
+};
+
+import { fetchOperationalMasterdata, syncTemplateRow } from "../lib/operationalMasterdata";
+import PickupOrderRequiredPanel from "./PickupOrderRequiredPanel";
+
+type Column = {
+  key: string;
+  label: string;
+  kind: "manual" | "auto" | "dropdown" | "calculated";
+  options?: string[];
+  width?: number;
+};
+
+type RowData = Record<string, any>;
+
+const commonDropdowns: Record<string, string[]> = {
+  upload_action: ["CREATE", "UPDATE", "HOLD", "CANCEL"],
+  requester_type: ["DATA_ENTRY", "CUSTOMER_SERVICE", "MERCHANT", "CUSTOMER", "ADMIN"],
+  payment_method: ["COD", "Prepaid", "Monthly", "Account Billing", "Recipient-Pay / Collect"],
+  service_type: ["STANDARD", "EXPRESS", "SAME_DAY"],
+  priority: ["Normal", "High", "Urgent"],
+  scan_type: ["INBOUND_SCAN", "SORTING_SCAN", "BAGGING_SCAN", "DISPATCH_SCAN", "EXCEPTION_SCAN"],
+  current_status: ["PICKUP_COMPLETED", "RECEIVED_AT_ORIGIN", "SORTING", "READY_FOR_DISPATCH", "IN_TRANSIT_TO_HUB", "RECEIVED_AT_DESTINATION", "WAREHOUSE_HOLD"],
+  next_status: ["RECEIVED_AT_ORIGIN", "SORTING", "READY_FOR_DISPATCH", "IN_TRANSIT_TO_HUB", "RECEIVED_AT_DESTINATION", "READY_FOR_DELIVERY"],
+  exception_reason: ["", "WAYBILL_MISMATCH", "WEIGHT_MISMATCH", "DAMAGED_PARCEL", "MISSING_INVOICE", "UNIDENTIFIED_PARCEL", "WRONG_DESTINATION", "DUPLICATE_SCAN", "HOLD_BY_FINANCE", "HOLD_BY_CUSTOMER_SERVICE"],
+  upload_status: ["DRAFT", "READY_TO_SAVE", "VALIDATED", "STAGED", "FAILED"]
+};
+
+const dataEntryColumns: Column[] = [
+  { key: "row_no", label: "Row No", kind: "auto", width: 70 },
+  { key: "upload_action", label: "Upload Action", kind: "dropdown", width: 140 },
+  { key: "requester_type", label: "Requester Type", kind: "dropdown", width: 150 },
+  { key: "merchant_id", label: "Merchant ID", kind: "auto", width: 130 },
+  { key: "merchant_code", label: "Merchant Code", kind: "auto", width: 130 },
+  { key: "merchant_sender_name", label: "Merchant / Sender Name", kind: "auto", width: 230 },
+  { key: "sender_phone", label: "Sender Phone", kind: "auto", width: 150 },
+  { key: "pickup_address", label: "Pickup Address", kind: "auto", width: 260 },
+  { key: "pickup_township", label: "Pickup Township", kind: "dropdown", width: 160 },
+  { key: "pickup_city", label: "Pickup City", kind: "dropdown", width: 150 },
+  { key: "pickup_date", label: "Pickup Date", kind: "auto", width: 140 },
+  { key: "pickup_time", label: "Pickup Time", kind: "auto", width: 130 },
+  { key: "pickup_parcel_count", label: "Pickup Parcel Count", kind: "calculated", width: 170 },
+  { key: "weight_kg", label: "Weight (KG)", kind: "auto", width: 120 },
+  { key: "item_value", label: "Item Value", kind: "auto", width: 130 },
+  { key: "pickup_id", label: "Pickup ID", kind: "calculated", width: 160 },
+  { key: "deliver_id", label: "Deliver ID", kind: "calculated", width: 160 },
+  { key: "invoice_no", label: "Invoice No", kind: "calculated", width: 160 },
+  { key: "waybill_no", label: "Waybill No", kind: "calculated", width: 160 },
+  { key: "recipient_name", label: "Recipient Name", kind: "manual", width: 210 },
+  { key: "recipient_phone", label: "Recipient Phone", kind: "manual", width: 160 },
+  { key: "delivery_township", label: "Delivery Township", kind: "dropdown", width: 170 },
+  { key: "delivery_address", label: "Delivery Address", kind: "manual", width: 280 },
+  { key: "delivery_fee", label: "Delivery Fee", kind: "calculated", width: 140 },
+  { key: "extra_weight_fee", label: "Extra Weight Fee", kind: "calculated", width: 150 },
+  { key: "prepaid_amount", label: "Prepaid Amount", kind: "calculated", width: 150 },
+  { key: "cod_amount", label: "COD Amount", kind: "auto", width: 140 },
+  { key: "payment_method", label: "Payment Method", kind: "dropdown", width: 170 },
+  { key: "service_type", label: "Service Type", kind: "dropdown", width: 150 },
+  { key: "priority", label: "Priority", kind: "dropdown", width: 130 },
+  { key: "destination", label: "Destination", kind: "dropdown", width: 170 },
+  { key: "pickup_by_1", label: "Pickup By 1", kind: "auto", width: 160 },
+  { key: "pickup_by_2", label: "Pickup By 2", kind: "auto", width: 160 },
+  { key: "remarks", label: "Remarks", kind: "manual", width: 240 },
+  { key: "upload_status", label: "Upload Status", kind: "dropdown", width: 160 },
+  { key: "api_message", label: "API Message", kind: "calculated", width: 260 },
+  { key: "source_row_no", label: "Source Row No", kind: "calculated", width: 140 }
+];
+
+const warehouseColumns: Column[] = [
+  { key: "scan_date", label: "Scan Date", kind: "auto", width: 130 },
+  { key: "scan_time", label: "Scan Time", kind: "auto", width: 130 },
+  { key: "warehouse_branch", label: "Warehouse Branch", kind: "dropdown", width: 180 },
+  { key: "operator", label: "Operator", kind: "auto", width: 180 },
+  { key: "pickup_id", label: "Pickup ID", kind: "calculated", width: 160 },
+  { key: "deliver_id", label: "Deliver ID", kind: "calculated", width: 160 },
+  { key: "invoice_no", label: "Invoice No", kind: "calculated", width: 160 },
+  { key: "waybill_no", label: "Waybill No", kind: "calculated", width: 160 },
+  { key: "merchant_id", label: "Merchant ID", kind: "auto", width: 130 },
+  { key: "merchant_code", label: "Merchant Code", kind: "auto", width: 130 },
+  { key: "merchant_name", label: "Merchant Name", kind: "auto", width: 230 },
+  { key: "expected_parcel_count", label: "Expected Parcel Count", kind: "calculated", width: 190 },
+  { key: "scanned_parcel_count", label: "Scanned Parcel Count", kind: "calculated", width: 190 },
+  { key: "remaining_count", label: "Remaining Count", kind: "calculated", width: 170 },
+  { key: "tracking_no_waybill_no", label: "Tracking No / Waybill No", kind: "manual", width: 230 },
+  { key: "scan_type", label: "Scan Type", kind: "dropdown", width: 170 },
+  { key: "current_status", label: "Current Status", kind: "dropdown", width: 180 },
+  { key: "next_status", label: "Next Status", kind: "dropdown", width: 180 },
+  { key: "bag_code", label: "Bag Code", kind: "manual", width: 160 },
+  { key: "bag_destination", label: "Bag Destination", kind: "dropdown", width: 180 },
+  { key: "route_zone", label: "Route / Zone", kind: "dropdown", width: 160 },
+  { key: "exception_reason", label: "Exception Reason", kind: "dropdown", width: 220 },
+  { key: "damage_note", label: "Damage Note", kind: "manual", width: 240 },
+  { key: "missing_parcel_note", label: "Missing Parcel Note", kind: "manual", width: 240 },
+  { key: "validation_status", label: "Validation Status", kind: "calculated", width: 170 },
+  { key: "api_message", label: "API Message", kind: "calculated", width: 260 }
+];
+
+function emptyRow(columns: Column[], index: number): RowData {
+  const row: RowData = {};
+  columns.forEach((c) => { row[c.key] = ""; });
+  row.row_no = index + 1;
+  row.source_row_no = index + 1;
+  row.scan_date = new Date().toISOString().slice(0, 10);
+  row.scan_time = new Date().toTimeString().slice(0, 8);
+  row.upload_action = "CREATE";
+  row.requester_type = "DATA_ENTRY";
+  row.payment_method = "COD";
+  row.service_type = "STANDARD";
+  row.priority = "Normal";
+  row.upload_status = "DRAFT";
+  row.scan_type = "INBOUND_SCAN";
+  return row;
+}
+
+function text(v: any): string {
+  return String(v ?? "");
+}
+
+function pick(obj: any, keys: string[], fallback = "") {
+  for (const key of keys) {
+    const value = obj?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
+  }
+  return fallback;
+}
+
+function pickupLabel(row: any) {
+  const id = pick(row, ["canonical_pickup_id", "pickup_id", "id"], "manual");
+  const merchant = pick(row, ["merchant_code", "merchant_name", "sender_name"], "");
+  const count = pick(row, ["parcel_count", "pickup_parcel_count", "total_parcels"], "");
+  return [id, merchant, count ? `${count} pcs` : ""].filter(Boolean).join(" · ");
+}
+
+function getPickupId(row: any) {
+  return pick(row, ["canonical_pickup_id", "pickup_id", "id"], "");
+}
+
+function getBranchCode(row: any) {
+  return pick(row, ["branch_code", "code", "branch_id", "warehouse_code", "name"], "HQ");
+}
+
+function rowToCsv(rows: RowData[], columns: Column[]) {
+  const esc = (value: any) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const header = columns.map((c) => esc(c.label)).join(",");
+  const body = rows.map((row) => columns.map((c) => esc(row[c.key])).join(",")).join("\n");
+  return `${header}\n${body}\n`;
+}
+
+function downloadText(filename: string, content: string, type = "text/csv;charset=utf-8") {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function parseCsv(textValue: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quotes = false;
+  for (let i = 0; i < textValue.length; i += 1) {
+    const ch = textValue[i];
+    const next = textValue[i + 1];
+    if (ch === '"' && quotes && next === '"') {
+      cell += '"';
+      i += 1;
+    } else if (ch === '"') {
+      quotes = !quotes;
+    } else if (ch === "," && !quotes) {
+      row.push(cell);
+      cell = "";
+    } else if ((ch === "\n" || ch === "\r") && !quotes) {
+      if (ch === "\r" && next === "\n") i += 1;
+      row.push(cell);
+      if (row.some((v) => v.trim() !== "")) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  if (cell || row.length) {
+    row.push(cell);
+    if (row.some((v) => v.trim() !== "")) rows.push(row);
+  }
+  return rows;
+}
+
+export default function BulkTemplateWorkbench(props: any) {
+  const pathMode = window.location.pathname.toLowerCase().includes("warehouse") ? "warehouse" : "data_entry";
+  const moduleName = String(props?.module || props?.mode || props?.moduleType || pathMode).toLowerCase();
+  const isWarehouse = moduleName.includes("warehouse");
+  const columns = isWarehouse ? warehouseColumns : dataEntryColumns;
+  const templateCode = isWarehouse ? "warehouse_inventory_rows" : "parcel_import";
+
+  const [masterdata, setMasterdata] = useState<any>({});
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
+  const [selectedPickupId, setSelectedPickupId] = useState("");
+  const [branchCode, setBranchCode] = useState("HQ");
+  const [workflowStatus, setWorkflowStatus] = useState(isWarehouse ? "RECEIVED_AT_ORIGIN" : "PICKUP_REQUESTED");
+  const [inboundSource, setInboundSource] = useState("Manual Excel / CSV Upload");
+  const [merchantCode, setMerchantCode] = useState("");
+  const [merchantName, setMerchantName] = useState("");
+  const [wayId, setWayId] = useState("");
+  const [rows, setRows] = useState<RowData[]>(() => [emptyRow(columns, 0), emptyRow(columns, 1), emptyRow(columns, 2)]);
+
+  const pickups = Array.isArray(masterdata?.pickups) ? masterdata.pickups : [];
+
+  React.useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent).detail || {};
+      if (detail.pickup_id) setSelectedPickupId(String(detail.pickup_id));
+    };
+    window.addEventListener("be:pickup-selected", handler as EventListener);
+    return () => window.removeEventListener("be:pickup-selected", handler as EventListener);
+  }, []);
+
+  const branches = Array.isArray(masterdata?.branches) ? masterdata.branches : [];
+  const fieldRules = masterdata?.fieldRules || {};
+  const dropdownValues = Array.isArray(fieldRules?.dropdownValues) ? fieldRules.dropdownValues : [];
+  const statusMaster = Array.isArray(fieldRules?.processStatusMaster) ? fieldRules.processStatusMaster : [];
+
+  const townshipOptions = useMemo(() => {
+    const raw = ["Yangon", "Mandalay", "Naypyitaw", "Bahan", "Hlaing", "Kamayut", "Sanchaung", "Ahlone", "Tamwe", "Thingangyun", "South Okkalapa", "North Okkalapa", "Mayangone", "Insein", "Mingaladon"];
+    const fromRows = pickups.flatMap((p: any) => [p.township, p.pickup_township, p.delivery_township, p.city, p.pickup_city]).filter(Boolean).map(String);
+    return Array.from(new Set([...raw, ...fromRows])).sort();
+  }, [pickups]);
+
+  const statusOptions = useMemo(() => {
+    const list = statusMaster.map((s: any) => String(s.status_code || "")).filter(Boolean);
+    return Array.from(new Set([...list, "PICKUP_REQUESTED", "PICKUP_COMPLETED", "RECEIVED_AT_ORIGIN", "SORTING", "READY_FOR_DISPATCH", "READY_FOR_DELIVERY"]));
+  }, [statusMaster]);
+
+  const branchOptions = useMemo(() => {
+    const list = branches.map((b: any) => getBranchCode(b)).filter(Boolean);
+    return Array.from(new Set(["HQ", "YGN", "MDY", "NPT", "YGN-WH", ...list]));
+  }, [branches]);
+
+  const selectedPickup = useMemo(() => pickups.find((p: any) => getPickupId(p) === selectedPickupId) || null, [pickups, selectedPickupId]);
+
+  useEffect(() => {
+    refreshMasterdata();
+  }, [moduleName]);
+
+  async function refreshMasterdata() {
+    setLoading(true);
+    setError("");
+    try {
+      const data = await fetchOperationalMasterdata(moduleName, branchCode);
+      setMasterdata(data || {});
+    } catch (err: any) {
+      setError(err?.message || "Unable to sync masterdata from backend.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function optionsForColumn(column: Column): string[] {
+    if (column.key === "pickup_township" || column.key === "delivery_township" || column.key === "destination" || column.key === "bag_destination" || column.key === "route_zone") return townshipOptions;
+    if (column.key === "warehouse_branch") return branchOptions;
+    if (column.key === "current_status" || column.key === "next_status" || column.key === "upload_status") return commonDropdowns[column.key] || statusOptions;
+    const dropdownFromMaster = dropdownValues.filter((d: any) => String(d.dropdown_name || "").toLowerCase() === column.key.toLowerCase()).map((d: any) => String(d.value || "")).filter(Boolean);
+    return Array.from(new Set([...(column.options || []), ...(commonDropdowns[column.key] || []), ...dropdownFromMaster]));
+  }
+
+  function contextPayload() {
+    return {
+      pickup_id: getEffectivePickupId(selectedPickupId),
+      way_id: wayId,
+      branch_code: branchCode,
+      warehouse_code: branchCode,
+      workflow_status: workflowStatus,
+      inbound_source: inboundSource,
+      merchant_code: merchantCode || pick(selectedPickup, ["merchant_code"], ""),
+      merchant_name: merchantName || pick(selectedPickup, ["merchant_name", "sender_name"], ""),
+      parcel_count: pick(selectedPickup, ["parcel_count", "pickup_parcel_count", "total_parcels"], "1"),
+      cod_amount: pick(selectedPickup, ["cod_amount", "total_cod"], "0")
+    };
+  }
+
+  async function syncOneRow(row: RowData, index: number) {
+    const { data: userData } = await supabase.auth.getUser();
+    const context = contextPayload();
+    const localRow = {
+      ...row,
+      row_no: row.row_no || index + 1,
+      source_row_no: row.source_row_no || index + 1,
+      pickup_id: row.pickup_id || context.pickup_id,
+      way_id: row.way_id || context.way_id,
+      merchant_code: row.merchant_code || context.merchant_code,
+      warehouse_branch: row.warehouse_branch || context.warehouse_code,
+      current_status: row.current_status || workflowStatus
+    };
+    const result = await syncTemplateRow({
+      module: moduleName,
+      template_code: templateCode,
+      actor_email: userData.user?.email || "",
+      context,
+      row: localRow
+    });
+    return result?.row || localRow;
+  }
+
+  async function applyContextToRows() {
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const synced: RowData[] = [];
+      for (let i = 0; i < rows.length; i += 1) {
+        synced.push(await syncOneRow(rows[i], i));
+      }
+      setRows(synced);
+      setMessage("Rows synchronized with backend masterdata and tariff calculation.");
+    } catch (err: any) {
+      setError(err?.message || "Unable to synchronize rows.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function updateRow(index: number, key: string, value: any) {
+    setRows((prev) => prev.map((row, i) => i === index ? { ...row, [key]: value } : row));
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, emptyRow(columns, prev.length)]);
+  }
+
+  function handlePickupChange(value: string) {
+    setSelectedPickupId(value);
+    const p = pickups.find((item: any) => getPickupId(item) === value);
+    if (p) {
+      setMerchantCode(p.merchant_code || "");
+      setMerchantName(p.merchant_name || p.sender_name || "");
+      setBranchCode(p.branch_code || branchCode || "HQ");
+      setWayId(p.waybill_no || p.way_id || "");
+    }
+  }
+
+  async function saveBulkLoad() {
+    if (!getEffectivePickupId(selectedPickupId)) {
+      setError?.("Pickup ID is required before saving bulk rows. Create/select a pickup order first.");
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const synced: RowData[] = [];
+      for (let i = 0; i < rows.length; i += 1) {
+        synced.push(await syncOneRow(rows[i], i));
+      }
+      setRows(synced);
+      const { data, error: rpcError } = await supabase.rpc("be_bulk_upload_save_rows", {
+        p_payload: {
+          template_code: templateCode,
+          inbound_source: inboundSource,
+          branch_code: branchCode,
+          warehouse_code: branchCode,
+          workflow_status: workflowStatus,
+          source_filename: `${templateCode}-webform.csv`,
+          uploaded_by_email: userData.user?.email || "",
+          rows: synced,
+          metadata: { context: contextPayload(), module: moduleName }
+        }
+      });
+      if (rpcError) throw rpcError;
+      setMessage(`Bulk load saved. Batch: ${data?.batch_id || "staged"}, rows: ${data?.row_count || synced.length}`);
+    } catch (err: any) {
+      setError(err?.message || "Unable to save bulk load.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function downloadCsv() {
+    downloadText(`${templateCode}.csv`, rowToCsv(rows, columns));
+  }
+
+  function downloadXlsxLikeTemplate() {
+    const csv = rowToCsv(rows, columns);
+    downloadText(`${templateCode}.xlsx`, csv, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  }
+
+  async function uploadCsv(file: File) {
+    const raw = await file.text();
+    const parsed = parseCsv(raw);
+    if (!parsed.length) return;
+    const header = parsed[0].map((h) => h.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"));
+    const body = parsed.slice(1).map((r, index) => {
+      const row = emptyRow(columns, index);
+      r.forEach((cell, i) => {
+        const key = header[i];
+        const col = columns.find((c) => c.key === key || c.label.toLowerCase().replace(/[^a-z0-9]+/g, "_") === key);
+        if (col) row[col.key] = cell;
+      });
+      return row;
+    });
+    setRows(body.length ? body : [emptyRow(columns, 0)]);
+    setMessage("File loaded into webform. Click Apply Context or Save Bulk Load to sync backend values.");
+  }
+
+  function controlClass(column: Column) {
+    return `be-uform-control be-uform-${column.kind}`;
+  }
+
+  function renderCell(row: RowData, column: Column, rowIndex: number) {
+    const value = text(row[column.key]);
+    if (column.kind === "dropdown") {
+      const options = optionsForColumn(column);
+      return (
+        <select style={controlStyle} className={controlClass(column)} value={value} onChange={(e) => updateRow(rowIndex, column.key, e.target.value)}>
+          <option value="">Select...</option>
+          {options.map((option) => <option key={option} value={option}>{option}</option>)}
+        </select>
+      );
+    }
+    if (column.kind === "manual") {
+      return <input style={controlStyle} className={controlClass(column)} value={value} onChange={(e) => updateRow(rowIndex, column.key, e.target.value)} placeholder={column.label} />;
+    }
+    return <input style={controlStyle} className={controlClass(column)} value={value} readOnly title="Auto-filled from backend synchronization or background calculation" />;
+  }
+
+  return (
+    <div className="be-uform">
+      <section className="be-uform-panel">
+        <div className="be-uform-title-row">
+          <div>
+            <p className="be-uform-kicker">Template Bulk Load</p>
+            <h2>{isWarehouse ? "Warehouse Template / Bulk Upload" : "Data Entry / Bulk Upload"}</h2>
+            <p className="be-uform-help">Only recipient name, recipient phone, delivery address and scan/proof notes are manual. IDs, merchant, pickup, charges, status and finance fields are synchronized from backend masterdata and tariff APIs.</p>
+          </div>
+          <div className="be-uform-actions compact">
+            <button style={buttonEqualStyle} type="button" onClick={refreshMasterdata} disabled={loading}>Sync Masterdata</button>
+            <button style={buttonEqualStyle} type="button" onClick={applyContextToRows} disabled={loading}>Auto Fill + Calculate</button>
+          </div>
+        </div>
+
+        {message && <div className="be-uform-message ok">{message}</div>}
+        {error && <div className="be-uform-message error">{error}</div>}
+
+        <div className="be-uform-grid filters">
+        <PickupOrderRequiredPanel />
+          <label><span>Inbound Data Source</span><select style={controlStyle} value={inboundSource} onChange={(e) => setInboundSource(e.target.value)}><option>Manual Excel / CSV Upload</option><option>Customer Service Forwarded</option><option>Merchant Portal Upload</option><option>Customer Portal Upload</option><option>Warehouse Scan</option><option>Rider App Sync</option></select></label>
+          <label><span>Pickup ID</span><select style={controlStyle} value={selectedPickupId} onChange={(e) => handlePickupChange(e.target.value)}><option value="">Select Pickup ID - required</option>{pickups.map((p: any) => <option key={getPickupId(p)} value={getPickupId(p)}>{pickupLabel(p)}</option>)}</select></label>
+          <label><span>Branch / Warehouse</span><select style={controlStyle} value={branchCode} onChange={(e) => setBranchCode(e.target.value)}>{branchOptions.map((b) => <option key={b} value={b}>{b}</option>)}</select></label>
+          <label><span>Workflow Status</span><select style={controlStyle} value={workflowStatus} onChange={(e) => setWorkflowStatus(e.target.value)}>{statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}</select></label>
+          <label><span>Waybill / Way ID</span><input style={controlStyle} value={wayId} onChange={(e) => setWayId(e.target.value)} placeholder="Auto or scan waybill" /></label>
+          <label><span>Merchant Code</span><input style={controlStyle} value={merchantCode} onChange={(e) => setMerchantCode(e.target.value)} placeholder="Auto from pickup" /></label>
+          <label className="wide"><span>Merchant Name</span><input style={controlStyle} value={merchantName} onChange={(e) => setMerchantName(e.target.value)} placeholder="Auto from pickup" /></label>
+        </div>
+      </section>
+
+      <section className="be-uform-panel slim">
+        <div>
+          <p className="be-uform-kicker">{isWarehouse ? "Warehouse Template" : "Parcel / Manifest Template"}</p>
+          <h3>{isWarehouse ? "Warehouse scan-linked template" : "Shipment row template"}</h3>
+          <p className="be-uform-help">Generated IDs, tariff, payment profile, service, branch, merchant and workflow status are read-only auto-fill/calculated fields.</p>
+        </div>
+        <div className="be-uform-actions">
+          <button style={buttonEqualStyle} type="button" onClick={downloadXlsxLikeTemplate}>Download XLSX Template</button>
+          <button style={buttonEqualStyle} type="button" onClick={downloadCsv}>Download CSV</button>
+          <label className="be-uform-upload">Upload Excel / CSV<input style={controlStyle} type="file" accept=".csv,.xlsx,.xls" onChange={(e) => e.target.files?.[0] && uploadCsv(e.target.files[0])} /></label>
+          <button style={buttonEqualStyle} type="button" onClick={addRow}>Add Row</button>
+          <button style={buttonEqualStyle} type="button" onClick={saveBulkLoad} disabled={loading}>Save Bulk Load</button>
+        </div>
+      </section>
+
+      <section className="be-uform-panel table-panel">
+        <div className="be-uform-legend">
+          <span className="manual">Manual: recipient/scan notes only</span>
+          <span className="dropdown">Dropdown: controlled masterdata</span>
+          <span className="auto">Auto: backend sync</span>
+          <span className="calculated">Calculated: IDs/tariff/status</span>
+        </div>
+        <div className="be-uform-table-wrap">
+          <table className="be-uform-table">
+            <thead>
+              <tr>{columns.map((c) => <th key={c.key} style={{ minWidth: c.width || 150 }}>{c.label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rowIndex) => (
+                <tr key={rowIndex}>
+                  {columns.map((column) => <td key={column.key} style={{ minWidth: column.width || 150 }}>{renderCell(row, column, rowIndex)}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <style>{`
+        .be-uform { display: grid; gap: 18px; color: #f8fafc; }
+        .be-uform-panel { border: 1px solid rgba(148,163,184,.22); background: rgba(15,29,51,.78); border-radius: 20px; padding: 22px; box-shadow: 0 18px 50px rgba(0,0,0,.18); }
+        .be-uform-title-row, .be-uform-panel.slim { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
+        .be-uform-kicker { margin: 0 0 6px; color: #facc15; font-size: 12px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; }
+        .be-uform h2, .be-uform h3 { margin: 0; color: #fff; }
+        .be-uform-help { color: #a9c6e8; margin: 8px 0 0; max-width: 900px; line-height: 1.5; }
+        .be-uform-grid { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; margin-top: 20px; align-items: end; }
+        .be-uform-grid label { display: grid; gap: 7px; min-width: 0; }
+        .be-uform-grid label.wide { grid-column: span 2; }
+        .be-uform-grid span { font-size: 12px; font-weight: 900; color: #e2e8f0; }
+        .be-uform-grid input, .be-uform-grid select, .be-uform-control { width: 100%; height: 44px; min-height: 44px; border-radius: 12px; border: 1px solid rgba(250,204,21,.28); background: rgba(7,17,31,.68); color: #f8fafc; padding: 0 13px; font-size: 14px; font-weight: 800; outline: none; line-height: 44px; }
+        .be-uform-grid select, .be-uform-control select { color-scheme: dark; }
+        .be-uform-grid input::placeholder, .be-uform-control::placeholder { color: rgba(226,232,240,.58); }
+        .be-uform-grid input:focus, .be-uform-grid select:focus, .be-uform-control:focus { border-color: #facc15; box-shadow: 0 0 0 3px rgba(250,204,21,.12); }
+        .be-uform-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: flex-end; }
+        .be-uform-actions.compact { min-width: 330px; }
+        .be-uform-actions button, .be-uform-upload { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid rgba(250,204,21,.45); background: rgba(250,204,21,.88); color: #07111f; padding: 0 16px; font-size: 13px; font-weight: 950; cursor: pointer; white-space: nowrap; }
+        .be-uform-actions button:hover, .be-uform-upload:hover { background: #facc15; }
+        .be-uform-upload input { display: none; }
+        .be-uform-message { padding: 12px 14px; border-radius: 14px; font-weight: 850; margin-top: 12px; }
+        .be-uform-message.ok { background: rgba(34,197,94,.15); border: 1px solid rgba(34,197,94,.32); color: #bbf7d0; }
+        .be-uform-message.error { background: rgba(239,68,68,.16); border: 1px solid rgba(239,68,68,.32); color: #fecaca; }
+        .be-uform-legend { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+        .be-uform-legend span { border-radius: 999px; padding: 7px 11px; font-size: 11px; font-weight: 950; border: 1px solid rgba(255,255,255,.12); }
+        .be-uform-legend .manual { color: #bfdbfe; background: rgba(37,99,235,.18); }
+        .be-uform-legend .dropdown { color: #fef3c7; background: rgba(180,83,9,.22); }
+        .be-uform-legend .auto { color: #bbf7d0; background: rgba(22,163,74,.18); }
+        .be-uform-legend .calculated { color: #e9d5ff; background: rgba(126,34,206,.20); }
+        .be-uform-table-wrap { overflow: auto; max-width: 100%; border: 1px solid rgba(148,163,184,.16); border-radius: 16px; }
+        .be-uform-table { width: max-content; border-collapse: collapse; min-width: 100%; }
+        .be-uform-table th { position: sticky; top: 0; background: rgba(7,17,31,.98); color: #facc15; z-index: 1; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; text-align: left; padding: 11px; border-bottom: 1px solid rgba(250,204,21,.22); }
+        .be-uform-table td { padding: 8px 10px; border-bottom: 1px solid rgba(148,163,184,.10); vertical-align: middle; }
+        .be-uform-control { font-size: 13px; }
+        .be-uform-auto { background: rgba(22,163,74,.12); border-color: rgba(34,197,94,.28); color: #d1fae5; }
+        .be-uform-calculated { background: rgba(126,34,206,.13); border-color: rgba(192,132,252,.28); color: #f3e8ff; }
+        .be-uform-dropdown { background: rgba(180,83,9,.17); border-color: rgba(250,204,21,.34); color: #fff7ed; color-scheme: dark; }
+        .be-uform-manual { background: rgba(37,99,235,.16); border-color: rgba(96,165,250,.34); color: #eff6ff; }
+        @media (max-width: 1100px) { .be-uform-grid { grid-template-columns: repeat(2, minmax(220px, 1fr)); } .be-uform-title-row, .be-uform-panel.slim { flex-direction: column; } .be-uform-actions { justify-content: flex-start; } }
+        @media (max-width: 640px) { .be-uform-grid { grid-template-columns: 1fr; } .be-uform-grid label.wide { grid-column: auto; } }
+      `}</style>
+    </div>
+  );
+}

@@ -1,0 +1,44 @@
+Britium Express Data Entry Clean Review V61.4.1 - Review Record
+
+Observed production issues
+- The current main registration page renders nearly every server-controlled Financial V2 field as a disabled box.
+- The result is visually dense and requires excessive vertical scrolling.
+- Weight details are separated from the final financial result and are difficult to verify as one calculation.
+- Dagon Myothit (North) can fail tariff resolution when the tariff master stores the equivalent name North Dagon.
+- The previous review action validates rows but does not provide a single editable all-record sheet.
+
+Frontend correction
+- The main form now shows only operational inputs and a concise result summary.
+- Parcel weight and the weight-surcharge breakdown appear before final charges.
+- Server-controlled audit, tariff and calculation fields are hidden from the main form.
+- Photo evidence is collapsed by default.
+- The review action opens a full-screen spreadsheet-style sheet.
+- Editable inputs use white cells; server-controlled outputs remain read-only.
+- Empty server columns are hidden by default; all 50 schema columns can be displayed.
+- A staff member can amend an input and recalculate before validation or waybill readiness.
+- Waybill readiness stays blocked until every row has a successful calculation and save check.
+
+Backend correction
+- Township comparison uses a versioned canonical alias key.
+- Approved Yangon aliases include Dagon Myothit (North) and North Dagon.
+- Multiple active alias rows are accepted only when they have one identical tariff shape.
+- Conflicting tariff shapes still return an error rather than choosing an arbitrary row.
+- Standard, Royal and Commitment remain separate.
+- V61.3.3 weight-surcharge pass-through rules are preserved.
+- No tariff amount is inserted, copied or changed.
+- No historical parcel row is changed.
+
+Security and authority
+- Raw operational inputs are sent to the existing Financial V2 calculation RPC.
+- The browser does not persist calculated tariff, COD or settlement values as trusted authority.
+- No direct table-upsert fallback is introduced.
+- CLIENT_WRITES_ENABLED remains controlled by the existing environment flag with false as default.
+- This package does not change MUTATION_SHADOW or enable production financial writes.
+
+Validation completed in the generation environment
+- TypeScript/JSX transpile syntax diagnostics: 0.
+- Installer fixture test: passed.
+- Source verifier fixture test: passed (24/24 markers).
+- Compiled Vite build: must run in the user's production repository.
+- Synthetic dist-verifier fixture: passed (11/11 markers). The real dist verifier must run after the portal build.
+- Production SQL execution: not performed by the package generator.

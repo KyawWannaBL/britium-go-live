@@ -1,0 +1,1045 @@
+{
+  "version": "1.0",
+  "recommendedAppPath": "src/config/fieldRules/britiumLogisticsExceptionRules.json",
+  "recommendedSeedPath": "supabase/seed/field_rules/logistics_exception_rules.json",
+  "processStatusMaster": [
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_REQUESTED",
+      "status_name_en": "Pickup Requested",
+      "status_name_mm": "Pickup တောင်းဆိုပြီး",
+      "status_group": "Pickup",
+      "is_final": "No",
+      "Notes EN": "Customer/merchant submitted pickup request.",
+      "Notes MM": "Customer/Merchant မှ Pickup တောင်းဆိုထားသည်။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_ASSIGNED",
+      "status_name_en": "Pickup Assigned",
+      "status_name_mm": "Pickup တာဝန်ချပြီး",
+      "status_group": "Pickup",
+      "is_final": "No",
+      "Notes EN": "Rider/driver assigned.",
+      "Notes MM": "Rider/Driver ကို တာဝန်ချပြီး။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "RIDER_EN_ROUTE_PICKUP",
+      "status_name_en": "Rider En Route to Pickup",
+      "status_name_mm": "Pickup နေရာသို့ Rider သွားနေသည်",
+      "status_group": "Pickup",
+      "is_final": "No",
+      "Notes EN": "Rider is going to pickup location.",
+      "Notes MM": "Rider သည် Pickup နေရာသို့ သွားနေသည်။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "ARRIVED_AT_PICKUP",
+      "status_name_en": "Arrived at Pickup",
+      "status_name_mm": "Pickup နေရာရောက်ရှိပြီး",
+      "status_group": "Pickup",
+      "is_final": "No",
+      "Notes EN": "Rider reached pickup point.",
+      "Notes MM": "Rider သည် Pickup နေရာသို့ ရောက်ရှိပြီး။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_COMPLETED",
+      "status_name_en": "Pickup Completed",
+      "status_name_mm": "Pickup ပြီးမြောက်",
+      "status_group": "Pickup",
+      "is_final": "No",
+      "Notes EN": "Parcel collected successfully.",
+      "Notes MM": "ပစ္စည်းယူဆောင်ပြီးမြောက်သည်။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_FAILED",
+      "status_name_en": "Pickup Failed",
+      "status_name_mm": "Pickup မအောင်မြင်",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Pickup attempt failed.",
+      "Notes MM": "Pickup ကြိုးစားမှု မအောင်မြင်ပါ။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_RESCHEDULED",
+      "status_name_en": "Pickup Rescheduled",
+      "status_name_mm": "Pickup ပြန်ချိန်းပြီး",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "New pickup attempt required.",
+      "Notes MM": "Pickup ကို ပြန်လည်ချိန်းဆိုထားသည်။"
+    },
+    {
+      "process_type": "PICKUP",
+      "status_code": "PICKUP_CANCELLED",
+      "status_name_en": "Pickup Cancelled",
+      "status_name_mm": "Pickup ပယ်ဖျက်ပြီး",
+      "status_group": "Exception",
+      "is_final": "YES",
+      "Notes EN": "Pickup request cancelled.",
+      "Notes MM": "Pickup Request ကို ပယ်ဖျက်ထားသည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "RECEIVED_AT_ORIGIN",
+      "status_name_en": "Received at Origin",
+      "status_name_mm": "မူလဂိုဒေါင်တွင် လက်ခံပြီး",
+      "status_group": "Warehouse",
+      "is_final": "No",
+      "Notes EN": "Origin branch/warehouse received parcel.",
+      "Notes MM": "မူလ Branch/Warehouse တွင် ပစ္စည်းလက်ခံပြီး။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "SORTING",
+      "status_name_en": "Sorting",
+      "status_name_mm": "ခွဲခြားစီစဉ်နေသည်",
+      "status_group": "Warehouse",
+      "is_final": "No",
+      "Notes EN": "Parcel being sorted by route/zone.",
+      "Notes MM": "Route/Zone အလိုက် ခွဲခြားစီစဉ်နေသည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "READY_FOR_DISPATCH",
+      "status_name_en": "Ready for Dispatch",
+      "status_name_mm": "ထွက်ခွာရန် အဆင်သင့်",
+      "status_group": "Warehouse",
+      "is_final": "No",
+      "Notes EN": "Ready to move out.",
+      "Notes MM": "ထွက်ခွာရန် အဆင်သင့်ဖြစ်သည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "IN_TRANSIT_TO_HUB",
+      "status_name_en": "In Transit to Hub/Branch",
+      "status_name_mm": "Hub/Branch သို့ သယ်ယူနေသည်",
+      "status_group": "In Transit",
+      "is_final": "No",
+      "Notes EN": "Moving between warehouse/branches.",
+      "Notes MM": "Warehouse/Branch များအကြား သယ်ယူနေသည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "RECEIVED_AT_DESTINATION",
+      "status_name_en": "Received at Destination",
+      "status_name_mm": "ဦးတည်ရာတွင် လက်ခံပြီး",
+      "status_group": "Warehouse",
+      "is_final": "No",
+      "Notes EN": "Destination hub/branch received parcel.",
+      "Notes MM": "ဦးတည်ရာ Hub/Branch တွင် လက်ခံပြီး။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "WAREHOUSE_HOLD",
+      "status_name_en": "Warehouse Hold",
+      "status_name_mm": "Warehouse Hold",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Temporarily blocked.",
+      "Notes MM": "ယာယီ ရပ်ဆိုင်းထားသည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "DAMAGED",
+      "status_name_en": "Damaged",
+      "status_name_mm": "ပျက်စီးနေသည်",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Parcel damaged.",
+      "Notes MM": "ပစ္စည်း ပျက်စီးနေသည်။"
+    },
+    {
+      "process_type": "WAREHOUSE",
+      "status_code": "LOST",
+      "status_name_en": "Lost",
+      "status_name_mm": "ပျောက်ဆုံး",
+      "status_group": "Exception",
+      "is_final": "YES",
+      "Notes EN": "Parcel missing/lost.",
+      "Notes MM": "ပစ္စည်း ပျောက်ဆုံးသည်။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "READY_FOR_DELIVERY",
+      "status_name_en": "Ready for Delivery",
+      "status_name_mm": "Delivery အတွက် အဆင်သင့်",
+      "status_group": "Delivery",
+      "is_final": "No",
+      "Notes EN": "Ready for final mile.",
+      "Notes MM": "နောက်ဆုံးအဆင့် ပို့ဆောင်ရန် အဆင်သင့်ဖြစ်သည်။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERY_ASSIGNED",
+      "status_name_en": "Delivery Assigned",
+      "status_name_mm": "Delivery တာဝန်ချပြီး",
+      "status_group": "Delivery",
+      "is_final": "No",
+      "Notes EN": "Rider assigned for delivery.",
+      "Notes MM": "Delivery အတွက် Rider ကို တာဝန်ချပြီး။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "OUT_FOR_DELIVERY",
+      "status_name_en": "Out for Delivery",
+      "status_name_mm": "Delivery ထွက်ပြီး",
+      "status_group": "Delivery",
+      "is_final": "No",
+      "Notes EN": "Parcel left warehouse with rider.",
+      "Notes MM": "Rider နှင့်အတူ Warehouse မှ ထွက်ခွာပြီး။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERY_ATTEMPTED",
+      "status_name_en": "Delivery Attempted",
+      "status_name_mm": "Delivery ကြိုးစားပြီး",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Attempt made but not completed.",
+      "Notes MM": "ပို့ဆောင်ရန် ကြိုးစားခဲ့သော်လည်း မပြီးမြောက်ပါ။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERED",
+      "status_name_en": "Delivered",
+      "status_name_mm": "ပို့ဆောင်ပြီး",
+      "status_group": "Delivery",
+      "is_final": "YES",
+      "Notes EN": "Successfully delivered.",
+      "Notes MM": "အောင်မြင်စွာ ပို့ဆောင်ပြီး။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERY_FAILED",
+      "status_name_en": "Delivery Failed",
+      "status_name_mm": "Delivery မအောင်မြင်",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Could not deliver.",
+      "Notes MM": "Delivery မအောင်မြင်ပါ။"
+    },
+    {
+      "process_type": "DELIVERY",
+      "status_code": "DELIVERY_RESCHEDULED",
+      "status_name_en": "Delivery Rescheduled",
+      "status_name_mm": "Delivery ပြန်ချိန်းပြီး",
+      "status_group": "Exception",
+      "is_final": "No",
+      "Notes EN": "Will attempt again later.",
+      "Notes MM": "နောက်တစ်ကြိမ် ပြန်လည်ပို့ဆောင်မည်။"
+    },
+    {
+      "process_type": "RETURN",
+      "status_code": "RTO_INITIATED",
+      "status_name_en": "Return to Origin Initiated",
+      "status_name_mm": "မူလသို့ပြန်ပို့ရန် စတင်",
+      "status_group": "Return",
+      "is_final": "No",
+      "Notes EN": "Return process started.",
+      "Notes MM": "မူလသို့ပြန်ပို့ခြင်း စတင်သည်။"
+    },
+    {
+      "process_type": "RETURN",
+      "status_code": "RETURNED_TO_SENDER",
+      "status_name_en": "Returned to Sender",
+      "status_name_mm": "ပေးပို့သူထံ ပြန်ပို့ပြီး",
+      "status_group": "Return",
+      "is_final": "YES",
+      "Notes EN": "Returned to merchant/sender.",
+      "Notes MM": "Merchant/Sender ထံ ပြန်ပို့ပြီး။"
+    }
+  ],
+  "pickupExceptionMaster": [
+    {
+      "exception_code": "CUSTOMER_NOT_AVAILABLE",
+      "exception_name_en": "Customer not available",
+      "exception_name_mm": "Customer မရှိ / မရရှိနိုင်",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_FAILED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "YES",
+      "require_remark": "YES",
+      "allow_reschedule": "YES",
+      "next_action": "RESCHEDULE_PICKUP",
+      "customer_message_en": "Pickup attempt failed because the sender was not available. Please reschedule pickup.",
+      "customer_message_mm": "ပစ္စည်းယူရန် လာရောက်ချိန်တွင် ပေးပို့သူ မရှိသောကြောင့် Pickup မအောင်မြင်ပါ။ ပြန်လည်ချိန်းဆိုပါ။",
+      "Notes / Rules": "Rider arrived but sender/customer was not available. GPS and call log required."
+    },
+    {
+      "exception_code": "MERCHANT_CLOSED",
+      "exception_name_en": "Merchant closed",
+      "exception_name_mm": "ဆိုင်ပိတ်ထားသည်",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_FAILED",
+      "severity": "Low",
+      "require_photo": "YES",
+      "require_call_log": "YES",
+      "require_remark": "YES",
+      "allow_reschedule": "YES",
+      "next_action": "RESCHEDULE_PICKUP",
+      "customer_message_en": "Pickup attempt failed because the merchant location was closed.",
+      "customer_message_mm": "ဆိုင်/ရုံး ပိတ်ထားသောကြောင့် Pickup မအောင်မြင်ပါ။",
+      "Notes / Rules": "Use for shop/warehouse/office closed. Photo proof should be mandatory."
+    },
+    {
+      "exception_code": "PARCEL_NOT_READY",
+      "exception_name_en": "Parcel not ready",
+      "exception_name_mm": "ပစ္စည်းမပြင်ဆင်ရသေးပါ",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_FAILED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "No",
+      "require_remark": "YES",
+      "allow_reschedule": "YES",
+      "next_action": "RESCHEDULE_PICKUP",
+      "customer_message_en": "Pickup could not be completed because the parcel was not ready.",
+      "customer_message_mm": "ပစ္စည်း မပြင်ဆင်ရသေးသောကြောင့် Pickup မပြီးမြောက်ပါ။",
+      "Notes / Rules": "Parcel not packed, label missing, order not ready, or merchant requested later pickup."
+    },
+    {
+      "exception_code": "WRONG_PICKUP_ADDRESS",
+      "exception_name_en": "Wrong pickup address",
+      "exception_name_mm": "Pickup လိပ်စာ မှားယွင်းသည်",
+      "process_type": "PICKUP",
+      "mapped_status": "ADDRESS_CORRECTION_REQUIRED",
+      "severity": "Medium",
+      "require_photo": "COND",
+      "require_call_log": "YES",
+      "require_remark": "YES",
+      "allow_reschedule": "COND",
+      "next_action": "CS_ADDRESS_REVIEW",
+      "customer_message_en": "Pickup could not be completed because the pickup address needs correction.",
+      "customer_message_mm": "Pickup လိပ်စာ ပြင်ဆင်ရန် လိုအပ်သောကြောင့် Pickup မပြီးမြောက်ပါ။",
+      "Notes / Rules": "Do not allow next pickup until the address is corrected by CS/Data Entry."
+    },
+    {
+      "exception_code": "PAYMENT_ISSUE",
+      "exception_name_en": "Payment issue",
+      "exception_name_mm": "ငွေပေးချေမှု ပြဿနာ",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_ON_HOLD",
+      "severity": "High",
+      "require_photo": "No",
+      "require_call_log": "No",
+      "require_remark": "YES",
+      "allow_reschedule": "COND",
+      "next_action": "FINANCE_REVIEW",
+      "customer_message_en": "Pickup is on hold due to a payment issue. Please contact support.",
+      "customer_message_mm": "ငွေပေးချေမှု ပြဿနာကြောင့် Pickup ကို ယာယီရပ်ဆိုင်းထားပါသည်။ Support ကို ဆက်သွယ်ပါ။",
+      "Notes / Rules": "Use for unpaid balance, prepaid not received, credit limit exceeded, COD settlement issue."
+    },
+    {
+      "exception_code": "OVERSIZED_PARCEL",
+      "exception_name_en": "Oversized parcel",
+      "exception_name_mm": "အရွယ်အစား/အလေးချိန် ကျော်လွန်သည်",
+      "process_type": "PICKUP",
+      "mapped_status": "SPECIAL_HANDLING_REQUIRED",
+      "severity": "Medium",
+      "require_photo": "YES",
+      "require_call_log": "No",
+      "require_remark": "YES",
+      "allow_reschedule": "COND",
+      "next_action": "REASSIGN_VEHICLE",
+      "customer_message_en": "Pickup requires special handling because the parcel is oversized.",
+      "customer_message_mm": "ပစ္စည်းအရွယ်အစား/အလေးချိန်ကြီးသောကြောင့် အထူးစီမံဆောင်ရွက်ရန် လိုအပ်ပါသည်။",
+      "Notes / Rules": "Bike rider cannot collect. Reassign van/truck or reject if not serviceable."
+    },
+    {
+      "exception_code": "RESTRICTED_ITEM",
+      "exception_name_en": "Restricted item",
+      "exception_name_mm": "တားမြစ်ပစ္စည်း",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_REJECTED",
+      "severity": "Critical",
+      "require_photo": "YES",
+      "require_call_log": "No",
+      "require_remark": "YES",
+      "allow_reschedule": "No",
+      "next_action": "COMPLIANCE_REVIEW",
+      "customer_message_en": "Pickup cannot proceed because the item is restricted under shipping policy.",
+      "customer_message_mm": "ပို့ဆောင်ခွင့်မပြုထားသော ပစ္စည်းဖြစ်သောကြောင့် Pickup ဆက်လက်မလုပ်ဆောင်နိုင်ပါ။",
+      "Notes / Rules": "Hazardous, illegal, flammable, restricted, cash/valuable, unpacked liquid, etc."
+    },
+    {
+      "exception_code": "DUPLICATE_REQUEST",
+      "exception_name_en": "Duplicate request",
+      "exception_name_mm": "ထပ်နေသော Pickup Request",
+      "process_type": "PICKUP",
+      "mapped_status": "PICKUP_CANCELLED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "No",
+      "require_remark": "YES",
+      "allow_reschedule": "No",
+      "next_action": "CANCEL_DUPLICATE",
+      "customer_message_en": "Duplicate pickup request was cancelled. The active pickup request remains in progress.",
+      "customer_message_mm": "ထပ်နေသော Pickup Request ကို ပယ်ဖျက်ထားပါသည်။ မှန်ကန်သော Request ကို ဆက်လက်လုပ်ဆောင်နေပါသည်။",
+      "Notes / Rules": "Same merchant/customer/address/date/order/waybill. Keep valid request and cancel duplicate."
+    }
+  ],
+  "warehouseExceptionMaster": [
+    {
+      "exception_code": "WAYBILL_MISMATCH",
+      "exception_name_en": "Waybill mismatch",
+      "exception_name_mm": "Waybill မကိုက်ညီပါ",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "WAREHOUSE_HOLD",
+      "hold_required": "YES",
+      "approval_team": "CS / Data Entry",
+      "require_photo": "YES",
+      "require_remark": "YES",
+      "next_action": "DATA_CORRECTION",
+      "customer_message_en": "Shipment is on hold because the waybill needs correction.",
+      "customer_message_mm": "Waybill ပြင်ဆင်ရန်လိုအပ်သောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Physical waybill and system record do not match. Stop movement until corrected."
+    },
+    {
+      "exception_code": "WEIGHT_MISMATCH",
+      "exception_name_en": "Weight mismatch",
+      "exception_name_mm": "အလေးချိန် မကိုက်ညီပါ",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "QC_FAILED",
+      "hold_required": "YES",
+      "approval_team": "Finance",
+      "require_photo": "COND",
+      "require_remark": "YES",
+      "next_action": "RECALCULATE_TARIFF",
+      "customer_message_en": "Shipment is on hold because actual weight differs from declared weight.",
+      "customer_message_mm": "တကယ့်အလေးချိန်နှင့် ကြေညာထားသောအလေးချိန် မကိုက်ညီသောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Actual weight differs from declared weight. Finance may adjust chargeable weight."
+    },
+    {
+      "exception_code": "DAMAGED_PARCEL",
+      "exception_name_en": "Damaged parcel",
+      "exception_name_mm": "ပစ္စည်း ပျက်စီးနေသည်",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "DAMAGED",
+      "hold_required": "YES",
+      "approval_team": "Warehouse / CS",
+      "require_photo": "YES",
+      "require_remark": "YES",
+      "next_action": "DAMAGE_REVIEW",
+      "customer_message_en": "Shipment is on hold because the parcel condition needs review.",
+      "customer_message_mm": "ပစ္စည်းအခြေအနေ စစ်ဆေးရန်လိုအပ်သောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Torn, wet, crushed, leaking, opened, or broken parcel. Photo mandatory."
+    },
+    {
+      "exception_code": "MISSING_INVOICE",
+      "exception_name_en": "Missing invoice",
+      "exception_name_mm": "Invoice မပါရှိပါ",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "DOCUMENT_REQUIRED",
+      "hold_required": "YES",
+      "approval_team": "CS / Merchant",
+      "require_photo": "No",
+      "require_remark": "YES",
+      "next_action": "REQUEST_DOCUMENT",
+      "customer_message_en": "Shipment is on hold because required invoice/document is missing.",
+      "customer_message_mm": "လိုအပ်သော Invoice/စာရွက်စာတမ်း မပါရှိသောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Commercial invoice, COD invoice, tax invoice, item description, or declared value missing."
+    },
+    {
+      "exception_code": "UNIDENTIFIED_PARCEL",
+      "exception_name_en": "Unidentified parcel",
+      "exception_name_mm": "မသိရှိနိုင်သော ပစ္စည်း",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "WAREHOUSE_HOLD",
+      "hold_required": "YES",
+      "approval_team": "Warehouse",
+      "require_photo": "YES",
+      "require_remark": "YES",
+      "next_action": "MANUAL_INVESTIGATION",
+      "customer_message_en": "Shipment is on hold because the parcel cannot be identified.",
+      "customer_message_mm": "ပစ္စည်းကို မသိရှိနိုင်သောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "No label, unreadable barcode, detached waybill, or no system entry."
+    },
+    {
+      "exception_code": "WRONG_DESTINATION",
+      "exception_name_en": "Wrong destination",
+      "exception_name_mm": "ဦးတည်ရာ မှားယွင်းသည်",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "MISROUTED",
+      "hold_required": "YES",
+      "approval_team": "Warehouse / Dispatch",
+      "require_photo": "COND",
+      "require_remark": "YES",
+      "next_action": "REROUTE",
+      "customer_message_en": "Shipment is being rerouted because it was sent to the wrong destination.",
+      "customer_message_mm": "ဦးတည်ရာမှားယွင်းသွားသောကြောင့် Shipment ကို ပြန်လည်လမ်းကြောင်းသတ်မှတ်နေပါသည်။",
+      "Notes / Rules": "Parcel sorted or sent to wrong branch, hub, city, township, or zone."
+    },
+    {
+      "exception_code": "DUPLICATE_SCAN",
+      "exception_name_en": "Duplicate scan",
+      "exception_name_mm": "Scan ထပ်နေသည်",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "SCAN_WARNING",
+      "hold_required": "No",
+      "approval_team": "System",
+      "require_photo": "No",
+      "require_remark": "No",
+      "next_action": "IGNORE_OR_REVIEW",
+      "customer_message_en": "Duplicate scan detected. No customer action required.",
+      "customer_message_mm": "Scan ထပ်နေမှု တွေ့ရှိပါသည်။ Customer ဘက်မှ လုပ်ဆောင်ရန်မလိုပါ။",
+      "Notes / Rules": "Same parcel scanned in same location/status within short time. Usually warning only."
+    },
+    {
+      "exception_code": "RESTRICTED_ITEM",
+      "exception_name_en": "Restricted item",
+      "exception_name_mm": "တားမြစ်ပစ္စည်း",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "WAREHOUSE_HOLD",
+      "hold_required": "YES",
+      "approval_team": "Compliance",
+      "require_photo": "YES",
+      "require_remark": "YES",
+      "next_action": "COMPLIANCE_REVIEW",
+      "customer_message_en": "Shipment is on hold because the item requires compliance review.",
+      "customer_message_mm": "ပစ္စည်းသည် စည်းမျဉ်းအရ စစ်ဆေးရန်လိုအပ်သောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Restricted item found after pickup. Stop movement and escalate."
+    },
+    {
+      "exception_code": "HOLD_BY_FINANCE",
+      "exception_name_en": "Hold by finance",
+      "exception_name_mm": "Finance မှ Hold ပြုလုပ်ထားသည်",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "FINANCE_HOLD",
+      "hold_required": "YES",
+      "approval_team": "Finance",
+      "require_photo": "No",
+      "require_remark": "YES",
+      "next_action": "FINANCE_RELEASE_REQUIRED",
+      "customer_message_en": "Shipment is on finance hold. It will continue after finance release.",
+      "customer_message_mm": "Finance Hold ဖြစ်နေသောကြောင့် Finance မှ Release ပြုလုပ်ပြီးမှ ဆက်လက်လုပ်ဆောင်ပါမည်။",
+      "Notes / Rules": "Billing, COD, settlement, credit limit, tariff, or invoice issue."
+    },
+    {
+      "exception_code": "HOLD_BY_CUSTOMER_SERVICE",
+      "exception_name_en": "Hold by customer service",
+      "exception_name_mm": "Customer Service မှ Hold ပြုလုပ်ထားသည်",
+      "process_type": "WAREHOUSE",
+      "mapped_status": "CS_HOLD",
+      "hold_required": "YES",
+      "approval_team": "Customer Service",
+      "require_photo": "No",
+      "require_remark": "YES",
+      "next_action": "CS_RELEASE_REQUIRED",
+      "customer_message_en": "Shipment is on customer service hold pending review.",
+      "customer_message_mm": "Customer Service မှ စစ်ဆေးနေသောကြောင့် Shipment ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Customer request, address correction, complaint, cancellation, or return approval pending."
+    }
+  ],
+  "deliveryExceptionMaster": [
+    {
+      "exception_code": "CUSTOMER_NOT_AVAILABLE",
+      "exception_name_en": "Customer not available",
+      "exception_name_mm": "Customer မရှိ / မရရှိနိုင်",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_ATTEMPTED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "YES",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "Attempt 3 -> CS Review/RTO",
+      "next_action": "RESCHEDULE_DELIVERY",
+      "customer_message_en": "Delivery attempt failed because the receiver was not available.",
+      "customer_message_mm": "လက်ခံသူ မရှိသောကြောင့် Delivery မအောင်မြင်ပါ။",
+      "Notes / Rules": "Receiver not available at delivery location. Call log and GPS required."
+    },
+    {
+      "exception_code": "CUSTOMER_REFUSED",
+      "exception_name_en": "Customer refused",
+      "exception_name_mm": "Customer မှ လက်မခံပါ",
+      "process_type": "DELIVERY",
+      "mapped_status": "CUSTOMER_REFUSED",
+      "severity": "Medium",
+      "require_photo": "COND",
+      "require_call_log": "YES",
+      "require_cod_note": "COND",
+      "allow_reschedule": "No",
+      "max_attempt_impact": "CS review before RTO",
+      "next_action": "CS_REVIEW_OR_RTO",
+      "customer_message_en": "Delivery was refused by the receiver.",
+      "customer_message_mm": "လက်ခံသူမှ ပစ္စည်းကို လက်မခံပါ။",
+      "Notes / Rules": "Receiver actively rejects parcel. CS should review before RTO if needed."
+    },
+    {
+      "exception_code": "WRONG_ADDRESS",
+      "exception_name_en": "Wrong address",
+      "exception_name_mm": "လိပ်စာ မှားယွင်းသည်",
+      "process_type": "DELIVERY",
+      "mapped_status": "ADDRESS_ISSUE",
+      "severity": "Medium",
+      "require_photo": "COND",
+      "require_call_log": "YES",
+      "require_cod_note": "No",
+      "allow_reschedule": "COND",
+      "max_attempt_impact": "Block until corrected",
+      "next_action": "CS_ADDRESS_REVIEW",
+      "customer_message_en": "Delivery is delayed because the address needs correction.",
+      "customer_message_mm": "လိပ်စာ ပြင်ဆင်ရန် လိုအပ်သောကြောင့် Delivery နှောင့်နှေးနေပါသည်။",
+      "Notes / Rules": "Do not continue delivery until address is corrected."
+    },
+    {
+      "exception_code": "PHONE_UNREACHABLE",
+      "exception_name_en": "Phone unreachable",
+      "exception_name_mm": "ဖုန်းဆက်မရပါ",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_ATTEMPTED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "YES",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "2 call attempts minimum",
+      "next_action": "RETRY_OR_CS_FOLLOWUP",
+      "customer_message_en": "We could not reach the receiver by phone during delivery.",
+      "customer_message_mm": "Delivery ပြုလုပ်ချိန်တွင် လက်ခံသူအား ဖုန်းဖြင့် ဆက်သွယ်၍ မရပါ။",
+      "Notes / Rules": "Minimum call attempts should be required before selecting this reason."
+    },
+    {
+      "exception_code": "COD_NOT_READY",
+      "exception_name_en": "COD not ready",
+      "exception_name_mm": "COD ငွေ မပြင်ဆင်ရသေးပါ",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_RESCHEDULED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "YES",
+      "require_cod_note": "YES",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "Merchant policy applies",
+      "next_action": "RESCHEDULE_DELIVERY",
+      "customer_message_en": "Delivery could not be completed because COD payment was not ready.",
+      "customer_message_mm": "COD ငွေ မပြင်ဆင်ရသေးသောကြောင့် Delivery မပြီးမြောက်ပါ။",
+      "Notes / Rules": "Receiver available but cannot pay COD amount."
+    },
+    {
+      "exception_code": "CUSTOMER_REQUESTED_RESCHEDULE",
+      "exception_name_en": "Customer requested reschedule",
+      "exception_name_mm": "Customer မှ ပြန်ချိန်းဆိုရန် တောင်းဆိုသည်",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_RESCHEDULED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "COND",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "Next date required",
+      "next_action": "SET_NEXT_ATTEMPT_DATE",
+      "customer_message_en": "Delivery has been rescheduled as requested by the receiver.",
+      "customer_message_mm": "လက်ခံသူ တောင်းဆိုချက်အရ Delivery ကို ပြန်လည်ချိန်းဆိုထားပါသည်။",
+      "Notes / Rules": "Must capture next requested delivery date/time."
+    },
+    {
+      "exception_code": "NO_ACCESS_TO_BUILDING",
+      "exception_name_en": "No access to building",
+      "exception_name_mm": "အဆောက်အဦး/ဝင်းအတွင်း ဝင်ခွင့်မရပါ",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_ATTEMPTED",
+      "severity": "Medium",
+      "require_photo": "COND",
+      "require_call_log": "YES",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "CS follow-up if repeated",
+      "next_action": "CUSTOMER_ACCESS_REQUIRED",
+      "customer_message_en": "Delivery attempt failed because the rider could not access the delivery location.",
+      "customer_message_mm": "Rider သည် Delivery နေရာသို့ ဝင်ရောက်ခွင့်မရသောကြောင့် Delivery မအောင်မြင်ပါ။",
+      "Notes / Rules": "Security gate, office closed, apartment access denied, restricted compound."
+    },
+    {
+      "exception_code": "PARCEL_DAMAGED",
+      "exception_name_en": "Parcel damaged",
+      "exception_name_mm": "ပစ္စည်း ပျက်စီးနေသည်",
+      "process_type": "DELIVERY",
+      "mapped_status": "DAMAGED",
+      "severity": "High",
+      "require_photo": "YES",
+      "require_call_log": "COND",
+      "require_cod_note": "No",
+      "allow_reschedule": "No",
+      "max_attempt_impact": "Claim review",
+      "next_action": "DAMAGE_REVIEW",
+      "customer_message_en": "Delivery is on hold because the parcel condition needs review.",
+      "customer_message_mm": "ပစ္စည်းအခြေအနေ စစ်ဆေးရန် လိုအပ်သောကြောင့် Delivery ကို ယာယီရပ်ဆိုင်းထားပါသည်။",
+      "Notes / Rules": "Damage found before handover or receiver refuses due to visible damage."
+    },
+    {
+      "exception_code": "WEATHER_TRAFFIC_ISSUE",
+      "exception_name_en": "Weather/traffic issue",
+      "exception_name_mm": "ရာသီဥတု/လမ်းကြောင်း ပြဿနာ",
+      "process_type": "DELIVERY",
+      "mapped_status": "DELIVERY_DELAYED",
+      "severity": "Low",
+      "require_photo": "No",
+      "require_call_log": "No",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "Auto-reschedule",
+      "next_action": "AUTO_RESCHEDULE",
+      "customer_message_en": "Delivery is delayed due to weather or traffic conditions.",
+      "customer_message_mm": "ရာသီဥတု သို့မဟုတ် လမ်းကြောင်းအခြေအနေကြောင့် Delivery နှောင့်နှေးနေပါသည်။",
+      "Notes / Rules": "Heavy rain, flood, traffic blockage, road closure, accident delay."
+    },
+    {
+      "exception_code": "RIDER_ISSUE",
+      "exception_name_en": "Rider issue",
+      "exception_name_mm": "Rider ဘက်မှ လုပ်ငန်းဆိုင်ရာ ပြဿနာ",
+      "process_type": "DELIVERY",
+      "mapped_status": "REASSIGNMENT_REQUIRED",
+      "severity": "Medium",
+      "require_photo": "No",
+      "require_call_log": "No",
+      "require_cod_note": "No",
+      "allow_reschedule": "YES",
+      "max_attempt_impact": "Dispatch reassignment",
+      "next_action": "REASSIGN_RIDER",
+      "customer_message_en": "Delivery is delayed due to operational reasons. It will be reassigned.",
+      "customer_message_mm": "လုပ်ငန်းဆိုင်ရာ အကြောင်းပြချက်ကြောင့် Delivery နှောင့်နှေးနေပါသည်။ Rider ပြန်လည်သတ်မှတ်ပါမည်။",
+      "Notes / Rules": "Vehicle breakdown, rider sick, app issue, route overload, parcel not loaded correctly."
+    }
+  ],
+  "auditValidationFields": [
+    {
+      "Field / Column": "exception_datetime",
+      "Required?": "YES",
+      "Validation": "DateTime",
+      "English Label": "Exception Datetime",
+      "Myanmar Label": "ပြဿနာ ဖြစ်ပွားချိန်",
+      "Notes / Rules EN": "Auto-generated from system.",
+      "Notes / Rules MM": "စနစ်မှ အလိုအလျောက်ထုတ်ပေးသည်။"
+    },
+    {
+      "Field / Column": "reported_by_user_id",
+      "Required?": "YES",
+      "Validation": "System-linked",
+      "English Label": "Reported By User ID",
+      "Myanmar Label": "တင်ပြသူ User ID",
+      "Notes / Rules EN": "Rider / Warehouse / CS / Finance.",
+      "Notes / Rules MM": "Rider / Warehouse / CS / Finance မှ တင်ပြသူ။"
+    },
+    {
+      "Field / Column": "branch_id",
+      "Required?": "YES",
+      "Validation": "Dropdown: branch",
+      "English Label": "Branch ID",
+      "Myanmar Label": "ဌာနခွဲ",
+      "Notes / Rules EN": "Current branch or handling branch.",
+      "Notes / Rules MM": "လက်ရှိ/ကိုင်တွယ်နေသော ဌာနခွဲ။"
+    },
+    {
+      "Field / Column": "shipment_id",
+      "Required?": "YES",
+      "Validation": "System-linked",
+      "English Label": "Shipment ID",
+      "Myanmar Label": "Shipment ID",
+      "Notes / Rules EN": "Linked to shipment/waybill.",
+      "Notes / Rules MM": "Shipment/Waybill နှင့် ချိတ်ဆက်ထားသည်။"
+    },
+    {
+      "Field / Column": "previous_status",
+      "Required?": "YES",
+      "Validation": "System-generated",
+      "English Label": "Previous Status",
+      "Myanmar Label": "ယခင် Status",
+      "Notes / Rules EN": "Auto-captured before exception update.",
+      "Notes / Rules MM": "Exception Update မတိုင်မီ စနစ်မှ အလိုအလျောက် သိမ်းဆည်းသည်။"
+    },
+    {
+      "Field / Column": "new_status",
+      "Required?": "YES",
+      "Validation": "Dropdown: status",
+      "English Label": "New Status",
+      "Myanmar Label": "Status အသစ်",
+      "Notes / Rules EN": "Based on selected reason.",
+      "Notes / Rules MM": "ရွေးချယ်ထားသော အကြောင်းပြချက်အရ သတ်မှတ်သည်။"
+    },
+    {
+      "Field / Column": "exception_code",
+      "Required?": "YES",
+      "Validation": "Dropdown: exception_code",
+      "English Label": "Exception Code",
+      "Myanmar Label": "ပြဿနာ ကုဒ်",
+      "Notes / Rules EN": "Must come from active exception master.",
+      "Notes / Rules MM": "Active ဖြစ်သော Exception Master မှ ရွေးရမည်။"
+    },
+    {
+      "Field / Column": "remarks",
+      "Required?": "YES",
+      "Validation": "Text, max 500 chars",
+      "English Label": "Remarks",
+      "Myanmar Label": "မှတ်ချက်",
+      "Notes / Rules EN": "Required for all failures/exceptions.",
+      "Notes / Rules MM": "Failure/Exception အားလုံးအတွက် မဖြစ်မနေ ဖြည့်ရန်။"
+    },
+    {
+      "Field / Column": "gps_lat",
+      "Required?": "COND",
+      "Validation": "Decimal",
+      "English Label": "GPS Latitude",
+      "Myanmar Label": "GPS Latitude",
+      "Notes / Rules EN": "Required for rider pickup/delivery failure.",
+      "Notes / Rules MM": "Rider Pickup/Delivery Failure တွင် လိုအပ်သည်။"
+    },
+    {
+      "Field / Column": "gps_lng",
+      "Required?": "COND",
+      "Validation": "Decimal",
+      "English Label": "GPS Longitude",
+      "Myanmar Label": "GPS Longitude",
+      "Notes / Rules EN": "Required for rider pickup/delivery failure.",
+      "Notes / Rules MM": "Rider Pickup/Delivery Failure တွင် လိုအပ်သည်။"
+    },
+    {
+      "Field / Column": "photo_url",
+      "Required?": "COND",
+      "Validation": "File URL",
+      "English Label": "Photo URL",
+      "Myanmar Label": "ဓာတ်ပုံ",
+      "Notes / Rules EN": "Required when reason requires photo.",
+      "Notes / Rules MM": "အကြောင်းပြချက်တွင် ဓာတ်ပုံလိုအပ်ပါက ဖြည့်ရန်။"
+    },
+    {
+      "Field / Column": "call_attempt_count",
+      "Required?": "COND",
+      "Validation": "Integer",
+      "English Label": "Call Attempt Count",
+      "Myanmar Label": "ဖုန်းခေါ်ဆိုမှု အကြိမ်ရေ",
+      "Notes / Rules EN": "Required for customer unavailable / phone unreachable.",
+      "Notes / Rules MM": "Customer မရရှိနိုင်/ဖုန်းဆက်မရသည့် အကြောင်းပြချက်တွင် လိုအပ်သည်။"
+    },
+    {
+      "Field / Column": "next_action",
+      "Required?": "YES",
+      "Validation": "Dropdown: next_action",
+      "English Label": "Next Action",
+      "Myanmar Label": "နောက်လုပ်ဆောင်ရန်",
+      "Notes / Rules EN": "Reschedule, CS review, Finance review, RTO, etc.",
+      "Notes / Rules MM": "ပြန်ချိန်းဆိုခြင်း၊ CS Review၊ Finance Review၊ RTO စသည်။"
+    },
+    {
+      "Field / Column": "next_attempt_date",
+      "Required?": "COND",
+      "Validation": "DD.MM.YYYY",
+      "English Label": "Next Attempt Date",
+      "Myanmar Label": "နောက်တစ်ကြိမ် ဆောင်ရွက်မည့်ရက်",
+      "Notes / Rules EN": "Required if allow_reschedule = Yes.",
+      "Notes / Rules MM": "allow_reschedule = Yes ဖြစ်ပါက လိုအပ်သည်။"
+    }
+  ],
+  "dropdownValues": [
+    {
+      "dropdown_name": "business_type",
+      "value": "Online Shop",
+      "Myanmar Label": "အွန်လိုင်းဆိုင်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "business_type",
+      "value": "Branch Office",
+      "Myanmar Label": "ဌာနခွဲရုံး",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "business_type",
+      "value": "Corporate",
+      "Myanmar Label": "ကုမ္ပဏီ",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "business_type",
+      "value": "Individual",
+      "Myanmar Label": "ပုဂ္ဂိုလ်ရေး",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "payment_terms",
+      "value": "COD",
+      "Myanmar Label": "ငွေသားကောက်ခံ",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "payment_terms",
+      "value": "Prepaid",
+      "Myanmar Label": "ကြိုတင်ပေးချေ",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "payment_terms",
+      "value": "Monthly",
+      "Myanmar Label": "လစဉ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "contract_status",
+      "value": "Draft",
+      "Myanmar Label": "မူကြမ်း",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "contract_status",
+      "value": "Submitted",
+      "Myanmar Label": "တင်သွင်းပြီး",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "contract_status",
+      "value": "Approved",
+      "Myanmar Label": "အတည်ပြုပြီး",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "contract_status",
+      "value": "Active",
+      "Myanmar Label": "အသုံးပြုနေသည်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "record_status",
+      "value": "Active",
+      "Myanmar Label": "အသုံးပြုနေသည်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "record_status",
+      "value": "Inactive",
+      "Myanmar Label": "အသုံးမပြု",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "record_status",
+      "value": "Suspended",
+      "Myanmar Label": "ရပ်ဆိုင်းထားသည်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "employment_type",
+      "value": "Permanent",
+      "Myanmar Label": "အမြဲတမ်း",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "employment_type",
+      "value": "Contract",
+      "Myanmar Label": "စာချုပ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "employment_type",
+      "value": "Part-time",
+      "Myanmar Label": "အချိန်ပိုင်း",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "vehicle_type",
+      "value": "Bike",
+      "Myanmar Label": "ဆိုင်ကယ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "vehicle_type",
+      "value": "Van",
+      "Myanmar Label": "ဗင်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "vehicle_type",
+      "value": "Mini Truck",
+      "Myanmar Label": "မီနီထရပ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "vehicle_type",
+      "value": "Truck",
+      "Myanmar Label": "ထရပ်ကား",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "ownership_type",
+      "value": "Owned",
+      "Myanmar Label": "ပိုင်ဆိုင်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "ownership_type",
+      "value": "Rented",
+      "Myanmar Label": "ငှားရမ်း",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "ownership_type",
+      "value": "Partner",
+      "Myanmar Label": "မိတ်ဖက်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "fleet_status",
+      "value": "Available",
+      "Myanmar Label": "အသုံးပြုနိုင်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "fleet_status",
+      "value": "Assigned",
+      "Myanmar Label": "တာဝန်ချထား",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "fleet_status",
+      "value": "Maintenance",
+      "Myanmar Label": "ပြုပြင်ထိန်းသိမ်း",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "severity",
+      "value": "Low",
+      "Myanmar Label": "နိမ့်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "severity",
+      "value": "Medium",
+      "Myanmar Label": "အလယ်အလတ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "severity",
+      "value": "High",
+      "Myanmar Label": "မြင့်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "severity",
+      "value": "Critical",
+      "Myanmar Label": "အရေးပေါ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "yes_no_cond",
+      "value": "YES",
+      "Myanmar Label": "လိုအပ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "yes_no_cond",
+      "value": "No",
+      "Myanmar Label": "မလိုအပ်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    },
+    {
+      "dropdown_name": "yes_no_cond",
+      "value": "COND",
+      "Myanmar Label": "အခြေအနေပေါ်မူတည်",
+      "Notes": "Use as dropdown source / Dropdown Source အဖြစ်အသုံးပြုရန်"
+    }
+  ]
+}

@@ -1,0 +1,620 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+  Mail,
+  Lock,
+  AlertCircle,
+  Loader2,
+  User,
+  CheckCircle,
+  ShieldCheck,
+  Download,
+  ArrowRight,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Checkbox } from '@/components/ui/checkbox';
+import { useAuth } from '@/hooks/useAuth';
+import { ROUTE_PATHS } from '@/lib/index';
+import { supabase } from '@/integrations/supabase/client';
+import { useBilingual } from '@/lib/bilingual';
+
+type AuthTab = 'login' | 'signup';
+type LoginMethod = 'password' | 'emailLink';
+
+export default function Login() {
+  const [tab, setTab] = useState<AuthTab>('login');
+  const [loginMethod, setLoginMethod] = useState<LoginMethod>('password');
+
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [resetEmail, setResetEmail] = useState('');
+
+  const [rememberMe, setRememberMe] = useState(true);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+
+  const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const { login, signup } = useAuth();
+  const { bt } = useBilingual();
+  const navigate = useNavigate();
+
+  const apkUrl = (import.meta.env.VITE_ANDROID_APK_URL as string | undefined)?.trim();
+
+  useEffect(() => {
+    const savedEmail = localStorage.getItem('rememberedLoginEmail');
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
+  }, []);
+
+  const persistRememberedEmail = (value: string) => {
+    if (rememberMe && value.trim()) {
+      localStorage.setItem('rememberedLoginEmail', value.trim());
+    } else {
+      localStorage.removeItem('rememberedLoginEmail');
+    }
+  };
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+
+    try {
+      await login(email, password);
+      persistRememberedEmail(email);
+      navigate(ROUTE_PATHS.DASHBOARD);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          bt(
+            'Invalid email or password. Please try again.',
+            'အီးမေးလ် သို့မဟုတ် စကားဝှက် မမှန်ပါ။ ထပ်မံကြိုးစားပါ။'
+          )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleEmailLinkLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+
+    try {
+      const siteUrl = window.location.origin;
+
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+        options: {
+          emailRedirectTo: `${siteUrl}/#/`,
+        },
+      });
+
+      if (error) throw error;
+
+      persistRememberedEmail(email);
+      setSuccessMessage(
+        bt(
+          'Magic link sent. Please check your email.',
+          'အီးမေးလ်ဝင်ရန် link ပို့ပြီးပါပြီ။ သင့် inbox ကိုစစ်ဆေးပါ။'
+        )
+      );
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          bt(
+            'Unable to send email link. Please try again.',
+            'Email link ပို့မရပါ။ ထပ်မံကြိုးစားပါ။'
+          )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+
+    try {
+      await signup(email, password, fullName);
+      persistRememberedEmail(email);
+      navigate(ROUTE_PATHS.DASHBOARD);
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          bt(
+            'Failed to create account. Please try again.',
+            'အကောင့်ဖန်တီးမှု မအောင်မြင်ပါ။ ထပ်မံကြိုးစားပါ။'
+          )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setIsLoading(true);
+
+    try {
+      const siteUrl = window.location.origin;
+
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${siteUrl}/#/reset-password`,
+      });
+
+      if (error) throw error;
+
+      setSuccessMessage(
+        bt(
+          'Password reset email sent. Please check your inbox.',
+          'စကားဝှက်ပြန်လည်သတ်မှတ်ရန် အီးမေးလ်ပို့ပြီးပါပြီ။ Inbox ကိုစစ်ဆေးပါ။'
+        )
+      );
+      setResetEmail('');
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          bt(
+            'Failed to send reset email. Please try again.',
+            'Reset email ပို့မရပါ။ ထပ်မံကြိုးစားပါ။'
+          )
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const darkInputClass =
+    'h-16 rounded-2xl border border-white/10 bg-black/35 text-white placeholder:text-slate-400 pl-14 pr-4 text-lg backdrop-blur-sm focus-visible:ring-2 focus-visible:ring-emerald-400';
+  const secondaryText = 'text-slate-300';
+  const mutedText = 'text-slate-400';
+
+  return (
+    <div className="min-h-screen flex bg-background">
+      <div className="relative flex-1 overflow-hidden bg-[#030B17] text-white">
+        <div
+          className="absolute inset-0 bg-cover bg-center opacity-20"
+          style={{ backgroundImage: "url('/images/logo.png')" }}
+        />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.12),_transparent_35%),linear-gradient(180deg,rgba(2,6,23,0.82),rgba(2,6,23,0.96))]" />
+
+        <div className="relative z-10 flex min-h-screen items-center justify-center px-6 py-10">
+          <motion.div
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35 }}
+            className="w-full max-w-[680px]"
+          >
+            <div className="mb-10 text-center">
+              <div className="mx-auto mb-6 flex h-40 w-40 items-center justify-center rounded-[30px] border border-white/10 bg-black/30 shadow-[0_0_0_1px_rgba(255,255,255,0.03),0_20px_80px_rgba(0,0,0,0.45)] backdrop-blur-md">
+                <img src="/logo.png" alt="Britium Express" className="h-20 w-auto" />
+              </div>
+
+              <h1 className="text-6xl font-black tracking-wide text-white">BRITIUM</h1>
+              <p className="mt-3 text-2xl text-slate-300">
+                {bt('Welcome to Britium Portal', 'Britium Portal မှ ကြိုဆိုပါသည်')}
+              </p>
+            </div>
+
+            <div className="rounded-[42px] border border-white/10 bg-[linear-gradient(180deg,rgba(2,10,30,0.92),rgba(1,8,24,0.96))] p-8 shadow-[0_30px_100px_rgba(0,0,0,0.45)] backdrop-blur-xl">
+              <div className="mb-7 h-2 w-full rounded-full bg-gradient-to-r from-cyan-400 via-emerald-400 to-teal-300" />
+
+              <div className="mb-8 flex items-center gap-3">
+                <ShieldCheck className="h-8 w-8 text-emerald-400" />
+                <h2 className="text-4xl font-extrabold tracking-wide">
+                  {showForgotPassword
+                    ? bt('RESET PASSWORD', 'စကားဝှက် ပြန်သတ်မှတ်ရန်')
+                    : tab === 'login'
+                    ? bt('SIGN IN', 'အကောင့် ဝင်ရန်')
+                    : bt('SIGN UP', 'အကောင့် ဖွင့်ရန်')}
+                </h2>
+              </div>
+
+              {error && (
+                <Alert variant="destructive" className="mb-6 border-red-500/40 bg-red-500/10 text-white">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+
+              {successMessage && (
+                <Alert className="mb-6 border-emerald-500/40 bg-emerald-500/10 text-white">
+                  <CheckCircle className="h-4 w-4 text-emerald-400" />
+                  <AlertDescription>{successMessage}</AlertDescription>
+                </Alert>
+              )}
+
+              {showForgotPassword ? (
+                <form onSubmit={handleForgotPassword} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email" className="text-base text-slate-200">
+                      {bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                    </Label>
+                    <div className="relative">
+                      <Mail className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="reset-email"
+                        type="email"
+                        placeholder={bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        className={darkInputClass}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="h-18 w-full rounded-2xl bg-emerald-500 text-xl font-extrabold tracking-wide text-white hover:bg-emerald-400"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        {bt('Sending...', 'ပို့နေသည်...')}
+                      </>
+                    ) : (
+                      bt('SEND RESET LINK', 'RESET LINK ပို့မည်')
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowForgotPassword(false);
+                        setError('');
+                        setSuccessMessage('');
+                      }}
+                      className="text-sm font-bold uppercase tracking-wider text-slate-300 hover:text-white"
+                    >
+                      {bt('Back to Sign In', 'အကောင့်ဝင်ရန် ပြန်သွားမည်')}
+                    </button>
+                  </div>
+                </form>
+              ) : tab === 'login' ? (
+                <form
+                  onSubmit={loginMethod === 'password' ? handlePasswordLogin : handleEmailLinkLogin}
+                  className="space-y-6"
+                >
+                  <div className="grid grid-cols-2 gap-2 rounded-[24px] bg-black/40 p-2">
+                    <button
+                      type="button"
+                      onClick={() => setLoginMethod('password')}
+                      className={`h-16 rounded-2xl text-2xl font-bold transition ${
+                        loginMethod === 'password'
+                          ? 'bg-emerald-500 text-white shadow-lg'
+                          : 'bg-transparent text-slate-300'
+                      }`}
+                    >
+                      {bt('Password', 'စကားဝှက်')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setLoginMethod('emailLink')}
+                      className={`h-16 rounded-2xl text-2xl font-bold transition ${
+                        loginMethod === 'emailLink'
+                          ? 'bg-emerald-500 text-white shadow-lg'
+                          : 'bg-transparent text-slate-300'
+                      }`}
+                    >
+                      {bt('Email Link', 'အီးမေးလ် လင့်ခ်')}
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="login-email" className="text-base text-slate-200">
+                      {bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                    </Label>
+                    <div className="relative">
+                      <Mail className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="login-email"
+                        type="email"
+                        placeholder={bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={darkInputClass}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  {loginMethod === 'password' && (
+                    <div className="space-y-2">
+                      <Label htmlFor="login-password" className="text-base text-slate-200">
+                        {bt('Password', 'စကားဝှက်')}
+                      </Label>
+                      <div className="relative">
+                        <Lock className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="login-password"
+                          type="password"
+                          placeholder={bt('Password', 'စကားဝှက်')}
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          className={darkInputClass}
+                          required
+                          disabled={isLoading}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+                    <label className="flex items-center gap-3">
+                      <Checkbox
+                        checked={rememberMe}
+                        onCheckedChange={(checked) => setRememberMe(Boolean(checked))}
+                        className="h-6 w-6 rounded border-white/30 data-[state=checked]:bg-emerald-500 data-[state=checked]:border-emerald-500"
+                      />
+                      <span className="text-lg font-semibold text-slate-200">
+                        {bt('Remember me', 'မှတ်ထားမည်')}
+                      </span>
+                    </label>
+
+                    <div className="flex items-center gap-6">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowForgotPassword(true);
+                          setError('');
+                          setSuccessMessage('');
+                          setResetEmail(email);
+                        }}
+                        className="text-lg font-bold uppercase tracking-wider text-slate-300 hover:text-white"
+                      >
+                        {bt('Forgot?', 'မေ့နေပါသလား?')}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTab('signup');
+                          setError('');
+                          setSuccessMessage('');
+                        }}
+                        className="text-lg font-bold uppercase tracking-wider text-amber-300 hover:text-amber-200"
+                      >
+                        {bt('Sign Up', 'အကောင့်ဖွင့်ရန်')}
+                      </button>
+                    </div>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="h-20 w-full rounded-2xl bg-emerald-500 text-3xl font-black tracking-[0.14em] text-white hover:bg-emerald-400"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                        {loginMethod === 'password'
+                          ? bt('Signing in...', 'ဝင်နေသည်...')
+                          : bt('Sending...', 'ပို့နေသည်...')}
+                      </>
+                    ) : (
+                      <>
+                        {loginMethod === 'password' ? bt('LOGIN', 'ဝင်မည်') : bt('SEND LINK', 'LINK ပို့မည်')}
+                        <ArrowRight className="ml-3 h-7 w-7" />
+                      </>
+                    )}
+                  </Button>
+
+                  <div className="border-t border-white/10 pt-7">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={!apkUrl}
+                      onClick={() => {
+                        if (apkUrl) window.open(apkUrl, '_blank', 'noopener,noreferrer');
+                      }}
+                      className="h-18 w-full rounded-2xl border-white/10 bg-white/6 text-xl font-extrabold tracking-wide text-white hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <Download className="mr-3 h-6 w-6 text-emerald-400" />
+                      {bt('DOWNLOAD ANDROID APP (APK)', 'ANDROID APP (APK) ဒေါင်းလုဒ်')}
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <form onSubmit={handleSignup} className="space-y-6">
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-name" className="text-base text-slate-200">
+                      {bt('Full Name', 'အမည်အပြည့်အစုံ')}
+                    </Label>
+                    <div className="relative">
+                      <User className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="signup-name"
+                        type="text"
+                        placeholder={bt('Full Name', 'အမည်အပြည့်အစုံ')}
+                        value={fullName}
+                        onChange={(e) => setFullName(e.target.value)}
+                        className={darkInputClass}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-email" className="text-base text-slate-200">
+                      {bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                    </Label>
+                    <div className="relative">
+                      <Mail className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="signup-email"
+                        type="email"
+                        placeholder={bt('Corporate Email', 'ကုမ္ပဏီ အီးမေးလ်')}
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        className={darkInputClass}
+                        required
+                        disabled={isLoading}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="signup-password" className="text-base text-slate-200">
+                      {bt('Password', 'စကားဝှက်')}
+                    </Label>
+                    <div className="relative">
+                      <Lock className="absolute left-5 top-1/2 h-6 w-6 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="signup-password"
+                        type="password"
+                        placeholder={bt('Password', 'စကားဝှက်')}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className={darkInputClass}
+                        required
+                        minLength={6}
+                        disabled={isLoading}
+                      />
+                    </div>
+                    <p className={`text-sm ${mutedText}`}>
+                      {bt(
+                        'Password must be at least 6 characters long',
+                        'စကားဝှက်သည် အနည်းဆုံး ၆ လုံး ရှိရမည်'
+                      )}
+                    </p>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    disabled={isLoading}
+                    className="h-20 w-full rounded-2xl bg-emerald-500 text-3xl font-black tracking-[0.1em] text-white hover:bg-emerald-400"
+                  >
+                    {isLoading ? (
+                      <>
+                        <Loader2 className="mr-3 h-6 w-6 animate-spin" />
+                        {bt('Creating account...', 'ဖန်တီးနေသည်...')}
+                      </>
+                    ) : (
+                      bt('CREATE ACCOUNT', 'အကောင့် ဖန်တီးမည်')
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab('login');
+                        setError('');
+                        setSuccessMessage('');
+                      }}
+                      className={`text-lg font-bold uppercase tracking-wider ${secondaryText} hover:text-white`}
+                    >
+                      {bt('Back to Sign In', 'အကောင့်ဝင်ရန် ပြန်သွားမည်')}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+
+            <p className="mt-8 text-center text-lg text-slate-500">
+              © 2026 Britium Enterprise • {bt('All rights reserved.', 'မူပိုင်ခွင့်အားလုံး ထိန်းသိမ်းထားသည်။')}
+            </p>
+          </motion.div>
+        </div>
+      </div>
+
+      <div className="hidden lg:flex flex-1 relative overflow-hidden">
+        <video
+          className="absolute inset-0 h-full w-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+        >
+          <source src="/background.mp4" type="video/mp4" />
+        </video>
+
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/88 to-primary/62" />
+
+        <div className="relative z-10 flex flex-col justify-center p-12 text-white">
+          <motion.div
+            initial={{ opacity: 0, x: 18 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.35, delay: 0.1 }}
+          >
+            <h2 className="text-4xl font-bold mb-6">
+              {bt(
+                'Streamline Your Delivery Operations',
+                'သင့်ပို့ဆောင်မှုလုပ်ငန်းများကို ပိုမိုချောမွေ့စေပါ'
+              )}
+            </h2>
+            <p className="text-xl mb-8 text-white/90">
+              {bt(
+                'Real-time tracking, route optimization, and comprehensive analytics for modern logistics.',
+                'ခေတ်မီ logistics လုပ်ငန်းအတွက် real-time tracking, route optimization နှင့် analytics အပြည့်အစုံ'
+              )}
+            </p>
+
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg mb-1">
+                  {bt('Multi-Portal Access', 'Portal မျိုးစုံ အသုံးပြုခွင့်')}
+                </h3>
+                <p className="text-white/80">
+                  {bt(
+                    'Specialized interfaces for supervisors, drivers, warehouse staff, and customer service.',
+                    'Supervisor, Driver, Warehouse Staff နှင့် Customer Service အတွက် သီးသန့် interface များ'
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-lg mb-1">
+                  {bt('Real-Time Tracking', 'အချိန်နှင့်တပြေးညီ ခြေရာခံခြင်း')}
+                </h3>
+                <p className="text-white/80">
+                  {bt(
+                    'Live updates on delivery status, driver locations, and route progress.',
+                    'Delivery status, driver location နှင့် route progress ကို live update ဖြင့် ကြည့်ရှုနိုင်သည်'
+                  )}
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-semibold text-lg mb-1">
+                  {bt('Advanced Analytics', 'အဆင့်မြင့် ခွဲခြမ်းစိတ်ဖြာမှု')}
+                </h3>
+                <p className="text-white/80">
+                  {bt(
+                    'Comprehensive reports on performance, revenue, and efficiency.',
+                    'Performance, revenue နှင့် efficiency အတွက် report အပြည့်အစုံ'
+                  )}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </div>
+  );
+}

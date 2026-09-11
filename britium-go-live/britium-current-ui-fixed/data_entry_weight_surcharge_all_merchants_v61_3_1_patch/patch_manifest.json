@@ -1,0 +1,23 @@
+{
+  "build": "PORTAL_DATA_ENTRY_ALL_MERCHANTS_V61_3_1_2026_08_02",
+  "required_existing_files": [
+    "src/pages/DataEntryFinancialV2Page.tsx",
+    "src/data/townshipTariffDirectory.ts"
+  ],
+  "patch_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "f85115758e2797ea34bc43166decfd43200b100ec669072d10aec4889c3d1191"
+  },
+  "accepted_current_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": [
+      "460c5be4f2b1c4ec6bda0ebc6d1099c2c518dd4a5f8da28285d7980bb231b61d",
+      "6a4b3b907354d4de779856ac7da4b864a1b7892fb3ba289bfb2cc61abac8ade2"
+    ]
+  },
+  "township_record_count": 356,
+  "business_rule": {
+    "registered": "active approved profile tier overrides operator selection",
+    "unregistered": "operator must select STANDARD, ROYAL, or COMMITMENT",
+    "inactive_or_blocked": "remains blocked",
+    "weight_surcharge": "receiver COD and Britium entitlement both include customer-paid delivery surcharges"
+  }
+}

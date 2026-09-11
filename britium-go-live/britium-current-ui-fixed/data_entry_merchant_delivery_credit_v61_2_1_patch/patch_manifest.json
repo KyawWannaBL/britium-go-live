@@ -1,0 +1,28 @@
+{
+  "build": "PORTAL_DATA_ENTRY_MERCHANT_DELIVERY_CREDIT_V61_2_1_2026_08_02",
+  "patch_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "460c5be4f2b1c4ec6bda0ebc6d1099c2c518dd4a5f8da28285d7980bb231b61d",
+    "src/data/townshipTariffDirectory.ts": "f3ecc00f55080fc6363fbc68583c246827c09dc168263885f6c1d737ff9a6a07"
+  },
+  "accepted_current_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": [
+      "32f582228aa068eabf94a752a5f6861c83fe5e88215c0d46df1ab0f5731c2b4f",
+      "883d14f038581a7f57946329328bdfbc964bbf04e8d28343a2e8d85c95fd064d",
+      "06920f84dd344ef556de124b2d76344975887a71b177205b210b2a50c05493b6"
+    ],
+    "src/data/townshipTariffDirectory.ts": [
+      "2919dee7832f54fabcd9bad0695692d851cb759da25747e8063018240ddd17aa",
+      "f9f089ad25d221b1b2a1f80b5b50c1c36c6d7b2d0a6aeb6ea4ddee80c383ce8b",
+      "f2d56c5b3126dffec37d2c4c98036ef2a7d9204fee222ec854f46bf40c7ff80d"
+    ]
+  },
+  "township_record_count": 356,
+  "financial_writes_enabled_by_patch": false,
+  "confirmed_business_rule": {
+    "positive_delivery_difference": "credit_to_merchant",
+    "example": "declared_delivery 5000 - net_system_delivery_charge 4000 = merchant credit 1000",
+    "additional_customer_charge": "separate editable input; do not copy delivery difference",
+    "other_merchant_credits": "separate editable input; do not duplicate delivery difference",
+    "merchant_final_settlement_amount": "item_price + delivery_difference + other_merchant_credits - merchant_payable_charges"
+  }
+}

@@ -1,0 +1,1131 @@
+-- ============================================================
+-- Britium Enterprise Portal + Rider App master-data wiring
+-- Source workbook: BE_MasterData_April.xlsx
+-- Generated: 2026-05-01
+--
+-- Purpose:
+--   1) expose Data Entry Portal with real master-data-backed pickups,
+--   2) replace demo/sample seed records with BE Master Data,
+--   3) align web portal and rider app backend channels,
+--   4) add role-aware RLS for data_entry, rider/driver/helper, merchant,
+--      customer-service, finance, warehouse and admin authorities.
+-- ============================================================
+
+create extension if not exists "pgcrypto";
+
+-- ---------- Compatibility repair for already-deployed Britium schemas ----------
+-- Patch core tables that might be missing tracking_no from legacy deployments
+alter table if exists public.shipments add column if not exists tracking_no text;
+alter table if exists public.cod_collections add column if not exists tracking_no text;
+alter table if exists public.delivery_process_events add column if not exists tracking_no text;
+
+-- Drop the old, broken foreign key pointing to profiles, and wire it to merchants correctly
+alter table if exists public.shipments drop constraint if exists shipments_merchant_id_fkey;
+alter table if exists public.shipments add constraint shipments_merchant_id_fkey foreign key (merchant_id) references public.merchants(id);
+create table if not exists public.audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  actor_uid uuid,
+  actor_role text,
+  action text,
+  table_name text,
+  row_id text,
+  old_record jsonb,
+  new_record jsonb,
+  created_at timestamptz default now()
+);
+
+alter table if exists public.audit_logs
+  add column if not exists actor_uid uuid,
+  add column if not exists actor_role text,
+  add column if not exists action text,
+  add column if not exists table_name text,
+  add column if not exists row_id text,
+  add column if not exists old_record jsonb,
+  add column if not exists new_record jsonb,
+  add column if not exists created_at timestamptz default now();
+
+do $be_preflight$
+begin
+  if to_regclass('public.staff_master') is not null then
+    alter table public.staff_master add column if not exists name text;
+    alter table public.staff_master add column if not exists email text;
+    alter table public.staff_master add column if not exists type text default 'staff';
+    alter table public.staff_master add column if not exists vehicle_type text;
+    alter table public.staff_master add column if not exists vehicle_plate text;
+    alter table public.staff_master add column if not exists helper_name text;
+    alter table public.staff_master add column if not exists status text default 'active';
+    alter table public.staff_master add column if not exists created_at timestamptz default now();
+    alter table public.staff_master add column if not exists updated_at timestamptz default now();
+    update public.staff_master
+       set name = coalesce(nullif(name, ''), nullif(email, ''), 'staff-' || id::text),
+           type = coalesce(nullif(type, ''), 'staff'),
+           status = coalesce(nullif(status, ''), 'active')
+     where name is null or name = '' or type is null or type = '' or status is null or status = '';
+  end if;
+
+  if to_regclass('public.branch_offices') is not null then
+    alter table public.branch_offices add column if not exists code text;
+    alter table public.branch_offices add column if not exists name text;
+    alter table public.branch_offices add column if not exists city text;
+    alter table public.branch_offices add column if not exists status text default 'active';
+    alter table public.branch_offices add column if not exists created_at timestamptz default now();
+    update public.branch_offices
+       set name = coalesce(nullif(name, ''), 'Branch ' || id::text),
+           code = coalesce(nullif(code, ''), upper(left(regexp_replace(coalesce(nullif(name, ''), id::text), '[^a-zA-Z0-9]+', '', 'g'), 12))),
+           status = coalesce(nullif(status, ''), 'active')
+     where name is null or name = '' or code is null or code = '' or status is null or status = '';
+  end if;
+end
+$be_preflight$;
+
+-- ---------- Foundational compatibility tables ----------
+create table if not exists public.profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  role text not null default 'data_entry',
+  full_name text not null default '',
+  email text not null default '',
+  phone text,
+  zone text,
+  status text not null default 'active',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.shipments (
+  id uuid primary key default gen_random_uuid(),
+  tracking_no text not null,
+  customer_name text not null default '',
+  customer_phone text,
+  pickup_address text,
+  delivery_address text not null default '',
+  township text,
+  zone text,
+  status text not null default 'created',
+  assigned_to uuid,
+  assigned_to_name text,
+  cod_amount numeric(12,2) default 0,
+  service_type text default 'standard',
+  weight numeric(8,2),
+  merchant_id uuid,
+  merchant_name text,
+  priority boolean default false,
+  notes text,
+  proof_photo_url text,
+  delivered_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create unique index if not exists shipments_tracking_no_uidx on public.shipments (tracking_no);
+
+create table if not exists public.cod_collections (
+  id uuid primary key default gen_random_uuid(),
+  tracking_no text,
+  shipment_id uuid,
+  rider_id uuid,
+  driver_id uuid,
+  assigned_to uuid,
+  user_id uuid,
+  rider_name text,
+  amount numeric(12,2) not null default 0,
+  status text not null default 'pending',
+  collected_at timestamptz,
+  handover_status text not null default 'pending',
+  handover_at timestamptz,
+  settlement_ref text,
+  notes text,
+  created_at timestamptz default now()
+);
+alter table public.cod_collections add column if not exists rider_name text;
+alter table public.cod_collections add column if not exists assigned_to uuid;
+alter table public.cod_collections add column if not exists user_id uuid;
+alter table public.cod_collections add column if not exists driver_id uuid;
+alter table public.cod_collections add column if not exists handover_status text default 'pending';
+alter table public.cod_collections add column if not exists handover_at timestamptz;
+alter table public.cod_collections add column if not exists settlement_ref text;
+
+-- ---------- Role helpers ----------
+create or replace function public.be_current_role()
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(
+    (select lower(replace(p.role, '-', '_')) from public.profiles p where p.id = auth.uid()),
+    lower(replace(auth.jwt() ->> 'role', '-', '_')),
+    lower(replace(auth.jwt() ->> 'app_role', '-', '_')),
+    ''
+  );
+$$;
+
+create or replace function public.be_has_role(allowed text[])
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select public.be_current_role() = any(allowed)
+     or coalesce(auth.jwt() ->> 'email','') in ('md@britiumexpress.com','sai@britiumexpress.com');
+$$;
+
+-- ---------- Profiles compatibility ----------
+alter table if exists public.profiles
+  add column if not exists email text,
+  add column if not exists full_name text,
+  add column if not exists phone text,
+  add column if not exists zone text,
+  add column if not exists branch_name text,
+  add column if not exists app_role text,
+  add column if not exists user_role text,
+  add column if not exists role_code text,
+  add column if not exists is_approved boolean default true,
+  add column if not exists is_active boolean default true,
+  add column if not exists vehicle_type text,
+  add column if not exists vehicle_plate text,
+  add column if not exists team_id text,
+  add column if not exists employee_id text,
+  add column if not exists updated_at timestamptz default now();
+
+update public.profiles
+set role = replace(lower(role), '-', '_')
+where role is not null and role like '%-%';
+
+-- ---------- Master data tables ----------
+create table if not exists public.merchants (
+  id uuid primary key default gen_random_uuid(),
+  merchant_code text,
+  name text not null,
+  phone text,
+  address text,
+  status text not null default 'active',
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.merchants add column if not exists merchant_code text;
+alter table public.merchants add column if not exists phone text;
+alter table public.merchants add column if not exists address text;
+alter table public.merchants add column if not exists status text default 'active';
+create unique index if not exists merchants_name_uidx on public.merchants (name);
+create unique index if not exists merchants_code_uidx on public.merchants (merchant_code) where merchant_code is not null;
+
+create table if not exists public.townships (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  region text,
+  zone_code text,
+  delivery_charge numeric(12,2) default 0,
+  status text default 'active',
+  created_at timestamptz default now()
+);
+create unique index if not exists townships_name_uidx on public.townships (name);
+
+create table if not exists public.staff_master (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text,
+  type text not null default 'staff',
+  zone text,
+  status text not null default 'active',
+  vehicle_type text,
+  vehicle_plate text,
+  helper_name text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+alter table public.staff_master add column if not exists email text;
+alter table public.staff_master add column if not exists type text default 'staff';
+alter table public.staff_master add column if not exists vehicle_plate text;
+alter table public.staff_master add column if not exists helper_name text;
+create unique index if not exists staff_master_name_type_uidx on public.staff_master (name, type);
+
+create table if not exists public.branch_offices (
+  id uuid primary key default gen_random_uuid(),
+  code text,
+  name text not null,
+  city text,
+  status text not null default 'active',
+  created_at timestamptz default now()
+);
+create unique index if not exists branch_offices_code_uidx on public.branch_offices (code) where code is not null;
+
+create table if not exists public.delivery_status_master (
+  id uuid primary key default gen_random_uuid(),
+  status_name text not null,
+  status_type text not null default 'delivery',
+  sort_order int default 0,
+  created_at timestamptz default now()
+);
+create unique index if not exists delivery_status_master_uidx on public.delivery_status_master (status_name, status_type);
+
+-- ---------- Pickup/order workflow ----------
+create table if not exists public.pickups (
+  id uuid primary key default gen_random_uuid(),
+  pickup_code text not null,
+  pickup_date date,
+  merchant_id uuid references public.merchants(id),
+  merchant_name text,
+  status text not null default 'ready_for_data_entry',
+  created_by uuid references auth.users(id),
+  pickup_by text,
+  total_items int default 0,
+  total_cod numeric(12,2) default 0,
+  total_delivery_fee numeric(12,2) default 0,
+  total_actual_collect numeric(12,2) default 0,
+  source_file text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+create unique index if not exists pickups_code_uidx on public.pickups (pickup_code);
+create index if not exists pickups_status_idx on public.pickups (status);
+create index if not exists pickups_merchant_idx on public.pickups (merchant_name);
+
+-- Shipment compatibility for Web Portal + Rider App
+alter table if exists public.shipments
+  add column if not exists tracking_no text,
+  add column if not exists customer_name text default '',
+  add column if not exists customer_phone text,
+  add column if not exists pickup_address text,
+  add column if not exists delivery_address text default '',
+  add column if not exists township text,
+  add column if not exists zone text,
+  add column if not exists cod_amount numeric(12,2) default 0,
+  add column if not exists service_type text default 'standard',
+  add column if not exists weight numeric(8,2),
+  add column if not exists merchant_id uuid,
+  add column if not exists merchant_name text,
+  add column if not exists priority boolean default false,
+  add column if not exists notes text,
+  add column if not exists proof_photo_url text,
+  add column if not exists delivered_at timestamptz,
+  add column if not exists pickup_id uuid references public.pickups(id),
+  add column if not exists pickup_code text,
+  add column if not exists pickup_date date,
+  add column if not exists item_price numeric(12,2) default 0,
+  add column if not exists delivery_fee_os numeric(12,2) default 0,
+  add column if not exists delivery_fee_max numeric(12,2) default 0,
+  add column if not exists surcharge numeric(12,2) default 0,
+  add column if not exists actual_collect numeric(12,2) default 0,
+  add column if not exists destination text,
+  add column if not exists pickup_by text,
+  add column if not exists excel_status text,
+  add column if not exists scan_status text,
+  add column if not exists source_file text,
+  add column if not exists assigned_to uuid references public.profiles(id),
+  add column if not exists assigned_to_name text,
+  add column if not exists pickup_proof_url text,
+  add column if not exists delivery_proof_url text,
+  add column if not exists delivery_signature text,
+  add column if not exists proof_submitted_at timestamptz,
+  add column if not exists actual_delivery_date timestamptz;
+create index if not exists shipments_pickup_id_idx on public.shipments (pickup_id);
+create index if not exists shipments_pickup_code_idx on public.shipments (pickup_code);
+create index if not exists shipments_merchant_name_idx on public.shipments (merchant_name);
+create index if not exists shipments_assigned_to_idx on public.shipments (assigned_to);
+
+create table if not exists public.delivery_process_events (
+  id uuid primary key default gen_random_uuid(),
+  shipment_id uuid references public.shipments(id) on delete cascade,
+  tracking_no text,
+  actor_id uuid references auth.users(id),
+  actor_role text,
+  from_status text,
+  to_status text not null,
+  event_type text not null default 'status_change',
+  channel text not null default 'portal',
+  notes text,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+create index if not exists delivery_process_events_tracking_idx on public.delivery_process_events (tracking_no);
+
+create table if not exists public.portal_authorizations (
+  id uuid primary key default gen_random_uuid(),
+  role_code text not null,
+  module_code text not null,
+  can_read boolean default true,
+  can_create boolean default false,
+  can_update boolean default false,
+  can_delete boolean default false,
+  created_at timestamptz default now(),
+  unique(role_code, module_code)
+);
+
+-- ---------- Rider app compatibility tables ----------
+create table if not exists public.merchants_2026_04_24 (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  phone text,
+  address text,
+  is_active boolean default true,
+  created_at timestamptz default now()
+);
+create unique index if not exists merchants_2026_name_uidx on public.merchants_2026_04_24 (name);
+
+create table if not exists public.townships_2026_04_24 (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  region text,
+  zone_code text,
+  created_at timestamptz default now()
+);
+create unique index if not exists townships_2026_name_uidx on public.townships_2026_04_24 (name);
+
+create table if not exists public.tariffs_2026_04_24 (
+  id uuid primary key default gen_random_uuid(),
+  township_id uuid references public.townships_2026_04_24(id) on delete cascade,
+  min_weight numeric(10,2) default 0,
+  max_weight numeric(10,2) default 999,
+  base_rate numeric(10,2) default 0,
+  per_kg_rate numeric(10,2) default 0,
+  created_at timestamptz default now()
+);
+
+create table if not exists public.pickups_2026_04_24 (
+  id uuid primary key default gen_random_uuid(),
+  pickup_id text unique not null,
+  pickup_date date default current_date,
+  merchant_id uuid references public.merchants_2026_04_24(id),
+  pickup_township uuid references public.townships_2026_04_24(id),
+  pickup_address text,
+  expected_way_count int default 1,
+  actual_weight numeric(10,2) default 0,
+  calculated_tariff numeric(10,2) default 0,
+  pickup_status text default 'DRAFT',
+  remarks text,
+  rider_id uuid references public.profiles(id),
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
+);
+
+create table if not exists public.pickup_attachments_2026_04_24 (
+  id uuid primary key default gen_random_uuid(),
+  pickup_id text not null,
+  attachment_type text default 'handover_photo',
+  file_name text,
+  file_url text,
+  meta jsonb default '{}'::jsonb,
+  uploaded_by uuid references public.profiles(id),
+  created_at timestamptz default now()
+);
+
+-- ---------- Unified Demo & Partial-Import Cleanup (Parser-Safe) ----------
+do $$
+begin
+  begin execute 'delete from public.delivery_process_events where tracking_no like ''BX-2026-%'' or tracking_no ilike ''DEMO%'' or coalesce(notes, '''') ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.route_stops where tracking_no like ''BX-2026-%'' or tracking_no ilike ''DEMO%'''; exception when others then null; end;
+  begin execute 'delete from public.cod_collections where tracking_no like ''BX-2026-%'' or tracking_no ilike ''DEMO%'' or coalesce(rider_name, '''') ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.delivery_proofs dp using public.shipments s where dp.shipment_id = s.id and (coalesce(s.source_file, '''') ilike ''%demo%'' or s.tracking_no like ''BX-2026-%'' or s.tracking_no ilike ''DEMO%'')'; exception when others then null; end;
+  begin execute 'delete from public.delivery_exceptions de using public.shipments s where de.shipment_id = s.id and (coalesce(s.source_file, '''') ilike ''%demo%'' or s.tracking_no like ''BX-2026-%'' or s.tracking_no ilike ''DEMO%'')'; exception when others then null; end;
+  begin execute 'delete from public.shipments where coalesce(source_file, '''') ilike ''%demo%'' or tracking_no like ''BX-2026-%'' or tracking_no ilike ''DEMO%'''; exception when others then null; end;
+  begin execute 'delete from public.pickups where coalesce(source_file, '''') ilike ''%demo%'' or pickup_code like ''PU-DEMO%'''; exception when others then null; end;
+  begin execute 'delete from public.pickup_attachments_2026_04_24 where pickup_id like ''PU-%'' or pickup_id ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.pickups_2026_04_24 where pickup_id like ''PU-%'' or pickup_id ilike ''%demo%'' or coalesce(remarks, '''') ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.merchants where coalesce(name, '''') ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.merchants_2026_04_24 where coalesce(name, '''') ilike ''%demo%'''; exception when others then null; end;
+  begin execute 'delete from public.staff_master where coalesce(email, '''') ilike ''%demo%'' or coalesce(name, '''') ilike ''Demo %'''; exception when others then null; end;
+  begin execute 'delete from public.rider_notifications rn using public.profiles p where rn.user_id = p.id and (p.email ilike ''%demo%'' or p.full_name ilike ''Demo %'')'; exception when others then null; end;
+  begin execute 'update public.profiles set status = ''inactive'', is_active = false, is_approved = false where email ilike ''%demo%'' or full_name ilike ''Demo %'''; exception when others then null; end;
+end $$;
+
+-- ---------- Replace demo master data with workbook master data ----------
+
+delete from public.delivery_status_master where status_type in ('delivery','scan');
+
+-- ---------- Pre-clear incoming merchant codes to prevent 23505 constraint violations ----------
+update public.merchants
+set merchant_code = null
+where merchant_code in (
+  'APA', 'ALN', 'APS', 'BBG', 'BBK', 'BAB', 'BBT', 'BBR', 'CUY',
+  'DDC', 'DND', 'DSD', 'EMF', 'ETE', 'HAM', 'HAI', 'JLS', 'LOS',
+  'MBO', 'MEL', 'NDN', 'NFT', 'POC', 'PRE', 'PSO', 'PLE', 'PPL',
+  'SHS', 'SYE', 'SSF', 'UQD', 'KKK', 'STZ', 'NHT', 'NPT', 'NFS',
+  'PTP', 'PTB', 'PYT', 'MDY', 'SMH', 'SEN', 'HMS', 'TGK'
+);
+
+insert into public.merchants (merchant_code, name, status) values
+('APA', 'APAC', 'active'),
+('ALN', 'Alnoor', 'active'),
+('APS', 'Aung Pyae Sone', 'active'),
+('BBG', 'Baby Genius', 'active'),
+('BBK', 'Baby Kyaw', 'active'),
+('BAB', 'Baby Top', 'active'),
+('BBT', 'BabyTop', 'active'),
+('BBR', 'Best Buy in Rangoon', 'active'),
+('CUY', 'Curvy', 'active'),
+('DDC', 'DDC BC', 'active'),
+('DND', 'DND', 'active'),
+('DSD', 'Daw Sanda', 'active'),
+('EMF', 'EM Fashion', 'active'),
+('ETE', 'Ei Tone', 'active'),
+('HAM', 'HAIM', 'active'),
+('HAI', 'Haim', 'active'),
+('JLS', 'July Sis', 'active'),
+('LOS', 'Lady OS', 'active'),
+('MBO', 'MaBel OS', 'active'),
+('MEL', 'Mee Lay', 'active'),
+('NDN', 'NDN', 'active'),
+('NFT', 'Nfinity', 'active'),
+('POC', 'PO Clothing', 'active'),
+('PRE', 'PREMIER', 'active'),
+('PSO', 'Phyu Sin OS', 'active'),
+('PLE', 'Pleasure', 'active'),
+('PPL', 'Poe Poe Lay', 'active'),
+('SHS', 'Shwe Sin', 'active'),
+('SYE', 'Shwe Yee', 'active'),
+('SSF', 'Su Su Fashion World', 'active'),
+('UQD', 'Unique/Diva', 'active'),
+('KKK', 'ကိုကျော် အထည်', 'active'),
+('STZ', 'ဆောင်းသဇင်', 'active'),
+('NHT', 'နန်းထိုက်တန်', 'active'),
+('NPT', 'နေပြည်တော် ရုံးခွဲ', 'active'),
+('NFS', 'နွယ် Fashion', 'active'),
+('PTP', 'ပန်းသရဖီ', 'active'),
+('PTB', 'ပီတိစာပေ', 'active'),
+('PYT', 'ပုရစ်', 'active'),
+('MDY', 'မန္တလေး ရုံးခွဲ', 'active'),
+('SMH', 'ရွှေမဟာ', 'active'),
+('SEN', 'ရွှေအိမ့်', 'active'),
+('HMS', 'လှမေတ္တာရှင်', 'active'),
+('TGK', 'သင်္ဃန်းကျွန်း ရုံးခွဲ', 'active')
+on conflict (name) do update set merchant_code = excluded.merchant_code, status = excluded.status, updated_at = now();
+
+
+insert into public.merchants_2026_04_24 (name, is_active) values
+('APAC', true),
+('Alnoor', true),
+('Aung Pyae Sone', true),
+('Baby Genius', true),
+('Baby Kyaw', true),
+('Baby Top', true),
+('BabyTop', true),
+('Best Buy in Rangoon', true),
+('Curvy', true),
+('DDC BC', true),
+('DND', true),
+('Daw Sanda', true),
+('EM Fashion', true),
+('Ei Tone', true),
+('HAIM', true),
+('Haim', true),
+('July Sis', true),
+('Lady OS', true),
+('MaBel OS', true),
+('Mee Lay', true),
+('NDN', true),
+('Nfinity', true),
+('PO Clothing', true),
+('PREMIER', true),
+('Phyu Sin OS', true),
+('Pleasure', true),
+('Poe Poe Lay', true),
+('Shwe Sin', true),
+('Shwe Yee', true),
+('Su Su Fashion World', true),
+('Unique/Diva', true),
+('ကိုကျော် အထည်', true),
+('ဆောင်းသဇင်', true),
+('နန်းထိုက်တန်', true),
+('နေပြည်တော် ရုံးခွဲ', true),
+('နွယ် Fashion', true),
+('ပန်းသရဖီ', true),
+('ပီတိစာပေ', true),
+('ပုရစ်', true),
+('မန္တလေး ရုံးခွဲ', true),
+('ရွှေမဟာ', true),
+('ရွှေအိမ့်', true),
+('လှမေတ္တာရှင်', true),
+('သင်္ဃန်းကျွန်း ရုံးခွဲ', true)
+on conflict (name) do update set is_active = true;
+
+insert into public.townships (name, region, zone_code, delivery_charge) values
+('#N/A', 'Myanmar', 'BE', 0),
+('N/A', 'Myanmar', 'BE', 0),
+('ကမာရွတ်', 'Myanmar', 'BE', 4000),
+('ကျောက်တန်း', 'Myanmar', 'BE', 0),
+('ကျောက်တံတား', 'Myanmar', 'BE', 4000),
+('ကြည့်မြင်တိုင်', 'Myanmar', 'BE', 4000),
+('ဂိတ်ချ', 'Myanmar', 'BE', 3000),
+('စမ်းချောင်း', 'Myanmar', 'BE', 4000),
+('တာမွေ', 'Myanmar', 'BE', 4000),
+('တောင်ဒဂုံ', 'Myanmar', 'BE', 4000),
+('တောင်ဥက္ကလာပ', 'Myanmar', 'BE', 4000),
+('ဒဂုံ', 'Myanmar', 'BE', 4000),
+('ဒဂုံဆိပ်ကမ်း', 'Myanmar', 'BE', 4000),
+('ဒေါပုံ', 'Myanmar', 'BE', 4000),
+('နေပြည်တော်', 'Myanmar', 'BE', 6000),
+('ပန်းဘဲတန်း', 'Myanmar', 'BE', 4000),
+('ပရမီ ကားဝင်း (ဗန္ဓုလ)', 'Myanmar', 'BE', 3000),
+('ပုဇွန်တောင်', 'Myanmar', 'BE', 4000),
+('ပျဉ်းမနား', 'Myanmar', 'BE', 0),
+('ဗဟန်း', 'Myanmar', 'BE', 4000),
+('ဗိုလ်တထောင်', 'Myanmar', 'BE', 4000),
+('ဘုရင့်နောင် ကားဝင်း', 'Myanmar', 'BE', 4000),
+('မင်္ဂလာတောင်ညွန့်', 'Myanmar', 'BE', 4000),
+('မင်္ဂလာဒုံ', 'Myanmar', 'BE', 4500),
+('မင်္ဂလာဒုံ (ဂိတ်ချ)', 'Myanmar', 'BE', 0),
+('မန္တလေး', 'Myanmar', 'BE', 6000),
+('မရမ်းကုန်း', 'Myanmar', 'BE', 4000),
+('မိုးစတားဂိတ်ချ', 'Myanmar', 'BE', 0),
+('မြို့သစ်', 'Myanmar', 'BE', 0),
+('မြောက်ဒဂုံ', 'Myanmar', 'BE', 4000),
+('မြောက်ဥက္ကလာပ', 'Myanmar', 'BE', 4500),
+('မှော်ဘီ', 'Myanmar', 'BE', 0),
+('ရန်ကင်း', 'Myanmar', 'BE', 4000),
+('ရန်ကုန်စာတိုက်ကြီး', 'Myanmar', 'BE', 3000),
+('ရွှေပေါက်ကံ', 'Myanmar', 'BE', 4500),
+('ရွှေပြည်သာ', 'Myanmar', 'BE', 4500),
+('လမ်းမတော်', 'Myanmar', 'BE', 4000),
+('လသာ', 'Myanmar', 'BE', 4000),
+('လိူင်သာယာအဝေးပြေး (ဒဂုံဧရာ)', 'Myanmar', 'BE', 4000),
+('လှိုင်', 'Myanmar', 'BE', 4000),
+('လှိုင်သာယာ', 'Myanmar', 'BE', 4500),
+('သင်္ဃန်းကျွန်း', 'Myanmar', 'BE', 4000),
+('သင်္ဘောဆိပ်ချ', 'Myanmar', 'BE', 0),
+('သန်လျင်', 'Myanmar', 'BE', 0),
+('သာကေတ', 'Myanmar', 'BE', 4000),
+('သုဝဏ္ဏ', 'Myanmar', 'BE', 0),
+('အင်းစိန်', 'Myanmar', 'BE', 4000),
+('အရှေ့ဒဂုံ', 'Myanmar', 'BE', 4000),
+('အလုံ', 'Myanmar', 'BE', 4000),
+('အဝေးပြေး ဂိတ်ချ', 'Myanmar', 'BE', 3000),
+('အောင်ဆန်းကွင်း', 'Myanmar', 'BE', 3000),
+('အောင်မင်္ဂလာကားဂိတ်', 'Myanmar', 'BE', 3000)
+on conflict (name) do update set delivery_charge = excluded.delivery_charge, region = excluded.region, zone_code = excluded.zone_code;
+
+insert into public.townships_2026_04_24 (name, region, zone_code) values
+('#N/A', 'Myanmar', 'BE'),
+('N/A', 'Myanmar', 'BE'),
+('ကမာရွတ်', 'Myanmar', 'BE'),
+('ကျောက်တန်း', 'Myanmar', 'BE'),
+('ကျောက်တံတား', 'Myanmar', 'BE'),
+('ကြည့်မြင်တိုင်', 'Myanmar', 'BE'),
+('ဂိတ်ချ', 'Myanmar', 'BE'),
+('စမ်းချောင်း', 'Myanmar', 'BE'),
+('တာမွေ', 'Myanmar', 'BE'),
+('တောင်ဒဂုံ', 'Myanmar', 'BE'),
+('တောင်ဥက္ကလာပ', 'Myanmar', 'BE'),
+('ဒဂုံ', 'Myanmar', 'BE'),
+('ဒဂုံဆိပ်ကမ်း', 'Myanmar', 'BE'),
+('ဒေါပုံ', 'Myanmar', 'BE'),
+('နေပြည်တော်', 'Myanmar', 'BE'),
+('ပန်းဘဲတန်း', 'Myanmar', 'BE'),
+('ပရမီ ကားဝင်း (ဗန္ဓုလ)', 'Myanmar', 'BE'),
+('ပုဇွန်တောင်', 'Myanmar', 'BE'),
+('ပျဉ်းမနား', 'Myanmar', 'BE'),
+('ဗဟန်း', 'Myanmar', 'BE'),
+('ဗိုလ်တထောင်', 'Myanmar', 'BE'),
+('ဘုရင့်နောင် ကားဝင်း', 'Myanmar', 'BE'),
+('မင်္ဂလာတောင်ညွန့်', 'Myanmar', 'BE'),
+('မင်္ဂလာဒုံ', 'Myanmar', 'BE'),
+('မင်္ဂလာဒုံ (ဂိတ်ချ)', 'Myanmar', 'BE'),
+('မန္တလေး', 'Myanmar', 'BE'),
+('မရမ်းကုန်း', 'Myanmar', 'BE'),
+('မိုးစတားဂိတ်ချ', 'Myanmar', 'BE'),
+('မြို့သစ်', 'Myanmar', 'BE'),
+('မြောက်ဒဂုံ', 'Myanmar', 'BE'),
+('မြောက်ဥက္ကလာပ', 'Myanmar', 'BE'),
+('မှော်ဘီ', 'Myanmar', 'BE'),
+('ရန်ကင်း', 'Myanmar', 'BE'),
+('ရန်ကုန်စာတိုက်ကြီး', 'Myanmar', 'BE'),
+('ရွှေပေါက်ကံ', 'Myanmar', 'BE'),
+('ရွှေပြည်သာ', 'Myanmar', 'BE'),
+('လမ်းမတော်', 'Myanmar', 'BE'),
+('လသာ', 'Myanmar', 'BE'),
+('လိူင်သာယာအဝေးပြေး (ဒဂုံဧရာ)', 'Myanmar', 'BE'),
+('လှိုင်', 'Myanmar', 'BE'),
+('လှိုင်သာယာ', 'Myanmar', 'BE'),
+('သင်္ဃန်းကျွန်း', 'Myanmar', 'BE'),
+('သင်္ဘောဆိပ်ချ', 'Myanmar', 'BE'),
+('သန်လျင်', 'Myanmar', 'BE'),
+('သာကေတ', 'Myanmar', 'BE'),
+('သုဝဏ္ဏ', 'Myanmar', 'BE'),
+('အင်းစိန်', 'Myanmar', 'BE'),
+('အရှေ့ဒဂုံ', 'Myanmar', 'BE'),
+('အလုံ', 'Myanmar', 'BE'),
+('အဝေးပြေး ဂိတ်ချ', 'Myanmar', 'BE'),
+('အောင်ဆန်းကွင်း', 'Myanmar', 'BE'),
+('အောင်မင်္ဂလာကားဂိတ်', 'Myanmar', 'BE')
+on conflict (name) do update set region = excluded.region, zone_code = excluded.zone_code;
+
+-- ---------- Pre-clear existing staff to bypass complex expression index conflicts ----------
+delete from public.staff_master 
+where name in (
+  'Wai Phyoe Lwin', 'Pyae Phyo Kyaw', 'Tun Min Aung', 'Htut Khaung Win', 
+  'Aung Zaw Moe', 'Moe Satt Zin Tun', 'Aung Myo Thu', 'Wai Yan Phyo', 
+  'Aye Chan Soe', 'Phyo Wai Yan Aung', 'Kyaw Zin Khant', 'Wai Lin Phyo', 
+  'Phyo Min Thant', 'Myo Min Kyaw', 'Chit Yin Htoo', 'Aung Myo Min', 
+  'Myo Pa Pa Aung', 'Paing Zay Htut', 'Paing Thet Htoo', 'Zaw Min Htun', 
+  'Shine Wai Yan', 'Than Naing Min', 'Sa Lin Phyo', 'Kyaw Myo Aung', 
+  'Win Naing Tun', 'John Toe Lwin', 'Zaw Thet Paing'
+);
+
+-- ---------- Insert Master Staff Data ----------
+insert into public.staff_master (name, full_name, email, type, vehicle_plate, helper_name, status) values
+('Wai Phyoe Lwin', 'Wai Phyoe Lwin', 'rider_ygn_0009@britiumventures.com', 'rider', '4S-1626', 'Pyae Phyo Kyaw', 'active'),
+('Pyae Phyo Kyaw', 'Pyae Phyo Kyaw', 'helper_ygn_0001@britiumventures.com', 'helper', NULL, NULL, 'active'),
+('Tun Min Aung', 'Tun Min Aung', 'driver_ygn_0001@britiumventures.com', 'driver', '2Q-6524', 'Htut Khaung Win', 'active'),
+('Htut Khaung Win', 'Htut Khaung Win', 'helper_ygn_0002@britiumventures.com', 'helper', NULL, NULL, 'active'),
+('Aung Zaw Moe', 'Aung Zaw Moe', 'driver_ygn_0002@britiumventures.com', 'driver', '7R-1626', 'Moe Satt Zin Tun', 'active'),
+('Moe Satt Zin Tun', 'Moe Satt Zin Tun', 'driver_ygn_0006@britiumventures.com', 'driver', NULL, NULL, 'active'),
+('Aung Myo Thu', 'Aung Myo Thu', 'aung.myo.thu@britium.local', 'rider', NULL, NULL, 'active'),
+('Wai Yan Phyo', 'Wai Yan Phyo', 'driver_ygn_0003@britiumventures.com', 'driver', NULL, NULL, 'active'),
+('Aye Chan Soe', 'Aye Chan Soe', 'rider_ygn_0004@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Phyo Wai Yan Aung', 'Phyo Wai Yan Aung', 'phyo.wai.yan.aung@britium.local', 'rider', NULL, NULL, 'active'),
+('Kyaw Zin Khant', 'Kyaw Zin Khant', 'rider_ygn_0001@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Wai Lin Phyo', 'Wai Lin Phyo', 'rider_ygn_0003@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Phyo Min Thant', 'Phyo Min Thant', 'phyo.min.thant@britium.local', 'rider', NULL, NULL, 'active'),
+('Myo Min Kyaw', 'Myo Min Kyaw', 'rider_ygn_0006@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Chit Yin Htoo', 'Chit Yin Htoo', 'rider_ygn_0002@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Aung Myo Min', 'Aung Myo Min', 'aung.myo.min@britium.local', 'rider', NULL, NULL, 'active'),
+('Myo Pa Pa Aung', 'Myo Pa Pa Aung', 'rider_ygn_0005@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Paing Zay Htut', 'Paing Zay Htut', 'warehouse_ygn_003@britiumventures.com', 'warehouse', NULL, NULL, 'active'),
+('Paing Thet Htoo', 'Paing Thet Htoo', 'paing.thet.htoo@britium.local', 'rider', NULL, NULL, 'active'),
+('Zaw Min Htun', 'Zaw Min Htun', 'zaw.min.htun@britium.local', 'rider', NULL, NULL, 'active'),
+('Shine Wai Yan', 'Shine Wai Yan', 'warehouse_ygn_002@britiumventures.com', 'warehouse', NULL, NULL, 'active'),
+('Than Naing Min', 'Than Naing Min', 'rider_ygn_0007@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Sa Lin Phyo', 'Sa Lin Phyo', 'rider_ygn_0008@britiumventures.com', 'rider', NULL, NULL, 'active'),
+('Kyaw Myo Aung', 'Kyaw Myo Aung', 'driver_ygn_0004@britiumventures.com', 'driver', NULL, NULL, 'active'),
+('Win Naing Tun', 'Win Naing Tun', 'driver_ygn_0005@britiumventures.com', 'driver', NULL, NULL, 'active'),
+('John Toe Lwin', 'John Toe Lwin', 'helper_ygn_0003@britiumventures.com', 'helper', NULL, NULL, 'active'),
+('Zaw Thet Paing', 'Zaw Thet Paing', 'helper_ygn_0004@britiumventures.com', 'helper', NULL, NULL, 'active');insert into public.delivery_status_master (status_name, status_type) values
+('On Way', 'delivery'),
+('Created', 'delivery'),
+('Already Assigned', 'delivery'),
+('Pending', 'delivery'),
+('1st Failed', 'delivery'),
+('2nd Failed', 'delivery'),
+('Returned to OS', 'delivery'),
+('Delivered', 'delivery'),
+('Payment Received', 'delivery'),
+('Returning to OS', 'delivery'),
+('Rescheduled', 'delivery'),
+('Address Changed', 'delivery'),
+('Unable to Contact Recipient', 'delivery'),
+('Attempt 1: Delivery Failed', 'delivery'),
+('Attempt 2: Delivery Failed', 'delivery'),
+('Successful', 'delivery'),
+('Warehouse', 'delivery'),
+('Warehouse Received', 'scan'),
+('Out for Delivery', 'scan'),
+('Returned', 'scan'),
+('Failed', 'scan'),
+('Stock Check', 'scan')
+on conflict (status_name, status_type) do nothing;
+
+
+-- Default tariffs from township delivery charges.
+insert into public.tariffs_2026_04_24 (township_id, min_weight, max_weight, base_rate, per_kg_rate)
+select t.id, 0, 5, coalesce(tm.delivery_charge, 0), 0
+from public.townships_2026_04_24 t
+left join public.townships tm on tm.name = t.name
+on conflict do nothing;
+
+
+-- Upsert pickup batches from BE_MasterData_April.xlsx. Existing matching pickup_code rows are updated in place.
+insert into public.pickups (
+  pickup_code, pickup_date, merchant_name, pickup_by, total_items, total_cod,
+  total_delivery_fee, total_actual_collect, status, source_file
+) values
+('PU-20260428-BBG', '2026-04-28', 'Baby Genius', NULL, 10, 651500.00, 38000.00, 376000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-BBK', '2026-04-28', 'Baby Kyaw', NULL, 8, 309500.00, 30500.00, 315000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-EMF', '2026-04-28', 'EM Fashion', NULL, 1, 0.00, 0.00, 0.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-HAM', '2026-04-28', 'HAIM', NULL, 4, 368500.00, 16500.00, 370500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-KKK', '2026-04-28', 'ကိုကျော် အထည်', NULL, 14, 1463700.00, 63500.00, 1475200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-MEL', '2026-04-28', 'Mee Lay', NULL, 20, 1805200.00, 81000.00, 1858700.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-NFS', '2026-04-28', 'နွယ် Fashion', NULL, 72, 2969600.00, 358000.00, 2973100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-POC', '2026-04-28', 'PO Clothing', NULL, 37, 1603000.00, 148000.00, 1605000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-SEN', '2026-04-28', 'ရွှေအိမ့်', NULL, 1, 38000.00, 4000.00, 38000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-SMH', '2026-04-28', 'ရွှေမဟာ', NULL, 19, 1899000.00, 102000.00, 1902000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-STZ', '2026-04-28', 'ဆောင်းသဇင်', NULL, 32, 2225800.00, 126500.00, 2236800.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260428-TGK', '2026-04-28', 'သင်္ဃန်းကျွန်း ရုံးခွဲ', NULL, 1, 0.00, 0.00, 0.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-BAB', '2026-04-29', 'Baby Top', NULL, 1, 0.00, 4500.00, 6000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-BBG', '2026-04-29', 'Baby Genius', 'ဖုန်းကြိုဆက်ရန်/all Paid', 5, 83500.00, 19000.00, 58000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-CUY', '2026-04-29', 'Curvy', 'Wai Lin Phyo', 1, 64000.00, 4500.00, 64000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-LOS', '2026-04-29', 'Lady OS', 'ငွေကောက်ရန်မလို', 2, 123100.00, 4000.00, 123100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-NFS', '2026-04-29', 'နွယ် Fashion', NULL, 35, 1480200.00, 163000.00, 1482200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-SMH', '2026-04-29', 'ရွှေမဟာ', NULL, 15, 1948500.00, 77000.00, 1953000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-20260429-SSF', '2026-04-29', 'Su Su Fashion World', NULL, 2, 43500.00, 8500.00, 43500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-BBR', '2026-04-01', 'Best Buy in Rangoon', NULL, 30, 5532500.00, 110500.00, 5533000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-HAI', '2026-04-01', 'Haim', NULL, 3, 974000.00, 10500.00, 978500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-LOS', '2026-04-01', 'Lady OS', NULL, 14, 442100.00, 0.00, 442100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-NDN', '2026-04-01', 'NDN', NULL, 2, 15000.00, 0.00, 15000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-NFS', '2026-04-01', 'နွယ် Fashion', NULL, 51, 2987500.00, 261000.00, 3028500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-PLE', '2026-04-01', 'Pleasure', NULL, 4, 115000.00, 16000.00, 115000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-SEN', '2026-04-01', 'ရွှေအိမ့်', NULL, 1, 2000.00, 2000.00, 2000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-SMH', '2026-04-01', 'ရွှေမဟာ', NULL, 6, 791600.00, 30000.00, 791600.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-TGK', '2026-04-01', 'သင်္ဃန်းကျွန်း ရုံးခွဲ', NULL, 1, 0.00, 0.00, 0.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46113-UQD', '2026-04-01', 'Unique/Diva', NULL, 14, 381100.00, 19500.00, 381100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46114-HAI', '2026-04-02', 'Haim', NULL, 2, 208500.00, 8500.00, 210000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46114-MBO', '2026-04-02', 'MaBel OS', NULL, 13, 420000.00, 50000.00, 447000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-BBR', '2026-04-04', 'Best Buy in Rangoon', 'Moe sat Zin htun', 28, 6380000.00, 0.00, 6380000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-HAM', '2026-04-04', 'HAIM', 'Shine Wai Yan', 3, 731000.00, 10500.00, 734000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-HMS', '2026-04-04', 'လှမေတ္တာရှင်', 'kyaw Zin Khant', 2, 56000.00, 6000.00, 56000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-MBO', '2026-04-04', 'MaBel OS', 'Htut Khaung Win', 6, 569500.00, 19500.00, 575000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-SEN', '2026-04-04', 'ရွှေအိမ့်', NULL, 3, 615100.00, 11000.00, 619600.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-SMH', '2026-04-04', 'ရွှေမဟာ', NULL, 4, 1141500.00, 17500.00, 1149500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46116-UQD', '2026-04-04', 'Unique/Diva', 'Htut Khaung Win', 7, 169500.00, 10000.00, 169500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46117-BBR', '2026-04-05', 'Best Buy in Rangoon', 'Htut Kaung Win/Tun Min Aung', 21, 2806500.00, 72000.00, 2806500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46117-HAM', '2026-04-05', 'HAIM', 'Paing Zay Htut', 2, 149000.00, 4000.00, 150500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46117-KKK', '2026-04-05', 'ကိုကျော် အထည်', 'Htut Kaung Win/Tun Min Aung', 10, 728550.00, 43000.00, 731550.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46117-NPT', '2026-04-05', 'နေပြည်တော် ရုံးခွဲ', NULL, 1, 5500.00, 5500.00, 5500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46117-STZ', '2026-04-05', 'ဆောင်းသဇင်', 'Moe Sat Zin Tun/Wai Yan Phyo', 34, 1569700.00, 137500.00, 1582200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-APS', '2026-04-06', 'Aung Pyae Sone', NULL, 201, 830500.00, 46631600.00, 47561600.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-BBR', '2026-04-06', 'Best Buy in Rangoon', NULL, 18, 3450000.00, 20000.00, 3738500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-ETE', '2026-04-06', 'Ei Tone', NULL, 1, 4000.00, 4000.00, 4000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-HAM', '2026-04-06', 'HAIM', NULL, 2, 53000.00, 8000.00, 169000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-HMS', '2026-04-06', 'လှမေတ္တာရှင်', NULL, 1, 168500.00, 3500.00, 169000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-LOS', '2026-04-06', 'Lady OS', NULL, 10, 573900.00, 0.00, 614400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-MBO', '2026-04-06', 'MaBel OS', NULL, 7, 822000.00, 27000.00, 827000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-MEL', '2026-04-06', 'Mee Lay', NULL, 8, 2062000.00, 31500.00, 3355500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-NHT', '2026-04-06', 'နန်းထိုက်တန်', NULL, 1, 156000.00, 0.00, 156000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-NPT', '2026-04-06', 'နေပြည်တော် ရုံးခွဲ', NULL, 2, 88500.00, 0.00, 92500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-SEN', '2026-04-06', 'ရွှေအိမ့်', NULL, 4, 154400.00, 13500.00, 157900.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-SMH', '2026-04-06', 'ရွှေမဟာ', NULL, 2, 262500.00, 8000.00, 263500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-SYE', '2026-04-06', 'Shwe Yee', NULL, 1, 0.00, 0.00, 4000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46118-UQD', '2026-04-06', 'Unique/Diva', NULL, 25, 859900.00, 89000.00, 873400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-HAM', '2026-04-07', 'HAIM', NULL, 2, 0.00, 0.00, 133000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-HMS', '2026-04-07', 'လှမေတ္တာရှင်', NULL, 1, 0.00, 0.00, 4500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-MBO', '2026-04-07', 'MaBel OS', NULL, 5, 0.00, 0.00, 873500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-NFT', '2026-04-07', 'Nfinity', NULL, 11, 0.00, 0.00, 795000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-PTP', '2026-04-07', 'ပန်းသရဖီ', NULL, 20, 0.00, 0.00, 969500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-SEN', '2026-04-07', 'ရွှေအိမ့်', NULL, 7, 0.00, 0.00, 574500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-SMH', '2026-04-07', 'ရွှေမဟာ', NULL, 6, 0.00, 0.00, 494000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-SSF', '2026-04-07', 'Su Su Fashion World', NULL, 1, 0.00, 4000.00, 17500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-STZ', '2026-04-07', 'ဆောင်းသဇင်', NULL, 41, 0.00, 0.00, 2576800.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46119-UQD', '2026-04-07', 'Unique/Diva', NULL, 11, 0.00, 0.00, 325600.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46120-BBK', '2026-04-08', 'Baby Kyaw', NULL, 3, 228500.00, 13500.00, 231500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46120-MEL', '2026-04-08', 'Mee Lay', NULL, 10, 1083600.00, 41000.00, 1100100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46120-STZ', '2026-04-08', 'ဆောင်းသဇင်', NULL, 31, 2061900.00, 124500.00, 2078400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-BBK', '2026-04-18', 'Baby Kyaw', NULL, 7, 268500.00, 27500.00, 286000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-KKK', '2026-04-18', 'ကိုကျော် အထည်', NULL, 14, 1119250.00, 67500.00, 1119250.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-MBO', '2026-04-18', 'MaBel OS', NULL, 9, 977000.00, 19000.00, 987000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-MEL', '2026-04-18', 'Mee Lay', NULL, 22, 1866200.00, 91000.00, 1891200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-NFS', '2026-04-18', 'နွယ် Fashion', NULL, 27, 908100.00, 120500.00, 912100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-SEN', '2026-04-18', 'ရွှေအိမ့်', NULL, 3, 1390900.00, 13500.00, 1400900.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-SMH', '2026-04-18', 'ရွှေမဟာ', NULL, 6, 715000.00, 32500.00, 715000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46130-STZ', '2026-04-18', 'ဆောင်းသဇင်', NULL, 59, 3723100.00, 242500.00, 3771350.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46131-HMS', '2026-04-19', 'လှမေတ္တာရှင်', 'Kyaw Zin Khant', 4, 13500.00, 13500.00, 13500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46131-MEL', '2026-04-19', 'Mee Lay', 'Wai Lin Phyo/Wai Phyo Lwin', 13, 278500.00, 52500.00, 1165500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46131-NDN', '2026-04-19', 'NDN', 'Aung Zaw Moe', 2, 32000.00, 4000.00, 32000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46131-NFS', '2026-04-19', 'နွယ် Fashion', 'Myo Pa Pa Aung/Wai Yan Phyo', 8, 263300.00, 43500.00, 287900.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46132-APA', '2026-04-20', 'APAC', 'Pyae Phyo Kyaw', 23, 712900.00, 25000.00, 712900.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46132-HMS', '2026-04-20', 'လှမေတ္တာရှင်', 'Kyaw Zin Khant', 1, 6000.00, 6000.00, 8500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46132-LOS', '2026-04-20', 'Lady OS', NULL, 3, 282100.00, 0.00, 283100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46132-PYT', '2026-04-20', 'ပုရစ်', 'Moe Sat Zin Tun', 2, 298000.00, 8000.00, 302000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46132-SMH', '2026-04-20', 'ရွှေမဟာ', 'Pyae Phyo Kyaw', 1, 578000.00, 4000.00, 578000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-BBG', '2026-04-21', 'Baby Genius', NULL, 12, 333500.00, 10000.00, 340000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-BBK', '2026-04-21', 'Baby Kyaw', 'Pyae Phyo Kyaw', 19, 720100.00, 74500.00, 786100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-HAM', '2026-04-21', 'HAIM', 'Moe Sat Zin Tun', 5, 514500.00, 20500.00, 523000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-MBO', '2026-04-21', 'MaBel OS', NULL, 10, 1755000.00, 42000.00, 1768500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-MEL', '2026-04-21', 'Mee Lay', NULL, 16, 1821500.00, 57000.00, 1840000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-NPT', '2026-04-21', 'နေပြည်တော် ရုံးခွဲ', NULL, 3, 60500.00, 18000.00, 60500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-SEN', '2026-04-21', 'ရွှေအိမ့်', 'Pyae Phyo Kyaw', 4, 436400.00, 15000.00, 450400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-SHS', '2026-04-21', 'Shwe Sin', NULL, 2, 7000.00, 7000.00, 7000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46133-SMH', '2026-04-21', 'ရွှေမဟာ', 'Pyae Phyo Kyaw', 3, 698500.00, 12000.00, 703500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-BBG', '2026-04-22', 'Baby Genius', 'Wai Linn Phyoe', 13, 639400.00, 4500.00, 652900.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-DSD', '2026-04-22', 'Daw Sanda', 'Wai Linn Phyoe', 1, 6000.00, 6000.00, 6000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-HAM', '2026-04-22', 'HAIM', 'Htut Khaung Win', 4, 677000.00, 12000.00, 683500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-MBO', '2026-04-22', 'MaBel OS', 'Wai Linn Phyoe', 6, 73000.00, 17000.00, 80500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-NFS', '2026-04-22', 'နွယ် Fashion', 'Htut Khaung Win', 23, 1504200.00, 112500.00, 1507200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46134-SEN', '2026-04-22', 'ရွှေအိမ့်', NULL, 2, 47800.00, 7000.00, 49300.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-APA', '2026-04-23', 'APAC', NULL, 4, 149400.00, 16000.00, 149400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-BBG', '2026-04-23', 'Baby Genius', NULL, 10, 102500.00, 0.00, 119550.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-BBK', '2026-04-23', 'Baby Kyaw', NULL, 4, 178000.00, 17500.00, 178000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-HAM', '2026-04-23', 'HAIM', NULL, 8, 1506000.00, 31500.00, 1541000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-HMS', '2026-04-23', 'လှမေတ္တာရှင်', NULL, 2, 8500.00, 8500.00, 8500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-LOS', '2026-04-23', 'Lady OS', NULL, 3, 253000.00, 0.00, 253000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-MEL', '2026-04-23', 'Mee Lay', NULL, 21, 1570000.00, 88000.00, 1769500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-POC', '2026-04-23', 'PO Clothing', NULL, 28, 1034400.00, 104000.00, 1034400.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46135-SMH', '2026-04-23', 'ရွှေမဟာ', NULL, 6, 674500.00, 29000.00, 675500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-BBG', '2026-04-24', 'Baby Genius', 'Kyaw Zin Khant', 6, 245000.00, 16500.00, 235000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-BBK', '2026-04-24', 'Baby Kyaw', 'Wai Lin Phyo', 3, 180500.00, 9000.00, 187000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-KKK', '2026-04-24', 'ကိုကျော် အထည်', 'Kyaw Zin Khant', 14, 1092000.00, 69500.00, 1095140.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-MBO', '2026-04-24', 'MaBel OS', 'Kyaw Zin Khant', 6, 1072000.00, 23000.00, 1088000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-MEL', '2026-04-24', 'Mee Lay', 'Wai Lin Phyo', 8, 861500.00, 32500.00, 877500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-NFS', '2026-04-24', 'နွယ် Fashion', 'Htut Khaung Win', 11, 576200.00, 60000.00, 575700.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-NPT', '2026-04-24', 'နေပြည်တော် ရုံးခွဲ', NULL, 4, 48500.00, 12000.00, 48500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-SMH', '2026-04-24', 'ရွှေမဟာ', 'Htut Khaung Win', 20, 2787500.00, 108000.00, 2794500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-SYE', '2026-04-24', 'Shwe Yee', 'Wai Lin Phyo', 1, 0.00, 0.00, 3000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46136-TGK', '2026-04-24', 'သင်္ဃန်းကျွန်း ရုံးခွဲ', 'Kyaw Zin Khant', 1, 0.00, 0.00, 8000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-BBG', '2026-04-25', 'Baby Genius', 'Htut Khaung Win', 9, 419000.00, 7000.00, 419000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-HAM', '2026-04-25', 'HAIM', 'Kyaw Zin Khant', 5, 1314000.00, 20500.00, 1321000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-LOS', '2026-04-25', 'Lady OS', 'Wai Linn Phyo', 1, 145700.00, 0.00, 145700.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-NDN', '2026-04-25', 'NDN', 'Pa PA', 4, 56500.00, 0.00, 56500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-POC', '2026-04-25', 'PO Clothing', 'Moe Sat Zin Tun', 54, 2385000.00, 217000.00, 2383000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-SEN', '2026-04-25', 'ရွှေအိမ့်', 'Wai Linn Phyo', 4, 79500.00, 12000.00, 79500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46137-UQD', '2026-04-25', 'Unique/Diva', 'Wai Linn Phyo', 23, 781600.00, 24500.00, 781100.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-BBK', '2026-04-26', 'Baby Kyaw', NULL, 12, 792000.00, 62000.00, 854000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-MBO', '2026-04-26', 'MaBel OS', NULL, 4, 0.00, 14500.00, 124500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-MEL', '2026-04-26', 'Mee Lay', NULL, 17, 987500.00, 88500.00, 1078500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-NFS', '2026-04-26', 'နွယ် Fashion', NULL, 46, 1543800.00, 233000.00, 2111500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-SEN', '2026-04-26', 'ရွှေအိမ့်', NULL, 3, 601500.00, 24500.00, 626000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-SMH', '2026-04-26', 'ရွှေမဟာ', NULL, 3, 428500.00, 14000.00, 442500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46138-STZ', '2026-04-26', 'ဆောင်းသဇင်', NULL, 36, 1920200.00, 158500.00, 2069200.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-BBG', '2026-04-27', 'Baby Genius', 'Wai Lin Phyo', 21, 887500.00, 67500.00, 898000.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-CUY', '2026-04-27', 'Curvy', 'Wai Lin Phyo', 10, 0.00, 0.00, 0.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-HMS', '2026-04-27', 'လှမေတ္တာရှင်', 'Kyaw Zin Khant', 2, 8000.00, 8000.00, 12500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-NDN', '2026-04-27', 'NDN', NULL, 2, 14500.00, 0.00, 14500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-NPT', '2026-04-27', 'နေပြည်တော် ရုံးခွဲ', 'Kyaw Zin Khant', 7, 72500.00, 36000.00, 114500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx'),
+('PU-46139-TGK', '2026-04-27', 'သင်္ဃန်းကျွန်း ရုံးခွဲ', 'Kyaw Zin Khant', 1, 0.00, 0.00, 1500.00, 'ready_for_data_entry', 'BE_MasterData_April.xlsx')
+on conflict (pickup_code) do update set
+  pickup_date = excluded.pickup_date,
+  merchant_name = excluded.merchant_name,
+  pickup_by = excluded.pickup_by,
+  total_items = excluded.total_items,
+  total_cod = excluded.total_cod,
+  total_delivery_fee = excluded.total_delivery_fee,
+  total_actual_collect = excluded.total_actual_collect,
+  status = excluded.status,
+  source_file = excluded.source_file,
+  updated_at = now();
+
+update public.pickups p
+set merchant_id = m.id
+from public.merchants m
+where p.merchant_name = m.name and p.source_file = 'BE_MasterData_April.xlsx';
+
+insert into public.pickups_2026_04_24 (
+  pickup_id, pickup_date, merchant_id, expected_way_count, calculated_tariff, pickup_status, remarks
+)
+select p.pickup_code, p.pickup_date, m26.id, p.total_items, p.total_delivery_fee, 'WEIGHING',
+       'Imported from BE_MasterData_April.xlsx'
+from public.pickups p
+left join public.merchants_2026_04_24 m26 on m26.name = p.merchant_name
+where p.source_file = 'BE_MasterData_April.xlsx'
+on conflict (pickup_id) do update set
+  pickup_date = excluded.pickup_date,
+  merchant_id = excluded.merchant_id,
+  expected_way_count = excluded.expected_way_count,
+  calculated_tariff = excluded.calculated_tariff,
+  pickup_status = excluded.pickup_status,
+  updated_at = now();
+
+
+-- Upsert shipments from BE_MasterData_April.xlsx. Existing matching tracking_no rows are updated in place.
+insert into public.shipments (
+  tracking_no, customer_name, customer_phone, pickup_address, delivery_address,
+  township, zone, status, cod_amount, service_type, weight, merchant_name,
+  pickup_code, pickup_date, item_price, delivery_fee_os, delivery_fee_max,
+  surcharge, actual_collect, destination, pickup_by, excel_status, notes,
+  source_file, created_at
+) values
+('D0427-CUY-010a', 'Ma Ei Shwe Mar', '09-796001606', NULL, 'မိသာစုလက်ဖက်ရည်ဆိုင်၊ ‌ညောင်ရွှေပိတောက်လမ်းသွယ်၊ ပန်းလှိုင်‌ဂေါက်ကွင်းဘေး၊ လှိုင်သာယာ။', 'လှိုင်သာယာ', 'BE', 'created', 64000.0, 'standard', NULL, 'Curvy', 'PU-20260429-CUY', '2026-04-29', 59500.0, 4500.0, 4500.0, 0.0, 64000.0, NULL, 'Wai Lin Phyo', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:01:00Z'),
+('D0429-SSF-001', 'Linn Maw Oo', '09-763008182', NULL, 'ပြုံးပန်းကဖီးဆိုင်၊ သုမာလာ (၁၀) လမ်းထိပ်၊ (၂) ဈေးမှတ်တိုင်ဆင်း', 'မြောက်ဥက္ကလာပ', 'BE', 'created', 15500.0, 'standard', NULL, 'Su Su Fashion World', 'PU-20260429-SSF', '2026-04-29', 11000.0, 4500.0, 4500.0, 0.0, 15500.0, 'Aye Chan Soe', NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:02:00Z'),
+('D0429-SSF-002', 'Su Hsu Nyein', '09-880047731', NULL, 'အမှတ် (၃၇၁)၊ ဗိုလ်ချုပ်လမ်း၊ (၃) ရပ်ကွက်၊ မရမ်းကုန်းမြို့နယ်', 'မရမ်းကုန်း', 'BE', 'created', 28000.0, 'standard', NULL, 'Su Su Fashion World', 'PU-20260429-SSF', '2026-04-29', 24000.0, 4000.0, 4000.0, 0.0, 28000.0, 'Aye Chan Soe', NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:03:00Z'),
+('D0429-LOS-003', 'Thet Lone Pone', '09-751065197', NULL, 'အခန်း (14/B)၊ ဧရာချမ်းသာကွန်ဒို၊ ဒဂုံဆိပ်ကမ်းမြို့နယ်', 'ဒဂုံဆိပ်ကမ်း', 'BE', 'created', 4000.0, 'standard', NULL, 'Lady OS', 'PU-20260429-LOS', '2026-04-29', 0.0, 4000.0, 4000.0, 0.0, 4000.0, NULL, 'ငွေကောက်ရန်မလို', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:04:00Z'),
+('D0429-LOS-004', 'Zar Chi', '09-443840745', NULL, 'အမှတ် (၄၇၇)၊ ကုန်သည်လမ်း၊ ဗိုလ်တထောင်မြို့နယ်', 'ဗိုလ်တထောင်', 'BE', 'created', 119100.0, 'standard', NULL, 'Lady OS', 'PU-20260429-LOS', '2026-04-29', 119100.0, 0.0, 0.0, 0.0, 119100.0, NULL, 'ဖုန်းကြိုဆက်ရန်', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:05:00Z'),
+('D0429-BBG-005', 'Ma Mya Nilar Zan', '09-799699470', NULL, 'အမှတ် (၃၀)၊ မြင်သာ (၃) လမ်း၊ (၁၄/၁) ရပ်ကွက်၊ တောင်ဥက္ကလာပမြို့နယ်', 'တောင်ဥက္ကလာပ', 'BE', 'created', 34500.0, 'standard', NULL, 'Baby Genius', 'PU-20260429-BBG', '2026-04-29', 30500.0, 4000.0, 4000.0, 0.0, 0.0, NULL, 'ဖုန်းကြိုဆက်ရန်/all Paid', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:06:00Z'),
+('D0429-BBG-006', '7Star Japan Car Parts', '09-764599765', NULL, 'အမှတ် (၁၉)၊ ပထမထပ်၊ ရွှေညောင်ပင်လမ်း၊ သင်္ဃန်းကျွန်းမြို့နယ်', 'သင်္ဃန်းကျွန်း', 'BE', 'created', 41000.0, 'standard', NULL, 'Baby Genius', 'PU-20260429-BBG', '2026-04-29', 37000.0, 4000.0, 4000.0, 0.0, 41000.0, NULL, 'ဦးစားပေးပို့ရန်', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:07:00Z'),
+('D0429-BBG-007', 'Ma Khin Sabel Maung', '09-796906090', NULL, 'စံတော်ဝင်ကားဂိတ်ချ၊ မြောင်းမြမြို့ (ကုန်ကြွေး)', 'ဂိတ်ချ', 'BE', 'created', 0.0, 'standard', 14.0, 'Baby Genius', 'PU-20260429-BBG', '2026-04-29', 0.0, 3000.0, 3000.0, 4500.0, 7500.0, NULL, '13kg', NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:08:00Z'),
+('D0429-BBG-008', 'Ma Thi Thi', '09-692950679', NULL, 'အမှတ် (၄/၁၉)၊ မြေညီထပ်၊ အောင်မင်္ဂလာ (၁) လမ်း', 'မရမ်းကုန်း', 'BE', 'delivered', 4000.0, 'standard', 6.0, 'Baby Genius', 'PU-20260429-BBG', '2026-04-29', 0.0, 4000.0, 4000.0, 500.0, 4500.0, NULL, '6Kg', 'Delivered', NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:09:00Z'),
+('D0429-BBG-009', 'Ma Thi Thi', '09-692950679', NULL, 'အမှတ် (၄/၁၉)၊ မြေညီထပ်၊ အောင်မင်္ဂလာ (၁) လမ်း', 'မရမ်းကုန်း', 'BE', 'delivered', 4000.0, 'standard', 7.0, 'Baby Genius', 'PU-20260429-BBG', '2026-04-29', 0.0, 4000.0, 4000.0, 1000.0, 5000.0, NULL, '7Kg', 'Delivered', NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:10:00Z'),
+('D0429-BBT-010', 'Wint War Thazin', '09-799951012', NULL, '-', 'ရွှေပြည်သာ', 'BE', 'created', 0.0, 'standard', 8.0, 'Baby Top', 'PU-20260429-BAB', '2026-04-29', 0.0, 4500.0, 4500.0, 1500.0, 6000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:11:00Z'),
+('D0429-NFS-011', 'Ko Thu Ya Tun', '09-776651689', NULL, 'အမှတ် (69/B)၊ မင်္ဂလာလမ်း နှင့် မင်္ဂလာတန်းလမ်းကြား၊ ကျီကုန်းရပ်ကွက် (မန္တလေးမြို့)', 'မန္တလေး', 'BE', 'created', 165000.0, 'standard', 5.0, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 158000.0, 7000.0, 7000.0, 1000.0, 166000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:12:00Z'),
+('D0429-NFS-012', 'Ko Kaung Htet Paing', '09-767700895', NULL, 'အမှတ် (၁၁၇)၊ ဥယျာဉ်လမ်း၊ တောင်ဒဂုံမြို့နယ်', 'တောင်ဒဂုံ', 'BE', 'created', 26200.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 22200.0, 4000.0, 4000.0, 0.0, 26200.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:13:00Z'),
+('D0429-NFS-013', 'Ma Yee Shwe', '09-769034624', NULL, 'အမှတ် (၆၆)၊ အင်ကြင်းမြိုင်လမ်း၊ ရန်ကင်းမြို့နယ်', 'ရန်ကင်း', 'BE', 'created', 63300.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 58800.0, 4500.0, 4500.0, 0.0, 63300.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:14:00Z'),
+('D0429-NFS-014', 'U Lu Zaw', '09-767945307', NULL, 'မိုးဆန်းမှတ်တိုင်၊ အောင်သုခလမ်း၊ ရွှေပြည်သာမြို့နယ် (လှော်ကား)', 'ရွှေပြည်သာ', 'BE', 'created', 70500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 66000.0, 4500.0, 4500.0, 0.0, 70500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:15:00Z'),
+('D0429-NFS-015', 'Wat Yi', '09-790620623', NULL, 'မဟာဆန်သူကုမ္ပဏီ၊ ချစ်တီးကုန်း (၅) လမ်းထိပ်၊ ခရေပင်ရိပ်မွန်အိမ်ရာ (၂) (မင်္ဂလာဒုံမြို့နယ်)', 'မင်္ဂလာဒုံ', 'BE', 'created', 194500.0, 'standard', 5.0, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 190000.0, 4500.0, 4500.0, 1000.0, 195500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:16:00Z'),
+('D0429-NFS-016', 'Ko Than Soe', '09-666244853', NULL, 'အမှတ် (၁၂၀)၊ သုမန (၅) လမ်း၊ (၅) ရပ်ကွက်၊ သာကေတမြို့နယ်', 'သာကေတ', 'BE', 'created', 33500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 29500.0, 4000.0, 4000.0, 0.0, 33500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:17:00Z'),
+('D0429-NFS-017', 'Ko Myo Aung', '09-668464499', NULL, 'စိန်သရဖူ (၂) လမ်း၊ ဒဂုံဧရာအဝေးပြေးနား၊ လှိုင်သာယာမြို့နယ်', 'လှိုင်သာယာ', 'BE', 'created', 53100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 48600.0, 4500.0, 4500.0, 0.0, 53100.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:18:00Z'),
+('D0429-NFS-018', 'Ma Thae Su', '09-963935349', NULL, 'အမှတ် (၆၀၁)၊ မင်းရဲခေါင်လမ်း၊ (၁၄) ရပ်ကွက်၊ ရွှေပေါက်ကံ၊ မြောက်ဥက္ကလာပမြို့နယ်', 'မြောက်ဥက္ကလာပ', 'BE', 'created', 23100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4500.0, 4500.0, 0.0, 23100.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:19:00Z'),
+('D0429-NFS-019', 'Ko Shine Htet', '09-943052787', NULL, 'ရသာစံလက်ဖက်ရည်ဆိုင်အနီး၊ အသောကပွဲစားတန်းလမ်း၊ တာမွေမြို့နယ်', 'တာမွေ', 'BE', 'created', 46000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 42000.0, 4000.0, 4000.0, 0.0, 46000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:20:00Z'),
+('D0429-NFS-020', 'Ma Thu Zar Nyein', '09-945516473', NULL, 'အမှတ် (၉၂)၊ စစ်ကိုင်းလမ်း၊ (၁၅) ရပ်ကွက်၊ ရွှေပေါက်ကံ၊ မြောက်ဥက္ကလာပမြို့နယ်', 'မြောက်ဥက္ကလာပ', 'BE', 'created', 34500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4500.0, 4500.0, 0.0, 34500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:21:00Z'),
+('D0429-NFS-021', 'Ko Arkar', '09-408894583', NULL, 'အမှတ် (၅၁၈)၊ အောင်ရတနာဥယျာဉ်အိမ်ရာ၊ သွားဆေးတက္ကသိုလ်အကျော်၊ သင်္ဃန်းကျွန်းမြို့နယ်', 'သင်္ဃန်းကျွန်း', 'BE', 'created', 34000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4000.0, 4000.0, 0.0, 34000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:22:00Z'),
+('D0429-NFS-022', 'Ko Paing Zin Oo', '09-797589612', NULL, 'အမှတ် (၃၁၇)၊ ကန်သာယာလမ်း၊ ဗမာအေးရပ်ကွက်၊ ဒေါပုံမြို့နယ်', 'ဒေါပုံ', 'BE', 'created', 34500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4500.0, 4500.0, 0.0, 34500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:23:00Z'),
+('D0429-NFS-023', 'Ma Ei Phyu', '09-974744213', NULL, 'အင်ကြင်းလမ်းသွယ် (၂) လမ်း၊ ပေါင်ကူဉာဏ်ရပ်ကွက်၊ ပုလဲလမ်းဆုံ၊ မင်္ဂလာဒုံမြို့နယ်', 'မင်္ဂလာဒုံ', 'BE', 'created', 23100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4500.0, 4500.0, 0.0, 23100.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:24:00Z'),
+('D0429-NFS-024', 'Ma Khin Moe Moe Oo', '09-689915208', NULL, 'ဗိုလ်တထောင်ဘုရားအနီး (ဗိုလ်တထောင်မြို့နယ်)', 'ဗိုလ်တထောင်', 'BE', 'created', 23100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4500.0, 4500.0, 0.0, 23100.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:25:00Z'),
+('D0429-NFS-025', 'NGA', '09-265447769', NULL, 'နွယ်သာကီလမ်း၊ အမှတ် (၉၂)၊ အလုံမြို့နယ်', 'အလုံ', 'BE', 'created', 22600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4000.0, 4000.0, 0.0, 22600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:26:00Z'),
+('D0429-NFS-026', 'Ko Pyae Phyo Aung', '09-881191020', NULL, '(၅၄) လမ်း၊ ၁၂၂ x ၁၂၃ လမ်းကြား၊ ပြည်ကြီးတံခွန်မြို့နယ်', 'မန္တလေး', 'BE', 'created', 36000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 6000.0, 6000.0, 0.0, 36000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:27:00Z'),
+('D0429-NFS-027', 'Mg BoSan', '09-755454697', NULL, 'MTO ရှေ့၊ ပုသိမ်ကြီးမြို့နယ်၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 36000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 6000.0, 6000.0, 0.0, 36000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:28:00Z'),
+('D0429-NFS-028', 'Ko San Myat Kyaw Htin', '09-250165065', NULL, 'အမှတ် (၃၆)၊ မြန်မာ့ဂုဏ်ရည်အနောက်လမ်း၊ နတ်ချောင်း၊ တာမွေမြို့နယ်', 'တာမွေ', 'BE', 'created', 22600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4000.0, 4000.0, 0.0, 22600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:29:00Z'),
+('D0429-NFS-029', 'Ko Min Min Oo', '09-789417334', NULL, '54C လမ်း၊ ၁၃၁ x ၁၃၂ လမ်းကြား၊ (ဆ) ရပ်ကွက်၊ ပြည်ကြီးတံခွန်မြို့နယ်', 'မန္တလေး', 'BE', 'created', 27600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 21600.0, 6000.0, 6000.0, 0.0, 27600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:30:00Z'),
+('D0429-NFS-030', 'Ma Thinn Thinn Sway', '09-450517107', NULL, 'ရှေးဟောင်းသုတေသနနှင့် အမျိုးသားပြတိုက်ဦးစီးဌာန၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 24600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 6000.0, 6000.0, 0.0, 24600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:31:00Z'),
+('D0429-NFS-031', 'K.K', '09-966434410', NULL, '(၆၁) လမ်း၊ ၁၂၀ x ၁၂၁ လမ်းကြား၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 34500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 28500.0, 6000.0, 6000.0, 0.0, 34500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:32:00Z'),
+('D0429-NFS-032', 'Ko Htike Nyi Aung', '09-970445661', NULL, '(၇၆) လမ်း၊ (၃) လမ်း၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 24600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 6000.0, 6000.0, 0.0, 24600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:33:00Z'),
+('D0429-NFS-033', 'Ma Hnin Yu Wai', '09-969099005', NULL, 'ညောင်ပင်ရွာရုံးရှေ့မှတ်တိုင်၊ ဒဂုံဆိပ်ကမ်းမြို့နယ်', 'ဒဂုံဆိပ်ကမ်း', 'BE', 'created', 34500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4500.0, 4500.0, 0.0, 34500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:34:00Z'),
+('D0429-NFS-034', 'U Tin Mg Myint', '09-254399345', NULL, 'အမှတ် (၂၂၁/က)၊ စစ်ကိုင်းလမ်း၊ (၅၄) ရပ်ကွက်၊ တောင်ဒဂုံမြို့နယ်', 'တောင်ဒဂုံ', 'BE', 'created', 33000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 29000.0, 4000.0, 4000.0, 0.0, 33000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:35:00Z'),
+('D0429-NFS-035', 'U Tad', '09-424453832', NULL, 'တိုက် (B-22)၊ (၁၂) လမ်း၊ (၁၉၄) ရပ်ကွက် တောင်ဒဂုံမြို့နယ်', 'တောင်ဒဂုံ', 'BE', 'created', 22600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4000.0, 4000.0, 0.0, 22600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:36:00Z'),
+('D0429-NFS-036', 'Ko Ye Mann Aung', '09-454158663', NULL, 'ကျွန်းတောလမ်း နှင့် နတ်နတ်တော်လမ်းထောင့်၊ ကမာရွတ်မြို့နယ်', 'ကမာရွတ်', 'BE', 'created', 46000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 42000.0, 4000.0, 4000.0, 0.0, 46000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:37:00Z'),
+('D0429-NFS-037', 'Ma Swe Zin Moe', '09-682623863', NULL, 'မင်းကြီးလမ်း နှင့် သစ်လမ်းထောင့်၊ အင်းစိန်မြို့နယ်', 'အင်းစိန်', 'BE', 'created', 34000.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4000.0, 4000.0, 0.0, 34000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:38:00Z'),
+('D0429-NFS-038', 'Ko Wananhtay', '09-661136853', NULL, 'တန်ဖိုးနည်းအိမ်ရာ၊ ရွှေလင်ပန်း၊ လှိုင်သာယာမြို့နယ်', 'လှိုင်သာယာ', 'BE', 'created', 28800.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 24800.0, 4000.0, 4000.0, 0.0, 28800.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:39:00Z'),
+('D0429-NFS-039', 'Ko Aung Myo Khaing', '09-950789964', NULL, 'အမှတ် (၅၈)၊ လမ်းသစ်လမ်း၊ အင်းစိန်မြို့နယ်', 'အင်းစိန်', 'BE', 'created', 23100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4500.0, 4500.0, 0.0, 23100.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:40:00Z'),
+('D0429-NFS-040', 'Mon Thar Lay', '09-772836209', NULL, 'ပေါက်တောအဝိုင်း၊ Snow White တန်း၊ လှိုင်သာယာမြို့နယ်', 'လှိုင်သာယာ', 'BE', 'created', 35500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 31000.0, 4500.0, 4500.0, 0.0, 35500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:41:00Z'),
+('D0429-NFS-041', 'Ma Twel Twel Oo', '09-773842228', NULL, 'အမှတ် (၉၀၀)၊ ငွေစံအိမ်မိတ္တူဆိုင်၊ သီလ (A) လမ်း၊ (၄) ရပ်ကွက်', 'တောင်ဥက္ကလာပ', 'BE', 'created', 22600.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4000.0, 4000.0, 0.0, 22600.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:42:00Z'),
+('D0429-NFS-042', 'TZK', '09-440706340', NULL, 'အမှတ် (၄၀၃)၊ မြေညီထပ်၊ ယသဂီလမ်း၊ (၁၃) ရပ်ကွက် (တောင်ဥက္ကလာပမြို့နယ်)', 'တောင်ဥက္ကလာပ', 'BE', 'created', 35500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 31000.0, 4500.0, 4500.0, 0.0, 35500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:43:00Z'),
+('D0429-NFS-043', 'Ko Htet Wai Yan', NULL, NULL, 'သန်လျင်', NULL, 'BE', 'returned', 34500.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 30000.0, 4500.0, 4500.0, 0, 34500.0, NULL, NULL, 'RTO', NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:44:00Z'),
+('D0429-NFS-044', 'Ma Moe Sabel', NULL, NULL, 'မှော်ဘီ', NULL, 'BE', 'returned', 23100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 18600.0, 4500.0, 4500.0, 0, 23100.0, NULL, NULL, 'RTO', NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:45:00Z'),
+('D0429-NFS-045', 'Ko Chit Min Thu', NULL, NULL, 'မှော်ဘီ', NULL, 'BE', 'returned', 54100.0, 'standard', NULL, 'နွယ် Fashion', 'PU-20260429-NFS', '2026-04-29', 49600.0, 4500.0, 4500.0, 0, 54100.0, NULL, NULL, 'RTO', NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:46:00Z'),
+('D0429-SMH-046', 'ဘိုမြင်ခြံချည်ထည်နှင့်အထည်အမျိုးမျိုး', '09-43189009', NULL, '(၁၉) လမ်း၊ ၈၇ x ၈၈ လမ်းကြား၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 174000.0, 'standard', 4.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 168000.0, 6000.0, 6000.0, 500.0, 174500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:47:00Z'),
+('D0429-SMH-047', 'သွန်းလင်းရတီ', '09-428303796', NULL, 'သပြေရိပ်မွန် စည်ပင်အိမ်ရာ (ဂိတ် ၃)၊ နေပြည်တော်', 'နေပြည်တော်', 'BE', 'created', 66000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 60000.0, 6000.0, 6000.0, 0.0, 66000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:48:00Z'),
+('D0429-SMH-048', 'KKT', '09-965280324', NULL, '102A လမ်း၊ ၆၃ x ၆၄ လမ်းကြား၊ ချမ်းမြသာစည်မြို့နယ် မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 47000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 41000.0, 6000.0, 6000.0, 0.0, 47000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:49:00Z'),
+('D0429-SMH-049', 'Ying', '09-401543136', NULL, 'အမှတ် (၂၇)၊ ဝေဘာဂီလမ်း၊ အလုံမြို့နယ်', 'အလုံ', 'BE', 'created', 191500.0, 'standard', 4.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 187500.0, 4000.0, 4000.0, 500.0, 192000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:50:00Z'),
+('D0429-SMH-050', 'ချယ်ရီ', '09-988742888', NULL, 'လမ်း (၃၀)၊ မြို့ပတ်လမ်း၊ ကန်ကောက်အရှေ့၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 222000.0, 'standard', 4.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 216000.0, 6000.0, 6000.0, 500.0, 222500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:51:00Z'),
+('D0429-SMH-051', 'ဦးဗိုက်ပူလျှပ်စစ်ပစ္စည်းဆိုင်အပေါ် ၂လွှာ', '09-794647528', NULL, '(၃၀) လမ်း (အလယ်ဘလောက်)၊ ဆူးလေ၊ ရန်ကုန်', 'ပန်းဘဲတန်း', 'BE', 'created', 259000.0, 'standard', 5.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 255000.0, 4000.0, 4000.0, 1000.0, 260000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:52:00Z'),
+('D0429-SMH-052', 'မော်ကွန်းသဇင်(အိမ်ဆောက်ပစ္စည်းရောင်ဝယ်ရေး)', '09-402579922', NULL, 'ရန်မန်းလမ်း နှင့် (၁၀၂) လမ်း၊ (၇၈) လမ်းကြား၊ ချမ်းမြသာစည်မြို့နယ်', 'မန္တလေး', 'BE', 'created', 114000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 108000.0, 6000.0, 6000.0, 0.0, 114000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:53:00Z'),
+('D0429-SMH-053', 'မဝင့်း', '09-971418007', NULL, '(၁၀၃) လမ်း၊ 63A လမ်း၊ မန္တလေးမြို့ (နယ်ဂိတ်)', 'မန္တလေး', 'BE', 'created', 66000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 60000.0, 6000.0, 6000.0, 0.0, 66000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:54:00Z'),
+('D0429-SMH-054', 'K Thwe Oo', '09-775387559', NULL, 'အမှတ် (69/A)၊ မင်္ဂလာလမ်း၊ ငွေတော်ကျီကုန်း၊ ပြည်ကြီးတံခွန်မြို့နယ်', 'မန္တလေး', 'BE', 'created', 114000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 108000.0, 6000.0, 6000.0, 0.0, 114000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:55:00Z'),
+('D0429-SMH-055', 'Hnin Haymam Oo', '09-254614542', NULL, 'အမှတ် (၂၀၀/၂၀၆)၊ စက်ရုံလမ်း၊ တာမွေမြို့နယ်', 'တာမွေ', 'BE', 'created', 70000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 66000.0, 4000.0, 4000.0, 0.0, 70000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:56:00Z'),
+('D0429-SMH-056', 'Ma Yamin Htet', '09-659379109', NULL, 'ရွှေလင်ပန်းအိမ်ရာ အပိုင်း (၃)၊ လှိုင်သာယာမြို့နယ်', 'လှိုင်သာယာ', 'BE', 'created', 128500.0, 'standard', 6.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 124000.0, 4500.0, 4500.0, 1500.0, 130000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:57:00Z'),
+('D0429-SMH-057', 'အိမ့်ခြူးမေအလှပြင်ဆိုင်', '09-787447519', NULL, 'ကမ္ဘောဇလမ်း၊ (၁၆) ရပ်ကွက်၊ လှိုင်သာယာမြို့နယ်', 'လှိုင်သာယာ', 'BE', 'created', 112500.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 108000.0, 4500.0, 4500.0, 0.0, 112500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:58:00Z'),
+('D0429-SMH-058', 'Thandar Oo', '09-43044961', NULL, 'AYA Bank (အုန်းချော)၊ မန္တလေးမြို့', 'မန္တလေး', 'BE', 'created', 52000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 46000.0, 6000.0, 6000.0, 0.0, 52000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T09:59:00Z'),
+('D0429-SMH-059', '_', '09-424160223', NULL, 'အမှတ် (72/B)၊ သူရလမ်း၊ (၉) ရပ်ကွက်၊ ကမ္ဘာအေးဂမုန်းပွင့်နောက်ကလမ်း၊ မရမ်းကုန်းမြို့နယ်', 'မရမ်းကုန်း', 'BE', 'created', 220000.0, 'standard', 4.0, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 216000.0, 4000.0, 4000.0, 500.0, 220500.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T10:00:00Z'),
+('D0429-SMH-060', 'မဆုရည်', '09-222536564', NULL, 'အမှတ် (၃၈)၊ အောင်မြေသာစည်လမ်းနှင့် ထန်းတပင်လမ်းထောင့်', 'ကမာရွတ်', 'BE', 'created', 112000.0, 'standard', NULL, 'ရွှေမဟာ', 'PU-20260429-SMH', '2026-04-29', 108000.0, 4000.0, 4000.0, 0, 112000.0, NULL, NULL, NULL, NULL, 'BE_MasterData_April.xlsx', '2026-04-29T10:01:00Z')
+on conflict (tracking_no) do update set
+  customer_name = excluded.customer_name,
+  customer_phone = excluded.customer_phone,
+  delivery_address = excluded.delivery_address,
+  township = excluded.township,
+  zone = excluded.zone,
+  status = excluded.status,
+  cod_amount = excluded.cod_amount,
+  service_type = excluded.service_type,
+  weight = excluded.weight,
+  merchant_name = excluded.merchant_name,
+  pickup_code = excluded.pickup_code,
+  pickup_date = excluded.pickup_date,
+  item_price = excluded.item_price,
+  delivery_fee_os = excluded.delivery_fee_os,
+  delivery_fee_max = excluded.delivery_fee_max,
+  surcharge = excluded.surcharge,
+  actual_collect = excluded.actual_collect,
+  destination = excluded.destination,
+  pickup_by = excluded.pickup_by,
+  excel_status = excluded.excel_status,
+  notes = excluded.notes,
+  source_file = excluded.source_file,
+  updated_at = now();
+
+update public.shipments s
+set pickup_id = p.id,
+    merchant_id = m.id
+from public.pickups p
+left join public.merchants m on m.name = p.merchant_name
+where s.pickup_code = p.pickup_code
+  and s.source_file = 'BE_MasterData_April.xlsx';
+
+insert into public.cod_collections (shipment_id, tracking_no, rider_name, amount, status, collected_at)
+select s.id, s.tracking_no, s.pickup_by, coalesce(s.actual_collect, s.cod_amount, 0),
+       'pending',
+       case when s.status = 'delivered' then coalesce(s.delivered_at, s.actual_delivery_date, now()) else null end
+from public.shipments s
+where s.source_file = 'BE_MasterData_April.xlsx'
+  and coalesce(s.actual_collect, s.cod_amount, 0) > 0
+on conflict do nothing;
+
+insert into public.delivery_process_events (shipment_id, tracking_no, to_status, event_type, channel, notes, metadata)
+select s.id, s.tracking_no, s.status, 'imported', 'data_entry_portal',
+       'Imported from BE_MasterData_April.xlsx',
+       jsonb_build_object('merchant', s.merchant_name, 'pickup_code', s.pickup_code, 'excel_status', s.excel_status)
+from public.shipments s
+where s.source_file = 'BE_MasterData_April.xlsx'
+on conflict do nothing;
+
+-- Default module permissions.
+insert into public.portal_authorizations (role_code, module_code, can_read, can_create, can_update, can_delete) values
+  ('superadmin','*',true,true,true,true),
+  ('admin','*',true,true,true,true),
+  ('ops','delivery_workflow',true,true,true,false),
+  ('dispatch','delivery_dispatch',true,true,true,false),
+  ('data_entry','data_entry',true,true,true,false),
+  ('data_entry','pickups',true,true,true,false),
+  ('warehouse','warehouse',true,true,true,false),
+  ('finance','cod_settlement',true,false,true,false),
+  ('cs','customer_service',true,true,true,false),
+  ('merchant','merchant_portal',true,false,false,false),
+  ('customer','customer_portal',true,false,false,false),
+  ('rider','rider_app',true,false,true,false),
+  ('driver','driver_app',true,false,true,false),
+  ('helper','helper_app',true,false,true,false)
+on conflict (role_code, module_code) do update set
+  can_read = excluded.can_read,
+  can_create = excluded.can_create,
+  can_update = excluded.can_update,
+  can_delete = excluded.can_delete;
+
+-- ---------- RLS ----------
+alter table public.merchants enable row level security;
+alter table public.townships enable row level security;
+alter table public.staff_master enable row level security;
+alter table public.pickups enable row level security;
+alter table public.delivery_process_events enable row level security;
+alter table public.portal_authorizations enable row level security;
+
+drop policy if exists "be_master_read" on public.merchants;
+create policy "be_master_read" on public.merchants for select to authenticated using (true);
+drop policy if exists "be_master_admin_write" on public.merchants;
+create policy "be_master_admin_write" on public.merchants for all to authenticated using (public.be_has_role(array['superadmin','admin','ops','data_entry'])) with check (public.be_has_role(array['superadmin','admin','ops','data_entry']));
+
+drop policy if exists "be_township_read" on public.townships;
+create policy "be_township_read" on public.townships for select to authenticated using (true);
+drop policy if exists "be_township_admin_write" on public.townships;
+create policy "be_township_admin_write" on public.townships for all to authenticated using (public.be_has_role(array['superadmin','admin','ops'])) with check (public.be_has_role(array['superadmin','admin','ops']));
+
+drop policy if exists "be_staff_read" on public.staff_master;
+create policy "be_staff_read" on public.staff_master for select to authenticated using (public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','finance','data_entry']));
+drop policy if exists "be_staff_admin_write" on public.staff_master;
+create policy "be_staff_admin_write" on public.staff_master for all to authenticated using (public.be_has_role(array['superadmin','admin'])) with check (public.be_has_role(array['superadmin','admin']));
+
+drop policy if exists "be_pickups_read" on public.pickups;
+create policy "be_pickups_read" on public.pickups for select to authenticated using (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','finance','cs','data_entry'])
+  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.full_name = pickups.pickup_by)
+);
+drop policy if exists "be_pickups_write" on public.pickups;
+create policy "be_pickups_write" on public.pickups for all to authenticated using (public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry'])) with check (public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry']));
+
+drop policy if exists "be_shipments_read" on public.shipments;
+create policy "be_shipments_read" on public.shipments for select to authenticated using (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','finance','cs','data_entry'])
+  or assigned_to = auth.uid()
+  or exists (select 1 from public.profiles p where p.id = auth.uid() and p.full_name = shipments.pickup_by)
+);
+drop policy if exists "be_shipments_write" on public.shipments;
+create policy "be_shipments_write" on public.shipments for all to authenticated using (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','data_entry'])
+  or assigned_to = auth.uid()
+) with check (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','data_entry'])
+  or assigned_to = auth.uid()
+);
+
+drop policy if exists "be_events_read" on public.delivery_process_events;
+create policy "be_events_read" on public.delivery_process_events for select to authenticated using (public.be_has_role(array['superadmin','admin','ops','dispatch','warehouse','finance','cs','data_entry']));
+drop policy if exists "be_events_insert" on public.delivery_process_events;
+create policy "be_events_insert" on public.delivery_process_events for insert to authenticated with check (auth.role() = 'authenticated');
+
+drop policy if exists "be_authorizations_admin" on public.portal_authorizations;
+create policy "be_authorizations_admin" on public.portal_authorizations for all to authenticated using (public.be_has_role(array['superadmin','admin'])) with check (public.be_has_role(array['superadmin','admin']));
+
+-- Rider app suffixed table policies.
+alter table public.merchants_2026_04_24 enable row level security;
+alter table public.townships_2026_04_24 enable row level security;
+alter table public.tariffs_2026_04_24 enable row level security;
+alter table public.pickups_2026_04_24 enable row level security;
+alter table public.pickup_attachments_2026_04_24 enable row level security;
+
+drop policy if exists "be_rider_master_read_merchants" on public.merchants_2026_04_24;
+create policy "be_rider_master_read_merchants" on public.merchants_2026_04_24 for select to authenticated using (true);
+drop policy if exists "be_rider_master_read_townships" on public.townships_2026_04_24;
+create policy "be_rider_master_read_townships" on public.townships_2026_04_24 for select to authenticated using (true);
+drop policy if exists "be_rider_master_read_tariffs" on public.tariffs_2026_04_24;
+create policy "be_rider_master_read_tariffs" on public.tariffs_2026_04_24 for select to authenticated using (true);
+
+drop policy if exists "be_rider_pickups_all" on public.pickups_2026_04_24;
+create policy "be_rider_pickups_all" on public.pickups_2026_04_24 for all to authenticated using (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry','rider','driver','helper'])
+  or rider_id = auth.uid()
+) with check (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry','rider','driver','helper'])
+  or rider_id = auth.uid()
+);
+
+drop policy if exists "be_rider_attachments_all" on public.pickup_attachments_2026_04_24;
+create policy "be_rider_attachments_all" on public.pickup_attachments_2026_04_24 for all to authenticated using (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry','rider','driver','helper'])
+  or uploaded_by = auth.uid()
+) with check (
+  public.be_has_role(array['superadmin','admin','ops','dispatch','data_entry','rider','driver','helper'])
+  or uploaded_by = auth.uid()
+);

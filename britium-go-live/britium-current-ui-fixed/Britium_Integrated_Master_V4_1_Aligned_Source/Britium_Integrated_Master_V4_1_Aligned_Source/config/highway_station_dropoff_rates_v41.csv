@@ -1,0 +1,6 @@
+station_code,station_name,base_rate_mmk,status
+HW_DOWNTOWN,Highway Station Drop Off (Downtown),4000,ACTIVE
+HW_BAYINTNAUNG,Bayintnaung Drop Off,4000,ACTIVE
+HW_DAGON_THIRI,Hlaing Thar Yar - Dagon Thiri Highway Station Drop Off,4000,ACTIVE
+HW_AUNG_MINGALAR,North Okkalapa - Aung Mingalar Highway Station Drop Off,3000,ACTIVE
+HW_PARAMI,Parami Highway Station Drop Off,3000,ACTIVE

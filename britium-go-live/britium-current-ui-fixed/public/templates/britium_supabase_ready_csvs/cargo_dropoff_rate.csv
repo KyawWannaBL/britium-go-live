@@ -1,0 +1,2 @@
+dropoff_code,dropoff_name_en,location_type,base_fee_mmk,included_weight_kg,extra_per_started_kg_mmk,currency,notes
+HIGHWAY_BUS_STATION_DROPOFF,Highway Bus-station Cargo Drop-off,HIGHWAY_BUS_STATION,3000,3,500,MMK,"Confirmed: 3,000 MMK includes 3 kg; extra started kg = 500 MMK"

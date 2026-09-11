@@ -1,0 +1,316 @@
+===== ACTIVE ROUTES =====
+46:const BranchOfficePage = safeLazy(() => import('@/pages/BranchOfficePage'));
+50:const CustomerServicePortalPage = safeLazy(() => import('@/pages/CustomerServicePortalPage'));
+51:const DataEntryPage = safeLazy(() => import('@/pages/DataEntryPage'));
+131:        { name: "CS Portal", path: "/cs-portal", icon: HeadphonesIcon },
+138:        { name: "Data Entry", path: "/data-entry", icon: FileText },
+183:        { name: "Branch Office", path: "/branch-office", icon: Building2 },
+314:            <Route path="/branch-office" element={<BranchAdminPage />} />
+316:            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+317:            <Route path="/data-entry" element={<DataEntryPage />} />
+361:            <Route path="/data-entry-excel" element={<DataEntryExcelRegisterPage />} />
+362:            <Route path="/data-entry-photo" element={<DataEntryPhotoCheckPage />} />
+363:            <Route path="/data-entry-sync" element={<DataEntrySynchronizedPage />} />
+364:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+365:            <Route path="/data-entry-waybill" element={<DataEntryWaybillStudio />} />
+
+===== SUPERVISOR GPS =====
+30:    setLoading(true);
+31:    setErr("");
+35:      setData(data || {});
+36:      setRows(Array.isArray(data?.riders) ? data.riders : []);
+38:      setErr(e?.message || "Could not load GPS snapshot.");
+40:      setLoading(false);
+96:            {rows.map((r, i) => (
+
+===== DATA ENTRY =====
+
+function proofStatus(row: ParcelProofRow) {
+  if (row.proof_photo_path && Number(row.parcel_weight_kg || 0) > 0) return 'RIDER_VERIFIED';
+  if (row.proof_photo_path) return 'PHOTO_ONLY';
+  if (Number(row.parcel_weight_kg || 0) > 0) return 'WEIGHT_ONLY';
+  return 'MISSING_PROOF';
+}
+
+export default function DataEntryPage() {
+  const languageContext = { language: "en", currentLanguage: "en" } as any;
+  const rawT = languageContext?.t;
+
+  const t = (en: string, mm?: string) => {
+    if (typeof rawT === "function") {
+      try {
+        return rawT(en, mm);
+      } catch {
+        return en;
+      }
+    }
+
+    return en;
+  };
+
+  const sb = supabase as any;
+
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [pickupQueue, setPickupQueue] = useState<PickupQueueRow[]>([]);
+  const [selectedPickupId, setSelectedPickupId] = useState('');
+  const selectedPickupIdRef = useRef('');
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [parcelProofs, setParcelProofs] = useState<ParcelProofRow[]>([]);
+  const [rows, setRows] = useState<DataEntryRow[]>([]);
+  const [message, setMessage] = useState<string>('');
+  const [townshipOptions, setTownshipOptions] = useState<TownshipOption[]>(
+    [
+      ...MYANMAR_TOWNSHIP_OPTIONS,
+      ...FALLBACK_TOWNSHIPS.map((township) => ({ township, city: "Yangon", region_state: "Yangon Region" })),
+    ]
+  );
+  const [activeTownshipRow, setActiveTownshipRow] = useState<number | null>(null);
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  function selectPickup(pickupId: string) {
+    selectedPickupIdRef.current = pickupId;
+    setSelectedPickupId(pickupId);
+  }
+
+  const selectedPickup = useMemo(
+    () => pickupQueue.find((p) => p.pickup_id === selectedPickupId) || null,
+    [pickupQueue, selectedPickupId]
+  );
+
+  const townshipDisplayOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return townshipOptions.filter((opt) => {
+      const key = normalizeTownship(opt.township);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [townshipOptions]);
+
+  const proofPhotoItems = useMemo(() => {
+      let response = await sb.rpc('be_calculate_tariff', {
+        p_township: local.town,
+        p_customer_tier: local.tier || 'Standard',
+        p_weight_kg: Number(local.weight || 0),
+        p_item_price: Number(local.item_price || 0),
+      });
+
+      if (response.error) {
+        response = await sb.rpc('be_calculate_tariff', {
+          p_township: local.town,
+          p_tier: local.tier || 'Standard',
+          p_weight: Number(local.weight || 0),
+          p_item_price: Number(local.item_price || 0),
+        });
+      }
+
+      const { data, error } = response;
+
+      if (!error && data) {
+        return {
+          ...local,
+          base_fee: roundMoney(data.base_fee ?? local.base_fee),
+          surcharge: roundMoney(data.surcharge ?? local.surcharge),
+          deli_fee: roundMoney(data.delivery_fee ?? local.deli_fee),
+          cod: roundMoney(data.cod_amount ?? data.cod ?? local.cod),
+          actual_collect: roundMoney(data.actual_collect ?? local.actual_collect),
+          destination: data.city || data.destination || local.destination,
+        };
+      }
+    } catch (err) {
+      console.warn('be_calculate_tariff unavailable; using local tariff calculation.', err);
+    }
+
+    return local;
+  }
+
+  async function loadTownshipOptions() {
+    try {
+      const { data, error } = await sb
+        .from('be_v_township_search_options')
+        .select('township,township_mm,city,region_state,label,search_text')
+        .order('township', { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setTownshipOptions([...(data as TownshipOption[]), ...MYANMAR_TOWNSHIP_OPTIONS]);
+        return;
+      }
+    } catch (error) {
+      console.warn('be_v_township_search_options unavailable, using fallback township list', error);
+    }
+
+    try {
+      const { data } = await sb
+        .from('v_address_township_options')
+        .select('township,city,region_state')
+        .order('township', { ascending: true });
+
+      if (data && data.length > 0) {
+        setTownshipOptions([...(data as TownshipOption[]), ...MYANMAR_TOWNSHIP_OPTIONS]);
+      }
+    } catch (error) {
+      console.warn('v_address_township_options unavailable, using fallback township list', error);
+    }
+  }
+
+  async function signPhotoUrl(path?: string | null) {
+    if (!path) return null;
+    if (/^https?:\/\//i.test(String(path))) return String(path);
+
+    const normalized = String(path).replace(/^pickup-parcel-proofs\//, '');
+
+    try {
+      const { data, error } = await sb.storage
+        .from('pickup-parcel-proofs')
+        .createSignedUrl(normalized, 60 * 60);
+
+      if (!error && data?.signedUrl) return data.signedUrl;
+    } catch (error) {
+      console.warn('Signed URL failed, trying public URL', error);
+    }
+
+    try {
+      const { data } = sb.storage
+        .from('pickup-parcel-proofs')
+        .getPublicUrl(normalized);
+
+      return data?.publicUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function loadPickupQueue() {
+    setLoading(true);
+    setMessage('');
+
+    try {
+      const { data, error } = await sb.rpc('be_get_data_entry_rider_verified_pickups', { p_payload: { branch_code: 'YGN' } });
+
+      if (error) throw error;
+
+      const queue = (normalizeDataEntryRows(data) as PickupQueueRow[]).map((item: any) => ({
+        ...item,
+        pickup_id: item.pickup_id,
+        pickup_way_id: item.pickup_way_id || item.pickup_id,
+        merchant_name: item.merchant_name || '',
+        merchant_code: item.merchant_code || '',
+        branch_code: item.branch_code || 'YGN',
+        pickup_status: item.pickup_status,
+        rider_status: item.rider_status,
+        workflow_stage: item.workflow_stage,
+        proof_url: item.proof_url,
+        created_at: item.created_at || item.pickup_verified_at || item.updated_at,
+        updated_at: item.updated_at || item.pickup_verified_at || item.created_at,
+        expected_parcels: item.expected_parcels || 1,
+        verified_parcels: item.verified_parcels || 0,
+        rider_proofs: item.rider_proofs || item.items || item.proofs || [],
+        items: item.items || item.proofs || item.rider_proofs || [],
+        proofs: item.proofs || item.items || item.rider_proofs || [],
+        uploaded_photo_count: item.uploaded_photo_count || item.verified_parcels || item.photo_count || item.proof_count || 0,
+        photo_count: item.photo_count || item.uploaded_photo_count || item.verified_parcels || item.proof_count || 0,
+      }));
+
+      setPickupQueue(queue);
+
+      const currentPickupId = selectedPickupIdRef.current;
+      const currentStillExists = currentPickupId
+        ? queue.some((item) => item.pickup_id === currentPickupId)
+        : false;
+
+      if (currentStillExists) {
+        return;
+      }
+
+      if (!currentPickupId && queue.length > 0) {
+        selectPickup(queue[0].pickup_id);
+        return;
+      }
+
+      if (currentPickupId && !currentStillExists) {
+        selectPickup(queue[0]?.pickup_id || '');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setMessage(error.message || 'Failed to load Data Entry pickup queue.');
+    } finally {
+      setLoading(false);
+    }
+  }
+        township: row.town,
+        recipient_address: row.address,
+        customer_tier: row.tier || 'Standard',
+        item_price: Number(row.item_price || 0),
+        weight_kg: Number(row.weight || 0),
+        surcharge: Number(row.surcharge || 0),
+        delivery_fee: Number(row.deli_fee || 0),
+        cod_amount: Number(row.cod || 0),
+        actual_collect: Number(row.actual_collect || 0),
+        destination: row.destination || selectedPickup?.city || 'Yangon',
+        pickup_by: row.pickup_by || 'DATA_ENTRY',
+        remark: row.remarks || '',
+        proof_photo_path: row.proof_photo_path || null,
+      }));
+
+      const nowIso = new Date().toISOString();
+      const directRows = payloadRows.map((row) => ({
+        pickup_id: selectedPickupId,
+        parcel_sequence: row.parcel_sequence,
+        delivery_way_id: row.delivery_way_id,
+        recipient_name: row.recipient_name || null,
+        contact_no_1: row.contact_no_1 || null,
+        contact_no_2: row.contact_no_2 || null,
+        township: row.township || null,
+        recipient_address: row.recipient_address || null,
+        customer_tier: row.customer_tier || 'Standard',
+        item_price: Number(row.item_price || 0),
+        weight_kg: Number(row.weight_kg || 0),
+        surcharge: Number(row.surcharge || 0),
+        delivery_fee: Number(row.delivery_fee || 0),
+        cod_amount: Number(row.cod_amount || 0),
+        actual_collect: Number(row.actual_collect || 0),
+        destination: row.destination || null,
+        pickup_by: row.pickup_by || 'DATA_ENTRY',
+        remark: row.remark || null,
+        saved_by_email: actorEmail,
+
+===== BRANCH OFFICE =====
+11:import { supabase } from "@/integrations/supabase/client";
+16:  const { data } = await supabase.from('branch_offices').select('*');
+21:  const { data } = await supabase.rpc('be_get_branch_snapshot', { p_branch_code: branchCode });
+26:  const { data } = await supabase.from('branch_shipments').select('*').eq('branch_code', branchCode).order('created_at', { ascending: false });
+31:  const { data, error } = await supabase.from('branch_shipments').insert([{ ...payload, status: 'pending', finance_locked: 0 }]);
+37:  const { error } = await supabase.from('branch_shipments').update(payload).eq('id', id);
+43:  const { error } = await supabase.from('branch_shipments').update({ finance_locked: 1 }).eq('id', id);
+49:  const { error } = await supabase.from('branch_shipments').update({ finance_locked: 0 }).eq('id', id);
+54:  const { data } = await supabase.from('branch_staff').select('*').eq('branch_code', branchCode);
+59:  const { error } = await supabase.from('branch_staff').insert([payload]);
+64:  const { error } = await supabase.from('branch_staff').update(payload).eq('id', id);
+69:  const { error } = await supabase.from('branch_staff').delete().eq('id', id);
+74:  const { data } = await supabase.from('amendment_requests').select('*').eq('branch_code', branchCode).order('created_at', { ascending: false });
+79:  const { data } = await supabase.from('amendment_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+84:  const { error } = await supabase.from('amendment_requests').insert([{ ...payload, status: 'pending', request_no: `AM-${Date.now()}` }]);
+90:  const { error } = await supabase.from('amendment_requests').update({ status: action, reviewed_by: reviewer, review_note: note }).eq('id', id);
+95:  const { data, error } = await supabase.rpc('be_calculate_tariff', { p_origin: origin, p_dest: dest, p_weight: weight });
+101:  const { data } = await supabase.from('tariffs').select('*');
+106:  const { error } = await supabase.from('tariffs').update(payload).eq('id', id);
+111:  let query = supabase.from('service_areas').select('*');
+118:  const { error } = await supabase.from('service_areas').insert([payload]);
+123:  const { error } = await supabase.from('service_areas').delete().eq('id', id);
+
+===== CUSTOMER SERVICE =====
+src/pages/CsPortalPage.tsx:3:import { useLanguage } from "@/contexts/LanguageContext";
+src/pages/CsPortalPage.tsx:11:  const { language } = useLanguage() as { language?: string };
+src/pages/CsPortalPage.tsx:21:  const [search, setSearch] = useState(""); // Ensures safe onChange handler
+src/pages/CsPortalPage.tsx:42:              onChange={(e) => setSearch(e.target.value)} // Safe handler to prevent "e is not a function"
+src/pages/CustomerServicePortalPage.tsx:249:              onChange={(e) => setQuery(e.target.value)}
+src/pages/CustomerServicePortalPage.tsx:272:        ].map(([a, b]) => (
+src/pages/CustomerServicePortalPage.tsx:353:            {filtered.map((row, index) => {
+src/pages/CustomerServicePortalPage.tsx:447:                      onChange={(event) =>
+src/pages/CustomerServicePortalPage.tsx:471:                      onChange={(event) =>
+src/pages/CustomerServicePortalPage.tsx:513:                      onChange={(event) =>
+src/pages/CustomerServicePortalPage.tsx:542:                      onChange={(event) =>

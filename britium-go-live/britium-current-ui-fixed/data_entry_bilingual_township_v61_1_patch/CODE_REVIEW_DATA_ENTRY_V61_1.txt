@@ -1,0 +1,42 @@
+BRITIUM DATA ENTRY V61.1 CODE REVIEW
+Date: 2026-08-02
+
+REVIEWED INPUT
+- User-supplied DataEntryFinancialV2Page.tsx translation revision.
+- Existing V61 township tariff directory generated from the attached 356-row township data.
+
+ACCEPTED
+- The improved Myanmar translations were retained.
+- The page remains backend-authoritative for tariff, COD, validation, and settlement values.
+- The source township fee remains display-only and is not written to Financial V2 calculated fields.
+
+FIXES APPLIED
+1. Duplicate township ambiguity
+   Htantabin / ထန်းတပင် and Minhla / မင်းလှ occur in multiple regions. The old exact lookup returned the first match. V61.1 stores the selected township code per row and includes the region in the displayed option.
+
+2. Free-text/selected-value mismatch
+   The old combobox could display newly typed text while the stored row still contained the previous township. V61.1 clears the stored selection when editing and requires a directory option before calculation or save validation.
+
+3. Stale tariff output
+   The old page retained previous server-calculated tariff and settlement values after editable inputs changed. V61.1 clears calculated output fields whenever input changes.
+
+4. Out-of-order calculation responses
+   Rapid township/input changes could allow an older RPC response to overwrite a newer result. V61.1 uses per-row calculation request IDs and ignores stale responses.
+
+5. Inactive location handling
+   Cocokyun is marked Inactive in the attached source. V61.1 displays it in search results but blocks selecting it as an active service location.
+
+6. Zero-fee wording
+   The previous text said every source value of 0 represented an outsourced route. That was not universally true because Cocokyun is inactive. V61.1 states that 0 is a reference value and never authorizes free delivery; the service/provider status must be checked.
+
+7. Search usability and accessibility
+   Added code/name ranking, English/Myanmar search, keyboard navigation, ARIA combobox/listbox attributes, region-aware labels, and explicit selection guidance.
+
+8. Line-ending-safe installer
+   The installer accepts reviewed V60, V61, and the user-supplied translation revision with LF or CRLF line endings, while stopping on unreviewed source.
+
+SAFETY PRESERVED
+- VITE_FINANCIAL_V2_WRITES_ENABLED remains false by default.
+- No direct financial table upsert was added.
+- No source fee is copied into base_tariff, net_system_delivery_charge, or settlement fields.
+- Financial V2 calculation, save validation, and waybill checks still use backend RPCs.

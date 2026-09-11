@@ -1,0 +1,1048 @@
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  Download,
+  Loader2,
+  Package,
+  RefreshCw,
+  Save,
+  Search,
+  Truck,
+  UserCheck,
+} from 'lucide-react';
+
+import { supabase } from '@/integrations/supabase/client';
+import { ROUTE_PATHS } from '@/lib/index';
+import { useQuery, useMutation } from '@/hooks/useSupabaseQuery';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+
+type PortalTab = 'overview' | 'queue' | 'fleet' | 'exceptions';
+type DeliveryStatus =
+  | 'pending'
+  | 'assigned'
+  | 'picked_up'
+  | 'in_transit'
+  | 'out_for_delivery'
+  | 'delivered'
+  | 'failed'
+  | 'returned'
+  | 'cancelled';
+
+type ManifestStatus = 'draft' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+
+type QueueShipment = {
+  id: string;
+  awb: string;
+  status: string;
+  recipient: {
+    name?: string;
+    phone?: string;
+    address?: string;
+    city?: string;
+  } | null;
+  sender: {
+    name?: string;
+  } | null;
+  cod_amount?: number | string | null;
+  shipping_fee?: number | string | null;
+  payment_method?: string | null;
+  expected_delivery_date?: string | null;
+  created_at?: string | null;
+};
+
+type QueueDriver = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  is_active?: boolean | null;
+};
+
+type QueueManifest = {
+  id: string;
+  manifest_number: string;
+  status: ManifestStatus;
+  scheduled_date: string;
+};
+
+type QueueDelivery = {
+  id: string;
+  shipment_id: string;
+  manifest_id: string | null;
+  driver_id: string | null;
+  status: DeliveryStatus;
+  attempt_number: number | null;
+  max_attempts: number | null;
+  assigned_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  failed_at: string | null;
+  notes: string | null;
+  failure_reason: string | null;
+  ndr_case: any;
+  shipment: QueueShipment | null;
+  driver: QueueDriver | null;
+  manifest: QueueManifest | null;
+};
+
+type PortalData = {
+  deliveries: QueueDelivery[];
+  drivers: QueueDriver[];
+  manifests: QueueManifest[];
+};
+
+type DeliveryUpdatePayload = {
+  deliveryId: string;
+  shipmentId: string;
+  status: DeliveryStatus;
+  driverId: string | null;
+  manifestId: string | null;
+  notes: string;
+  assignedAt: string | null;
+  previousFailureReason: string | null;
+};
+
+const TAB_ROUTES: Record<PortalTab, string> = {
+  overview: '/supervisor/overview',
+  queue: '/supervisor/queue',
+  fleet: '/supervisor/fleet',
+  exceptions: '/supervisor/exceptions',
+};
+
+const ACTIVE_QUEUE_STATUSES: DeliveryStatus[] = ['pending', 'assigned', 'in_transit', 'out_for_delivery', 'failed'];
+
+const EDITABLE_STATUS_OPTIONS: DeliveryStatus[] = [
+  'pending',
+  'assigned',
+  'in_transit',
+  'out_for_delivery',
+  'failed',
+  'delivered',
+  'returned',
+  'cancelled',
+];
+
+function getTabFromPath(pathname: string): PortalTab {
+  if (pathname.includes('/queue')) return 'queue';
+  if (pathname.includes('/fleet')) return 'fleet';
+  if (pathname.includes('/exceptions')) return 'exceptions';
+  return 'overview';
+}
+
+function formatStatusLabel(status?: string | null) {
+  return (status || 'unknown')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function formatDateTime(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(date);
+}
+
+function formatDateOnly(value?: string | null) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '—';
+  return new Intl.DateTimeFormat('en-GB', {
+    dateStyle: 'medium',
+  }).format(date);
+}
+
+function formatCurrencyValue(value?: string | number | null) {
+  const amount = typeof value === 'number' ? value : Number(value || 0);
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'MMK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(Number.isFinite(amount) ? amount : 0);
+}
+
+function statusVariant(status?: string | null): 'default' | 'secondary' | 'destructive' | 'outline' {
+  switch (status) {
+    case 'delivered':
+      return 'default';
+    case 'failed':
+    case 'cancelled':
+    case 'returned':
+      return 'destructive';
+    case 'out_for_delivery':
+    case 'in_transit':
+    case 'assigned':
+      return 'secondary';
+    default:
+      return 'outline';
+  }
+}
+
+function MetricCard({
+  title,
+  value,
+  description,
+  icon,
+}: {
+  title: string;
+  value: string | number;
+  description: string;
+  icon: ReactNode;
+}) {
+  return (
+    <Card className="shadow-sm">
+      <CardContent className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <p className="text-sm text-muted-foreground">{title}</p>
+            <p className="mt-2 text-4xl font-semibold tracking-tight">{value}</p>
+            <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+          </div>
+          <div className="rounded-xl bg-primary/10 p-3 text-primary">{icon}</div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+async function loadSupervisorPortalData(): Promise<PortalData> {
+  const [{ data: deliveries, error: deliveriesError }, { data: drivers, error: driversError }, { data: manifests, error: manifestsError }] =
+    await Promise.all([
+      supabase
+        .from('deliveries')
+        .select(`
+          id,
+          shipment_id,
+          manifest_id,
+          driver_id,
+          status,
+          attempt_number,
+          max_attempts,
+          assigned_at,
+          created_at,
+          updated_at,
+          failed_at,
+          notes,
+          failure_reason,
+          ndr_case,
+          shipment:shipment_id(
+            id,
+            awb,
+            status,
+            recipient,
+            sender,
+            cod_amount,
+            shipping_fee,
+            payment_method,
+            expected_delivery_date,
+            created_at
+          ),
+          driver:driver_id(
+            id,
+            full_name,
+            email,
+            phone,
+            role
+          ),
+          manifest:manifest_id(
+            id,
+            manifest_number,
+            status,
+            scheduled_date
+          )
+        `)
+        .in('status', ACTIVE_QUEUE_STATUSES)
+        .order('created_at', { ascending: false }),
+      supabase
+        .from('user_profiles')
+        .select('id, full_name, email, phone, role, is_active')
+        .in('role', ['driver', 'rider'])
+        .eq('is_active', true)
+        .order('full_name', { ascending: true }),
+      supabase
+        .from('manifests')
+        .select('id, manifest_number, status, scheduled_date')
+        .in('status', ['draft', 'assigned', 'in_progress'])
+        .order('scheduled_date', { ascending: true }),
+    ]);
+
+  if (deliveriesError) throw deliveriesError;
+  if (driversError) throw driversError;
+  if (manifestsError) throw manifestsError;
+
+  return {
+    deliveries: (deliveries || []) as QueueDelivery[],
+    drivers: (drivers || []) as QueueDriver[],
+    manifests: (manifests || []) as QueueManifest[],
+  };
+}
+
+async function saveQueueDelivery(payload: DeliveryUpdatePayload) {
+  const now = new Date().toISOString();
+  const { data: authResult } = await supabase.auth.getUser();
+  const changedBy = authResult.user?.id ?? null;
+
+  const deliveryPatch: Record<string, any> = {
+    status: payload.status,
+    driver_id: payload.driverId,
+    manifest_id: payload.manifestId,
+    notes: payload.notes || null,
+    assigned_at: payload.driverId ? payload.assignedAt || now : null,
+    failed_at: payload.status === 'failed' ? now : null,
+    delivered_at: payload.status === 'delivered' ? now : null,
+  };
+
+  if (payload.status === 'failed') {
+    deliveryPatch.failure_reason =
+      payload.notes.trim() || payload.previousFailureReason || 'Supervisor flagged delivery exception';
+    deliveryPatch.ndr_case = {
+      reason: deliveryPatch.failure_reason,
+      attempts: null,
+      updated_at: now,
+    };
+  } else {
+    deliveryPatch.failure_reason = null;
+    deliveryPatch.ndr_case = null;
+  }
+
+  const { data: updatedDelivery, error: deliveryError } = await supabase
+    .from('deliveries')
+    .update(deliveryPatch)
+    .eq('id', payload.deliveryId)
+    .select('id, shipment_id, status')
+    .single();
+
+  if (deliveryError) throw deliveryError;
+
+  const shipmentStatusMap: Record<DeliveryStatus, string> = {
+    pending: 'pending',
+    assigned: 'pending',
+    picked_up: 'in_transit',
+    in_transit: 'in_transit',
+    out_for_delivery: 'out_for_delivery',
+    delivered: 'delivered',
+    failed: 'failed',
+    returned: 'returned',
+    cancelled: 'cancelled',
+  };
+
+  const { error: shipmentError } = await supabase
+    .from('shipments')
+    .update({
+      status: shipmentStatusMap[payload.status],
+      updated_at: now,
+    })
+    .eq('id', payload.shipmentId);
+
+  if (shipmentError) throw shipmentError;
+
+  if (payload.manifestId) {
+    await supabase
+      .from('manifests')
+      .update({ status: 'assigned' })
+      .eq('id', payload.manifestId)
+      .eq('status', 'draft');
+  }
+
+  const { error: historyError } = await supabase.from('delivery_history').insert({
+    delivery_id: updatedDelivery.id,
+    shipment_id: updatedDelivery.shipment_id,
+    status: payload.status,
+    notes: payload.notes || null,
+    changed_by: changedBy,
+  });
+
+  if (historyError) throw historyError;
+
+  return updatedDelivery;
+}
+
+function downloadQueueCsv(rows: QueueDelivery[]) {
+  const header = [
+    'delivery_id',
+    'awb',
+    'delivery_status',
+    'shipment_status',
+    'recipient_name',
+    'recipient_phone',
+    'driver',
+    'manifest',
+    'attempt_number',
+    'assigned_at',
+    'expected_delivery_date',
+    'notes',
+  ];
+
+  const lines = rows.map((row) => [
+    row.id,
+    row.shipment?.awb || '',
+    row.status,
+    row.shipment?.status || '',
+    row.shipment?.recipient?.name || '',
+    row.shipment?.recipient?.phone || '',
+    row.driver?.full_name || '',
+    row.manifest?.manifest_number || '',
+    row.attempt_number || '',
+    row.assigned_at || '',
+    row.shipment?.expected_delivery_date || '',
+    (row.notes || '').replace(/\r?\n/g, ' '),
+  ]);
+
+  const csv = [header, ...lines]
+    .map((line) =>
+      line
+        .map((cell) => {
+          const safe = String(cell ?? '');
+          return `"${safe.replace(/"/g, '""')}"`;
+        })
+        .join(',')
+    )
+    .join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `supervisor-queue-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  window.URL.revokeObjectURL(url);
+}
+
+export default function SupervisorPortal() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const [activeTab, setActiveTab] = useState<PortalTab>(getTabFromPath(location.pathname));
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | DeliveryStatus>('all');
+  const [assignmentFilter, setAssignmentFilter] = useState<'all' | 'assigned' | 'unassigned'>('all');
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null);
+  const [formDriverId, setFormDriverId] = useState<string>('unassigned');
+  const [formManifestId, setFormManifestId] = useState<string>('none');
+  const [formStatus, setFormStatus] = useState<DeliveryStatus>('pending');
+  const [formNotes, setFormNotes] = useState('');
+
+  const { data, isLoading, refetch } = useQuery(loadSupervisorPortalData);
+  const portalData = data || { deliveries: [], drivers: [], manifests: [] };
+
+  const saveMutation = useMutation(saveQueueDelivery, {
+    onSuccess: () => {
+      refetch();
+    },
+  });
+
+  useEffect(() => {
+    const nextTab = getTabFromPath(location.pathname);
+    setActiveTab(nextTab);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!portalData.deliveries.length) {
+      setSelectedDeliveryId(null);
+      return;
+    }
+
+    if (!selectedDeliveryId || !portalData.deliveries.some((row) => row.id === selectedDeliveryId)) {
+      setSelectedDeliveryId(portalData.deliveries[0].id);
+    }
+  }, [portalData.deliveries, selectedDeliveryId]);
+
+  const selectedDelivery = useMemo(
+    () => portalData.deliveries.find((row) => row.id === selectedDeliveryId) || null,
+    [portalData.deliveries, selectedDeliveryId]
+  );
+
+  useEffect(() => {
+    if (!selectedDelivery) return;
+    setFormDriverId(selectedDelivery.driver_id || 'unassigned');
+    setFormManifestId(selectedDelivery.manifest_id || 'none');
+    setFormStatus(selectedDelivery.status);
+    setFormNotes(selectedDelivery.notes || '');
+  }, [selectedDelivery]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('supervisor-queue-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'deliveries' },
+        () => {
+          refetch();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [refetch]);
+
+  const filteredQueue = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+
+    return portalData.deliveries.filter((row) => {
+      const matchesSearch =
+        !query ||
+        row.id.toLowerCase().includes(query) ||
+        (row.shipment?.awb || '').toLowerCase().includes(query) ||
+        (row.shipment?.recipient?.name || '').toLowerCase().includes(query) ||
+        (row.shipment?.recipient?.phone || '').toLowerCase().includes(query) ||
+        (row.driver?.full_name || '').toLowerCase().includes(query);
+
+      const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
+      const matchesAssignment =
+        assignmentFilter === 'all' ||
+        (assignmentFilter === 'assigned' ? Boolean(row.driver_id) : !row.driver_id);
+
+      return matchesSearch && matchesStatus && matchesAssignment;
+    });
+  }, [assignmentFilter, portalData.deliveries, searchQuery, statusFilter]);
+
+  const queueMetrics = useMemo(() => {
+    const queueRows = portalData.deliveries.filter((row) => row.status !== 'delivered' && row.status !== 'cancelled');
+    const unassigned = queueRows.filter((row) => !row.driver_id).length;
+    const exceptionCount = portalData.deliveries.filter((row) => row.status === 'failed' || Boolean(row.ndr_case)).length;
+    const outForDelivery = portalData.deliveries.filter((row) => row.status === 'out_for_delivery').length;
+    const activeDrivers = portalData.drivers.length;
+
+    return {
+      total: queueRows.length,
+      unassigned,
+      exceptionCount,
+      outForDelivery,
+      activeDrivers,
+    };
+  }, [portalData.deliveries, portalData.drivers.length]);
+
+  const exceptionRows = useMemo(
+    () => portalData.deliveries.filter((row) => row.status === 'failed' || Boolean(row.ndr_case)),
+    [portalData.deliveries]
+  );
+
+  const driverWorkload = useMemo(() => {
+    const counts = new Map<string, number>();
+
+    portalData.deliveries.forEach((row) => {
+      if (!row.driver_id) return;
+      counts.set(row.driver_id, (counts.get(row.driver_id) || 0) + 1);
+    });
+
+    return portalData.drivers
+      .map((driver) => ({
+        ...driver,
+        workload: counts.get(driver.id) || 0,
+      }))
+      .sort((a, b) => a.workload - b.workload);
+  }, [portalData.deliveries, portalData.drivers]);
+
+  const handleTabChange = (value: string) => {
+    const tab = value as PortalTab;
+    setActiveTab(tab);
+    navigate(TAB_ROUTES[tab]);
+  };
+
+  const handleSaveSelectedDelivery = async () => {
+    if (!selectedDelivery) return;
+
+    await saveMutation.mutate({
+      deliveryId: selectedDelivery.id,
+      shipmentId: selectedDelivery.shipment_id,
+      status: formStatus,
+      driverId: formDriverId === 'unassigned' ? null : formDriverId,
+      manifestId: formManifestId === 'none' ? null : formManifestId,
+      notes: formNotes.trim(),
+      assignedAt: selectedDelivery.assigned_at,
+      previousFailureReason: selectedDelivery.failure_reason,
+    });
+  };
+
+  const handleQuickRequeue = async () => {
+    if (!selectedDelivery) return;
+
+    setFormDriverId('unassigned');
+    setFormManifestId('none');
+    setFormStatus('pending');
+
+    await saveMutation.mutate({
+      deliveryId: selectedDelivery.id,
+      shipmentId: selectedDelivery.shipment_id,
+      status: 'pending',
+      driverId: null,
+      manifestId: null,
+      notes: formNotes.trim(),
+      assignedAt: selectedDelivery.assigned_at,
+      previousFailureReason: selectedDelivery.failure_reason,
+    });
+  };
+
+  const pageTitle =
+    activeTab === 'queue'
+      ? 'Supervisor Queue Management'
+      : activeTab === 'fleet'
+      ? 'Supervisor Fleet Mobility'
+      : activeTab === 'exceptions'
+      ? 'Supervisor Exceptions'
+      : 'Supervisor Portal';
+
+  const pageSubtitle =
+    activeTab === 'queue'
+      ? 'Live operational queue backed by Supabase deliveries, manifests, and driver assignments.'
+      : activeTab === 'fleet'
+      ? 'Driver workload and manifest readiness from production data.'
+      : activeTab === 'exceptions'
+      ? 'Failed deliveries and non-delivery resolution queue.'
+      : 'Operational visibility across queue, fleet, and exceptions.';
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <h1 className="text-4xl font-semibold tracking-tight">{pageTitle}</h1>
+          <p className="mt-2 text-muted-foreground">{pageSubtitle}</p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Button variant="outline" onClick={() => refetch()} disabled={isLoading}>
+            {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
+            Refresh
+          </Button>
+          <Button variant="outline" onClick={() => downloadQueueCsv(filteredQueue)} disabled={!filteredQueue.length}>
+            <Download className="mr-2 h-4 w-4" />
+            Export Queue
+          </Button>
+          <Button onClick={() => navigate(ROUTE_PATHS.CREATE_DELIVERY)}>
+            <Package className="mr-2 h-4 w-4" />
+            Create Delivery
+          </Button>
+        </div>
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="grid gap-4 md:grid-cols-2 xl:grid-cols-5"
+      >
+        <MetricCard title="Queue Size" value={queueMetrics.total} description="Open deliveries requiring supervisor attention" icon={<Package className="h-5 w-5" />} />
+        <MetricCard title="Unassigned" value={queueMetrics.unassigned} description="Deliveries waiting for driver allocation" icon={<UserCheck className="h-5 w-5" />} />
+        <MetricCard title="Out for Delivery" value={queueMetrics.outForDelivery} description="Shipments currently on final-mile execution" icon={<Truck className="h-5 w-5" />} />
+        <MetricCard title="Exceptions" value={queueMetrics.exceptionCount} description="Failed or NDR-tagged deliveries needing action" icon={<AlertTriangle className="h-5 w-5" />} />
+        <MetricCard title="Active Drivers" value={queueMetrics.activeDrivers} description="Available driver and rider pool" icon={<CheckCircle2 className="h-5 w-5" />} />
+      </motion.div>
+
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="queue">Queue Management</TabsTrigger>
+          <TabsTrigger value="fleet">Fleet Mobility</TabsTrigger>
+          <TabsTrigger value="exceptions">Exceptions</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Queue Snapshot</CardTitle>
+                <CardDescription>Current operational pressure across the live queue.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {filteredQueue.slice(0, 6).map((row) => (
+                  <div key={row.id} className="flex items-start justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <div className="font-medium">{row.shipment?.awb || row.id}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.shipment?.recipient?.name || 'Unknown recipient'} · {row.driver?.full_name || 'Unassigned'}
+                      </div>
+                    </div>
+                    <Badge variant={statusVariant(row.status)}>{formatStatusLabel(row.status)}</Badge>
+                  </div>
+                ))}
+                {!filteredQueue.length && (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No live queue records matched the current filters.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Exception Watchlist</CardTitle>
+                <CardDescription>Deliveries blocked by failed attempts or NDR activity.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {exceptionRows.slice(0, 6).map((row) => (
+                  <div key={row.id} className="flex items-start justify-between rounded-lg border p-4">
+                    <div className="space-y-1">
+                      <div className="font-medium">{row.shipment?.awb || row.id}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.failure_reason || row.ndr_case?.reason || 'Supervisor follow-up required'}
+                      </div>
+                    </div>
+                    <Badge variant="destructive">{formatStatusLabel(row.status)}</Badge>
+                  </div>
+                ))}
+                {!exceptionRows.length && (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No open exceptions right now.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="queue" className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(320px,0.9fr)]">
+            <Card className="min-w-0">
+              <CardHeader>
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                  <div>
+                    <CardTitle>Live Queue</CardTitle>
+                    <CardDescription>Search, assign, and move deliveries through the production queue.</CardDescription>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    <div className="relative min-w-[220px]">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={searchQuery}
+                        onChange={(event) => setSearchQuery(event.target.value)}
+                        placeholder="Search AWB, recipient, phone, driver"
+                        className="pl-9"
+                      />
+                    </div>
+
+                    <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as 'all' | DeliveryStatus)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Filter by status" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All statuses</SelectItem>
+                        {ACTIVE_QUEUE_STATUSES.map((status) => (
+                          <SelectItem key={status} value={status}>
+                            {formatStatusLabel(status)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+
+                    <Select value={assignmentFilter} onValueChange={(value) => setAssignmentFilter(value as 'all' | 'assigned' | 'unassigned')}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Filter by assignment" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All assignments</SelectItem>
+                        <SelectItem value="assigned">Assigned only</SelectItem>
+                        <SelectItem value="unassigned">Unassigned only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </CardHeader>
+
+              <CardContent className="p-0">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Shipment</TableHead>
+                      <TableHead>Recipient</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Manifest</TableHead>
+                      <TableHead>Attempts</TableHead>
+                      <TableHead>Created</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredQueue.map((row) => {
+                      const isSelected = row.id === selectedDeliveryId;
+
+                      return (
+                        <TableRow
+                          key={row.id}
+                          className={isSelected ? 'bg-primary/5' : undefined}
+                          onClick={() => setSelectedDeliveryId(row.id)}
+                        >
+                          <TableCell className="min-w-[180px]">
+                            <div className="font-medium">{row.shipment?.awb || row.id}</div>
+                            <div className="text-xs text-muted-foreground">{row.id.slice(0, 8)}</div>
+                          </TableCell>
+                          <TableCell className="min-w-[220px]">
+                            <div>{row.shipment?.recipient?.name || 'Unknown recipient'}</div>
+                            <div className="text-xs text-muted-foreground">{row.shipment?.recipient?.phone || 'No phone'}</div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant={statusVariant(row.status)}>{formatStatusLabel(row.status)}</Badge>
+                          </TableCell>
+                          <TableCell>{row.driver?.full_name || 'Unassigned'}</TableCell>
+                          <TableCell>{row.manifest?.manifest_number || 'Not attached'}</TableCell>
+                          <TableCell>
+                            {row.attempt_number || 1}/{row.max_attempts || 3}
+                          </TableCell>
+                          <TableCell>{formatDateTime(row.created_at)}</TableCell>
+                        </TableRow>
+                      );
+                    })}
+
+                    {!isLoading && filteredQueue.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                          No deliveries matched your queue filters.
+                        </TableCell>
+                      </TableRow>
+                    )}
+
+                    {isLoading && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-12 text-center text-muted-foreground">
+                          Loading live queue…
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card className="h-fit">
+              <CardHeader>
+                <CardTitle>Queue Action Panel</CardTitle>
+                <CardDescription>
+                  {selectedDelivery ? `Editing ${selectedDelivery.shipment?.awb || selectedDelivery.id}` : 'Select a delivery from the live queue'}
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-5">
+                {!selectedDelivery && <div className="text-sm text-muted-foreground">No delivery selected.</div>}
+
+                {selectedDelivery && (
+                  <>
+                    <div className="rounded-lg border p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-semibold">{selectedDelivery.shipment?.awb || selectedDelivery.id}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {selectedDelivery.shipment?.recipient?.name || 'Unknown recipient'}
+                          </div>
+                        </div>
+                        <Badge variant={statusVariant(selectedDelivery.status)}>
+                          {formatStatusLabel(selectedDelivery.status)}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 text-sm text-muted-foreground">
+                        <div>Recipient phone: {selectedDelivery.shipment?.recipient?.phone || '—'}</div>
+                        <div>Expected delivery: {formatDateOnly(selectedDelivery.shipment?.expected_delivery_date)}</div>
+                        <div>COD amount: {formatCurrencyValue(selectedDelivery.shipment?.cod_amount)}</div>
+                        <div>Created: {formatDateTime(selectedDelivery.created_at)}</div>
+                        <div>Assigned: {formatDateTime(selectedDelivery.assigned_at)}</div>
+                        <div>Failure reason: {selectedDelivery.failure_reason || '—'}</div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="queue-driver">Assign driver</Label>
+                      <Select value={formDriverId} onValueChange={setFormDriverId}>
+                        <SelectTrigger id="queue-driver">
+                          <SelectValue placeholder="Select driver" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          {portalData.drivers.map((driver) => (
+                            <SelectItem key={driver.id} value={driver.id}>
+                              {(driver.full_name || driver.email || driver.id) + (driver.role ? ` · ${formatStatusLabel(driver.role)}` : '')}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="queue-manifest">Attach manifest</Label>
+                      <Select value={formManifestId} onValueChange={setFormManifestId}>
+                        <SelectTrigger id="queue-manifest">
+                          <SelectValue placeholder="Select manifest" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">No manifest</SelectItem>
+                          {portalData.manifests.map((manifest) => (
+                            <SelectItem key={manifest.id} value={manifest.id}>
+                              {manifest.manifest_number} · {formatDateOnly(manifest.scheduled_date)} · {formatStatusLabel(manifest.status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="queue-status">Delivery status</Label>
+                      <Select value={formStatus} onValueChange={(value) => setFormStatus(value as DeliveryStatus)}>
+                        <SelectTrigger id="queue-status">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {EDITABLE_STATUS_OPTIONS.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {formatStatusLabel(status)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="queue-notes">Supervisor notes</Label>
+                      <Textarea
+                        id="queue-notes"
+                        value={formNotes}
+                        onChange={(event) => setFormNotes(event.target.value)}
+                        placeholder="Operational note, reassignment reason, or escalation detail"
+                        rows={5}
+                      />
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Button onClick={handleSaveSelectedDelivery} disabled={saveMutation.isLoading}>
+                        {saveMutation.isLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Save className="mr-2 h-4 w-4" />
+                        )}
+                        Save changes
+                      </Button>
+                      <Button variant="outline" onClick={handleQuickRequeue} disabled={saveMutation.isLoading}>
+                        <Clock3 className="mr-2 h-4 w-4" />
+                        Requeue
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="fleet" className="space-y-6">
+          <div className="grid gap-6 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Driver Workload</CardTitle>
+                <CardDescription>Current queue load distribution across active drivers.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {driverWorkload.map((driver) => (
+                  <div key={driver.id} className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                      <div className="font-medium">{driver.full_name || driver.email || driver.id}</div>
+                      <div className="text-sm text-muted-foreground">{driver.phone || driver.role || 'Driver'}</div>
+                    </div>
+                    <Badge variant={driver.workload > 0 ? 'secondary' : 'outline'}>
+                      {driver.workload} active
+                    </Badge>
+                  </div>
+                ))}
+                {!driverWorkload.length && (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No active driver profiles were returned by the backend.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Manifest Readiness</CardTitle>
+                <CardDescription>Open manifests available for supervisor allocation.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {portalData.manifests.map((manifest) => (
+                  <div key={manifest.id} className="flex items-center justify-between rounded-lg border p-4">
+                    <div>
+                      <div className="font-medium">{manifest.manifest_number}</div>
+                      <div className="text-sm text-muted-foreground">{formatDateOnly(manifest.scheduled_date)}</div>
+                    </div>
+                    <Badge variant={statusVariant(manifest.status)}>{formatStatusLabel(manifest.status)}</Badge>
+                  </div>
+                ))}
+                {!portalData.manifests.length && (
+                  <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                    No draft or in-progress manifests are available.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="exceptions" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Exception Queue</CardTitle>
+              <CardDescription>Failed deliveries and NDR-linked records from the production backend.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {exceptionRows.map((row) => (
+                <div key={row.id} className="rounded-lg border p-4">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-1">
+                      <div className="font-medium">{row.shipment?.awb || row.id}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.shipment?.recipient?.name || 'Unknown recipient'} · {row.shipment?.recipient?.phone || 'No phone'}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {row.failure_reason || row.ndr_case?.reason || 'No failure reason recorded'}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="destructive">{formatStatusLabel(row.status)}</Badge>
+                      <Badge variant="outline">Attempt {row.attempt_number || 1}</Badge>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setSelectedDeliveryId(row.id);
+                          handleTabChange('queue');
+                        }}
+                      >
+                        Open in queue
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {!exceptionRows.length && (
+                <div className="rounded-lg border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No open exceptions right now.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}

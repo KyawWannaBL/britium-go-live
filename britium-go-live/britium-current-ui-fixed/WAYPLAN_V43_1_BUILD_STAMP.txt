@@ -1,0 +1,4 @@
+WAYPLAN_V43_1_MASTER_DROPDOWN_ACTIVATION_2026-07-30
+installed_at=2026-07-29T23:08:00.572Z
+expected_header=MASTER DATA DROPDOWNS ACTIVE
+expected_rpc=be_wayplan_assignment_options_v42

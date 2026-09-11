@@ -1,0 +1,19 @@
+CODE REVIEW — V61.8.1
+
+Validated locally:
+- TypeScript TSX transpilation: PASS
+- Installer test against V61.8 source: PASS
+- Source verifier: 13/13 PASS
+- Synthetic compiled-dist verifier: 10/10 PASS
+- Direct financial table upsert: NOT FOUND
+- Canonical tariff markers: PRESERVED
+- V61.6 minimal UX markers: PRESERVED
+- Obsolete Contract Service Fee label: REMOVED
+- Obsolete exact/opaque REVIEW message: REMOVED
+
+Not executed in this environment:
+- Supabase migration
+- Supabase verifier
+- Full repository Vite build
+- Vercel production deployment
+- Browser acceptance

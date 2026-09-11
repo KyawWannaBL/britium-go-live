@@ -1,0 +1,33 @@
+{
+  "version": "2026-09-11",
+  "master": "src/lib/postalCodeData.ts",
+  "source_records_per_language": 17331,
+  "source_region_groups": 18,
+  "valid_township_region_pairs": 506,
+  "resolvable_records": 17298,
+  "placeholder_parent_records_excluded_from_lookup": 33,
+  "validation": "Both archive All CSV sets exactly match the bilingual master after trimming and padding postal codes to seven digits. All three standalone Myanmar CSVs are contained in the archives.",
+  "scope": "Published towns/townships and quarters/village tracts from the supplied files; no claim of independently complete national village coverage. Geographic recognition does not authorize tariffs or expand provider coverage. Unknown is manual only.",
+  "sources": [
+    {
+      "name": "English.zip",
+      "sha256": "6f77df39c5e7779825e9b5dcb7124f6e7fe5dab0c3841fbf1cb4cad6f4a8918d"
+    },
+    {
+      "name": "မြန်မာ.zip",
+      "sha256": "696c45caacaf0073f655c7ae16e54e4e882f82a6529c5b0b313bd41e9a1f7213"
+    },
+    {
+      "name": "Yangon_Region_All_MM(2).csv",
+      "sha256": "533dbb5a473b382eba37462556211c52c3bb2ec68fb72ab0ae2deae3b0b2f830"
+    },
+    {
+      "name": "Mandalay_Region_All_MM(1).csv",
+      "sha256": "67c3ae2b471dec8527a39075edcf62d54a7c01f065adfdd36cfe3d30eabb24e4"
+    },
+    {
+      "name": "Naypyitaw_Union_Territory_All_MM(1).csv",
+      "sha256": "409b06a0baf8d66a54509de27c2307a8249adb63562cf72a1442ede48f61bb1d"
+    }
+  ]
+}

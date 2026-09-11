@@ -1,0 +1,19 @@
+{
+  "ok": true,
+  "build": "DATA_ENTRY_CLEAN_REVIEW_V61_4_1_PACKAGE_VALIDATION_2026_08_03",
+  "frontend_page_hash": "4a40a66dc78e5f601a86e5bc76bc72349ff7cdb43f7b46ded48502696a9e7377",
+  "robust_aliases": [
+    "Dagon Myothit (North)",
+    "Dagon Myo Thit (North)",
+    "North Dagon",
+    "MMR013019",
+    "ဒဂုံမြို့သစ် (မြောက်ပိုင်း)"
+  ],
+  "east_dagon_code_corrected": "MMR013020",
+  "tariff_rows_changed": false,
+  "historical_rows_changed": false,
+  "financial_writes_enabled": false,
+  "production_sql_executed": false,
+  "production_build_performed": false,
+  "deploy_performed": false
+}

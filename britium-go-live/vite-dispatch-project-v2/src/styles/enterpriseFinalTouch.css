@@ -1,0 +1,60 @@
+:root {
+  color-scheme: dark;
+  --be-gold: #f6b84b;
+  --be-sky: #4ea8de;
+  --be-ink: #061524;
+}
+
+html { scroll-behavior: smooth; }
+body { background: #061524; }
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(78, 168, 222, .55) rgba(6, 21, 36, .9);
+}
+
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: rgba(6, 21, 36, .9); }
+*::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(78,168,222,.8), rgba(246,184,75,.65));
+  border-radius: 999px;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease, filter .18s ease;
+}
+
+button:hover,
+a:hover { filter: brightness(1.08); }
+button:active { transform: translateY(1px); }
+
+input:focus,
+select:focus,
+textarea:focus,
+button:focus-visible,
+a:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(78,168,222,.20), 0 0 0 1px rgba(246,184,75,.6) !important;
+}
+
+.be-golive-watermark {
+  position: fixed;
+  right: 18px;
+  bottom: 14px;
+  z-index: 30;
+  pointer-events: none;
+  border: 1px solid rgba(246,184,75,.28);
+  background: rgba(6, 21, 36, .72);
+  backdrop-filter: blur(10px);
+  color: rgba(246,184,75,.9);
+  border-radius: 999px;
+  padding: 7px 12px;
+  font-size: 11px;
+  font-weight: 1000;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+}

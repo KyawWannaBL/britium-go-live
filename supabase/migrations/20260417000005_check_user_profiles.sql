@@ -1,0 +1,1 @@
+SELECT id, email, full_name, role, is_active FROM public.user_profiles ORDER BY created_at LIMIT 20;

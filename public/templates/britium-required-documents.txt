@@ -1,0 +1,9 @@
+Required documents for pickup registration:
+- sender contact name and phone
+- recipient contact name and phone
+- pickup address
+- delivery address
+- parcel count / weight
+- service type
+- COD amount if any
+- waybill print profile

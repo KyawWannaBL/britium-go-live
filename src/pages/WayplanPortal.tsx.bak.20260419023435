@@ -1,0 +1,106 @@
+import { motion } from 'framer-motion';
+import { Route, MapPin, Truck, FileText, BarChart3 } from 'lucide-react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { IMAGES } from '@/assets/images';
+
+export default function WayplanPortal() {
+  return (
+    <div className="min-h-screen bg-background relative">
+      <div
+        className="absolute inset-0 z-0 opacity-30"
+        style={{
+          backgroundImage: `url(${IMAGES.SCREENSHOT_6115_2})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-b from-background/50 via-transparent to-background/70" />
+      
+      <div className="relative z-10 space-y-6 p-6">
+      <div>
+        <h1 className="text-3xl font-bold">Wayplan Manager</h1>
+        <p className="text-muted-foreground">Route optimization and manifest management</p>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Active Routes</CardTitle>
+            <Route className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">24</div>
+            <p className="text-xs text-muted-foreground">+3 from yesterday</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Optimized Routes</CardTitle>
+            <MapPin className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">18</div>
+            <p className="text-xs text-muted-foreground">75% optimization rate</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Vehicles Assigned</CardTitle>
+            <Truck className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">32</div>
+            <p className="text-xs text-muted-foreground">Out of 45 available</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Manifests Created</CardTitle>
+            <FileText className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">156</div>
+            <p className="text-xs text-muted-foreground">This week</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Route Optimization</CardTitle>
+          <CardDescription>Optimize delivery routes for maximum efficiency</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Zone A - Morning Routes</p>
+                <p className="text-sm text-muted-foreground">45 deliveries, 8 vehicles</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">Pending</Badge>
+                <Button size="sm">Optimize</Button>
+              </div>
+            </div>
+            <div className="flex items-center justify-between p-4 border rounded-lg">
+              <div>
+                <p className="font-medium">Zone B - Afternoon Routes</p>
+                <p className="text-sm text-muted-foreground">32 deliveries, 6 vehicles</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Badge>Optimized</Badge>
+                <Button size="sm" variant="outline">View</Button>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+      </div>
+    </div>
+  );
+}

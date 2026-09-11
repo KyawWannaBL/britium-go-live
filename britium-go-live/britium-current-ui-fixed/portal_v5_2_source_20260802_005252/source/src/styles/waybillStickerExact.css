@@ -1,0 +1,581 @@
+.be-ws-page {
+  min-height: 100vh;
+  background: #061524;
+  color: #eef8ff;
+  padding: 24px;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.be-ws-print {
+  display: none;
+}
+
+.be-ws-header,
+.be-ws-workbench,
+.be-ws-preview,
+.be-ws-left {
+  border: 1px solid #1a3a5c;
+  background: #0b2236;
+  border-radius: 24px;
+  box-shadow: 0 18px 44px rgba(0,0,0,.24);
+}
+
+.be-ws-header {
+  padding: 22px;
+  display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.be-ws-header p {
+  margin: 0;
+  color: #f6b84b;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: .24em;
+}
+
+.be-ws-header h1 {
+  margin: 7px 0 4px;
+  font-size: 28px;
+  font-weight: 950;
+}
+
+.be-ws-header span {
+  color: #8fb8d6;
+  font-size: 13px;
+}
+
+.be-ws-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.be-ws-actions button,
+.be-preview-top button {
+  border: 1px solid #1a3a5c;
+  background: #061524;
+  color: #eef8ff;
+  min-height: 40px;
+  padding: 0 13px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.be-ws-actions button.gold {
+  background: #f6b84b;
+  border-color: #f6b84b;
+  color: #061524;
+}
+
+.be-ws-workbench {
+  display: grid;
+  grid-template-columns: 330px 1fr;
+  gap: 18px;
+  padding: 18px;
+}
+
+.be-ws-left {
+  padding: 16px;
+}
+
+.be-search {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #1a3a5c;
+  background: #061524;
+  border-radius: 14px;
+  padding: 0 12px;
+  margin-bottom: 14px;
+  color: #4ea8de;
+}
+
+.be-search input {
+  height: 42px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: #eef8ff;
+}
+
+.be-paper-size {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.be-paper-size button {
+  border: 1px solid #1a3a5c;
+  background: #061524;
+  color: #eef8ff;
+  border-radius: 14px;
+  padding: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.be-paper-size button.active {
+  border-color: #f6b84b;
+  background: rgba(246, 184, 75, .12);
+}
+
+.be-paper-size b,
+.be-paper-size span {
+  display: block;
+}
+
+.be-paper-size b {
+  color: #f6b84b;
+  font-size: 14px;
+}
+
+.be-paper-size span {
+  color: #8fb8d6;
+  font-size: 11px;
+  margin-top: 3px;
+}
+
+.be-row-list {
+  display: grid;
+  gap: 8px;
+  max-height: 520px;
+  overflow: auto;
+}
+
+.be-row-list button {
+  border: 1px solid #1a3a5c;
+  background: #061524;
+  color: #eef8ff;
+  border-radius: 14px;
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.be-row-list button.active {
+  border-color: #4ea8de;
+  background: rgba(78,168,222,.12);
+}
+
+.be-row-list b,
+.be-row-list small {
+  display: block;
+}
+
+.be-row-list b {
+  color: #f6b84b;
+}
+
+.be-row-list small {
+  color: #8fb8d6;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.empty {
+  color: #8fb8d6;
+}
+
+.be-ws-preview {
+  padding: 18px;
+}
+
+.be-preview-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  border-bottom: 1px solid #1a3a5c;
+  padding-bottom: 14px;
+  margin-bottom: 18px;
+}
+
+.be-preview-top h2 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.be-preview-top p {
+  margin: 5px 0 0;
+  color: #8fb8d6;
+}
+
+.be-preview-canvas {
+  min-height: 650px;
+  display: grid;
+  place-items: center;
+  overflow: auto;
+  border-radius: 22px;
+  background:
+    linear-gradient(45deg, rgba(255,255,255,.04) 25%, transparent 25%),
+    linear-gradient(-45deg, rgba(255,255,255,.04) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, rgba(255,255,255,.04) 75%),
+    linear-gradient(-45deg, transparent 75%, rgba(255,255,255,.04) 75%);
+  background-size: 28px 28px;
+  background-position: 0 0, 0 14px, 14px -14px, -14px 0px;
+  padding: 24px;
+}
+
+.be-preview-canvas .be-sticker {
+  transform-origin: top center;
+}
+
+.be-preview-four-six .be-sticker { width: 384px; height: 576px; }
+.be-preview-four-three .be-sticker { width: 512px; height: 384px; }
+.be-preview-two-three .be-sticker { width: 256px; height: 384px; }
+.be-preview-a5 .be-sticker { width: 559px; height: 397px; }
+.be-preview-a4 .be-sticker { width: 397px; height: 559px; }
+
+.be-data-box {
+  margin-top: 16px;
+  border: 1px solid #1a3a5c;
+  border-radius: 18px;
+  background: #061524;
+  overflow: hidden;
+}
+
+.be-data-box h3 {
+  margin: 0;
+  padding: 12px 14px;
+  color: #f6b84b;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid #1a3a5c;
+}
+
+.be-data-box pre {
+  margin: 0;
+  padding: 14px;
+  color: #8fb8d6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
+
+/* Exact sticker style */
+.be-sticker {
+  width: 4in;
+  height: 6in;
+  box-sizing: border-box;
+  background: white;
+  color: #111;
+  border: 2px solid #a8a8a8;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: 1.26in .78in 2.30in .38in .90in .38in;
+  font-family: Arial, "Noto Sans Myanmar", "Pyidaungsu", sans-serif;
+  box-shadow: 0 18px 44px rgba(0,0,0,.38);
+}
+
+.be-sticker-top {
+  display: grid;
+  grid-template-columns: 2.35in 1.65in;
+  border-bottom: 1.8px solid #a8a8a8;
+}
+
+.be-sticker-brand {
+  display: grid;
+  grid-template-columns: .72in 1fr;
+  gap: .08in;
+  padding: .12in .08in .06in .08in;
+}
+
+.be-logo-wrap {
+  width: .62in;
+  height: .62in;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.be-logo-wrap img {
+  max-width: .60in;
+  max-height: .60in;
+  object-fit: contain;
+}
+
+.be-sticker-brand h1 {
+  margin: 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: .185in;
+  line-height: 1.02;
+  letter-spacing: -.01in;
+  font-weight: 800;
+}
+
+.be-sticker-brand h2 {
+  margin: .02in 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: .14in;
+  line-height: 1.0;
+  font-weight: 700;
+}
+
+.be-sticker-brand p {
+  margin: .035in 0 0;
+  font-size: .095in;
+  font-weight: 500;
+}
+
+.be-qr-box {
+  position: relative;
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  padding: .04in .10in .02in .02in;
+}
+
+.be-qr-box b {
+  font-size: .085in;
+  font-weight: 800;
+  letter-spacing: .01in;
+  margin-bottom: .03in;
+}
+
+.be-qr-box img {
+  width: .92in;
+  height: .92in;
+  object-fit: contain;
+  image-rendering: pixelated;
+}
+
+.be-qr-box strong {
+  display: block;
+  margin-top: .025in;
+  font-size: .09in;
+  font-weight: 900;
+  letter-spacing: .01in;
+}
+
+.be-merchant-section {
+  border-bottom: 1.8px solid #a8a8a8;
+  padding: .065in .08in;
+  display: flex;
+  gap: .06in;
+  align-items: start;
+}
+
+.be-merchant-section span,
+.be-recipient-line span,
+.be-remarks-section span {
+  color: #5b5b5b;
+  font-size: .095in;
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.be-merchant-section b {
+  font-size: .10in;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.be-recipient-section {
+  border-bottom: 1.8px solid #a8a8a8;
+  padding: .11in .10in;
+}
+
+.be-recipient-line {
+  display: flex;
+  gap: .18in;
+  align-items: baseline;
+}
+
+.be-recipient-line b {
+  font-size: .16in;
+  font-weight: 500;
+  letter-spacing: .01in;
+}
+
+.be-phone-line {
+  margin: .20in 0 0 .70in;
+  font-size: .14in;
+  letter-spacing: .004in;
+}
+
+.be-address-lines {
+  margin: .16in 0 0 .70in;
+  max-width: 2.6in;
+}
+
+.be-address-lines p {
+  margin: 0 0 .09in;
+  font-size: .13in;
+  line-height: 1.25;
+  font-weight: 500;
+}
+
+.be-address-lines p:last-child {
+  font-size: .10in;
+  color: #333;
+}
+
+.be-remarks-section {
+  border-bottom: 1.8px solid #a8a8a8;
+  padding: .075in .10in;
+  display: flex;
+  gap: .08in;
+}
+
+.be-remarks-section b {
+  font-size: .10in;
+}
+
+.be-money-section {
+  border-bottom: 1.8px solid #a8a8a8;
+  display: grid;
+  grid-template-columns: 2.15in 1.85in;
+  align-items: center;
+  padding: .08in .04in .07in .05in;
+}
+
+.be-money-lines {
+  display: grid;
+  gap: .055in;
+}
+
+.be-money-lines p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1.05in 1fr;
+  align-items: baseline;
+  gap: .08in;
+}
+
+.be-money-lines span {
+  text-align: right;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: .09in;
+  font-weight: 700;
+}
+
+.be-money-lines b {
+  font-size: .13in;
+  letter-spacing: .016in;
+  font-weight: 400;
+}
+
+.be-cod-box {
+  border: 1.8px solid #6f6f6f;
+  border-radius: .18in;
+  background: linear-gradient(180deg, #eeeeee, #d9d9d9);
+  box-shadow: inset 0 0 .05in rgba(0,0,0,.18);
+  height: .66in;
+  display: grid;
+  align-content: center;
+  padding: .06in .18in;
+}
+
+.be-cod-box div {
+  display: flex;
+  justify-content: space-between;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: .095in;
+  font-weight: 700;
+  margin-bottom: .03in;
+}
+
+.be-cod-box strong {
+  display: block;
+  text-align: center;
+  font-size: .24in;
+  font-weight: 400;
+  letter-spacing: .01in;
+}
+
+.be-sticker-footer {
+  padding: .04in .08in .02in;
+  overflow: hidden;
+}
+
+.be-sticker-footer p {
+  margin: 0;
+  font-family: Arial, "Noto Sans Myanmar", "Pyidaungsu", sans-serif;
+  font-size: .115in;
+  line-height: 1.2;
+  font-weight: 900;
+}
+
+.be-sticker-footer b {
+  font-weight: 1000;
+}
+
+/* Scale exact elements for non-4x6 sizes */
+.be-sticker-4x3 {
+  grid-template-rows: .70in .38in 1.18in .25in .38in .11in;
+}
+
+.be-sticker-4x3 .be-sticker-brand h1 { font-size: .14in; }
+.be-sticker-4x3 .be-sticker-brand h2 { font-size: .10in; }
+.be-sticker-4x3 .be-sticker-brand p { font-size: .075in; }
+.be-sticker-4x3 .be-logo-wrap { width: .48in; height: .48in; }
+.be-sticker-4x3 .be-logo-wrap img { max-width: .46in; max-height: .46in; }
+.be-sticker-4x3 .be-qr-box img { width: .55in; height: .55in; }
+.be-sticker-4x3 .be-phone-line,
+.be-sticker-4x3 .be-address-lines { margin-left: .55in; margin-top: .08in; }
+.be-sticker-4x3 .be-address-lines p { font-size: .085in; margin-bottom: .035in; }
+.be-sticker-4x3 .be-cod-box { height: .30in; border-radius: .09in; }
+.be-sticker-4x3 .be-cod-box strong { font-size: .15in; }
+.be-sticker-4x3 .be-sticker-footer p { font-size: .065in; }
+
+.be-sticker-2x3 {
+  grid-template-columns: 1fr;
+  grid-template-rows: .55in .30in 1.22in .22in .45in .26in;
+}
+
+.be-sticker-2x3 .be-sticker-top { grid-template-columns: 1.15in .85in; }
+.be-sticker-2x3 .be-sticker-brand { grid-template-columns: .36in 1fr; padding: .05in; gap: .03in; }
+.be-sticker-2x3 .be-logo-wrap { width: .31in; height: .31in; }
+.be-sticker-2x3 .be-logo-wrap img { max-width: .30in; max-height: .30in; }
+.be-sticker-2x3 .be-sticker-brand h1 { font-size: .075in; }
+.be-sticker-2x3 .be-sticker-brand h2 { font-size: .058in; }
+.be-sticker-2x3 .be-sticker-brand p { font-size: .048in; }
+.be-sticker-2x3 .be-qr-box b,
+.be-sticker-2x3 .be-qr-box strong { font-size: .052in; }
+.be-sticker-2x3 .be-qr-box img { width: .44in; height: .44in; }
+.be-sticker-2x3 .be-merchant-section span,
+.be-sticker-2x3 .be-recipient-line span,
+.be-sticker-2x3 .be-remarks-section span { font-size: .055in; }
+.be-sticker-2x3 .be-recipient-line b { font-size: .080in; }
+.be-sticker-2x3 .be-phone-line { margin: .06in 0 0 .38in; font-size: .070in; }
+.be-sticker-2x3 .be-address-lines { margin: .06in 0 0 .38in; }
+.be-sticker-2x3 .be-address-lines p { font-size: .062in; margin-bottom: .025in; }
+.be-sticker-2x3 .be-money-section { grid-template-columns: 1fr .88in; }
+.be-sticker-2x3 .be-money-lines p { grid-template-columns: .52in 1fr; gap: .03in; }
+.be-sticker-2x3 .be-money-lines span { font-size: .050in; }
+.be-sticker-2x3 .be-money-lines b { font-size: .060in; }
+.be-sticker-2x3 .be-cod-box { height: .30in; padding: .02in .06in; border-radius: .08in; }
+.be-sticker-2x3 .be-cod-box div { font-size: .052in; }
+.be-sticker-2x3 .be-cod-box strong { font-size: .095in; }
+.be-sticker-2x3 .be-sticker-footer p { font-size: .055in; }
+
+@media (max-width: 1050px) {
+  .be-ws-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .be-ws-header {
+    flex-direction: column;
+  }
+
+  .be-ws-actions {
+    justify-content: flex-start;
+  }
+}

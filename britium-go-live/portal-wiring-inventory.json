@@ -1,0 +1,531 @@
+[
+  {
+    "route": "/",
+    "component": "EnterpriseNeoLoginPage",
+    "page_file": "src\\pages\\auth\\EnterpriseNeoLoginPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [],
+    "risk": [
+      "mock/placeholder"
+    ]
+  },
+  {
+    "route": "/login",
+    "component": "EnterpriseNeoLoginPage",
+    "page_file": "src\\pages\\auth\\EnterpriseNeoLoginPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [],
+    "risk": [
+      "mock/placeholder"
+    ]
+  },
+  {
+    "route": "/signup",
+    "component": "SignupPage",
+    "page_file": "src\\pages\\SignupPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_submit_signup_request"
+    ],
+    "table_calls": [
+      "be_signup_requests"
+    ],
+    "risk": [
+      "mock/placeholder"
+    ]
+  },
+  {
+    "route": "/forgot-password",
+    "component": "ForgotPasswordPage",
+    "page_file": "src\\pages\\ForgotPasswordPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [],
+    "risk": [
+      "mock/placeholder"
+    ]
+  },
+  {
+    "route": "/dashboard",
+    "component": "DashboardPage",
+    "page_file": "src\\pages\\DashboardPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_portal_wiring_health"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/pickup-request",
+    "component": "PickupFormPage",
+    "page_file": "src\\pages\\PickupFormPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_merchants_dropdown",
+      "be_submit_pickup_request"
+    ],
+    "table_calls": [],
+    "risk": [
+      "language t risk"
+    ]
+  },
+  {
+    "route": "/supervisor-pickup",
+    "component": "SupervisorPickupAssignmentGoLivePage",
+    "page_file": "src\\pages\\SupervisorPickupAssignmentGoLivePage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_supervisor_assign_job"
+    ],
+    "table_calls": [
+      "be_portal_pickup_requests"
+    ],
+    "risk": []
+  },
+  {
+    "route": "/supervisor-portal",
+    "component": "SupervisorOperationsPortalPage",
+    "page_file": "src\\pages\\SupervisorOperationsPortalPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_supervisor_assign_job"
+    ],
+    "table_calls": [
+      "be_portal_pickup_requests"
+    ],
+    "risk": []
+  },
+  {
+    "route": "/supervisor-gps",
+    "component": "SupervisorLiveGpsPage",
+    "page_file": "src\\pages\\SupervisorLiveGpsPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_supervisor_live_gps_snapshot"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/data-entry",
+    "component": "DataEntryPage",
+    "page_file": "src\\pages\\DataEntryPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [],
+    "risk": [
+      "language t risk",
+      "no backend call"
+    ]
+  },
+  {
+    "route": "/dispatch",
+    "component": "DispatchCenterGoLivePage",
+    "page_file": "src\\pages\\DispatchCenterGoLivePage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_dispatch_ready_queue",
+      "be_wayplan_command_center",
+      "be_generate_wayplan",
+      "be_dispatch_start_wayplan"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/wayplan-command-center",
+    "component": "WayplanCommandCenterPage",
+    "page_file": "src\\pages\\WayplanCommandCenterPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_dispatch_ready_queue",
+      "be_wayplan_command_center",
+      "be_generate_wayplan",
+      "be_wayplan_update_status",
+      "be_dispatch_start_wayplan"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/warehouse-wayplan-center",
+    "component": "WarehouseWayplanCenterPage",
+    "page_file": "src\\pages\\WarehouseWayplanCenterPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_warehouse_wayplan_center",
+      "be_warehouse_wayplan_action"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/enterprise-control-tower",
+    "component": "EnterpriseControlTowerPage",
+    "page_file": "src\\pages\\EnterpriseControlTowerPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_enterprise_control_tower"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/enterprise-operations",
+    "component": "EnterpriseOperationsHubPage",
+    "page_file": "src\\pages\\EnterpriseOperationsHubPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_portal_wiring_health"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/finance-cod-center",
+    "component": "FinanceCodCenterPage",
+    "page_file": "src\\pages\\FinanceCodCenterPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_finance_wayplan_cod_center",
+      "be_finance_settle_wayplan_cod",
+      "be_finance_settle_wayplan_cod"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/exceptions",
+    "component": "ExceptionsPage",
+    "page_file": "src\\pages\\ExceptionsPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_exception_screen_snapshot"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/executive-operations",
+    "component": "ExecutiveOpsPage",
+    "page_file": "src\\pages\\ExecutiveOpsPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_executive_dashboard"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/waybill-studio",
+    "component": "WaybillPrintStudioPage",
+    "page_file": "src\\pages\\WaybillPrintStudioPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_waybill_print_queue",
+      "be_mark_waybills_printed"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/invoice-studio",
+    "component": "InvoicePrintStudioPage",
+    "page_file": "src\\pages\\InvoicePrintStudioPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_invoice_print_studio",
+      "be_invoice_print_action",
+      "be_invoice_print_action",
+      "be_invoice_print_action"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/document-studio",
+    "component": "DocumentPrintRoomPage",
+    "page_file": "src\\pages\\DocumentPrintRoomPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_portal_wiring_health"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/manifest-print",
+    "component": "ManifestPrintStudioPage",
+    "page_file": "src\\pages\\ManifestPrintStudioPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_manifest_print_ready"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/warehouse",
+    "component": "WarehouseLifecyclePage",
+    "page_file": "src\\pages\\WarehouseLifecyclePage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_warehouse_wayplan_center",
+      "be_warehouse_wayplan_action"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/warehouse-lifecycle",
+    "component": "WarehouseLifecyclePage",
+    "page_file": "src\\pages\\WarehouseLifecyclePage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_warehouse_wayplan_center",
+      "be_warehouse_wayplan_action"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/wayplan-command",
+    "component": "WayplanCommandCenterPage",
+    "page_file": "src\\pages\\WayplanCommandCenterPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_dispatch_ready_queue",
+      "be_wayplan_command_center",
+      "be_generate_wayplan",
+      "be_wayplan_update_status",
+      "be_dispatch_start_wayplan"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/tariff",
+    "component": "TariffPage",
+    "page_file": "src\\pages\\TariffPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [
+      "be_master_data_options"
+    ],
+    "risk": []
+  },
+  {
+    "route": "/cs-portal",
+    "component": "CustomerServicePortalPage",
+    "page_file": "src\\pages\\CustomerServicePortalPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_enterprise_control_tower"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/finance-portal",
+    "component": "FinancePortalPage",
+    "page_file": "src\\pages\\FinancePortalPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_finance_portal_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/cod-settlement",
+    "component": "CodSettlementCenterPage",
+    "page_file": "src\\pages\\CodSettlementCenterPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_finance_wayplan_cod_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/finance-reports",
+    "component": "FinanceReportCenterPage",
+    "page_file": "src\\pages\\FinanceReportCenterPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_finance_report_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/workforce-wallets",
+    "component": "WorkforceWalletsPage",
+    "page_file": "src\\pages\\WorkforceWalletsPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_workforce_wallet_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/commission-center",
+    "component": "CommissionCenterPage",
+    "page_file": "src\\pages\\CommissionCenterPage.tsx",
+    "exists": true,
+    "wrapper": true,
+    "rpc_calls": [
+      "be_commission_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/merchant-portal",
+    "component": "MerchantPortalPage",
+    "page_file": "src\\pages\\MerchantPortalPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_merchant_dashboard"
+    ],
+    "table_calls": [],
+    "risk": [
+      "language t risk"
+    ]
+  },
+  {
+    "route": "/master-data",
+    "component": "MasterDataPage",
+    "page_file": "src\\pages\\MasterDataPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_master_data_page_snapshot",
+      "be_master_data_bulk_upsert_records"
+    ],
+    "table_calls": [],
+    "risk": [
+      "language t risk"
+    ]
+  },
+  {
+    "route": "/admin-hr",
+    "component": "AdminHRPage",
+    "page_file": "src\\pages\\AdminHRPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_hr_dashboard"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/business-development",
+    "component": "BusinessDevelopmentPortalPage",
+    "page_file": "src\\pages\\BusinessDevelopmentPortalPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_get_business_development_dashboard"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/branch-office",
+    "component": "BranchOfficePage",
+    "page_file": "src\\pages\\BranchOfficePage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_warehouse_wayplan_center"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/analytics",
+    "component": "AnalyticsPage",
+    "page_file": "src\\pages\\AnalyticsPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_export_report"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/marketing",
+    "component": "MarketingPage",
+    "page_file": "src\\pages\\MarketingPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_enterprise_control_tower"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/exception-master",
+    "component": "ExceptionMasterDesignPage",
+    "page_file": "src\\pages\\ExceptionMasterDesignPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [
+      "be_exception_screen_snapshot"
+    ],
+    "table_calls": [],
+    "risk": []
+  },
+  {
+    "route": "/settings",
+    "component": "SettingsPage",
+    "page_file": "src\\pages\\SettingsPage.tsx",
+    "exists": true,
+    "wrapper": false,
+    "rpc_calls": [],
+    "table_calls": [
+      "be_user_account_registry"
+    ],
+    "risk": []
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "build": "PORTAL_DATA_ENTRY_CLEAN_REVIEW_V61_4_1_2026_08_03",
+  "required_existing_files": [
+    "src/pages/DataEntryFinancialV2Page.tsx",
+    "src/data/townshipTariffDirectory.ts"
+  ],
+  "patch_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "4a40a66dc78e5f601a86e5bc76bc72349ff7cdb43f7b46ded48502696a9e7377"
+  },
+  "accepted_current_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": [
+      "3919fb78141a5244bae0a5f3dcb2b7c5882778abdb625471ee8cc23b910b8c59",
+      "1df380b206f9cc40867c4d4a1652b5e465b8f917a9c5d2dcb226d0fdc3dfcd2a",
+      "4a40a66dc78e5f601a86e5bc76bc72349ff7cdb43f7b46ded48502696a9e7377"
+    ]
+  },
+  "backend_sql": "sql/20260803_financial_v2_township_alias_v61_4_1.sql",
+  "backend_verifier": "sql/verify_financial_v2_township_alias_v61_4_1.sql",
+  "rollback_sql": "sql/rollback_financial_v2_township_alias_v61_4_1.sql",
+  "financial_writes_enabled": false,
+  "deploy_performed": false
+}

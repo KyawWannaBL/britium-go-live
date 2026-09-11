@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Britium Express — Operation Manual (Myanmar · English Bilingual)</title>
+<style>
+:root{--brand:#1a56db;--brand-dark:#1e3a8a;--accent:#f59e0b;--bg:#f0f4ff;--card:#fff;--border:#e2e8f0;--text:#1e293b;--muted:#64748b;--mm-bg:#fef9ec;--mm-border:#fbbf24;--en-bg:#eff6ff;--en-border:#3b82f6;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Segoe UI','Noto Sans Myanmar',sans-serif;background:var(--bg);color:var(--text);line-height:1.7;}
+
+/* ── TOP HEADER ── */
+.site-header{background:linear-gradient(135deg,#0f172a 0%,#1e3a8a 50%,#1a56db 100%);color:#fff;padding:28px 32px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;}
+.site-header .brand{font-size:22px;font-weight:900;letter-spacing:1px;}
+.site-header .brand span{display:block;font-size:12px;opacity:.65;font-weight:400;letter-spacing:2px;text-transform:uppercase;margin-top:2px;}
+.site-header .lang-badge{background:var(--accent);color:#000;font-size:11px;font-weight:800;padding:4px 14px;border-radius:20px;letter-spacing:1px;}
+
+/* ── TAB BAR ── */
+.tab-bar{background:#0f172a;display:flex;gap:2px;flex-wrap:wrap;padding:0 12px;border-bottom:3px solid var(--accent);position:sticky;top:0;z-index:100;}
+.tab-btn{background:transparent;border:none;color:rgba(255,255,255,.65);padding:12px 16px;font-size:13px;font-weight:600;cursor:pointer;border-radius:4px 4px 0 0;transition:background .15s,color .15s;white-space:nowrap;font-family:inherit;}
+.tab-btn:hover{background:#1e3a8a;color:#fff;}
+.tab-btn.active{background:#1a56db;color:#fff;}
+
+/* ── PAGE PANELS ── */
+.page-panel{display:none;max-width:1100px;margin:0 auto;padding:36px 24px;}
+.page-panel.active{display:block;}
+
+/* ── HERO (index) ── */
+.hero-box{background:linear-gradient(135deg,#1e3a8a,#1a56db);color:#fff;border-radius:16px;padding:40px;text-align:center;margin-bottom:32px;}
+.hero-box h1{font-size:30px;font-weight:900;line-height:1.2;margin-bottom:8px;}
+.hero-box .hero-mm{font-size:17px;opacity:.8;margin-bottom:12px;}
+.hero-box .hero-sub{font-size:14px;opacity:.65;max-width:520px;margin:0 auto;}
+.stats-row{display:flex;justify-content:center;gap:32px;margin-top:28px;flex-wrap:wrap;}
+.stat{text-align:center;}
+.stat .num{font-size:32px;font-weight:900;color:var(--accent);}
+.stat .lbl{font-size:11px;opacity:.65;text-transform:uppercase;letter-spacing:1px;}
+
+/* ── INDEX CARDS ── */
+.cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;margin:24px 0;}
+.idx-card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px;cursor:pointer;transition:box-shadow .2s,transform .2s;border-left:4px solid var(--brand);}
+.idx-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.1);transform:translateY(-2px);}
+.idx-card .ci{font-size:28px;margin-bottom:8px;}
+.idx-card .ce{font-weight:800;font-size:14px;}
+.idx-card .cm{font-size:12px;color:var(--muted);margin-top:2px;}
+.idx-card .cd{font-size:12px;color:var(--muted);margin-top:6px;line-height:1.5;}
+.go-btn{display:inline-block;margin-top:10px;font-size:12px;color:var(--brand);font-weight:700;}
+
+/* ── PART GRID ── */
+.part-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin:24px 0;}
+@media(max-width:700px){.part-grid{grid-template-columns:1fr;}}
+.part-card{border-radius:14px;overflow:hidden;box-shadow:0 4px 16px rgba(0,0,0,.08);cursor:pointer;transition:transform .2s,box-shadow .2s;}
+.part-card:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(0,0,0,.13);}
+.part-card .ph{padding:20px;color:#fff;}
+.part-card .ph .pn{font-size:10px;letter-spacing:2px;text-transform:uppercase;opacity:.7;margin-bottom:4px;}
+.part-card .ph h3{font-size:16px;font-weight:800;}
+.part-card .ph .pm{font-size:12px;opacity:.8;margin-top:2px;}
+.part-card .pb{background:var(--card);padding:16px 20px;}
+.part-card .pb p{font-size:12px;color:var(--muted);}
+.part-card .pf{background:#f8fafc;padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--border);}
+.part-card .pf span{font-size:12px;color:var(--muted);}
+.part-card .pf .pb-btn{background:var(--brand);color:#fff;font-size:12px;font-weight:700;padding:6px 14px;border-radius:6px;}
+
+/* ── ROLE SECTIONS ── */
+.role-section{background:var(--card);border-radius:14px;border:1px solid var(--border);margin-bottom:36px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.05);}
+.role-hdr{color:#fff;padding:22px 28px;display:flex;align-items:center;gap:16px;}
+.role-hdr .ri{font-size:34px;}
+.role-hdr .rt h2{font-size:20px;font-weight:800;}
+.role-hdr .rt .rm{font-size:14px;opacity:.82;margin-top:2px;}
+.role-body{padding:28px;}
+
+/* ── SUBSECTIONS ── */
+.sub{margin:24px 0;}
+.sub-title{font-size:15px;font-weight:700;color:var(--brand-dark);border-bottom:2px solid var(--en-border);padding-bottom:5px;margin-bottom:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.sub-title .mt{font-size:12px;color:var(--muted);font-weight:500;}
+
+/* ── BILINGUAL BLOCK ── */
+.bilingual{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin:14px 0;}
+@media(max-width:600px){.bilingual{grid-template-columns:1fr;}}
+.lb{border-radius:8px;padding:14px;}
+.lb.en{background:var(--en-bg);border-left:4px solid var(--en-border);}
+.lb.mm{background:var(--mm-bg);border-left:4px solid var(--mm-border);}
+.ll{font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:6px;opacity:.55;}
+
+/* ── STEP LIST ── */
+.steps{counter-reset:s;list-style:none;margin:0;padding:0;}
+.steps li{counter-increment:s;display:flex;gap:12px;padding:9px 0;border-bottom:1px solid var(--border);}
+.steps li:last-child{border-bottom:none;}
+.steps li::before{content:counter(s);min-width:26px;height:26px;background:var(--brand);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0;margin-top:3px;}
+.sc{flex:1;}
+.se{font-size:14px;font-weight:500;}
+.sm{font-size:12px;color:var(--muted);margin-top:2px;}
+
+/* ── BULLET LIST ── */
+.blist{list-style:none;padding:0;margin:0;}
+.blist li{padding:5px 0 5px 20px;position:relative;font-size:13px;border-bottom:1px solid var(--border);}
+.blist li:last-child{border-bottom:none;}
+.blist li::before{content:'▸';position:absolute;left:0;color:var(--brand);}
+.bm{display:block;font-size:12px;color:var(--muted);margin-top:1px;}
+
+/* ── CALLOUTS ── */
+.callout{border-radius:8px;padding:13px 16px;margin:10px 0;display:flex;gap:10px;align-items:flex-start;}
+.callout.warn{background:#fff7ed;border:1px solid #fed7aa;}
+.callout.danger{background:#fef2f2;border:1px solid #fecaca;}
+.callout.info{background:var(--en-bg);border:1px solid #bfdbfe;}
+.callout-icon{font-size:18px;flex-shrink:0;margin-top:1px;}
+.callout-body{flex:1;}
+.ct{font-weight:700;font-size:13px;margin-bottom:3px;}
+
+/* ── TABLES ── */
+.tbl{width:100%;border-collapse:collapse;margin:10px 0;font-size:13px;}
+.tbl th{background:var(--brand-dark);color:#fff;padding:8px 12px;text-align:left;}
+.tbl td{padding:8px 12px;border-bottom:1px solid var(--border);vertical-align:top;}
+.tbl tr:nth-child(even) td{background:#f8fafc;}
+
+/* ── CHECKLIST ── */
+.chk{list-style:none;padding:0;margin:0;}
+.chk li{display:flex;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px;}
+.chk li:last-child{border-bottom:none;}
+.chk li::before{content:'☐';color:var(--brand);font-size:15px;flex-shrink:0;}
+.ck{font-size:11px;color:var(--muted);}
+
+/* ── GRID 2 ── */
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:14px;}
+@media(max-width:580px){.g2{grid-template-columns:1fr;}}
+
+/* ── STATUS FLOW ── */
+.sf{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:10px 0;}
+.sn{background:var(--brand);color:#fff;padding:5px 12px;border-radius:6px;font-size:11px;font-weight:700;text-align:center;line-height:1.3;}
+.sa{color:var(--muted);font-size:16px;}
+
+/* ── STATUS PILL ── */
+.sp{display:inline-block;padding:2px 10px;border-radius:12px;font-size:11px;font-weight:700;}
+
+/* ── SECTION DIVIDER ── */
+hr.div{border:none;border-top:2px dashed var(--border);margin:28px 0;}
+
+/* ── FOOTER ── */
+footer{text-align:center;padding:24px;font-size:12px;color:var(--muted);border-top:1px solid var(--border);margin-top:32px;}
+
+/* ── PART SECTION HEADING ── */
+.part-banner{background:linear-gradient(90deg,var(--brand-dark),var(--brand));color:#fff;border-radius:12px;padding:20px 28px;margin-bottom:28px;}
+.part-banner .pbn{font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.7;margin-bottom:4px;}
+.part-banner h2{font-size:22px;font-weight:900;}
+.part-banner .pbm{font-size:14px;opacity:.8;margin-top:3px;}
+</style>
+</head>
+<body>
+
+<!-- ════════════ HEADER ════════════ -->
+<div class="site-header">
+  <div class="brand">Britium Express<span>Platform Operation Manual</span></div>
+  <div class="lang-badge">🇲🇲 Myanmar · English 🇬🇧</div>
+</div>
+
+<!-- ════════════ TAB BAR ════════════ -->
+<div class="tab-bar">
+  <button class="tab-btn active" onclick="showTab('idx')">🏠 Index / မာတိကာ</button>
+  <button class="tab-btn" onclick="showTab('p1')">📘 Part 1 — Core &amp; Admin</button>
+  <button class="tab-btn" onclick="showTab('p2')">📗 Part 2 — Operations</button>
+  <button class="tab-btn" onclick="showTab('p3')">📙 Part 3 — Warehouse &amp; Delivery</button>
+</div>
+
+<!-- ════════════════════════════════════════
+     INDEX PAGE
+════════════════════════════════════════ -->
+<div id="tab-idx" class="page-panel active">
+
+  <div class="hero-box">
+    <h1>Operation Manual — Myanmar · English Bilingual</h1>
+    <div class="hero-mm">လုပ်ငန်းလည်ပတ်မှု လမ်းညွှန်လက်စွဲ — မြန်မာ · အင်္ဂလိပ် ဒွိဘာသာ</div>
+    <div class="hero-sub">All 12 user roles covered in detail with step-by-step workflows, daily checklists, escalation guides &amp; common mistake warnings.<br><span style="opacity:.7">အသုံးပြုသူ၏ အခန်းကဏ္ဍ (၁၂) ခုအတွက် အဆင့်ဆင့်လုပ်ငန်းစဉ်များ၊ နေ့စဉ်စစ်ဆေးရမည့်စာရင်းများနှင့် အထက်အဆင့်သို့တင်ပြခြင်းဆိုင်ရာ လမ်းညွှန်ချက်များ ပါဝင်သည်။</span></div>
+    <div class="stats-row">
+      <div class="stat"><div class="num">12</div><div class="lbl">User Roles<br>အခန်းကဏ္ဍများ</div></div>
+      <div class="stat"><div class="num">3</div><div class="lbl">Parts<br>အပိုင်းကဏ္ဍများ</div></div>
+      <div class="stat"><div class="num">2</div><div class="lbl">Languages<br>ဘာသာစကား</div></div>
+      <div class="stat"><div class="num">40+</div><div class="lbl">Workflows<br>လုပ်ငန်းစဉ်များ</div></div>
+    </div>
+  </div>
+
+  <!-- PART CARDS -->
+  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;">📚 Manual Parts — လမ်းညွှန်လက်စွဲ အပိုင်းကဏ္ဍများ</h2>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:20px;">Click any part card to open it / သက်ဆိုင်ရာ အပိုင်းကို နှိပ်၍ ဖတ်ရှုနိုင်ပါသည်။</p>
+  <div class="part-grid">
+    <div class="part-card" onclick="showTab('p1')">
+      <div class="ph" style="background:linear-gradient(135deg,#1e3a8a,#1a56db);">
+        <div class="pn">Part 1 of 3</div>
+        <h3>Core &amp; Management</h3>
+        <div class="pm">အခြေခံလုပ်ငန်းစဉ်များနှင့် စီမံခန့်ခွဲမှု</div>
+      </div>
+      <div class="pb"><p>Common · Super Admin · Admin &amp; HR · Finance</p><p style="margin-top:4px;color:var(--muted)">Login procedures, user setup, employee HR, COD settlements</p></div>
+      <div class="pf"><span>4 Roles</span><span class="pb-btn">Open →</span></div>
+    </div>
+    <div class="part-card" onclick="showTab('p2')">
+      <div class="ph" style="background:linear-gradient(135deg,#4c1d95,#7c3aed);">
+        <div class="pn">Part 2 of 3</div>
+        <h3>Operations &amp; Frontline</h3>
+        <div class="pm">လုပ်ငန်းလည်ပတ်မှုနှင့် ရှေ့တန်းဝန်ဆောင်မှု</div>
+      </div>
+      <div class="pb"><p>Marketing · Supervisor · Data Entry · Customer Service</p><p style="margin-top:4px;color:var(--muted)">Campaigns, exception handling, shipment entry, CS tickets</p></div>
+      <div class="pf"><span>4 Roles</span><span class="pb-btn" style="background:#7c3aed">Open →</span></div>
+    </div>
+    <div class="part-card" onclick="showTab('p3')">
+      <div class="ph" style="background:linear-gradient(135deg,#064e3b,#059669);">
+        <div class="pn">Part 3 of 3</div>
+        <h3>Warehouse &amp; Delivery</h3>
+        <div class="pm">ကုန်လှောင်ရုံနှင့် ကုန်ပစ္စည်းပို့ဆောင်ရေး</div>
+      </div>
+      <div class="pb"><p>Warehouse · Branch Office · Merchant · Customer · Rider</p><p style="margin-top:4px;color:var(--muted)">Inbound/outbound, manifest, bookings, last-mile delivery</p></div>
+      <div class="pf"><span>5 Roles</span><span class="pb-btn" style="background:#059669">Open →</span></div>
+    </div>
+  </div>
+
+  <hr class="div">
+
+  <!-- ALL ROLES DIRECTORY -->
+  <h2 style="font-size:18px;font-weight:800;margin-bottom:6px;">👤 All Roles — အခန်းကဏ္ဍ အားလုံး</h2>
+  <p style="font-size:13px;color:var(--muted);margin-bottom:16px;">Click any card to jump directly to that role's manual | သက်ဆိုင်ရာ အခန်းကဏ္ဍများသို့ တိုက်ရိုက်သွားရောက်ရန် နှိပ်ပါ။</p>
+  <div class="cards-grid">
+    <div class="idx-card" onclick="showTab('p1')"><div class="ci">🌐</div><div class="ce">Common Instructions</div><div class="cm">အထွေထွေ လမ်းညွှန်ချက်များ</div><div class="cd">Login, navigation, data quality, status rules</div><span class="go-btn">→ Part 1</span></div>
+    <div class="idx-card" onclick="showTab('p1')"><div class="ci">👑</div><div class="ce">Super Admin</div><div class="cm">အဆင့်မြင့် စီမံခန့်ခွဲသူ</div><div class="cd">Enterprise access, user management, approvals</div><span class="go-btn">→ Part 1</span></div>
+    <div class="idx-card" onclick="showTab('p1')"><div class="ci">👥</div><div class="ce">Admin &amp; HR</div><div class="cm">စီမံခန့်ခွဲရေးနှင့် လူသားအရင်းအမြစ်</div><div class="cd">Employees, leave, attendance, assets</div><span class="go-btn">→ Part 1</span></div>
+    <div class="idx-card" onclick="showTab('p1')"><div class="ci">💰</div><div class="ce">Finance User</div><div class="cm">ဘဏ္ဍာရေးဌာန</div><div class="cd">COD reconciliation, settlements, rider wallets</div><span class="go-btn">→ Part 1</span></div>
+    <div class="idx-card" onclick="showTab('p2')"><div class="ci">📣</div><div class="ce">Marketing User</div><div class="cm">ဈေးကွက်ရှာဖွေရေးဌာန</div><div class="cd">Campaigns, merchant leads, promos, zone launches</div><span class="go-btn">→ Part 2</span></div>
+    <div class="idx-card" onclick="showTab('p2')"><div class="ci">🎯</div><div class="ce">Supervisor</div><div class="cm">ကြီးကြပ်ရေးမှူး</div><div class="cd">Exceptions, rider oversight, escalations</div><span class="go-btn">→ Part 2</span></div>
+    <div class="idx-card" onclick="showTab('p2')"><div class="ci">⌨️</div><div class="ce">Data Entry User</div><div class="cm">အချက်အလက်ထည့်သွင်းသူ</div><div class="cd">Shipment record creation and correction</div><span class="go-btn">→ Part 2</span></div>
+    <div class="idx-card" onclick="showTab('p2')"><div class="ci">🎧</div><div class="ce">Customer Service</div><div class="cm">ဖောက်သည်ဝန်ဆောင်မှုဌာန</div><div class="cd">Inquiries, tickets, redelivery coordination</div><span class="go-btn">→ Part 2</span></div>
+    <div class="idx-card" onclick="showTab('p3')"><div class="ci">🏭</div><div class="ce">Warehouse User</div><div class="cm">ကုန်လှောင်ရုံဝန်ထမ်း</div><div class="cd">Inbound, staging, storage, outbound, QR scan</div><span class="go-btn">→ Part 3</span></div>
+    <div class="idx-card" onclick="showTab('p3')"><div class="ci">🏢</div><div class="ce">Branch Office</div><div class="cm">ရုံးခွဲ</div><div class="cd">Manifest receipt, sorting, rider assignment</div><span class="go-btn">→ Part 3</span></div>
+    <div class="idx-card" onclick="showTab('p3')"><div class="ci">🛍️</div><div class="ce">Merchant User</div><div class="cm">ကုန်သည် / ရောင်းချသူ</div><div class="cd">Booking, bulk upload, pickup requests, COD</div><span class="go-btn">→ Part 3</span></div>
+    <div class="idx-card" onclick="showTab('p3')"><div class="ci">👤</div><div class="ce">Customer User</div><div class="cm">ဖောက်သည် / ဝယ်ယူသူ</div><div class="cd">Parcel tracking, notifications, saved addresses</div><span class="go-btn">→ Part 3</span></div>
+    <div class="idx-card" onclick="showTab('p3')"><div class="ci">🛵</div><div class="ce">Rider / Deliveryman</div><div class="cm">ယာဉ်မောင်း / ပို့ဆောင်သူ</div><div class="cd">Assigned deliveries, POD upload, COD collection</div><span class="go-btn">→ Part 3</span></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PART 1
+════════════════════════════════════════ -->
+<div id="tab-p1" class="page-panel">
+  <div class="part-banner">
+    <div class="pbn">Part 1 of 3 · အပိုင်း ၁</div>
+    <h2>Core &amp; Management Roles</h2>
+    <div class="pbm">Common Instructions · Super Admin · Admin &amp; HR · Finance User</div>
+  </div>
+
+  <!-- ── COMMON ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#1e3a8a,#1a56db);">
+      <div class="ri">🌐</div>
+      <div class="rt"><h2>Common Instructions for All Users</h2><div class="rm">အသုံးပြုသူအားလုံးအတွက် အထွေထွေလမ်းညွှန်ချက်များ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🔐 1.1 Logging In <span class="mt">/ စနစ်အတွင်းသို့ ဝင်ရောက်ခြင်း (Login)</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open the Britium Express platform URL in your browser.</div><div class="sm">Browser တွင် Britium Express စနစ်၏ ဝဘ်ဆိုဒ်လိပ်စာကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter your assigned email address.</div><div class="sm">သင့်အား သတ်မှတ်ပေးထားသော အီးမေးလ်လိပ်စာကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter your password (case-sensitive).</div><div class="sm">စကားဝှက်ကို မှန်ကန်စွာ ရိုက်ထည့်ပါ (စာလုံးအကြီး၊ အသေး သတိပြုပါ)။</div></div></li>
+          <li><div class="sc"><div class="se">Complete MFA if your role requires it.</div><div class="sm">လိုအပ်ပါက အဆင့်နှစ်ဆင့်ခံ လုံခြုံရေးအကဲဖြတ်မှု (MFA) ကို လုပ်ဆောင်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Wait for the system to redirect you to your default portal.</div><div class="sm">စနစ်မှ သက်ဆိုင်ရာ ပင်မစာမျက်နှာ (Portal) သို့ ဝင်ရောက်သွားသည်အထိ စောင့်ဆိုင်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">⚠️ 1.2 If Login Fails <span class="mt">/ စနစ်အတွင်း ဝင်ရောက်၍မရပါက</span></div>
+        <div class="callout warn"><div class="callout-icon">🔍</div><div class="callout-body"><ul class="blist">
+          <li>Check email spelling. <span class="bm">အီးမေးလ်လိပ်စာ မှန်ကန်မှုရှိ/မရှိ စစ်ဆေးပါ။</span></li>
+          <li>Check password case sensitivity. <span class="bm">စကားဝှက်၏ စာလုံးအကြီး၊ အသေး မှန်ကန်မှု စစ်ဆေးပါ။</span></li>
+          <li>Make sure Caps Lock is off. <span class="bm">Caps Lock ပိတ်ထားခြင်း ရှိ/မရှိ သေချာစွာ စစ်ဆေးပါ။</span></li>
+          <li>Try the Forgot Password flow. <span class="bm">"စကားဝှက်မေ့သွားသည် (Forgot Password)" လုပ်ဆောင်ချက်ကို အသုံးပြုပါ။</span></li>
+          <li>If still unable, contact Super Admin or Admin &amp; HR. <span class="bm">ဆက်လက်၍ ဝင်ရောက်မရသေးပါက Super Admin သို့မဟုတ် Admin &amp; HR ထံသို့ ဆက်သွယ်ပါ။</span></li>
+        </ul></div></div>
+      </div>
+      <div class="sub"><div class="sub-title">🔄 1.3 Password Reset <span class="mt">/ စကားဝှက် အသစ်ပြန်လည်သတ်မှတ်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Click "Forgot Password" on the login page.</div><div class="sm">Login စာမျက်နှာရှိ "Forgot Password" ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter your registered email address.</div><div class="sm">မှတ်ပုံတင်ထားသည့် အီးမေးလ်လိပ်စာကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Open the password reset email.</div><div class="sm">စကားဝှက်ပြောင်းလဲရန် ပေးပို့လာသော အီးမေးလ်ကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Set a strong new password.</div><div class="sm">လုံခြုံမှုအားကောင်းသော စကားဝှက်အသစ်ကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Log in again with the new password.</div><div class="sm">စကားဝှက်အသစ်ဖြင့် စနစ်သို့ ပြန်လည်ဝင်ရောက်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🗺️ 1.4 General Navigation Rules <span class="mt">/ အထွေထွေ အသုံးပြုမှုလမ်းညွှန်</span></div>
+        <ul class="blist">
+          <li>Use the left sidebar to switch modules. <span class="bm">လုပ်ငန်းစဉ်များပြောင်းလဲရန် ဘယ်ဘက်ရှိ Sidebar ကို အသုံးပြုပါ။</span></li>
+          <li>Use dashboard cards for priority items. <span class="bm">ဦးစားပေးလုပ်ဆောင်ရမည့်အရာများအတွက် Dashboard ကို အသုံးပြုပါ။</span></li>
+          <li>Always apply filters before exporting reports. <span class="bm">အစီရင်ခံစာများ (Reports) မထုတ်ယူမီ Filter များကို စစ်ဆေးပါ။</span></li>
+          <li>Save every form before leaving the page. <span class="bm">စာမျက်နှာမှ မထွက်ခွာမီ ဖြည့်စွက်ထားသော အချက်အလက်များကို သိမ်းဆည်း (Save) ပါ။</span></li>
+          <li>Never edit records unless your role allows it. <span class="bm">မိမိ၏ လုပ်ပိုင်ခွင့် (Role) တွင် အကျုံးမဝင်ပါက မည်သည့်အချက်အလက်ကိုမျှ ပြင်ဆင်ခြင်းမပြုပါနှင့်။</span></li>
+        </ul>
+      </div>
+      <div class="sub"><div class="sub-title">📊 1.5 Data Quality Rules <span class="mt">/ အချက်အလက် အရည်အသွေး ထိန်းသိမ်းခြင်း</span></div>
+        <div class="callout info"><div class="callout-icon">✅</div><div class="callout-body"><ul class="blist">
+          <li>Always verify AWB before updating shipment records. <span class="bm">ကုန်ပစ္စည်းအချက်အလက်များကို မပြင်ဆင်မီ AWB သို့မဟုတ် Tracking နံပါတ်ကို သေချာစွာ အတည်ပြုပါ။</span></li>
+          <li>Never guess phone numbers, COD amounts, or addresses. <span class="bm">ဖုန်းနံပါတ်၊ ပစ္စည်းဖိုးငွေ (COD) နှင့် လိပ်စာများကို မှန်းဆ၍ မထည့်သွင်းရ။</span></li>
+          <li>If uncertain, confirm first before entering. <span class="bm">သေချာမှုမရှိပါက သက်ဆိုင်ရာသို့ ဦးစွာ အတည်ပြုချက်ရယူပါ။</span></li>
+          <li>Add notes for important corrections. <span class="bm">အရေးကြီးသော ပြင်ဆင်မှုများလုပ်ဆောင်ပါက မှတ်ချက် (Note) ထည့်သွင်းပါ။</span></li>
+          <li>Escalate instead of force-changing protected records. <span class="bm">ကန့်သတ်ထားသော အချက်အလက်များကို အတင်းအဓမ္မ မပြင်ဆင်ဘဲ အထက်သို့ တင်ပြပါ။</span></li>
+        </ul></div></div>
+      </div>
+      <div class="sub"><div class="sub-title">🔄 1.6 Status Handling Rule <span class="mt">/ လုပ်ငန်းအခြေအနေ (Status) ပြောင်းလဲခြင်းဆိုင်ရာ စည်းမျဉ်းများ</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Confirm the current status.</div><div class="sm">လက်ရှိအခြေအနေကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm your role can change that status.</div><div class="sm">မိမိ၏ လုပ်ပိုင်ခွင့်ဖြင့် ပြင်ဆင်ခွင့်ရှိ/မရှိ အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm supporting evidence exists.</div><div class="sm">ပြောင်းလဲရသည့် ခိုင်လုံသော အထောက်အထား ရှိ/မရှိ စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save the update.</div><div class="sm">ပြောင်းလဲမှုကို သိမ်းဆည်း (Save) ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Re-open the record and verify the change.</div><div class="sm">အချက်အလက်ကို ပြန်လည်ဖွင့်၍ မှန်ကန်စွာ ပြောင်းလဲမှုရှိ/မရှိ စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUPER ADMIN ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#1e3a8a,#2563eb);">
+      <div class="ri">👑</div><div class="rt"><h2>Super Admin — Manual</h2><div class="rm">အဆင့်မြင့် စီမံခန့်ခွဲသူ (Super Admin) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 2.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>The Super Admin controls enterprise-wide platform access, master setup, high-risk approvals, and cross-department oversight.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>Super Admin သည် စနစ်တစ်ခုလုံး၏ ဝင်ရောက်အသုံးပြုခွင့်၊ အခြေခံဖွဲ့စည်းမှု (Master Setup)၊ အရေးကြီးသော အတည်ပြုချက်များနှင့် ဌာနအသီးသီးအား အပေါ်စီးမှ ကြီးကြပ်ကွပ်ကဲမှုများကို ထိန်းချုပ်စီမံရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">⚙️ 2.2 What This Role Can Manage <span class="mt">/ စီမံခန့်ခွဲနိုင်သည့် လုပ်ဆောင်ချက်များ</span></div>
+        <table class="tbl"><tr><th>Capability</th><th>စွမ်းဆောင်ရည်</th></tr>
+          <tr><td>User access &amp; role assignment</td><td>အသုံးပြုခွင့်နှင့် လုပ်ငန်းတာဝန် (Role) သတ်မှတ်ခြင်း</td></tr>
+          <tr><td>Portal routing &amp; access policy</td><td>စနစ်ဝင်ရောက်မှု လမ်းကြောင်းနှင့် မူဝါဒများ</td></tr>
+          <tr><td>Finance, HR, Warehouse, Marketing visibility</td><td>ဘဏ္ဍာရေး၊ HR၊ ကုန်လှောင်ရုံနှင့် ဈေးကွက်ရှာဖွေရေးဌာနတို့၏ လုပ်ငန်းစဉ်များကို ကြီးကြပ်ခြင်း</td></tr>
+          <tr><td>System configuration &amp; reporting</td><td>စနစ်ဖွဲ့စည်းပုံ ပြင်ဆင်ခြင်းနှင့် အစီရင်ခံစာထုတ်ယူခြင်း</td></tr>
+          <tr><td>Escalation &amp; exception monitoring</td><td>တင်ပြလာမှုများနှင့် ပုံမှန်မဟုတ်သော အခြေအနေများကို စောင့်ကြည့်ခြင်း</td></tr>
+        </table>
+      </div>
+      <div class="sub"><div class="sub-title">☀️ 2.3 Start-of-Day Checklist <span class="mt">/ နေ့စဉ် လုပ်ငန်းမစတင်မီ စစ်ဆေးရမည့်စာရင်း (Start-of-Day Checklist)</span></div>
+        <ul class="chk">
+          <li><div>Log in and review high-priority alerts on the dashboard. <span class="ck">Dashboard ရှိ အရေးကြီးသော သတိပေးချက်များကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Check failed deliveries and unresolved exceptions. <span class="ck">ပို့ဆောင်မှုမအောင်မြင်သည့် ကိစ္စရပ်များနှင့် ခြွင်းချက်များကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Check finance settlement backlog. <span class="ck">ဘဏ္ဍာရေးစာရင်းရှင်းလင်းမှု ကြန့်ကြာနေမှုများကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Check HR approvals and access-change requests. <span class="ck">HR အတည်ပြုချက်များနှင့် စနစ်ဝင်ရောက်ခွင့် ပြောင်းလဲတောင်းဆိုမှုများကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Check warehouse delays or congestion. <span class="ck">ကုန်လှောင်ရုံအတွင်း လုပ်ငန်းကြန့်ကြာနေမှုများကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Review user complaints about wrong portal access. <span class="ck">စနစ်ဝင်ရောက်ရာတွင် ကြုံတွေ့ရသည့် အခက်အခဲတိုင်ကြားချက်များကို စစ်ဆေးပါ။</span></div></li>
+        </ul>
+      </div>
+      <div class="sub"><div class="sub-title">👤 2.4 Workflow: Create New Staff Account <span class="mt">/ ဝန်ထမ်း အကောင့်အသစ် ဖန်တီးခြင်းလုပ်ငန်းစဉ်</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Admin &amp; HR Portal from the sidebar.</div><div class="sm">Sidebar မှ Admin &amp; HR Portal သို့ ဝင်ရောက်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Navigate to Employees or User Administration.</div><div class="sm">Employees သို့မဟုတ် User Administration သို့ သွားရောက်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Click "Add Employee".</div><div class="sm">"Add Employee" ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter name, email, phone, department, branch.</div><div class="sm">အမည်၊ အီးမေးလ်၊ ဖုန်းနံပါတ်၊ ဌာနနှင့် ရုံးခွဲတို့ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Assign employment role.</div><div class="sm">အလုပ်အကိုင် ရာထူးတာဝန်ကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Assign system role and portal access.</div><div class="sm">စနစ်အတွင်း အသုံးပြုခွင့် (Role) နှင့် Portal ဝင်ရောက်ခွင့်ကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save the profile and create auth access.</div><div class="sm">ကိုယ်ရေးအချက်အလက်ကို သိမ်းဆည်းပြီး ဝင်ရောက်ခွင့် ဖန်တီးပေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Ask the user to sign in and verify the correct portal loads.</div><div class="sm">အသုံးပြုသူအား စနစ်သို့ ဝင်ရောက်ခိုင်းပြီး မှန်ကန်သော Portal ကျလာခြင်း ရှိ/မရှိ စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🔧 2.5 Workflow: Change User Role <span class="mt">/ အသုံးပြုသူ၏ အခန်းကဏ္ဍ (Role) ပြောင်းလဲခြင်းလုပ်ငန်းစဉ်</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Search employee by email or ID.</div><div class="sm">အီးမေးလ် သို့မဟုတ် ID ဖြင့် ဝန်ထမ်းကို ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Open the staff profile.</div><div class="sm">ဝန်ထမ်း၏ ကိုယ်ရေးအချက်အလက်ကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review current role and department.</div><div class="sm">လက်ရှိ Role နှင့် ဌာနကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Update the role fields and save.</div><div class="sm">Role အချက်အလက်များ ပြင်ဆင်ပြီး သိမ်းဆည်းပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm portal routing is correct for the new role.</div><div class="sm">Role အသစ်အတွက် Portal လမ်းကြောင်း မှန်ကန်မှုရှိမရှိ အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Ask user to sign out and sign in again.</div><div class="sm">အသုံးပြုသူအား စနစ်မှ ထွက်ခိုင်းပြီး ပြန်လည်ဝင်ရောက်စေပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 2.6 What NOT To Do <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့်အချက်များ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Do not directly edit finance settlements without Finance review. <span class="bm">ဘဏ္ဍာရေးဌာန၏ စစ်ဆေးအတည်ပြုချက်မပါဘဲ စာရင်းရှင်းလင်းမှုများကို တိုက်ရိုက်မပြင်ဆင်ရ။</span></li>
+          <li>Do not delete records when correction is enough. <span class="bm">ပြင်ဆင်ရုံဖြင့် ဖြေရှင်းနိုင်သော ကိစ္စရပ်များအတွက် မှတ်တမ်း (Record) များကို ဖျက်ပစ်ခြင်း မပြုရ။</span></li>
+          <li>Do not assign broad admin access without justification. <span class="bm">ခိုင်လုံသော အကြောင်းပြချက်မရှိဘဲ လုပ်ပိုင်ခွင့်အာဏာကို ကျယ်ပြန့်စွာ ပေးအပ်ခြင်းမပြုရ။</span></li>
+        </ul></div></div>
+      </div>
+      <div class="sub"><div class="sub-title">📞 2.7 Escalation Paths <span class="mt">/ အထက်အဆင့်သို့ တင်ပြရမည့် လမ်းကြောင်းများ (Escalation Paths)</span></div>
+        <table class="tbl"><tr><th>Issue</th><th>ပြဿနာ</th><th>Escalate To</th><th>တင်ပြမည့်သူ</th></tr>
+          <tr><td>Finance mismatch</td><td>ဘဏ္ဍာရေးစာရင်း ကွာဟမှု</td><td>Finance User</td><td>ဘဏ္ဍာရေးဌာန တာဝန်ရှိသူ</td></tr>
+          <tr><td>Shipment exception trend</td><td>ပို့ဆောင်မှု ခြွင်းချက် မကြာခဏဖြစ်ပေါ်မှု</td><td>Supervisor</td><td>ကြီးကြပ်ရေးမှူး</td></tr>
+          <tr><td>HR dispute</td><td>HR ဆိုင်ရာ အငြင်းပွားမှု</td><td>Admin &amp; HR Lead</td><td>HR ဌာနခေါင်းဆောင်</td></tr>
+          <tr><td>Warehouse backlog</td><td>ကုန်လှောင်ရုံ ကြန့်ကြာမှု</td><td>Warehouse Lead</td><td>ကုန်လှောင်ရုံ ခေါင်းဆောင်</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ADMIN & HR ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#065f46,#10b981);">
+      <div class="ri">👥</div><div class="rt"><h2>Admin &amp; HR User — Manual</h2><div class="rm">စီမံခန့်ခွဲရေးနှင့် လူသားအရင်းအမြစ် — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 3.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Admin &amp; HR manages employee records, attendance, leave, approvals, and asset administration.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>Admin &amp; HR သည် ဝန်ထမ်းကိုယ်ရေးမှတ်တမ်းများ၊ ရုံးတက်ရောက်မှု၊ ခွင့်ခံစားခွင့်၊ ခွင့်ပြုချက်များနှင့် ရုံးပိုင်ပစ္စည်းများကို အုပ်ချုပ်စီမံရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">🖥️ 3.2 Main Screens <span class="mt">/ အဓိက စာမျက်နှာများ</span></div>
+        <div class="g2">
+          <ul class="blist"><li>Employees <span class="bm">ဝန်ထမ်းများ</span></li><li>Attendance <span class="bm">ရုံးတက်ရောက်မှု</span></li><li>Leave Requests <span class="bm">ခွင့်တိုင်ကြားမှုများ</span></li></ul>
+          <ul class="blist"><li>Approvals <span class="bm">အတည်ပြုချက်များ</span></li><li>Assets <span class="bm">ရုံးပိုင်ပစ္စည်းများ</span></li><li>HR Reports <span class="bm">HR အစီရင်ခံစာများ</span></li></ul>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">➕ 3.3 Workflow: Add New Employee <span class="mt">/ ဝန်ထမ်းအသစ် ထည့်သွင်းခြင်းလုပ်ငန်းစဉ်</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Employees module and click "Add Employee".</div><div class="sm">Employees စာမျက်နှာကိုဖွင့်ပြီး "Add Employee" ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter full name, email, phone number.</div><div class="sm">အမည်အပြည့်အစုံ၊ အီးမေးလ်နှင့် ဖုန်းနံပါတ်တို့ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Assign department and reporting branch.</div><div class="sm">တာဝန်ကျမည့် ဌာနနှင့် ရုံးခွဲတို့ကို သတ်မှတ်ပေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Assign employment status and role.</div><div class="sm">အလုပ်ခန့်ထားမှုအဆင့်နှင့် ရာထူးတာဝန်ကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save. If system access needed, coordinate with Super Admin.</div><div class="sm">သိမ်းဆည်းပါ။ စနစ်ဝင်ရောက်ခွင့် လိုအပ်ပါက Super Admin နှင့် ညှိနှိုင်းဆောင်ရွက်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📋 3.4 Workflow: Process Leave Request <span class="mt">/ ခွင့်တိုင်ကြားမှုများအား စီမံဆောင်ရွက်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Approvals or Leave Requests module.</div><div class="sm">Approvals သို့မဟုတ် Leave Requests စာမျက်နှာကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm employee name, leave type, and dates.</div><div class="sm">ဝန်ထမ်းအမည်၊ ခွင့်အမျိုးအစားနှင့် ခွင့်ရက်စွဲများကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Check remaining leave balance and business coverage.</div><div class="sm">ခွင့်ရက်လက်ကျန်နှင့် လုပ်ငန်းလည်ပတ်မှု အခြေအနေကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Approve or reject and save.</div><div class="sm">ခွင့်ပြုခြင်း (Approve) သို့မဟုတ် ငြင်းပယ်ခြင်း (Reject) လုပ်ဆောင်ပြီး သိမ်းဆည်းပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm employee notification is sent.</div><div class="sm">ဝန်ထမ်းထံသို့ အကြောင်းကြားစာ ရောက်ရှိကြောင်း အတည်ပြုပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🕐 3.5 Workflow: Attendance Correction <span class="mt">/ ရုံးတက်ရောက်မှု ပြင်ဆင်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Attendance and search by employee and date.</div><div class="sm">Attendance စာမျက်နှာကိုဖွင့်ပြီး ဝန်ထမ်းအမည်နှင့် ရက်စွဲဖြင့် ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review check-in/check-out records.</div><div class="sm">ရုံးဝင်ချိန်/ထွက်ချိန် မှတ်တမ်းများကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Compare against approved leave or shift schedule.</div><div class="sm">ခွင့်ပြုထားသော ခွင့်ရက် သို့မဟုတ် အလုပ်ချိန်ဇယားနှင့် တိုက်ဆိုင်စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Apply correction, add audit note, save and verify.</div><div class="sm">ပြင်ဆင်ချက်လုပ်ဆောင်ပါ၊ စာရင်းစစ်မှတ်ချက်ထည့်ပါ၊ သိမ်းဆည်းပြီး မှန်ကန်ကြောင်းစစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 3.6 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Approving leave without checking balance. <span class="bm">ခွင့်ရက်လက်ကျန်အား မစစ်ဆေးဘဲ ခွင့်ပြုချက်မပေးရ။</span></li>
+          <li>Creating duplicate employee profiles. <span class="bm">ဝန်ထမ်းတစ်ဦးတည်းအတွက် မှတ်တမ်းနှစ်ခု ထပ်မံဖန်တီးခြင်း မပြုရ။</span></li>
+          <li>Assigning wrong department or branch. <span class="bm">မမှန်ကန်သော ဌာန သို့မဟုတ် ရုံးခွဲအား သတ်မှတ်ပေးခြင်း မပြုရ။</span></li>
+          <li>Forgetting to record who approved the request. <span class="bm">ခွင့်ပြုချက်ပေးသည့်သူ၏ အမည်ကို မှတ်တမ်းတင်ရန် မမေ့လျော့ရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── FINANCE ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#92400e,#d97706);">
+      <div class="ri">💰</div><div class="rt"><h2>Finance User — Manual</h2><div class="rm">ဘဏ္ဍာရေးဌာန — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 4.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Finance users manage COD reconciliation, settlement batches, rider wallet review, vouchers, deductions, and financial reporting.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ဘဏ္ဍာရေးဌာနသည် ကောက်ခံရရှိသော ပစ္စည်းဖိုးငွေ (COD) များကို တိုက်ဆိုင်စစ်ဆေးခြင်း၊ ငွေစာရင်းရှင်းလင်းမှုများကို အစုလိုက်စီမံခြင်း၊ ယာဉ်မောင်းများ၏ ငွေစာရင်း (Wallet) ကို စစ်ဆေးခြင်း၊ ဘောက်ချာများနှင့် ဖြတ်တောက်ငွေများကို စီမံခန့်ခွဲရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">☀️ 4.2 Start-of-Day Checklist <span class="mt">/ နေ့စဉ် လုပ်ငန်းမစတင်မီ စစ်ဆေးရမည့်စာရင်း</span></div>
+        <ul class="chk">
+          <li><div>Review delivered COD volume. <span class="ck">ပို့ဆောင်ပြီးစီးသော COD ငွေပမာဏကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Check pending settlement batches. <span class="ck">ဆိုင်းငံ့နေသော ငွေစာရင်းရှင်းလင်းမှုများကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Review failed or blocked transfers. <span class="ck">မအောင်မြင်သော ငွေလွှဲပြောင်းမှုများကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Review rider wallet anomalies. <span class="ck">ယာဉ်မောင်းများ၏ ငွေစာရင်းတွင် မူမမှန်မှုများရှိ/မရှိ စစ်ဆေးပါ။</span></div></li>
+          <li><div>Review unmatched COD entries. <span class="ck">မကိုက်ညီသော COD စာရင်းများကို စစ်ဆေးပါ။</span></div></li>
+        </ul>
+      </div>
+      <div class="sub"><div class="sub-title">🔄 4.3 Workflow: COD Reconciliation <span class="mt">/ ပစ္စည်းဖိုးငွေ (COD) စာရင်းတိုက်ဆိုင်စစ်ဆေးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open COD Reconciliation module.</div><div class="sm">COD Reconciliation စာမျက်နှာကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Filter delivered shipments for the target date range.</div><div class="sm">သက်ဆိုင်ရာ ရက်စွဲအပိုင်းအခြားအတွက် ပို့ဆောင်ပြီးသော ကုန်ပစ္စည်းများကို Filter လုပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Compare shipment COD amount with collected amount.</div><div class="sm">စနစ်ပါ COD ငွေပမာဏနှင့် လက်တွေ့ကောက်ခံရရှိသော ငွေပမာဏကို တိုက်ဆိုင်စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Check missing or mismatched records.</div><div class="sm">ပျောက်ဆုံးနေသော သို့မဟုတ် မကိုက်ညီသော မှတ်တမ်းများကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Mark verified rows. Escalate any mismatches.</div><div class="sm">စစ်ဆေးပြီးသော စာရင်းများကို အတည်ပြုမှတ်သားပါ။ မကိုက်ညီမှုများကို အထက်သို့ တင်ပြပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📦 4.4 Workflow: Create Settlement Batch <span class="mt">/ ငွေစာရင်းရှင်းလင်းမှုအစု (Settlement Batch) ဖန်တီးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Settlements and filter by merchant or billing cycle.</div><div class="sm">Settlements စာမျက်နှာကိုဖွင့်၍ ကုန်သည် သို့မဟုတ် ငွေရှင်းလည်ပတ်မှုစက်ဝန်းအလိုက် Filter လုပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Select eligible COD-completed shipments.</div><div class="sm">COD ကောက်ခံပြီးစီးသော အကျုံးဝင်သည့် ပို့ဆောင်မှုများကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Generate batch. Review gross COD, service fees, deductions, net payable.</div><div class="sm">Batch ထုတ်ယူပါ။ စုစုပေါင်း COD၊ ဝန်ဆောင်ခ၊ ဖြတ်တောက်ငွေနှင့် အသားတင်ပေးချေရမည့်ငွေတို့ကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and submit for payout approval.</div><div class="sm">သိမ်းဆည်းပြီး ငွေပေးချေမှုအတည်ပြုချက်အတွက် တင်ပြပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">✅ 4.5 Workflow: Approve Payout <span class="mt">/ ငွေပေးချေမှုအား အတည်ပြုခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open the settlement batch and re-check merchant identity and bank details.</div><div class="sm">Settlement batch ကိုဖွင့်ပြီး ကုန်သည်အချက်အလက်နှင့် ဘဏ်အချက်အလက်များကို ထပ်မံစစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm no unresolved dispute exists.</div><div class="sm">မဖြေရှင်းရသေးသော အငြင်းပွားမှု မရှိကြောင်း အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Mark as "Transferred" after the real transfer completes.</div><div class="sm">အမှန်တကယ် ငွေလွှဲပြောင်းပြီးမှသာ "Transferred (ငွေလွှဲပြီး)" ဟု မှတ်သားပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm merchant portal reflects updated status.</div><div class="sm">ကုန်သည်၏ Portal တွင် အခြေအနေ ပြောင်းလဲသွားကြောင်း အတည်ပြုပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 4.6 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Settling shipments not yet delivered. <span class="bm">ပို့ဆောင်မှု မပြီးစီးသေးသော ကုန်ပစ္စည်းများအတွက် ငွေစာရင်းရှင်းလင်းခြင်း မပြုလုပ်ရ။</span></li>
+          <li>Marking payout "Transferred" before the real transfer. <span class="bm">ငွေအမှန်တကယ် လွှဲပြောင်းပေးခြင်းမရှိဘဲ "Transferred (ငွေလွှဲပြီး)" ဟု မမှတ်သားရ။</span></li>
+          <li>Editing voucher entries without an audit note. <span class="bm">စာရင်းစစ် မှတ်ချက်မပါရှိဘဲ ငွေပေးချေမှု ဘောက်ချာများကို မပြင်ဆင်ရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="text-align:center;padding:20px 0;"><button onclick="showTab('p2')" style="background:#7c3aed;color:#fff;border:none;padding:12px 28px;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer;">Next: Part 2 — Operations →</button></div>
+</div><!-- /p1 -->
+
+<!-- ════════════════════════════════════════
+     PART 2
+════════════════════════════════════════ -->
+<div id="tab-p2" class="page-panel">
+  <div class="part-banner" style="background:linear-gradient(90deg,#4c1d95,#7c3aed);">
+    <div class="pbn">Part 2 of 3 · အပိုင်း ၂</div>
+    <h2>Operations &amp; Frontline Roles</h2>
+    <div class="pbm">Marketing · Supervisor · Data Entry · Customer Service</div>
+  </div>
+
+  <!-- ── MARKETING ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#be185d,#ec4899);">
+      <div class="ri">📣</div><div class="rt"><h2>Marketing User — Manual</h2><div class="rm">ဈေးကွက်ရှာဖွေရေးဌာန (Marketing) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 5.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Marketing users manage growth campaigns, merchant acquisition, promo programs, zone launches, partnerships, and attribution reporting.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ဈေးကွက်ရှာဖွေရေးဌာနသည် ဈေးကွက်မြှင့်တင်ရေး အစီအစဉ်များ၊ ကုန်သည်အသစ်များ ရှာဖွေရရှိရေး၊ အထူးပရိုမိုရှင်းအစီအစဉ်များ၊ နယ်မြေသစ်တိုးချဲ့ခြင်းနှင့် မိတ်ဖက်အဖွဲ့အစည်းများနှင့် ဆက်ဆံရေးတို့ကို စီမံခန့်ခွဲရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">🚀 5.2 Workflow: Create Campaign <span class="mt">/ ဈေးကွက်မြှင့်တင်ရေးအစီအစဉ် (Campaign) ဖန်တီးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Campaigns → click "New Campaign".</div><div class="sm">Campaigns စာမျက်နှာကိုဖွင့်ပြီး "New Campaign" ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter campaign name and define objective.</div><div class="sm">Campaign အမည်နှင့် ရည်ရွယ်ချက်ကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Choose target audience and assign channel (Meta/Google/CRM/Offline).</div><div class="sm">ပစ်မှတ်ထားမည့် ပရိသတ်နှင့် ကြော်ငြာမည့်လမ်းကြောင်း (Channel) ကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter budget and set start/end dates.</div><div class="sm">သုံးစွဲမည့်ဘတ်ဂျက်နှင့် စတင်မည့်/ပြီးဆုံးမည့် ရက်စွဲများကို သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and launch after approval.</div><div class="sm">သိမ်းဆည်းပြီး အတည်ပြုချက်ရရှိပြီးနောက် စတင်လွှင့်တင် (Launch) ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🏪 5.3 Workflow: Manage Merchant Leads <span class="mt">/ အလားအလာရှိသော ကုန်သည်အသစ်များအား (Merchant Leads) စီမံခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Merchant Acquisition and search the lead.</div><div class="sm">Merchant Acquisition စာမျက်နှာကိုဖွင့်ပြီး Lead ကို ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Update lead stage: New → Qualified → Demo Scheduled → Proposal Sent → Activated.</div><div class="sm">Lead ၏ အဆင့်ကို ပြင်ဆင်ပါ: အသစ် → အရည်အချင်းပြည့်မီ → သရုပ်ပြရန်စီစဉ် → အဆိုပြုလွှာပို့ပြီး → အသုံးပြုစတင်။</div></div></li>
+          <li><div class="sc"><div class="se">Assign owner if needed. Save.</div><div class="sm">လိုအပ်ပါက တာဝန်ခံ သတ်မှတ်ပြီး သိမ်းဆည်းပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Hand qualified leads to the sales team.</div><div class="sm">အရည်အချင်းပြည့်မီသော Lead များကို အရောင်းအဖွဲ့ (Sales Team) ထံ လွှဲပြောင်းပေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🏷️ 5.4 Workflow: Manage Promo Code <span class="mt">/ ပရိုမိုကုဒ် (Promo Code) စီမံခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Consumer Promos. Create or select a promo.</div><div class="sm">Consumer Promos စာမျက်နှာကိုဖွင့်ပြီး ပရိုမိုရှင်း ဖန်တီးပါ (သို့) ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm code, discount rule, audience, and validity dates.</div><div class="sm">ကုဒ်၊ လျှော့စျေး စည်းမျဉ်း၊ ပရိသတ်နှင့် အကျုံးဝင်မည့်ရက်စွဲများကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Publish and monitor redemption count and shipment lift.</div><div class="sm">ထုတ်ဝေပြီး ကုဒ်အသုံးပြုမှု အရေအတွက်နှင့် ပို့ဆောင်မှုတိုးတက်လာမှုကို စောင့်ကြည့်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 5.5 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Launching campaign without a tracking objective. <span class="bm">ရလဒ်တိုင်းတာနိုင်မည့် ရည်ရွယ်ချက်မရှိဘဲ Campaign မစတင်ရ။</span></li>
+          <li>Counting leads without verifying actual activation. <span class="bm">အမှန်တကယ် အသုံးပြုမှု (Activation) မစစ်ဆေးဘဲ Lead အဖြစ် မရေတွက်ရ။</span></li>
+          <li>Measuring success by impressions only. <span class="bm">ကြော်ငြာမြင်တွေ့မှု (Impressions) တစ်ခုတည်းဖြင့်သာ အောင်မြင်မှုကို မတိုင်းတာရ။</span></li>
+          <li>Ignoring operational readiness before zone launches. <span class="bm">နယ်မြေသစ်မဖွင့်လှစ်မီ လုပ်ငန်းပိုင်းဆိုင်ရာ အသင့်ဖြစ်မှုကို လျစ်လျူမရှုရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── SUPERVISOR ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#1e40af,#2563eb);">
+      <div class="ri">🎯</div><div class="rt"><h2>Supervisor User — Manual</h2><div class="rm">ကြီးကြပ်ရေးမှူး (Supervisor) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 6.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Supervisors oversee operational health, rider performance, exceptions, escalations, and delivery quality.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ကြီးကြပ်ရေးမှူးများသည် လုပ်ငန်းလည်ပတ်မှု အခြေအနေ၊ ယာဉ်မောင်းများ၏ စွမ်းဆောင်ရည်၊ ပုံမှန်မဟုတ်သော အခြေအနေများ (Exceptions) နှင့် ပို့ဆောင်မှု အရည်အသွေးတို့ကို ကြီးကြပ်ကွပ်ကဲရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">❌ 6.2 Workflow: Handle Failed Deliveries <span class="mt">/ မအောင်မြင်သော ပို့ဆောင်မှုများအား ဖြေရှင်းကိုင်တွယ်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Exceptions and filter by failed delivery status.</div><div class="sm">Exceptions စာမျက်နှာကိုဖွင့်ပြီး မအောင်မြင်သော ပို့ဆောင်မှုများကို Filter လုပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review failure reason and customer notes.</div><div class="sm">မအောင်မြင်ရသည့် အကြောင်းရင်းနှင့် ဖောက်သည်၏ မှတ်ချက်များကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Decide: reattempt, CS follow-up, or merchant decision.</div><div class="sm">ဆုံးဖြတ်ချက်ချပါ: ထပ်မံကြိုးစားမည်၊ CS မှ ဆက်သွယ်မည်၊ (သို့) ကုန်သည်၏ ဆုံးဖြတ်ချက်ကို ခံယူမည်။</div></div></li>
+          <li><div class="sc"><div class="se">Update action, save, and monitor until closed.</div><div class="sm">ဆောင်ရွက်ချက်ကို ပြင်ဆင်သိမ်းဆည်းပြီး ပြဿနာပြေလည်သည်အထိ စောင့်ကြည့်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">⚖️ 6.3 Workflow: Rebalance Rider Workload <span class="mt">/ ယာဉ်မောင်းများ၏ လုပ်ငန်းတာဝန်များကို မျှတစွာ ပြန်လည်ခွဲဝေခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Rider Monitoring and compare route counts and delays per rider.</div><div class="sm">Rider Monitoring ဖွင့်ပြီး ယာဉ်မောင်းတစ်ဦးချင်းစီ၏ လမ်းကြောင်းအရေအတွက်နှင့် နှောင့်နှေးမှုများကို နှိုင်းယှဉ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Identify overloaded rider(s).</div><div class="sm">လုပ်ငန်းဝန်ပိနေသော ယာဉ်မောင်းများကို ဖော်ထုတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Reassign shipments to another rider if policy allows.</div><div class="sm">ကုမ္ပဏီမူဝါဒခွင့်ပြုပါက ပို့ဆောင်မှုများကို အခြားယာဉ်မောင်းတစ်ဦးထံသို့ ပြောင်းလဲတာဝန်ချပေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and watch for SLA recovery.</div><div class="sm">သိမ်းဆည်းပြီး ပို့ဆောင်မှုစံချိန် (SLA) ပြန်လည်ကောင်းမွန်လာမှုကို စောင့်ကြည့်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🔺 6.4 Escalate When <span class="mt">/ အထက်အဆင့်သို့ တင်ပြရမည့် အခြေအနေများ</span></div>
+        <div class="callout warn"><div class="callout-icon">🚨</div><div class="callout-body"><ul class="blist">
+          <li>Multiple riders fail in the same zone simultaneously. <span class="bm">နယ်မြေတစ်ခုတည်းတွင် ယာဉ်မောင်းအများအပြား တစ်ချိန်တည်း ပို့ဆောင်မှုမအောင်မြင်ပါက။</span></li>
+          <li>Branch cannot clear its backlog. <span class="bm">ရုံးခွဲအနေဖြင့် ကြန့်ကြာနေသော လုပ်ငန်းများကို မဖြေရှင်းနိုင်ပါက။</span></li>
+          <li>Customer complaints show systemic failure. <span class="bm">ဖောက်သည်တိုင်ကြားချက်များအရ စနစ်ပိုင်းဆိုင်ရာ ချွတ်ယွင်းချက်များ တွေ့ရှိပါက။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── DATA ENTRY ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#0f766e,#14b8a6);">
+      <div class="ri">⌨️</div><div class="rt"><h2>Data Entry User — Manual</h2><div class="rm">အချက်အလက်ထည့်သွင်းသူ (Data Entry) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 7.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Data Entry users create accurate shipment records and correct non-sensitive data issues when authorized.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>အချက်အလက်ထည့်သွင်းသူများသည် ကုန်ပစ္စည်းပို့ဆောင်မှု မှတ်တမ်းများကို တိကျမှန်ကန်စွာ ဖန်တီးရမည်ဖြစ်ပြီး၊ လုပ်ပိုင်ခွင့်ရှိသည့်အခါ အချက်အလက်ဆိုင်ရာ အမှားအယွင်းများကို ပြင်ဆင်ပေးရမည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">📦 7.2 Workflow: Create Shipment <span class="mt">/ ကုန်ပစ္စည်းပို့ဆောင်မှု မှတ်တမ်းဖန်တီးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open "Create Delivery" module.</div><div class="sm">"Create Delivery" စာမျက်နှာကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter sender information (name, phone, address).</div><div class="sm">ပို့သူ၏ အချက်အလက်များ (အမည်၊ ဖုန်း၊ လိပ်စာ) ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter receiver information (name, phone, full address, township).</div><div class="sm">လက်ခံသူ၏ အချက်အလက်များ (အမည်၊ ဖုန်း၊ လိပ်စာအပြည့်အစုံ၊ မြို့နယ်) ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter COD amount if required. Select service type.</div><div class="sm">လိုအပ်ပါက COD ငွေပမာဏကို ထည့်သွင်းပြီး ဝန်ဆောင်မှုအမျိုးအစားကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and confirm AWB / tracking number is generated.</div><div class="sm">သိမ်းဆည်းပြီး AWB (သို့) Tracking နံပါတ် အောင်မြင်စွာ ထွက်ပေါ်လာကြောင်း အတည်ပြုပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">✏️ 7.3 Workflow: Correct a Record <span class="mt">/ မှတ်တမ်းများ ပြင်ဆင်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Search the shipment by AWB or phone number.</div><div class="sm">AWB သို့မဟုတ် ဖုန်းနံပါတ်ဖြင့် ကုန်ပစ္စည်းကို ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Open the record and confirm what needs correction.</div><div class="sm">မှတ်တမ်းကိုဖွင့်ပြီး မည်သည့်အချက်ကို ပြင်ဆင်ရမည်ဖြစ်ကြောင်း အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Update only fields your role is authorized to change.</div><div class="sm">မိမိ၏ လုပ်ပိုင်ခွင့် (Role) ခွင့်ပြုထားသော အချက်အလက်များကိုသာ ပြင်ဆင်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and verify the corrected value appears correctly.</div><div class="sm">သိမ်းဆည်းပြီး ပြင်ဆင်ထားသော အချက်အလက်များ မှန်ကန်စွာပေါ်လွင်ကြောင်း စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 7.4 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Entering wrong phone number. <span class="bm">မမှန်ကန်သော ဖုန်းနံပါတ် ထည့်သွင်းခြင်း မပြုရ။</span></li>
+          <li>Selecting wrong township. <span class="bm">မမှန်ကန်သော မြို့နယ် ရွေးချယ်ခြင်း မပြုရ။</span></li>
+          <li>Missing COD amount when required. <span class="bm">COD ငွေကောက်ခံရန် လိုအပ်ပါက ငွေပမာဏ ထည့်သွင်းရန် မမေ့လျော့ရ။</span></li>
+          <li>Creating duplicate shipment records. <span class="bm">ကုန်ပစ္စည်းပို့ဆောင်မှု မှတ်တမ်းများကို ထပ်မံဖန်တီးခြင်း မပြုရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CUSTOMER SERVICE ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#0369a1,#0ea5e9);">
+      <div class="ri">🎧</div><div class="rt"><h2>Customer Service User — Manual</h2><div class="rm">ဖောက်သည်ဝန်ဆောင်မှုဌာန (Customer Service) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 8.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Customer Service resolves shipment inquiries, manages tickets, coordinates redelivery, and handles escalations.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ဖောက်သည်ဝန်ဆောင်မှုဌာနသည် ကုန်ပစ္စည်းပို့ဆောင်မှုနှင့် ပတ်သက်သည့် မေးမြန်းစုံစမ်းမှုများကို ဖြေရှင်းပေးခြင်း၊ Support Tickets များ စီမံခြင်း၊ ပြန်လည်ပို့ဆောင်မှုများကို ညှိနှိုင်းပေးခြင်းနှင့် အထက်သို့ တင်ပြရမည့်ကိစ္စများကို ကိုင်တွယ်ဖြေရှင်းရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">🔍 8.2 Workflow: Answer Shipment Inquiry <span class="mt">/ ပို့ဆောင်မှုဆိုင်ရာ မေးမြန်းချက်များအား တုံ့ပြန်ဖြေကြားခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Search/Tracking and search by AWB, phone, or name.</div><div class="sm">Search/Tracking စာမျက်နှာကိုဖွင့်ပြီး AWB၊ ဖုန်း သို့မဟုတ် အမည်ဖြင့် ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm correct shipment identity before responding.</div><div class="sm">မဖြေကြားမီ မှန်ကန်သော ကုန်ပစ္စည်းဖြစ်ကြောင်း သေချာစွာ အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review current status and full status timeline.</div><div class="sm">လက်ရှိအခြေအနေနှင့် အခြေအနေပြောင်းလဲမှု မှတ်တမ်းအပြည့်အစုံကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Provide the latest accurate update. Add internal note if needed.</div><div class="sm">နောက်ဆုံးရ တိကျသောသတင်းအချက်အလက်ကို ပေးပါ။ လိုအပ်ပါက ရုံးတွင်းမှတ်ချက် (Internal Note) ထည့်သွင်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🎫 8.3 Workflow: Create Support Ticket <span class="mt">/ ဝန်ဆောင်မှုအကူအညီတောင်းခံလွှာ (Support Ticket) ဖွင့်လှစ်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Tickets → click "New Ticket".</div><div class="sm">Tickets စာမျက်နှာကိုဖွင့်ပြီး "New Ticket" ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter subject, select issue type, link shipment, set priority.</div><div class="sm">ခေါင်းစဉ်ရိုက်ထည့်ပါ၊ ပြဿနာအမျိုးအစားကို ရွေးချယ်ပါ၊ သက်ဆိုင်ရာ ကုန်ပစ္စည်းကို ချိတ်ဆက်ပါ၊ ဦးစားပေးအဆင့် သတ်မှတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Add detailed notes and save.</div><div class="sm">အသေးစိတ် မှတ်ချက်များ ထည့်သွင်းပြီး သိမ်းဆည်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🔄 8.4 Workflow: Redelivery Coordination <span class="mt">/ ပြန်လည်ပို့ဆောင်ရေးအတွက် ညှိနှိုင်းဆောင်ရွက်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Search the failed shipment and confirm failure reason.</div><div class="sm">မအောင်မြင်သော ပို့ဆောင်မှုကို ရှာဖွေပြီး မအောင်မြင်ရသည့် အကြောင်းရင်းကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Contact customer to capture corrected address / availability.</div><div class="sm">ပြင်ဆင်ထားသော လိပ်စာ (သို့) လက်ခံနိုင်မည့်အချိန်ကို ရယူရန် ဖောက်သည်ကို ဆက်သွယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Update delivery instruction. Mark for reattempt or escalate.</div><div class="sm">ပို့ဆောင်မှု ညွှန်ကြားချက်ကို ပြင်ဆင်ပါ။ ပြန်လည်ပို့ဆောင်ရန် (Reattempt) မှတ်သားပါ (သို့) အထက်သို့ တင်ပြပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 8.5 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Telling the customer a guessed ETA. <span class="bm">ခန့်မှန်းရောက်ရှိမည့်အချိန် (ETA) ကို ရမ်းဆ၍ ဖောက်သည်အား မဖြေကြားရ။</span></li>
+          <li>Closing tickets without action notes. <span class="bm">ဆောင်ရွက်ထားသည့် မှတ်ချက်များ မပါရှိဘဲ Ticket ကို မပိတ်ရ။</span></li>
+          <li>Updating instructions with incorrect information. <span class="bm">မမှန်ကန်သော အချက်အလက်များဖြင့် ညွှန်ကြားချက်များကို မပြင်ဆင်ရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;padding:20px 0;">
+    <button onclick="showTab('p1')" style="background:#1e3a8a;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">← Part 1</button>
+    <button onclick="showTab('p3')" style="background:#059669;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">Next: Part 3 →</button>
+  </div>
+</div><!-- /p2 -->
+
+<!-- ════════════════════════════════════════
+     PART 3
+════════════════════════════════════════ -->
+<div id="tab-p3" class="page-panel">
+  <div class="part-banner" style="background:linear-gradient(90deg,#064e3b,#059669);">
+    <div class="pbn">Part 3 of 3 · အပိုင်း ၃</div>
+    <h2>Warehouse, Field &amp; Delivery Roles</h2>
+    <div class="pbm">Warehouse · Branch Office · Merchant · Customer · Rider</div>
+  </div>
+
+  <!-- ── WAREHOUSE ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#78350f,#d97706);">
+      <div class="ri">🏭</div><div class="rt"><h2>Warehouse User — Manual</h2><div class="rm">ကုန်လှောင်ရုံ (Warehouse) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 9.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Warehouse users manage inbound receiving, staging, storage, outbound preparation, manifest handling, and QR validation.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ကုန်လှောင်ရုံဝန်ထမ်းများသည် အဝင်ကုန်ပစ္စည်းများ လက်ခံခြင်း၊ ယာယီထားရှိခြင်း (Staging)၊ သိုလှောင်ခြင်း၊ အထွက်ကုန်ပစ္စည်းများ ပြင်ဆင်ခြင်း၊ ကုန်တင်စာရင်း (Manifest) များ ကိုင်တွယ်ခြင်းနှင့် QR Code စစ်ဆေးခြင်းတို့ကို စီမံဆောင်ရွက်ရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">🔄 9.2 Warehouse Lifecycle <span class="mt">/ ကုန်လှောင်ရုံ လုပ်ငန်းစဉ်အဆင့်ဆင့်</span></div>
+        <div class="sf">
+          <div class="sn">RECEIVED<br><small>လက်ခံ</small></div><div class="sa">→</div>
+          <div class="sn">STAGED<br><small>Staging</small></div><div class="sa">→</div>
+          <div class="sn">STORED<br><small>သိုလှောင်</small></div><div class="sa">→</div>
+          <div class="sn">PICKED<br><small>ထုတ်ယူ</small></div><div class="sa">→</div>
+          <div class="sn">MANIFESTED<br><small>Manifest</small></div><div class="sa">→</div>
+          <div class="sn">DISPATCHED<br><small>ထုတ်ပေး</small></div><div class="sa">→</div>
+          <div class="sn">HANDED OVER<br><small>လွှဲပြောင်း</small></div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">📥 9.3 Workflow: Inbound Receiving <span class="mt">/ အဝင်ကုန်ပစ္စည်းများ လက်ခံခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Inbound and review the expected inbound list.</div><div class="sm">Inbound စာမျက်နှာကိုဖွင့်ပြီး မျှော်လင့်ထားသော အဝင်ကုန်ပစ္စည်းစာရင်းကို ကြည့်ရှုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Physically receive each parcel from the courier/vehicle.</div><div class="sm">ကုရီယာ (သို့) ကားပေါ်မှ ကုန်ပစ္စည်းတစ်ခုချင်းစီကို လက်ဝယ်ရယူပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Scan AWB label or QR code on each parcel.</div><div class="sm">ကုန်ပစ္စည်းတစ်ခုချင်းစီရှိ AWB သို့မဟုတ် QR Code ကို Scan ဖတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm shipment matches system record. Mark as "Received".</div><div class="sm">ကုန်ပစ္စည်းသည် စနစ်ပါမှတ်တမ်းနှင့် ကိုက်ညီကြောင်း အတည်ပြုပြီး "Received (လက်ခံရရှိပြီး)" ဟု မှတ်သားပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Move parcel to staging area.</div><div class="sm">ကုန်ပစ္စည်းကို ယာယီထားရှိမည့်နေရာ (Staging Area) သို့ ရွှေ့ပြောင်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🗄️ 9.4 Workflow: Storage <span class="mt">/ စနစ်တကျ သိုလှောင်ထားရှိခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Storage module and scan the parcel.</div><div class="sm">Storage စာမျက်နှာကိုဖွင့်ပြီး ကုန်ပစ္စည်းကို Scan ဖတ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Select the correct rack and bin location.</div><div class="sm">မှန်ကန်သော စင် (Rack) နှင့် သိုလှောင်ကွက် (Bin) တည်နေရာကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save storage location. Confirm parcel is traceable in storage.</div><div class="sm">သိုလှောင်တည်နေရာကို သိမ်းဆည်းပါ။ ကုန်ပစ္စည်းကို စနစ်မှ ခြေရာခံနိုင်ကြောင်း သေချာစွာ စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📤 9.5 Workflow: Outbound Dispatch <span class="mt">/ အထွက်ကုန်ပစ္စည်းများ ထုတ်ပေးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Outbound and review picked parcels.</div><div class="sm">Outbound စာမျက်နှာကိုဖွင့်ပြီး ထုတ်ယူထားသော ကုန်ပစ္စည်းများကို စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Select destination batch or manifest. Confirm parcel list.</div><div class="sm">ဦးတည်ရာ Batch သို့မဟုတ် Manifest ကို ရွေးချယ်ပြီး ကုန်ပစ္စည်းစာရင်းကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Mark dispatched or ready for dispatch. Save.</div><div class="sm">"Dispatched (ထုတ်ပေးပြီး)" သို့မဟုတ် "Ready for Dispatch (ထုတ်ပေးရန်အသင့်)" ဟု မှတ်သားပြီး သိမ်းဆည်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📱 9.6 Workflow: QR Scan Issue <span class="mt">/ QR Scan ပြဿနာ ဖြေရှင်းခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Retry the QR scan carefully. Clean label if dirty.</div><div class="sm">QR Scan ကို သေချာစွာ ပြန်လည်ကြိုးစားပါ။ Label ညစ်ပတ်နေပါက သန့်ရှင်းရေးလုပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Search manually by AWB number.</div><div class="sm">AWB နံပါတ်ဖြင့် စနစ်တွင် ကိုယ်တိုင် ရိုက်နှိပ်ရှာဖွေပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Continue process using manual entry. Escalate if record is missing.</div><div class="sm">ကိုယ်တိုင်ထည့်သွင်းခြင်းနည်းလမ်းဖြင့် ဆက်လက်ဆောင်ရွက်ပါ။ မှတ်တမ်းပျောက်ဆုံးနေပါက အထက်သို့ တင်ပြပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 9.7 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Storing parcel in wrong rack/bin. <span class="bm">မမှန်ကန်သော စင် (Rack) နှင့် သိုလှောင်ကွက် (Bin) တွင် ကုန်ပစ္စည်းကို မထားရှိရ။</span></li>
+          <li>Skipping QR scan before any movement. <span class="bm">မည်သည့် ရွှေ့ပြောင်းမှုမဆို မပြုလုပ်မီ QR Scan ဖတ်ရန် မမေ့လျော့ရ။</span></li>
+          <li>Dispatching without confirmed batch. <span class="bm">အတည်မပြုရသေးသော Batch များအား အထွက်ကုန်အဖြစ် မထုတ်ပေးရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── BRANCH OFFICE ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#1e3a8a,#2563eb);">
+      <div class="ri">🏢</div><div class="rt"><h2>Branch Office User — Manual</h2><div class="rm">ရုံးခွဲ (Branch Office) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 10.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Branch Office users receive transferred manifests, sort local shipments, assign riders, and track branch-level exceptions.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ရုံးခွဲသည် လွှဲပြောင်းရောက်ရှိလာသော ကုန်တင်စာရင်း (Manifest) များကို လက်ခံခြင်း၊ သက်ဆိုင်ရာဒေသအလိုက် ခွဲခြားခြင်း၊ ယာဉ်မောင်းများထံ တာဝန်ချထားပေးခြင်းနှင့် ရုံးခွဲအဆင့် ခြွင်းချက်ကိစ္စရပ်များကို ဖြေရှင်းရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">📋 10.2 Workflow: Receive Branch Manifest <span class="mt">/ ကုန်တင်စာရင်း (Manifest) လက်ခံခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Incoming Manifest and confirm manifest number.</div><div class="sm">Incoming Manifest စာမျက်နှာကိုဖွင့်ပြီး ကုန်တင်စာရင်းနံပါတ်ကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Compare physical handover count with manifest list.</div><div class="sm">အမှန်တကယ် လက်ဝယ်ရရှိသော အရေအတွက်နှင့် Manifest ပါ စာရင်းကို တိုက်ဆိုင်စစ်ဆေးပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Mark receipt as confirmed if counts match. Save.</div><div class="sm">အရေအတွက် ကိုက်ညီပါက လက်ခံရရှိကြောင်း အတည်ပြုမှတ်သားပြီး သိမ်းဆည်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🛵 10.3 Workflow: Assign Shipments to Rider <span class="mt">/ ယာဉ်မောင်းထံ ပို့ဆောင်မှုတာဝန် ချထားပေးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open sorted shipments and group by route or township.</div><div class="sm">ခွဲခြားပြီးသော ကုန်ပစ္စည်းများကို လမ်းကြောင်း သို့မဟုတ် မြို့နယ်အလိုက် အုပ်စုဖွဲ့ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Select available rider for each group. Confirm physical handoff.</div><div class="sm">အုပ်စုတစ်ခုချင်းစီအတွက် အသင့်ရှိသော ယာဉ်မောင်းကို ရွေးချယ်ပြီး အမှန်တကယ် လွှဲပြောင်းပေးအပ်မှုကို အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and monitor first delivery status updates.</div><div class="sm">သိမ်းဆည်းပြီး ပထမဆုံး ပို့ဆောင်မှုအခြေအနေ ပြောင်းလဲမှုကို စောင့်ကြည့်ပါ။</div></div></li>
+        </ol>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── MERCHANT ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#7c3aed,#a78bfa);">
+      <div class="ri">🛍️</div><div class="rt"><h2>Merchant User — Manual</h2><div class="rm">ကုန်သည် / ရောင်းချသူ (Merchant) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 11.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Merchants create shipments, request pickups, upload bulk lists, track deliveries, and review COD settlements.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ကုန်သည်/ရောင်းချသူများသည် ကုန်ပစ္စည်းပို့ဆောင်မှုများ ဖန်တီးခြင်း၊ ပစ္စည်းလာရောက်ကောက်ယူရန် တောင်းဆိုခြင်း၊ အစုလိုက်အချက်အလက်များ တင်သွင်းခြင်း၊ ပို့ဆောင်မှုအခြေအနေများကို ခြေရာခံခြင်းနှင့် COD စာရင်းရှင်းလင်းမှုများကို စစ်ဆေးရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">📦 11.2 Workflow: Create Single Shipment <span class="mt">/ ကုန်ပစ္စည်းပို့ဆောင်မှု တစ်ခုတည်း ဖန်တီးခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open "Create Shipment" from the dashboard.</div><div class="sm">Dashboard မှ "Create Shipment" ကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter receiver name, phone, full address, township/city.</div><div class="sm">လက်ခံမည့်သူ၏ အမည်၊ ဖုန်း၊ လိပ်စာအပြည့်အစုံနှင့် မြို့နယ်/မြို့ ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter COD amount if required. Select service type.</div><div class="sm">လိုအပ်ပါက COD ငွေပမာဏကို ထည့်သွင်းပြီး ဝန်ဆောင်မှုအမျိုးအစားကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save and confirm tracking number is generated.</div><div class="sm">သိမ်းဆည်းပြီး Tracking နံပါတ် အောင်မြင်စွာ ထွက်ပေါ်လာကြောင်း အတည်ပြုပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📊 11.3 Workflow: Bulk Upload <span class="mt">/ အစုလိုက် အချက်အလက်များ တင်သွင်းခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Bulk Upload and download the official template.</div><div class="sm">Bulk Upload စာမျက်နှာကိုဖွင့်ပြီး တရားဝင် Template ကို ဒေါင်းလုဒ်ရယူပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Fill all required fields in the template. Upload CSV/XLSX.</div><div class="sm">လိုအပ်သော အချက်အလက်အားလုံးကို Template တွင် ဖြည့်စွက်ပြီး CSV/XLSX ဖိုင်ကို Upload လုပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review import results. Correct failed rows and re-upload if needed.</div><div class="sm">တင်သွင်းမှုရလဒ်များကို စစ်ဆေးပါ။ မအောင်မြင်သော စာရင်းများကို ပြင်ဆင်ပြီး လိုအပ်ပါက ပြန်လည် Upload လုပ်ပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚚 11.4 Workflow: Request Pickup <span class="mt">/ ကုန်ပစ္စည်းလာရောက်ကောက်ယူရန် တောင်းဆိုခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Pickups, select date and time window.</div><div class="sm">Pickups စာမျက်နှာကိုဖွင့်ပြီး ရက်စွဲနှင့် အချိန်ကာလကို ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter parcel count. Confirm pickup address. Save request.</div><div class="sm">ကုန်ပစ္စည်းအရေအတွက်ကို ထည့်သွင်းပါ။ ကောက်ယူရမည့်လိပ်စာကို အတည်ပြုပြီး တောင်းဆိုချက်ကို သိမ်းဆည်းပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Track rider or pickup status later from the Pickups module.</div><div class="sm">နောက်ပိုင်းတွင် Pickups စာမျက်နှာမှ ယာဉ်မောင်း သို့မဟုတ် ကောက်ယူမှုအခြေအနေကို ခြေရာခံနိုင်ပါသည်။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🚫 11.5 Common Mistakes <span class="mt">/ လုံးဝ (လုံးဝ) ရှောင်ကြဉ်ရမည့် အမှားများ</span></div>
+        <div class="callout danger"><div class="callout-icon">❌</div><div class="callout-body"><ul class="blist">
+          <li>Wrong receiver phone number (causes failed delivery). <span class="bm">မမှန်ကန်သော ဖုန်းနံပါတ် (ပို့ဆောင်မှုမအောင်မြင်ခြင်းကို ဖြစ်စေနိုင်သည်) ထည့်သွင်းခြင်း မပြုရ။</span></li>
+          <li>Incomplete or vague delivery address. <span class="bm">မပြည့်စုံသော (သို့) မရှင်းလင်းသော လိပ်စာများ ပေးအပ်ခြင်း မပြုရ။</span></li>
+          <li>Missing COD amount when required. <span class="bm">COD ငွေကောက်ခံရန် လိုအပ်ပါက ငွေပမာဏ ထည့်သွင်းရန် မမေ့လျော့ရ။</span></li>
+          <li>Uploading bulk file with unclean data. <span class="bm">မပြည့်စုံသော သို့မဟုတ် မသန့်ရှင်းသော အချက်အလက်များဖြင့် Bulk File များကို Upload မလုပ်ရ။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── CUSTOMER ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#0f766e,#2dd4bf);">
+      <div class="ri">👤</div><div class="rt"><h2>Customer User — Manual</h2><div class="rm">ဖောက်သည် / ဝယ်ယူသူ (Customer) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 12.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Customers track parcels, check notifications, manage saved addresses, and raise support requests when needed.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ဖောက်သည်/ဝယ်ယူသူများသည် မိမိတို့၏ ကုန်ပစ္စည်းများကို ခြေရာခံခြင်း၊ သတိပေးချက်များကို စစ်ဆေးခြင်း၊ လိပ်စာများကို စီမံသိမ်းဆည်းခြင်းနှင့် လိုအပ်ပါက ဝန်ဆောင်မှုအကူအညီများ တောင်းခံနိုင်သည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">📦 12.2 Workflow: Track a Parcel <span class="mt">/ ကုန်ပစ္စည်း ခြေရာခံခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Customer Portal and enter the tracking number.</div><div class="sm">Customer Portal သို့ဝင်ရောက်ပြီး Tracking နံပါတ်ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Review current status, last known location, and estimated delivery timing.</div><div class="sm">လက်ရှိအခြေအနေ၊ နောက်ဆုံးရောက်ရှိနေသော တည်နေရာနှင့် ခန့်မှန်းရောက်ရှိမည့်အချိန်ကို စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">📍 12.3 Workflow: Save Delivery Address <span class="mt">/ ပို့ဆောင်ရမည့်လိပ်စာ သိမ်းဆည်းခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open Saved Addresses → Add or Edit.</div><div class="sm">Saved Addresses စာမျက်နှာကိုဖွင့်ပြီး အသစ်ထည့်ရန် (Add) (သို့) ပြင်ဆင်ရန် (Edit) ကို နှိပ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Enter label (e.g. "Home"), full address, and township.</div><div class="sm">မှတ်သားမည့်အမည် (ဥပမာ "အိမ်")၊ လိပ်စာအပြည့်အစုံနှင့် မြို့နယ်ကို ရိုက်ထည့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Save.</div><div class="sm">သိမ်းဆည်းပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">🔺 12.4 Contact Support When <span class="mt">/ ဝန်ဆောင်မှုအဖွဲ့သို့ ဆက်သွယ်ရမည့် အချိန်</span></div>
+        <div class="callout warn"><div class="callout-icon">🚨</div><div class="callout-body"><ul class="blist">
+          <li>Tracking stops updating for too long. <span class="bm">Tracking အခြေအနေ အချိန်ကြာမြင့်စွာ ပြောင်းလဲမှုမရှိဘဲ ရပ်တန့်နေပါက။</span></li>
+          <li>Delivery marked failed incorrectly (you were home). <span class="bm">အိမ်တွင် ရှိနေသော်လည်း ပို့ဆောင်မှုမအောင်မြင်ကြောင်း မှားယွင်းမှတ်သားထားပါက။</span></li>
+          <li>Address change is urgent after dispatch. <span class="bm">ပစ္စည်းထွက်သွားပြီးနောက် လိပ်စာကို အရေးပေါ် ပြောင်းလဲရန် လိုအပ်ပါက။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── RIDER ── -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#b45309,#f59e0b);">
+      <div class="ri">🛵</div><div class="rt"><h2>Rider / Deliveryman — Manual</h2><div class="rm">ယာဉ်မောင်း / ပို့ဆောင်သူ (Rider) — လမ်းညွှန်လက်စွဲ</div></div>
+    </div>
+    <div class="role-body">
+      <div class="sub"><div class="sub-title">🎯 13.1 Role Purpose <span class="mt">/ တာဝန်</span></div>
+        <div class="bilingual">
+          <div class="lb en"><div class="ll">🇬🇧 English</div>Riders handle last-mile delivery, pickup tasks, POD capture, COD cash collection, and route completion through the Rider App.</div>
+          <div class="lb mm"><div class="ll">🇲🇲 မြန်မာ</div>ပို့ဆောင်သူ (Rider) များသည် နောက်ဆုံးအဆင့် ပို့ဆောင်ခြင်း (Last-mile delivery)၊ ကုန်ပစ္စည်းသွားရောက်ကောက်ယူခြင်း၊ ပစ္စည်းရောက်ရှိကြောင်း အထောက်အထား (POD) ရယူခြင်း၊ COD ငွေကောက်ခံခြင်းနှင့် လမ်းကြောင်းပြီးစီးမှုများကို အက်ပ် (Rider App) မှတစ်ဆင့် ဆောင်ရွက်ရသည်။</div>
+        </div>
+      </div>
+      <div class="sub"><div class="sub-title">☀️ 13.2 Start-of-Shift Checklist <span class="mt">/ အလုပ်ချိန်စတင်ချိန် စစ်ဆေးရမည့်စာရင်း</span></div>
+        <ul class="chk">
+          <li><div>Start shift in the app. <span class="ck">App တွင် အလုပ်ချိန် (Shift) ကို စတင်ပါ။</span></div></li>
+          <li><div>Review all assigned deliveries for today's route. <span class="ck">ယနေ့ လမ်းကြောင်းအတွက် မိမိထံ သတ်မှတ်ထားသော ပို့ဆောင်မှုများအားလုံးကို စစ်ဆေးပါ။</span></div></li>
+          <li><div>Confirm device is charged and working. <span class="ck">မိမိ၏ ဖုန်း/Device အားအပြည့်ရှိပြီး ကောင်းမွန်စွာ အလုပ်လုပ်ကြောင်း စစ်ဆေးပါ။</span></div></li>
+          <li><div>Confirm sufficient cash for COD collection. <span class="ck">COD ငွေအမ်းရန်အတွက် အကြွေစေ့/ငွေသား လုံလောက်မှုရှိကြောင်း စစ်ဆေးပါ။</span></div></li>
+          <li><div>Review priority delivery stops. <span class="ck">ဦးစားပေး ပို့ဆောင်ရမည့် မှတ်တိုင်များကို ကြိုတင်လေ့လာပါ။</span></div></li>
+        </ul>
+      </div>
+      <div class="sub"><div class="sub-title">✅ 13.3 Workflow: Complete Delivery <span class="mt">/ ပို့ဆောင်မှုအား အောင်မြင်စွာ ပြီးဆုံးစေခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open the assigned delivery task in the app.</div><div class="sm">App တွင် မိမိထံ သတ်မှတ်ထားသော ပို့ဆောင်မှုတာဝန် (Task) ကို ဖွင့်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Confirm recipient's identity at the door.</div><div class="sm">လက်ခံသူ၏ ကိုယ်ရေးအချက်အလက်ကို သေချာစွာ အတည်ပြုပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Collect COD if required (count carefully).</div><div class="sm">လိုအပ်ပါက COD ငွေကို ကောက်ခံပါ (သေချာစွာ ရေတွက်ပါ)။</div></div></li>
+          <li><div class="sc"><div class="se">Capture POD (photo or signature).</div><div class="sm">ရောက်ရှိကြောင်း အထောက်အထား (ဓာတ်ပုံ သို့မဟုတ် လက်မှတ်) ရယူပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Mark as "Delivered". Verify task leaves the open queue.</div><div class="sm">"Delivered (အောင်မြင်စွာပို့ဆောင်ပြီး)" ဟု မှတ်သားပြီး တာဝန်များစာရင်းမှ ထွက်သွားကြောင်း စစ်ဆေးပါ။</div></div></li>
+        </ol>
+      </div>
+      <div class="sub"><div class="sub-title">❌ 13.4 Workflow: Handle Failed Attempt <span class="mt">/ မအောင်မြင်သော ပို့ဆောင်မှုအား ဖြေရှင်းကိုင်တွယ်ခြင်း</span></div>
+        <ol class="steps">
+          <li><div class="sc"><div class="se">Open the assigned stop and choose the correct failure reason.</div><div class="sm">ပို့ဆောင်မည့် မှတ်တိုင်ကိုဖွင့်ပြီး မအောင်မြင်ရသည့် အကြောင်းရင်းကို မှန်ကန်စွာ ရွေးချယ်ပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Add a note if needed. Save the failure update.</div><div class="sm">လိုအပ်ပါက မှတ်ချက်ထည့်သွင်းပြီး မအောင်မြင်မှုအခြေအနေကို သိမ်းဆည်းပါ။</div></div></li>
+          <li><div class="sc"><div class="se">Continue to the next stop on the route.</div><div class="sm">လမ်းကြောင်းပေါ်ရှိ နောက်ထပ်ပို့ဆောင်မည့် မှတ်တိုင်သို့ ဆက်လက်ထွက်ခွာပါ။</div></div></li>
+        </ol>
+        <div class="callout info" style="margin-top:12px;"><div class="callout-icon">ℹ️</div><div class="callout-body"><div class="ct">Failure Reason Reference / မအောင်မြင်ရသည့် အကြောင်းရင်းများ ကိုးကားချက်</div>
+          <table class="tbl" style="margin-top:8px;">
+            <tr><th>Reason</th><th>အကြောင်းရင်း</th></tr>
+            <tr><td>Recipient not available</td><td>လက်ခံမည့်သူ မရှိပါ</td></tr>
+            <tr><td>Address not found</td><td>လိပ်စာ ရှာမတွေ့ပါ</td></tr>
+            <tr><td>Recipient refused</td><td>လက်ခံမည့်သူမှ လက်ခံရန် ငြင်းဆန်ပါသည်</td></tr>
+            <tr><td>COD amount dispute</td><td>COD ငွေပမာဏ အငြင်းပွားမှု ဖြစ်ပွားပါသည်</td></tr>
+            <tr><td>Access blocked</td><td>ဝင်ရောက်ရန် ခွင့်ပြုချက်မရရှိပါ</td></tr>
+          </table>
+        </div></div>
+      </div>
+      <div class="sub"><div class="sub-title">🔺 13.5 Escalate When <span class="mt">/ အထက်အဆင့်သို့ တင်ပြရမည့် အခြေအနေများ</span></div>
+        <div class="callout warn"><div class="callout-icon">🚨</div><div class="callout-body"><ul class="blist">
+          <li>Customer disputes COD amount at door. <span class="bm">ဖောက်သည်မှ COD ငွေပမာဏအား အငြင်းပွားလာပါက။</span></li>
+          <li>Address is physically inaccessible. <span class="bm">လိပ်စာသို့ လုံးဝ ဝင်ရောက်သွားလာရန် မဖြစ်နိုင်ပါက။</span></li>
+          <li>Parcel appears damaged before delivery. <span class="bm">မပို့ဆောင်မီ ကုန်ပစ္စည်းသည် ပျက်စီးနေသည်ကို ကြိုတင်တွေ့ရှိရပါက။</span></li>
+          <li>Wallet shows unexplained deduction. <span class="bm">ငွေစာရင်း (Wallet) တွင် အကြောင်းရင်းမသိရသော ဖြတ်တောက်မှုများ ပေါ်ပေါက်လာပါက။</span></li>
+        </ul></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATUS REFERENCE -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#0e7490,#06b6d4);">
+      <div class="ri">📊</div><div class="rt"><h2>Delivery Status Reference</h2><div class="rm">လုပ်ငန်းအခြေအနေ (Status) ရည်ညွှန်းချက်များ</div></div>
+    </div>
+    <div class="role-body">
+      <table class="tbl">
+        <tr><th>Status</th><th>Meaning (EN)</th><th>အဓိပ္ပာယ် (MM)</th></tr>
+        <tr><td><span class="sp" style="background:#dbeafe;color:#1e40af;">CREATED</span></td><td>Shipment created, not yet picked up</td><td>မှတ်တမ်းဖန်တီးပြီး (သို့) လာရောက်မကောက်ယူရသေးပါ</td></tr>
+        <tr><td><span class="sp" style="background:#fef3c7;color:#92400e;">PICKUP SCHEDULED</span></td><td>Pickup confirmed</td><td>လာရောက်ကောက်ယူရန် အချိန်ဇယားဆွဲပြီးပါပြီ</td></tr>
+        <tr><td><span class="sp" style="background:#d1fae5;color:#065f46;">PICKED UP</span></td><td>Parcel collected from merchant</td><td>ကုန်သည်ထံမှ ကောက်ယူပြီးပါပြီ</td></tr>
+        <tr><td><span class="sp" style="background:#ede9fe;color:#5b21b6;">AT HUB</span></td><td>At sorting hub / warehouse</td><td>ဗဟိုကုန်လှောင်ရုံသို့ ရောက်ရှိနေပါပြီ</td></tr>
+        <tr><td><span class="sp" style="background:#dbeafe;color:#1e40af;">IN TRANSIT</span></td><td>Moving to destination branch</td><td>ရုံးခွဲသို့ ပို့ဆောင်နေဆဲဖြစ်ပါသည်</td></tr>
+        <tr><td><span class="sp" style="background:#fef3c7;color:#92400e;">OUT FOR DELIVERY</span></td><td>Rider heading to recipient</td><td>လက်ခံမည့်သူထံသို့ သွားရောက်ပို့ဆောင်နေပါသည်</td></tr>
+        <tr><td><span class="sp" style="background:#d1fae5;color:#065f46;">DELIVERED</span></td><td>Successfully delivered</td><td>အောင်မြင်စွာ ပို့ဆောင်ပြီးပါပြီ</td></tr>
+        <tr><td><span class="sp" style="background:#fee2e2;color:#991b1b;">FAILED DELIVERY</span></td><td>Delivery attempt unsuccessful</td><td>ပို့ဆောင်ရန်ကြိုးပမ်းမှု မအောင်မြင်ပါ</td></tr>
+        <tr><td><span class="sp" style="background:#ffedd5;color:#9a3412;">REATTEMPT</span></td><td>Scheduled for another attempt</td><td>ထပ်မံပို့ဆောင်ပေးရန် စီစဉ်ထားပါသည်</td></tr>
+        <tr><td><span class="sp" style="background:#f1f5f9;color:#475569;">RETURN PENDING</span></td><td>Return to merchant initiated</td><td>ကုန်သည်ထံ ပြန်လည်ပို့ဆောင်ရန် ဆောင်ရွက်နေပါသည်</td></tr>
+        <tr><td><span class="sp" style="background:#f1f5f9;color:#475569;">RETURNED</span></td><td>Parcel returned to merchant</td><td>ကုန်သည်ထံ ပြန်လည်ရောက်ရှိသွားပါပြီ</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- COMMON ISSUES -->
+  <div class="role-section">
+    <div class="role-hdr" style="background:linear-gradient(90deg,#1f2937,#374151);">
+      <div class="ri">🔧</div><div class="rt"><h2>Common Issue Quick Reference</h2><div class="rm">ဖြစ်လေ့ရှိသော ပြဿနာများအတွက် မြန်ဆန်သောဖြေရှင်းနည်းများ</div></div>
+    </div>
+    <div class="role-body">
+      <table class="tbl">
+        <tr><th>Issue</th><th>ပြဿနာ</th><th>Action</th><th>ဆောင်ရွက်ချက်</th></tr>
+        <tr><td>Wrong portal after login</td><td>စနစ်ဝင်ပြီးနောက် Portal မှားယွင်းနေခြင်း</td><td>Sign out → sign in → check role → escalate to Super Admin</td><td>စနစ်မှထွက်ပြီး ပြန်ဝင်ပါ → Role စစ်ဆေးပါ → Super Admin သို့ တင်ပြပါ</td></tr>
+        <tr><td>Shipment not found</td><td>ကုန်ပစ္စည်းမှတ်တမ်း ရှာမတွေ့ခြင်း</td><td>Re-check AWB → search by phone → escalate if missing</td><td>AWB ပြန်စစ်ဆေးပါ → ဖုန်းနံပါတ်ဖြင့်ရှာဖွေပါ → ပျောက်ဆုံးနေပါက တင်ပြပါ</td></tr>
+        <tr><td>QR scan fails</td><td>QR ဖတ်၍မရခြင်း</td><td>Clean label → retry → manual AWB search → escalate</td><td>Label ကို သန့်ရှင်းပါ → ပြန်လည်ကြိုးစားပါ → AWB ဖြင့် ကိုယ်တိုင်ရှာဖွေပါ → တင်ပြပါ</td></tr>
+        <tr><td>Warehouse loading error</td><td>ကုန်လှောင်ရုံ စာမျက်နှာ Error ပြခြင်း</td><td>Refresh → retry correct tab → report to admin/engineering</td><td>Refresh ပြုလုပ်ပါ → မှန်ကန်သော Tab ဖြင့် ပြန်လည်ကြိုးစားပါ → Admin/IT အဖွဲ့သို့ တင်ပြပါ</td></tr>
+        <tr><td>Finance COD mismatch</td><td>ဘဏ္ဍာရေးစာရင်းနှင့် COD ကွာဟခြင်း</td><td>Verify status → verify COD → verify settlement → escalate</td><td>Status ကို စစ်ဆေးပါ → COD ကို စစ်ဆေးပါ → စာရင်းရှင်းလင်းမှုကို စစ်ဆေးပါ → တင်ပြပါ</td></tr>
+        <tr><td>Password forgotten</td><td>စကားဝှက် မေ့သွားခြင်း</td><td>Forgot Password → check email → reset → re-login</td><td>Forgot Password မှတစ်ဆင့် အီးမေးလ်စစ်ဆေးပါ → စကားဝှက်အသစ်သတ်မှတ်ပါ → ပြန်လည်ဝင်ရောက်ပါ</td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex;justify-content:space-between;padding:20px 0;">
+    <button onclick="showTab('p2')" style="background:#7c3aed;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">← Part 2</button>
+    <button onclick="showTab('idx')" style="background:#1e3a8a;color:#fff;border:none;padding:12px 24px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;">🏠 Back to Index</button>
+  </div>
+</div><!-- /p3 -->
+
+<footer>
+  <strong>Britium Express</strong> — Operation Manual &nbsp;|&nbsp;
+  Myanmar · English Bilingual Edition &nbsp;|&nbsp;
+  12 User Roles · 3 Parts · 40+ Step-by-Step Workflows &nbsp;|&nbsp;
+  Generated April 2026
+</footer>
+
+<script>
+function showTab(id) {
+  document.querySelectorAll('.page-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  const map = {'idx':0,'p1':1,'p2':2,'p3':3};
+  document.querySelectorAll('.tab-btn')[map[id]].classList.add('active');
+  window.scrollTo({top: 0, behavior: 'smooth'});
+}
+</script>
+</body>
+</html>

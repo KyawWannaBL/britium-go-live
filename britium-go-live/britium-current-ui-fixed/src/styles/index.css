@@ -1,0 +1,26 @@
+
+/* Print Studio CSS injected by script */
+@media print {
+  body {
+    background-color: white;
+    margin: 0;
+    padding: 0;
+  }
+  
+  /* Safari / Chrome Print Margin Reset */
+  @page { 
+    margin: 0; 
+  }
+
+  /* Waybill Sticker Size Control */
+  .print-waybill {
+    width: 4in; /* Standard Thermal Sticker Width */
+    height: 6in;
+    page-break-after: always;
+  }
+  
+  /* Hide Nextjs/React dev overlays if any */
+  #webpack-dev-server-client-overlay {
+    display: none !important;
+  }
+}

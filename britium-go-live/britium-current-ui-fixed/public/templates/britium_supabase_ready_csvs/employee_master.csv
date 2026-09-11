@@ -1,0 +1,19 @@
+employee_id,employee_name,role_id,department,phone_primary,email,supervisor_employee_id,status
+EMP001,Daw Aye Pwint Phyu,operation_manager,Warehouse,09-740 908 663,ops_mgr@britiumexpress.com,,Active
+EMP002,U Nay Soe,Warehouse Controller,Warehouse,09-424 399 126,supervisor@britiumexpress.com,,Active
+EMP003,U Shine Wai Yan,Warehouse Helper,Warehouse,09-672 619 430,dispatch@britiumexpress.com,,Active
+EMP004,Ko Kaung Khant Zaw,Warehouse Helper,Warehouse,09-682 736 012,warehouse@britiumexpress.com,,Active
+,Ko Myo Kyaw Kyaw,business_development_manager,Business Development,09781654296,hod@britiumexpress.com,Managing Director,Active
+BV00046,Kaung Htet Kyaw,marketing,Marketing,09777811643,sales_exe@britiumexpress.com,Business Development Manager,Active
+BV00034,Aye Chan Myat Noe Khin,marketing,Marketing,09970377760,gallery4@britiumventures.com,Business Development Manager,Active
+BV00075,Min Hein Kyaw,customer_service,Customer Service,09790891190,cs_1@britiumexpress.com,Business Development Manager,Active
+BV00059,Hsu Thin Zar Aung,customer_service,Customer Service,09956380457,cs_2@britiumexpress.com,Business Development Manager,Active
+BV00008,Ma Moe Moe Khaing,finance_manager,Finance,09420051940,accountant_sr@britiumventures.com,Managing Director,Active
+BV00033,Shwe Poe Eain,finance,Finance,09974593869,accountant_jr@britiumventures.com,Finance Manager,Active
+BV00091,Phyo Pyae Pyae Win,finance,Finance,09796193370,phyopyaepyaewin11@gmail.com,Finance Manager,Active
+BV00071,Kaung Zar Zar Oo,finance,Finance,09774279361,cashier_1@britiumexpress.com,Finance Manager,Active
+BV00108,Eaint Chit Chit Han,finance,Finance,09772272886,eaintchitchithan@gmail.com,Managing Director,Active
+BV00112,Aye Htet Khaing,customer_service,Customer Service,09425887413,,Business Development Manager,Active
+BV00060,Hlaine Htet,data entry,Business Development,09886433515,hlaine00229@gmail.com,Business Development Manager,Active
+,Ju Ko San,Sales & Marketing Assistant,Business Development,09770559647,,Business Development Manager,Active
+,Aye Htet Khaing,customer_service,Business Development,09425887413,,Business Development Manager,Active

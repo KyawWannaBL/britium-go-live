@@ -1,0 +1,30 @@
+{
+  "build": "PORTAL_DATA_ENTRY_BILINGUAL_TOWNSHIP_V61_1_PACKAGE_2026_08_02",
+  "accepted_current_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": [
+      "9f5820feff8769989cf82883c490da9a1d371c496289befea3680b30095afe0d",
+      "c19a187ff07b5a389f24b7f406b7e934fab26a0ec62a58de1f2558b945dfae60",
+      "b6bcc393aac8d9ee1fb267b9e605489f509eaad83e03a374505bdd893bb1f153",
+      "32f582228aa068eabf94a752a5f6861c83fe5e88215c0d46df1ab0f5731c2b4f"
+    ],
+    "src/data/townshipTariffDirectory.ts": [
+      "1cc4850c016942e829b2524e96097d75e7b263a8e0dfac88c7379d4e8f71ca61",
+      "2919dee7832f54fabcd9bad0695692d851cb759da25747e8063018240ddd17aa"
+    ]
+  },
+  "patch_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "32f582228aa068eabf94a752a5f6861c83fe5e88215c0d46df1ab0f5731c2b4f",
+    "src/data/townshipTariffDirectory.ts": "2919dee7832f54fabcd9bad0695692d851cb759da25747e8063018240ddd17aa"
+  },
+  "patch_canonical_hashes": {
+    "src/pages/DataEntryFinancialV2Page.tsx": "32f582228aa068eabf94a752a5f6861c83fe5e88215c0d46df1ab0f5731c2b4f",
+    "src/data/townshipTariffDirectory.ts": "2919dee7832f54fabcd9bad0695692d851cb759da25747e8063018240ddd17aa"
+  },
+  "township_record_count": 356,
+  "inactive_township_count": 1,
+  "duplicate_english_name_count": 2,
+  "duplicate_myanmar_name_count": 2,
+  "financial_writes_enabled_by_patch": false,
+  "build_performed": false,
+  "deploy_performed": false
+}

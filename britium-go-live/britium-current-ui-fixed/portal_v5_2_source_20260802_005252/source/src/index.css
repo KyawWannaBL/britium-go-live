@@ -1,0 +1,992 @@
+@import "tailwindcss";
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;500&display=swap");
+
+/* Protect the enterprise shell from legacy global scroll rules. */
+[data-be-app-shell="true"] {
+  width: 100% !important;
+  height: 100dvh !important;
+  min-height: 0 !important;
+  overflow: hidden !important;
+}
+
+[data-be-sidebar="true"] {
+  width: 256px !important;
+  min-width: 256px !important;
+  max-width: 256px !important;
+  height: 100dvh !important;
+  overflow: hidden !important;
+  scrollbar-gutter: auto !important;
+}
+
+[data-be-main="true"] {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  scrollbar-gutter: auto !important;
+}
+
+[data-be-content="true"] {
+  width: auto !important;
+  max-width: none !important;
+  min-width: 1200px !important;
+  min-height: 100% !important;
+  height: auto !important;
+  margin: 0 !important;
+}
+
+/* Protect icon sizes */
+svg { font-size: inherit !important; }
+
+/* ─── 3. UNIFORM ALIGNMENT ─── */
+th, td, label, p, h1, h2, h3, h4 {
+  text-align: left !important;
+}
+
+/* Buttons must stay centered */
+button, button span, .text-center {
+  text-align: center !important;
+  justify-content: center !important;
+}
+
+/* ─── 4. FULL-WIDTH LAYOUT CONTAINERS ─── */
+html, body, #root {
+  background-color: #061524 !important;
+  color: #eef8ff !important;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+main > div, main > section, main [class*="max-w-"], main .container, main .mx-auto, #root main > div > div {
+  max-width: 100% !important;
+  width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+main form .grid { gap: 1.5rem !important; }
+
+/* ─── 5. FORCE DARK THEME GLOBALLY ─── */
+main .bg-white, main .bg-slate-50, main .bg-slate-100, main .bg-white\/76, main .bg-white\/80 {
+  background-color: #0b2236 !important;
+  border-color: #1a3a5c !important;
+  background-image: none !important;
+  color: #eef8ff !important;
+}
+
+main .text-\[\#0d2c54\], main .text-slate-800, main .text-slate-900, main .text-black { color: #eef8ff !important; }
+main .text-slate-500, main .text-slate-600, main .text-gray-500, main .text-\[\#4d7a9b\] { color: #90b4ce !important; }
+
+/* ─── 6. GLOBAL SCROLLBAR ─── */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #061524; border-left: 1px solid #1a3a5c; border-top: 1px solid #1a3a5c; }
+::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 5px; border: 2px solid #061524; }
+::-webkit-scrollbar-thumb:hover { background: #f6b84b; }
+
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; border: none; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 4px; border: none; }
+
+@layer base {
+  * { @apply border-[#1a3a5c] outline-[#1a3a5c]/50; }
+  html { @apply scroll-smooth antialiased; }
+  body { @apply bg-[#061524] text-[#eef8ff]; }
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+  }
+
+  aside,
+  nav,
+  button,
+  [data-print-hide="true"] {
+    display: none !important;
+  }
+
+  main,
+  section,
+  div {
+    box-shadow: none !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+}
+
+/* Waybill Print Studio readability hotfix */
+.waybill-print-studio,
+[data-page="waybill-print-studio"] {
+  background: #061524 !important;
+  color: #eef8ff !important;
+}
+
+.waybill-print-studio input,
+.waybill-print-studio select,
+.waybill-print-studio textarea,
+[data-page="waybill-print-studio"] input,
+[data-page="waybill-print-studio"] select,
+[data-page="waybill-print-studio"] textarea {
+  background: #ffffff !important;
+  color: #061524 !important;
+  border: 1px solid #8ba7bd !important;
+}
+
+.waybill-print-studio input::placeholder,
+[data-page="waybill-print-studio"] input::placeholder {
+  color: #64748b !important;
+  opacity: 1 !important;
+}
+
+.waybill-print-studio table,
+[data-page="waybill-print-studio"] table {
+  background: #0b2236 !important;
+  color: #eef8ff !important;
+}
+
+.waybill-print-studio th,
+[data-page="waybill-print-studio"] th {
+  background: #f6b84b !important;
+  color: #061524 !important;
+  font-weight: 900 !important;
+}
+
+.waybill-print-studio td,
+[data-page="waybill-print-studio"] td {
+  color: #eef8ff !important;
+  border-color: #1a3a5c !important;
+}
+
+.waybill-print-studio tr:hover,
+[data-page="waybill-print-studio"] tr:hover {
+  background: #123456 !important;
+}
+
+.waybill-print-studio label,
+[data-page="waybill-print-studio"] label {
+  color: #9fc4df !important;
+  font-weight: 800 !important;
+}
+
+.waybill-print-studio button:not(:disabled),
+[data-page="waybill-print-studio"] button:not(:disabled) {
+  color: #061524;
+  font-weight: 900;
+}
+
+/* ==========================================================
+   BRITIUM ENTERPRISE GLOBAL CONTRAST FIX
+========================================================== */
+
+.be-card,
+.card,
+.bg-white,
+.bg-slate-50,
+.bg-gray-50 {
+  color: #061524 !important;
+}
+
+.be-card h1,
+.be-card h2,
+.be-card h3,
+.be-card p,
+.be-card span,
+.be-card label {
+  color: inherit;
+}
+
+/* Dark enterprise panels */
+.bg-\[\#0b2236\],
+.bg-\[\#061524\],
+.bg-\[\#071a2b\] {
+  color: #eef8ff !important;
+}
+
+/* Buttons */
+button {
+  transition:
+    background .2s ease,
+    color .2s ease,
+    border .2s ease,
+    transform .15s ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+.btn-primary {
+  background:#f6b84b !important;
+  color:#061524 !important;
+  border:1px solid #f6b84b !important;
+}
+
+.btn-secondary {
+  background:#123456 !important;
+  color:#eef8ff !important;
+  border:1px solid #254b73 !important;
+}
+
+.btn-danger {
+  background:#dc2626 !important;
+  color:white !important;
+}
+
+.btn-success {
+  background:#059669 !important;
+  color:white !important;
+}
+
+/* Tables */
+table th {
+  background:#f6b84b !important;
+  color:#061524 !important;
+}
+
+table td {
+  color:#eef8ff;
+}
+
+/* White preview / print areas */
+.print-page,
+.invoice-paper,
+.manifest-page {
+  background:white !important;
+  color:black !important;
+}
+
+.print-page *,
+.invoice-paper *,
+.manifest-page * {
+  color:black !important;
+}
+
+/* ==========================================================================
+   GLOBAL HIGH-CONTRAST BUTTON SYSTEM (PHASE 6 & BEYOND)
+========================================================================== */
+@layer utilities {
+  button:not([class*="w-8"]):not([class*="w-9"]):not([class*="h-8"]):not([class*="h-9"]):not([class*="p-1"]):not([class*="p-2"]) {
+    @apply transition-all duration-300 shadow-md active:scale-95;
+  }
+
+  button[class*="bg-[#f6b84b]"], button[class*="bg-yellow"], button[class*="bg-amber"] {
+    @apply !bg-[#f6b84b] !text-[#061524] !border-[#061524];
+  }
+  button[class*="bg-[#f6b84b]"]:hover, button[class*="bg-yellow"]:hover, button[class*="bg-amber"]:hover {
+    @apply !bg-[#ffdb99] !text-[#000000] !border-[#000000] !shadow-[0_0_25px_rgba(246,184,75,0.7)] !scale-[1.02];
+  }
+
+  button[class*="bg-[#1a3a5c]"], button[class*="bg-[#123456]"], button[class*="bg-[#0b2236]"] {
+    @apply !bg-[#0b2236] !text-[#4ea8de] !border-[#4ea8de];
+  }
+  button[class*="bg-[#1a3a5c]"]:hover, button[class*="bg-[#123456]"]:hover, button[class*="bg-[#0b2236]"]:hover {
+    @apply !bg-[#4ea8de] !text-[#061524] !border-[#f6b84b] !shadow-[0_0_25px_rgba(78,168,222,0.6)] !scale-[1.02];
+  }
+
+  button[class*="bg-[#22c55e]"], button[class*="bg-emerald"] {
+    @apply !bg-[#22c55e] !text-[#ffffff] !border-[#ffffff];
+  }
+  button[class*="bg-[#22c55e]"]:hover, button[class*="bg-emerald"]:hover {
+    @apply !bg-[#4ade80] !text-[#061524] !border-[#061524] !shadow-[0_0_25px_rgba(34,197,94,0.6)] !scale-[1.02];
+  }
+
+  button[class*="bg-rose"], button[class*="bg-[#e11d48]"], button[class*="bg-[#f43f5e]"] {
+    @apply !bg-[#e11d48] !text-[#ffffff] !border-[#ffffff];
+  }
+  button[class*="bg-rose"]:hover, button[class*="bg-[#e11d48]"]:hover, button[class*="bg-[#f43f5e]"]:hover {
+    @apply !bg-[#fb7185] !text-[#061524] !border-[#061524] !shadow-[0_0_25px_rgba(225,29,72,0.6)] !scale-[1.02];
+  }
+
+  button[class*="bg-white"] {
+    @apply !bg-[#ffffff] !text-[#061524] !border-[#1a3a5c];
+  }
+  button[class*="bg-white"]:hover {
+    @apply !bg-[#f6b84b] !text-[#061524] !border-[#061524] !shadow-[0_0_25px_rgba(246,184,75,0.6)] !scale-[1.02];
+  }
+
+  button:disabled {
+    @apply !opacity-50 !cursor-not-allowed !scale-100 !shadow-none !border-gray-600 !text-gray-400 !bg-gray-800;
+  }
+  button:disabled:hover {
+    @apply !scale-100 !shadow-none !border-gray-600 !text-gray-400 !bg-gray-800;
+  }
+}
+
+/* =====================================================
+   BRITIUM PICKUP FORM FINAL CONTRAST THEME
+===================================================== */
+label {
+    color:#8fd3ff !important;
+    font-weight:600 !important;
+}
+
+input,
+select,
+textarea {
+    background:#071b2d !important;
+    color:#ffffff !important;
+    border: 1px solid #28577d !important;
+    border-radius:12px !important;
+    font-weight:500 !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    border-color:#f6b84b !important;
+    box-shadow: 0 0 0 2px rgba(246,184,75,.25) !important;
+}
+
+input::placeholder,
+textarea::placeholder {
+    color:#8aa8bf !important;
+}
+
+select option {
+    background:#071b2d !important;
+    color:white !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.5);
+}
+
+input[readonly],
+textarea[readonly] {
+    background:#0b2236 !important;
+    color:#f6b84b !important;
+    font-weight:600 !important;
+}
+
+textarea {
+    min-height:120px;
+    line-height:1.6;
+}
+
+.rounded-xl,
+.rounded-2xl {
+    border-color:#1a3a5c;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  height: 100%;
+  overflow: auto !important;
+}
+
+body {
+  overflow-y: auto !important;
+  scrollbar-gutter: stable both-edges;
+}
+
+main,
+.britium-page,
+.enterprise-page,
+[data-page],
+[role="main"] {
+  max-height: none !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: stable both-edges;
+}
+
+aside,
+nav,
+.app-sidebar,
+.sidebar,
+[class*="Sidebar"],
+[class*="AppShell"] aside {
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  scrollbar-gutter: stable;
+}
+
+* {
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(78, 168, 222, 0.55);
+  border-radius: 999px;
+  border: 3px solid rgba(6, 21, 36, 0.95);
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(6, 21, 36, 0.95);
+}
+
+.login-role-selector,
+.workspace-role-selector,
+[data-role-selector],
+[class*="role-grid"],
+[class*="RoleGrid"] {
+  display: none !important;
+}
+
+#root > div,
+#root main,
+#root section,
+[class*="shell"],
+[class*="Shell"],
+[class*="layout"],
+[class*="Layout"],
+[class*="content"],
+[class*="Content"],
+[class*="main"],
+[class*="Main"] {
+  scrollbar-gutter: stable both-edges;
+}
+
+#root {
+  overflow: auto !important;
+}
+
+body,
+html {
+  overflow: auto !important;
+}
+
+main {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow: visible !important;
+}
+
+aside {
+  max-height: 100vh !important;
+  overflow-y: scroll !important;
+}
+
+.app-main,
+.app-content,
+.main-content,
+.portal-content,
+[class*="AppShell"] main,
+[class*="AppShell"] section {
+  max-height: calc(100vh - 0px) !important;
+  overflow-y: scroll !important;
+  overflow-x: auto !important;
+}
+
+#root main {
+  overflow-x: auto !important;
+}
+
+#root main > div {
+  min-width: 0 !important;
+}
+
+body:has([href="#/data-entry"]),
+html:has([href="#/data-entry"]) {
+  overflow: auto !important;
+}
+
+main:has([data-entry-final-layout]) {
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+[data-remove-old-proof-panel="true"] {
+  display: none !important;
+}
+
+[data-entry-final-layout="true"] {
+  width: 100% !important;
+  max-width: none !important;
+  overflow-x: auto !important;
+  overflow-y: auto !important;
+}
+
+[data-entry-final-layout="true"] > div,
+[data-entry-final-layout="true"] .grid {
+  width: 100% !important;
+  max-width: none !important;
+}
+
+[data-entry-final-layout="true"] table {
+  min-width: 1200px;
+}
+
+[data-entry-final-layout="true"] .grid {
+  width: 100% !important;
+  max-width: none !important;
+  overflow-x: auto !important;
+}
+
+[data-entry-final-layout="true"] table,
+[data-entry-final-layout="true"] form {
+  min-width: 1180px !important;
+}
+
+table {
+  width: 100%;
+}
+
+.table-wrap,
+.table-container,
+[class*="table"],
+[class*="Table"],
+[class*="grid"],
+[class*="Grid"] {
+  min-width: 0;
+}
+
+form,
+fieldset {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+@media (max-width: 1280px) {
+  main,
+  [role="main"],
+  .app-content,
+  .portal-content {
+    padding-left: 12px !important;
+    padding-right: 12px !important;
+  }
+
+  table {
+    min-width: 980px;
+  }
+}
+
+@media (max-width: 1024px) {
+  main,
+  [role="main"] {
+    overflow-x: auto !important;
+  }
+
+  section,
+  article {
+    max-width: 100%;
+  }
+
+  table {
+    min-width: 900px;
+  }
+}
+
+@media (max-width: 768px) {
+  body {
+    overflow-x: auto !important;
+  }
+
+  main,
+  [role="main"],
+  .app-content,
+  .portal-content {
+    min-width: 760px;
+    overflow-x: auto !important;
+    overflow-y: auto !important;
+  }
+
+  aside,
+  nav,
+  .sidebar,
+  .app-sidebar,
+  [class*="Sidebar"] {
+    max-height: 100vh !important;
+    overflow-y: scroll !important;
+  }
+
+  table {
+    min-width: 850px;
+  }
+}
+
+[class*="badge"],
+[class*="Badge"] {
+  max-width: 100%;
+}
+
+.britium-go-live-badge,
+.environment-badge,
+[class*="EnvironmentBadge"] {
+  pointer-events: none;
+}
+
+@media (max-height: 800px) {
+  aside,
+  nav,
+  .sidebar,
+  .app-sidebar,
+  [class*="Sidebar"] {
+    max-height: 100vh !important;
+    overflow-y: scroll !important;
+  }
+
+  main,
+  [role="main"] {
+    overflow-y: auto !important;
+  }
+}
+
+.waybill-print-studio,
+.waybill-studio,
+.waybill-preview,
+.print-preview {
+  height: calc(100vh - 112px);
+  overflow: auto;
+  padding: 12px 18px 28px;
+}
+
+.waybill-grid,
+.print-grid,
+.waybill-sheet {
+  width: min(100%, 920px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
+}
+
+.waybill-card,
+.print-card,
+.delivery-waybill,
+.be-waybill-card {
+  background: #ffffff;
+  color: #000000;
+  width: 100%;
+  min-height: 188px;
+  max-height: 188px;
+  box-sizing: border-box;
+  padding: 9px 10px;
+  overflow: hidden;
+  page-break-inside: avoid;
+  break-inside: avoid;
+  font-size: 12px;
+  line-height: 1.22;
+}
+
+.waybill-card *,
+.print-card *,
+.delivery-waybill *,
+.be-waybill-card * {
+  box-sizing: border-box;
+}
+
+.waybill-card canvas,
+.print-card canvas,
+.delivery-waybill canvas,
+.be-waybill-card canvas,
+.waybill-card svg,
+.print-card svg,
+.delivery-waybill svg,
+.be-waybill-card svg {
+  max-width: 54px !important;
+  max-height: 54px !important;
+}
+
+@media (max-width: 900px) {
+  .waybill-grid,
+  .print-grid,
+  .waybill-sheet {
+    grid-template-columns: 1fr;
+    width: min(100%, 460px);
+  }
+}
+
+@media print {
+  .waybill-print-studio,
+  .waybill-studio,
+  .waybill-preview,
+  .print-preview {
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+  }
+
+  .waybill-grid,
+  .print-grid,
+  .waybill-sheet {
+    width: 190mm !important;
+    grid-template-columns: repeat(2, 95mm) !important;
+    gap: 2mm !important;
+  }
+
+  .waybill-card,
+  .print-card,
+  .delivery-waybill,
+  .be-waybill-card {
+    width: 95mm !important;
+    min-height: 48mm !important;
+    max-height: 48mm !important;
+    padding: 2mm !important;
+    font-size: 9.5pt !important;
+    line-height: 1.16 !important;
+    border: 1px solid #000 !important;
+  }
+}
+
+:root {
+  --be-control-bg: #ffffff;
+  --be-control-text: #061524;
+  --be-control-placeholder: #64748b;
+  --be-control-border: #6b8aa3;
+  --be-control-focus: #f6b84b;
+  --be-control-disabled-bg: #e2e8f0;
+  --be-control-disabled-text: #334155;
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]):not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="image"]),
+select,
+textarea,
+[contenteditable="true"],
+[role="combobox"] {
+  color-scheme: light !important;
+  background-color: var(--be-control-bg) !important;
+  color: var(--be-control-text) !important;
+  -webkit-text-fill-color: var(--be-control-text) !important;
+  caret-color: var(--be-control-text) !important;
+  border-color: var(--be-control-border) !important;
+  opacity: 1 !important;
+}
+
+input::placeholder,
+textarea::placeholder,
+[contenteditable="true"]:empty::before {
+  color: var(--be-control-placeholder) !important;
+  -webkit-text-fill-color: var(--be-control-placeholder) !important;
+  opacity: 1 !important;
+}
+
+input:read-only,
+textarea:read-only,
+input:disabled,
+select:disabled,
+textarea:disabled,
+[role="combobox"][aria-disabled="true"],
+[aria-readonly="true"][role="combobox"] {
+  background-color: var(--be-control-disabled-bg) !important;
+  color: var(--be-control-disabled-text) !important;
+  -webkit-text-fill-color: var(--be-control-disabled-text) !important;
+  border-color: #94a3b8 !important;
+  opacity: 1 !important;
+  cursor: not-allowed;
+}
+
+select option,
+select optgroup,
+datalist option {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
+
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+textarea:-webkit-autofill:hover,
+textarea:-webkit-autofill:focus,
+select:-webkit-autofill,
+select:-webkit-autofill:hover,
+select:-webkit-autofill:focus {
+  -webkit-text-fill-color: #061524 !important;
+  caret-color: #061524 !important;
+  box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  border-color: var(--be-control-border) !important;
+  transition: background-color 99999s ease-out 0s;
+}
+
+input[type="date"],
+input[type="datetime-local"],
+input[type="month"],
+input[type="time"],
+input[type="week"] {
+  color-scheme: light !important;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="week"]::-webkit-calendar-picker-indicator {
+  filter: none !important;
+  opacity: 0.85 !important;
+  cursor: pointer;
+}
+
+input[type="file"] {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
+
+input[type="file"]::file-selector-button {
+  background: #123456 !important;
+  color: #ffffff !important;
+  border: 1px solid #28577d !important;
+  font-weight: 800;
+}
+
+input:focus,
+select:focus,
+textarea:focus,
+[contenteditable="true"]:focus,
+[role="combobox"]:focus,
+[role="combobox"][data-state="open"] {
+  outline: none !important;
+  border-color: var(--be-control-focus) !important;
+  box-shadow: 0 0 0 3px rgba(246, 184, 75, 0.22) !important;
+}
+
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16) !important;
+}
+
+[role="listbox"],
+[role="listbox"] [role="option"],
+[data-radix-select-viewport],
+[data-radix-popper-content-wrapper] [role="option"] {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
+
+[role="listbox"] [role="option"][data-highlighted],
+[data-radix-popper-content-wrapper] [role="option"][data-highlighted] {
+  background-color: #e2e8f0 !important;
+  color: #061524 !important;
+}
+
+html body {
+  color: #c8dff0;
+}
+
+html body form label,
+html body fieldset legend,
+html body [data-form] label,
+html body .form-label {
+  color: #f6b84b !important;
+  font-weight: 800 !important;
+}
+
+html body input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html body textarea,
+html body select,
+html body [role="combobox"],
+html body [contenteditable="true"] {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+  caret-color: #061524 !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+  text-shadow: none !important;
+  color-scheme: light !important;
+}
+
+html body input::placeholder,
+html body textarea::placeholder {
+  color: #475569 !important;
+  -webkit-text-fill-color: #475569 !important;
+  font-weight: 700 !important;
+  opacity: 1 !important;
+}
+
+html body input[readonly],
+html body textarea[readonly],
+html body select[readonly],
+html body input:disabled,
+html body textarea:disabled,
+html body select:disabled,
+html body [aria-disabled="true"] {
+  background-color: #e2e8f0 !important;
+  color: #1e293b !important;
+  -webkit-text-fill-color: #1e293b !important;
+  font-weight: 800 !important;
+  opacity: 1 !important;
+}
+
+html body select option,
+html body select optgroup,
+html body datalist option {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  font-weight: 700 !important;
+}
+
+html body input:focus,
+html body textarea:focus,
+html body select:focus,
+html body [role="combobox"]:focus {
+  border-color: #061524 !important;
+  outline: 3px solid rgba(246, 184, 75, 0.45) !important;
+  outline-offset: 1px !important;
+}
+/* Compact enterprise layout for scaled Windows/laptop displays */
+@media screen and (max-width: 1600px) {
+  html {
+    font-size: 13px;
+  }
+
+  [data-be-sidebar="true"] {
+    width: 208px !important;
+    min-width: 208px !important;
+    max-width: 208px !important;
+  }
+
+  [data-be-content="true"] {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding: 16px !important;
+  }
+
+  [data-be-page="cs-portal"] {
+    padding: 12px !important;
+  }
+
+  [data-be-page="cs-portal"] table {
+    width: 100% !important;
+    min-width: 1180px !important;
+    font-size: 11px !important;
+  }
+
+  [data-be-page="cs-portal"] th,
+  [data-be-page="cs-portal"] td {
+    padding: 7px !important;
+    line-height: 1.3 !important;
+  }
+
+  [data-be-page="cs-portal"] textarea {
+    width: 210px !important;
+    min-width: 210px !important;
+    font-size: 11px !important;
+  }
+
+  [data-be-page="cs-portal"] select,
+  [data-be-page="cs-portal"] button,
+  [data-be-page="cs-portal"] input {
+    font-size: 11px;
+  }
+}

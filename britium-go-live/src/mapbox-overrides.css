@@ -1,0 +1,11 @@
+@import url('https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css');
+
+.marker-rider {
+  background-color: #2563eb;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  transition: all 0.3s ease;
+}

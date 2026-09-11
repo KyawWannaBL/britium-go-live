@@ -1,0 +1,25 @@
+{
+  "build": "WAYPLAN_ROUTE_OPTIMIZATION_TRACKING_V62_2026_08_02",
+  "target": "Britium production enterprise portal",
+  "route": "/wayplan-command",
+  "files": [
+    "src/lib/mapboxHeadOfficeRoutingV45.ts",
+    "src/components/wayplan/MapboxWayplanPlannerV45.tsx",
+    "src/components/wayplan/WayplanRiderTrackingMapV62.tsx",
+    "src/components/wayplan/RiderMapboxRouteV45.tsx",
+    "src/components/wayplan/RiderRouteExecutionV46.tsx",
+    "src/hooks/useRiderRouteLiveTrackingV62.ts",
+    "src/pages/WayplanCommandCenterPage.tsx"
+  ],
+  "backend_mutation_included": false,
+  "production_deployment_performed": false,
+  "installed_at": "2026-08-02T19:14:42.407Z",
+  "root": "E:\\D27072026\\britium-go-live\\britium-go-live\\britium-current-ui-fixed",
+  "backed_up": [
+    "src/lib/mapboxHeadOfficeRoutingV45.ts",
+    "src/components/wayplan/MapboxWayplanPlannerV45.tsx",
+    "src/components/wayplan/RiderMapboxRouteV45.tsx",
+    "src/components/wayplan/RiderRouteExecutionV46.tsx",
+    "src/pages/WayplanCommandCenterPage.tsx"
+  ]
+}

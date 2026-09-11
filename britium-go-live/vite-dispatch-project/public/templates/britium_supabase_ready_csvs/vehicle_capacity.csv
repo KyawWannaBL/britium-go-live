@@ -1,0 +1,6 @@
+vehicle_code,vehicle_name,vehicle_type,safe_capacity_kg,safe_capacity_cbm,notes
+KARRY_YOKI_STANDARD_BED,Karry / Yoki Double Cab - Standard Bed,Mini pickup / double cab,780,1.1,Use for small heavy loads; low CBM but good payload
+SUBARU_SAMBAR_VAN,Subaru Sambar Delivery Van,Kei delivery van,300,3,Good for light parcels and city delivery
+SUBARU_SAMBAR_MINIBOX,Subaru Sambar Mini Box Truck,Kei mini box truck,300,3.5,Box-body height varies; keep payload conservative
+SOKO_SOKON_MINIBOX,Soko / Sokon Mini Box Truck,Mini box truck,800,6,Good for mid-size parcel loads
+MAZDA_BONGO_2007,2007 Mazda Bongo Delivery Van,Delivery van,700,4.5,Safe quotation value for Bongo delivery van

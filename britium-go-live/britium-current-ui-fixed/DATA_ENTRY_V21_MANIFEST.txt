@@ -1,0 +1,7 @@
+Build: DATA_ENTRY_V21_BUTTONS_PHOTO_REVIEW_2026-07-29
+Source: DataEntryPage.V21.tsx
+Bytes: 103410
+Lines: 2068
+SHA256: b8e779ca704bab3e303a010b579acc4a13d5daffc89eaef5602556f392ad3c51
+Pickup RPC: be_data_entry_pickup_list_web_v16
+Key fixes: active report, active photo search/retry, manual photo review, active waybill validation, register-form scroll

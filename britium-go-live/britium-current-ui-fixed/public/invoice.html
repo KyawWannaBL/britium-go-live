@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Britium Express - Settlement Invoice</title>
+    <style>
+        /* ----------------------------------------------------
+           UI & NON-PRINT STYLES
+           ---------------------------------------------------- */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            color: #333;
+        }
+        .controls {
+            background: #fff;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-width: 800px;
+            margin: 0 auto 30px auto;
+        }
+        .controls h2 { margin-top: 0; font-size: 22px; color: #003366; border-bottom: 2px solid #eee; padding-bottom: 10px;}
+        .form-row { display: flex; gap: 20px; margin-bottom: 15px; }
+        .form-group { flex: 1; }
+        label { display: block; font-weight: bold; margin-bottom: 8px; font-size: 14px; color: #555;}
+        select {
+            width: 100%; padding: 10px; font-size: 14px;
+            border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;
+        }
+        button {
+            background: #003366; color: white; border: none;
+            padding: 12px 24px; font-size: 16px; border-radius: 4px;
+            cursor: pointer; width: 100%; font-weight: bold; transition: 0.3s;
+        }
+        button:hover { background: #002244; }
+
+        /* ----------------------------------------------------
+           INVOICE TEMPLATE STYLES (Screen & Print)
+           ---------------------------------------------------- */
+        #invoice-area {
+            background: #fff;
+            max-width: 210mm; /* A4 Width */
+            min-height: 297mm; /* A4 Height */
+            margin: 0 auto;
+            padding: 40px;
+            box-sizing: border-box;
+            box-shadow: 0 0 10px rgba(0,0,0,0.15);
+            display: none; /* Hidden until generated */
+        }
+
+        .inv-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px solid #003366;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .inv-logo-box {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        .inv-logo-box img {
+            width: 80px;
+            height: 80px;
+            object-fit: contain;
+        }
+        .inv-company-details h1 { margin: 0; font-size: 24px; color: #003366; }
+        .inv-company-details p { margin: 4px 0 0 0; font-size: 14px; color: #555; }
+        
+        .inv-meta { text-align: right; }
+        .inv-meta h2 { margin: 0 0 10px 0; font-size: 28px; color: #333; letter-spacing: 2px;}
+        .inv-meta p { margin: 4px 0; font-size: 14px; font-weight: bold;}
+
+        .inv-parties {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 30px;
+        }
+        .party-box { width: 45%; }
+        .party-box h3 { font-size: 16px; color: #003366; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px;}
+        .party-box p { margin: 5px 0; font-size: 14px; line-height: 1.5;}
+
+        /* Data Table */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 30px;
+            font-size: 13px;
+        }
+        th {
+            background-color: #003366; color: white;
+            text-align: left; padding: 12px; font-weight: bold;
+        }
+        td { padding: 10px 12px; border-bottom: 1px solid #ddd; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        
+        tr:nth-child(even) { background-color: #f9f9f9; }
+
+        /* Financial Summary */
+        .inv-summary {
+            width: 50%;
+            float: right;
+            margin-bottom: 50px;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .summary-row.total {
+            font-weight: bold;
+            font-size: 18px;
+            color: #003366;
+            border-bottom: 2px solid #003366;
+            border-top: 2px solid #003366;
+            padding: 12px 0;
+            background: #f4f8fc;
+        }
+
+        .clear { clear: both; }
+
+        /* Footer */
+        .inv-footer {
+            margin-top: 50px;
+            text-align: center;
+            font-size: 12px;
+            color: #777;
+            border-top: 1px solid #ddd;
+            padding-top: 20px;
+        }
+        .signatures {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 60px;
+            margin-bottom: 20px;
+        }
+        .sig-line {
+            width: 250px;
+            border-top: 1px solid #000;
+            text-align: center;
+            padding-top: 8px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        /* ----------------------------------------------------
+           PRINT RULES
+           ---------------------------------------------------- */
+        @media print {
+            .no-print { display: none !important; }
+            body { margin: 0; padding: 0; background: white; }
+            #invoice-area { box-shadow: none; padding: 0; display: block;}
+            @page { size: A4 portrait; margin: 15mm; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls no-print">
+        <h2>Generate Settlement Invoice</h2>
+        
+        <div class="form-row">
+            <div class="form-group">
+                <label for="merchantSelect">Select Merchant</label>
+                <select id="merchantSelect" onchange="populatePickups()">
+                    <option value="">-- Choose Merchant --</option>
+                    <option value="M001">SuperMart Yangon (M001)</option>
+                    <option value="M002">TechHub MM (M002)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="pickupSelect">Select PickupWay ID</label>
+                <select id="pickupSelect" disabled>
+                    <option value="">-- Choose Pickup ID --</option>
+                </select>
+            </div>
+        </div>
+
+        <button onclick="generateInvoice()">Calculate & Generate Invoice</button>
+    </div>
+
+    <!-- The actual invoice canvas -->
+    <div id="invoice-area">
+        <!-- Rendered via JS -->
+    </div>
+
+    <script>
+        // ------------------------------------------------------------------
+        // MOCK DATABASE: Simulating your backend system mapping Merchants,
+        // Pickup IDs, and the specific Waybills tied to that pickup.
+        // ------------------------------------------------------------------
+        const database = {
+            "M001": {
+                info: {
+                    name: "SuperMart Yangon",
+                    phone: "09 123 456 789",
+                    address: "No. 45, Pyay Road, Kamayut Township, Yangon"
+                },
+                pickups: {
+                    "PW-2026-0601": [
+                        { track: "YGN119874YGN", recipient: "Ko Aung", status: "Delivered", cod: 45000, fee: 2500 },
+                        { track: "YGN119875YGN", recipient: "Ma Su", status: "Delivered", cod: 15000, fee: 2000 },
+                        { track: "YGN119876YGN", recipient: "U Zaw", status: "Returned", cod: 0, fee: 1500 }
+                    ],
+                    "PW-2026-0605": [
+                        { track: "YGN120001YGN", recipient: "Daw Hla", status: "Delivered", cod: 120000, fee: 3500 },
+                        { track: "YGN120002YGN", recipient: "Ko Tun", status: "Delivered", cod: 30000, fee: 2500 }
+                    ]
+                }
+            },
+            "M002": {
+                info: {
+                    name: "TechHub MM",
+                    phone: "09 987 654 321",
+                    address: "Hleden Centre, Yangon"
+                },
+                pickups: {
+                    "PW-2026-0610": [
+                        { track: "THB889901", recipient: "Mg Mg", status: "Delivered", cod: 450000, fee: 5000 }
+                    ]
+                }
+            }
+        };
+
+        // Format numbers to MMK currency style (e.g., 45,000)
+        function formatMMK(number) {
+            return new Intl.NumberFormat('en-US').format(number);
+        }
+
+        // Get current date string
+        function getTodayDate() {
+            const today = new Date();
+            return today.toLocaleDateString('en-GB'); // DD/MM/YYYY
+        }
+
+        // Handle dropdown logic
+        function populatePickups() {
+            const mId = document.getElementById('merchantSelect').value;
+            const pSelect = document.getElementById('pickupSelect');
+            
+            pSelect.innerHTML = '<option value="">-- Choose Pickup ID --</option>';
+            
+            if (mId && database[mId]) {
+                pSelect.disabled = false;
+                const pickups = Object.keys(database[mId].pickups);
+                pickups.forEach(pid => {
+                    let opt = document.createElement('option');
+                    opt.value = pid;
+                    opt.innerHTML = pid;
+                    pSelect.appendChild(opt);
+                });
+            } else {
+                pSelect.disabled = true;
+            }
+        }
+
+        // Core processing and rendering
+        function generateInvoice() {
+            const mId = document.getElementById('merchantSelect').value;
+            const pId = document.getElementById('pickupSelect').value;
+            
+            if (!mId || !pId) {
+                alert("Please select both a Merchant and a PickupWay ID.");
+                return;
+            }
+
+            const merchant = database[mId];
+            const waybills = merchant.pickups[pId];
+            const invoiceNo = `INV-${Date.now().toString().slice(-6)}`;
+
+            let tableRows = '';
+            let totalCOD = 0;
+            let totalFees = 0;
+
+            // Process financial logic and build rows
+            waybills.forEach((wb, index) => {
+                totalCOD += wb.cod;
+                totalFees += wb.fee;
+                let netItem = wb.cod - wb.fee;
+
+                tableRows += `
+                    <tr>
+                        <td class="text-center">${index + 1}</td>
+                        <td><strong>${wb.track}</strong></td>
+                        <td>${wb.recipient}</td>
+                        <td class="text-center">${wb.status}</td>
+                        <td class="text-right">${formatMMK(wb.cod)}</td>
+                        <td class="text-right">${formatMMK(wb.fee)}</td>
+                        <td class="text-right"><strong>${formatMMK(netItem)}</strong></td>
+                    </tr>
+                `;
+            });
+
+            let netSettlement = totalCOD - totalFees;
+
+            // Render HTML Template
+            const invoiceHTML = `
+                <div class="inv-header">
+                    <div class="inv-logo-box">
+                        <img src="logo.jpg" alt="Britium Logo">
+                        <div class="inv-company-details">
+                            <h1>BRITIUM EXPRESS</h1>
+                            <p>Delivery Services & Logistics</p>
+                            <p>Hotline: 09XXXXXXX | Email: accounts@britiumexpress.com</p>
+                        </div>
+                    </div>
+                    <div class="inv-meta">
+                        <h2>SETTLEMENT INVOICE</h2>
+                        <p>Invoice No: ${invoiceNo}</p>
+                        <p>Date: ${getTodayDate()}</p>
+                    </div>
+                </div>
+
+                <div class="inv-parties">
+                    <div class="party-box">
+                        <h3>Billed To (Merchant)</h3>
+                        <p><strong>${merchant.info.name}</strong></p>
+                        <p>ID: ${mId}</p>
+                        <p>Phone: ${merchant.info.phone}</p>
+                        <p>Address: ${merchant.info.address}</p>
+                    </div>
+                    <div class="party-box">
+                        <h3>Reference Details</h3>
+                        <p><strong>PickupWay ID:</strong> ${pId}</p>
+                        <p><strong>Total Parcels:</strong> ${waybills.length}</p>
+                        <p><strong>Settlement Type:</strong> Auto-deduct Delivery Fees from COD</p>
+                    </div>
+                </div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="text-center" width="5%">#</th>
+                            <th width="20%">Tracking No.</th>
+                            <th width="15%">Recipient</th>
+                            <th class="text-center" width="15%">Status</th>
+                            <th class="text-right" width="15%">COD Collected</th>
+                            <th class="text-right" width="15%">Delivery Fee</th>
+                            <th class="text-right" width="15%">Net Amount</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tableRows}
+                    </tbody>
+                </table>
+
+                <div class="inv-summary">
+                    <div class="summary-row">
+                        <span>Total COD Collected:</span>
+                        <span>${formatMMK(totalCOD)} MMK</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Total Delivery Fees:</span>
+                        <span>- ${formatMMK(totalFees)} MMK</span>
+                    </div>
+                    <div class="summary-row total">
+                        <span>NET SETTLEMENT DUE:</span>
+                        <span>${formatMMK(netSettlement)} MMK</span>
+                    </div>
+                </div>
+                
+                <div class="clear"></div>
+
+                <div class="signatures">
+                    <div class="sig-line">Prepared By (Britium Finance)</div>
+                    <div class="sig-line">Merchant Acknowledgement</div>
+                </div>
+
+                <div class="inv-footer">
+                    <p>Thank you for partnering with Britium Express. If you have any discrepancies regarding this settlement report, please contact the Hotline within 3 working days.</p>
+                </div>
+            `;
+
+            const printArea = document.getElementById('invoice-area');
+            printArea.style.display = 'block';
+            printArea.innerHTML = invoiceHTML;
+
+            // Trigger print dialog after brief rendering pause
+            setTimeout(() => {
+                window.print();
+            }, 300);
+        }
+    </script>
+</body>
+</html>

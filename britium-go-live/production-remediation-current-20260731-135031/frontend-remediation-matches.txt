@@ -1,0 +1,54 @@
+src/App.tsx.bak-remove-way-overlap:211:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.tsx.bak-remove-way-overlap:440:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.bak-remove-way-overlap:446:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.bak.v33.20260627150209:311:      { name: "Mobile Sandbox", path: "/mobile-sandbox", icon: Smartphone },
+src/App.tsx.bak.v33.20260627150209:637:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.bak.v33.20260627150209:643:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-branch-safe-route:198:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.tsx.before-branch-safe-route:423:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-branch-safe-route:429:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-runtime-repair-20260721-152248:198:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.tsx.before-runtime-repair-20260721-152248:423:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-runtime-repair-20260721-152248:429:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-runtime-repair-v34.20260627152037:313:      { name: "Mobile Sandbox", path: "/mobile-sandbox", icon: Smartphone },
+src/App.tsx.before-runtime-repair-v34.20260627152037:639:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-runtime-repair-v34.20260627152037:645:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-supervisor-alias-fix:198:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.tsx.before-supervisor-alias-fix:422:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-supervisor-alias-fix:428:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/components/Sidebar.tsx.before-merchant-settlement-link:143:      { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/components/Sidebar.tsx.bak-20260731-133318:143:      { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/pages/AdminHRPage.tsx:21:const FALLBACK_EMPLOYEES: EmployeeRow[] = [
+src/pages/AdminHRPage.tsx:220:      setEmployees(FALLBACK_EMPLOYEES);
+src/pages/App.dispatch_command_cleanup.tsx.before-live-wireup-20260713-162329:200:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/pages/App.dispatch_command_cleanup.tsx.before-live-wireup-20260713-162329:430:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/pages/App.dispatch_command_cleanup.tsx.before-live-wireup-20260713-162329:436:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx.before-waybill-screen-fix:201:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/pages/App.unified_ops_routes.tsx.before-waybill-screen-fix:431:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx.before-waybill-screen-fix:437:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx.bak-20260731-133318:201:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/pages/App.unified_ops_routes.tsx.bak-20260731-133318:431:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx.bak-20260731-133318:437:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx:431:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/pages/App.unified_ops_routes.tsx:437:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/pages/BritiumGoLiveAllInOneConsoleV25.tsx.bak-20260731-133318:159:          <p className="text-xs font-black uppercase tracking-[0.35em] text-amber-400">BRITIUM GO-LIVE UAT</p>
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-33-18-456Z:232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-33-18-456Z:238:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-38-20-516Z:232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-38-20-516Z:238:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-40-19-302Z:232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-parcel-financial-v2-2-route-2026-07-30T23-40-19-302Z:238:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx.before-sidebar-path-fix:232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx.before-sidebar-path-fix:238:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.tsx:232:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.tsx:238:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.dispatch_command_board_cleanup.tsx.bak-20260731-133318:200:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.dispatch_command_board_cleanup.tsx.bak-20260731-133318:430:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.dispatch_command_board_cleanup.tsx.bak-20260731-133318:436:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.dispatch_command_board_cleanup.tsx:430:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.dispatch_command_board_cleanup.tsx:436:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.dispatch_waymanagement_cleanup.tsx.bak-20260731-133318:200:        { name: "Mobile Sandbox", path: "/rider-app", icon: Smartphone },
+src/App.dispatch_waymanagement_cleanup.tsx.bak-20260731-133318:430:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.dispatch_waymanagement_cleanup.tsx.bak-20260731-133318:436:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
+src/App.dispatch_waymanagement_cleanup.tsx:430:            <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
+src/App.dispatch_waymanagement_cleanup.tsx:436:            <Route path="/warehouse-uat" element={<WarehouseUATUploadPage />} />
