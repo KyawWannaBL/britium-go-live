@@ -13,7 +13,6 @@ import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
 import { resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, SAFE_TRANSACTION_ROWS, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
-import { syncWaybillStudioV122 } from "@/lib/britiumCompleteWireupApiV33";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
   providerRoutingMessage,
@@ -1544,6 +1543,9 @@ export default function DataEntryFinancialV2Page() {
 
   function rowSaveObstacle(row:ParcelRow):string {
     if(row.skipped) return "Pending clarification";
+    if(!text(row.recipient_name)) return "Recipient name needs clarification";
+    if(!text(row.recipient_phone)) return "Recipient phone needs clarification";
+    if(!text(row.delivery_address)) return "Delivery address needs clarification";
     if(row.calculationFailed || row.calculation?.validation_status==="ERROR") return row.message||"Financial calculation needs correction. Recalculate this parcel.";
     if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged) return "Photo approval required";
     if(row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10)) return "OS evidence source or reason is incomplete";
@@ -1986,15 +1988,16 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function createAndGenerateWaybill(){
-    if(!selectedPickupId) return;
+    if(!selectedPickupId || waybillBusy || bulkSaving || bulkCalculating) return;
 
     setWaybillBusy(true);
     setWaybillMessage("");
     setWaybillMessageKind("SUCCESS");
 
     try{
-      const persisted=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
-      if(persisted.held_count) throw new Error(`Ready rows saved. ${persisted.held_count} pending draft(s) need clarification before final waybill generation.`);
+      await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
+      const readySequences=rows.filter(row=>!rowSaveObstacle(row)).map(row=>row.parcel_sequence);
+      if(!readySequences.length) throw new Error("No completed parcels are ready yet. Pending drafts are preserved.");
 
       const requestId =
         "WAYBILL:" +
@@ -2008,11 +2011,12 @@ export default function DataEntryFinancialV2Page() {
         );
 
       const { data, error } = await (supabase as any).rpc(
-        "be_data_entry_financial_v2_create_waybill",
+        "be_data_entry_financial_v2_create_ready_waybill",
         {
           p_payload: {
             request_id: requestId,
             pickup_id: selectedPickupId,
+            parcel_sequences: readySequences,
             dry_run: false,
           },
         }
@@ -2033,14 +2037,8 @@ export default function DataEntryFinancialV2Page() {
         throw new Error(rpcMessage);
       }
 
-      const sync = await syncWaybillStudioV122({
-        pickupId: selectedPickupId,
-        merchantCode: selectedPickup?.merchant_id,
-        merchantName: selectedPickup?.merchant_name,
-      });
-
-      const expected = rows.length;
-      const printable = Number(sync?.printable_count || 0);
+      const expected = readySequences.length;
+      const printable = Number(data?.printable_count || 0);
       if (printable < expected) {
         throw new Error(
           `Waybill creation was not completed: ${printable} of ${expected} parcel(s) reached Waybill Studio.`
@@ -2060,7 +2058,8 @@ export default function DataEntryFinancialV2Page() {
       } catch {}
       setWaybillMessage(
         `Waybill created, live-synced and verified in Waybill Studio: ${printable} parcel(s) · ` +
-        (data?.waybill_no || selectedPickupId)
+        (data?.waybill_no || selectedPickupId) +
+        ` · ${rows.length-readySequences.length} incomplete parcel(s) remain pending and can be generated later.`
       );
       setWaybillMessageKind("SUCCESS");
       window.setTimeout(()=>{
@@ -2462,7 +2461,7 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
           <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">
@@ -2519,7 +2518,7 @@ export default function DataEntryFinancialV2Page() {
                 ? <Loader2 size={14} className="animate-spin"/>
                 : <Save size={14}/>
               }
-              CREATE & GENERATE WAYBILL
+              GENERATE COMPLETED WAYBILLS
             </button>
             <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
             <DataEntryOsBulkImport
