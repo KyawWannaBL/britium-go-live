@@ -179,14 +179,15 @@ export function resolveDataEntryServiceProvider(
   const cleanTownship = stripServiceProviderDecoration(raw);
   const postal = resolvePostalCode(deliveryAddress, cleanTownship);
   if (/^unknown$/i.test(raw)) return {township:"Unknown",providerCode:"",routeRegion:"UNRESOLVED",deliveryMode:"UNRESOLVED",mapRequired:false,stationRequired:false,reason:"UNRESOLVED",option:null,postal};
-  if (/^(ဂိတ်ချ|H\\.TERMINAL DROP-OFF|highway terminal drop-off)$/i.test(raw)) return {township:"ဂိတ်ချ",providerCode:"H.TERMINAL DROP-OFF",routeRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",mapRequired:false,stationRequired:true,reason:"OUTSIDE_CORE_HIGHWAY_STATION",option:null,postal};
+  if (/^(ဂိတ်ချ|H\.TERMINAL DROP-OFF|highway terminal drop-off)$/i.test(raw)) return {township:"ဂိတ်ချ",providerCode:"H.TERMINAL DROP-OFF",routeRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",mapRequired:false,stationRequired:true,reason:"OUTSIDE_CORE_HIGHWAY_STATION",option:null,postal};
 
-  const candidateKeys = new Set([
-    compactLocationKey(cleanTownship),
-    compactLocationKey(postal.township),
-    compactLocationKey(postal.townshipMm),
-  ].filter(Boolean));
-  const exactMatches = matchingTariffs(cleanTownship, postal, tariffOptions);
+  const inputKey=compactLocationKey(cleanTownship);
+  const directMatches=tariffOptions.filter(option=>[compactLocationKey(option.destination_name),compactLocationKey(option.destination_key)].includes(inputKey)&&Boolean(inputKey));
+  const explicitTownship=directMatches.length>0||[NAYPYITAW_ROYAL_EXCEPTIONS,MANDALAY_DK_SERVICE_AREA,NAYPYITAW_BRANCH_SERVICE_AREA,YANGON_BRITIUM_OUTREACH_SERVICE_AREA].some(set=>set.has(inputKey));
+  const candidateKeys = new Set((explicitTownship
+    ? [inputKey]
+    : [inputKey,compactLocationKey(postal.township),compactLocationKey(postal.townshipMm)]).filter(Boolean));
+  const exactMatches = explicitTownship?directMatches:matchingTariffs(cleanTownship, postal, tariffOptions);
 
   let providerCode: DataEntryProviderCode = "";
   let reason: DataEntryProviderRouting["reason"] = "UNRESOLVED";
@@ -255,7 +256,7 @@ export function resolveDataEntryServiceProvider(
   const option = preferredTariff(exactMatches, providerCode);
   const prefersMyanmar = /[\u1000-\u109f]/.test(raw);
   const township = option?.destination_name
-    || (prefersMyanmar ? postal.townshipMm : postal.township)
+    || (explicitTownship ? cleanTownship : (prefersMyanmar ? postal.townshipMm : postal.township))
     || cleanTownship;
 
   return {

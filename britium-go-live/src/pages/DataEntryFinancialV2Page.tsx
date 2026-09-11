@@ -455,6 +455,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     fallbackUnknownToRoyal:true,
     itemPrice:row.item_price,
   }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
+  useEffect(()=>{if(!open)setProviderFilter(row.service_provider_code||"ALL");},[row.service_provider_code,open]);
   const query = text(row.township).trim().toLowerCase();
   const matches = useMemo(()=>(tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
@@ -482,8 +483,9 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     const option=nextRoute.option as TariffOption|null;
     updateRow(index,nextRoute.providerCode?{
       ...routingPatch(nextRoute,{...row,township}),
+      township,
       message:providerRoutingMessage(nextRoute),
-    }:{township,...routingPatch(nextRoute,{...row,township}),message:providerRoutingMessage(nextRoute)});
+    }:{...routingPatch(nextRoute,{...row,township}),township,message:providerRoutingMessage(nextRoute)});
     setOpen(true);
   };
   return (
@@ -1113,7 +1115,12 @@ export default function DataEntryFinancialV2Page() {
     setRows(current=>{
       const row=current[index];
       if(!row) return current;
-      const next={...patch,message:patch.message??""};
+      const destinationChanged=(patch.township!==undefined&&patch.township!==row.township)
+        ||(patch.delivery_address!==undefined&&patch.delivery_address!==row.delivery_address);
+      const next={...patch,message:patch.message??"",...(destinationChanged?{
+        saved:false,calculation:{},calculationFailed:false,locationCandidate:null,
+        locationStatus:((patch.deliveryMode||row.deliveryMode)==="DOORSTEP_MAP"?"PENDING":"NOT_REQUIRED") as DataEntryLocationResolution
+      }:{})};
       if(Object.entries(next).every(([key,value])=>Object.is((row as any)[key],value))) return current;
       const updated=current.slice();
       updated[index]={...row,...next};
