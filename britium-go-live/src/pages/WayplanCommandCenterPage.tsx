@@ -235,7 +235,8 @@ export default function WayplanCommandCenterPage() {
       return;
     }
     setError("");
-    setSelectedRegion(region.region_code);
+    if (region.region_code === selectedRegion) void loadAll();
+    else setSelectedRegion(region.region_code);
   }
 
   function toggleOne(row: Row) {
@@ -507,7 +508,7 @@ export default function WayplanCommandCenterPage() {
                           <input type="checkbox" checked={Boolean(selected[id])} onChange={() => toggleOne(row)} />
                         </td>
                         <td style={{ padding: 10 }}>
-                          <div style={{ color: C.gold, fontWeight: 900 }}>{id}</div>
+                          <div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no,id)}</div>
                           <div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>
                         </td>
                         <td style={{ padding: 10 }}>
@@ -523,7 +524,7 @@ export default function WayplanCommandCenterPage() {
                   }) : (
                     <tr>
                       <td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>
-                        {selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. Complete Data Entry and Warehouse readiness first." : "This regional Wayplan queue is disabled."}
+                        {selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. In Warehouse, mark received parcels ready for Wayplan, then click Open queue again." : "This regional Wayplan queue is disabled."}
                       </td>
                     </tr>
                   )}

@@ -171,6 +171,21 @@ export default function WarehousePage() {
     }
   };
 
+  const readyPickups = Array.from(new Set(rows.filter((r:any) => r.warehouse_scan_status === "RECEIVED").map((r:any) => r.pickup_id))).filter(Boolean) as string[];
+  const markReady = async (pickupId:string) => {
+    if (loading || scanBusy.current) return;
+    if (!window.confirm("Confirm received parcels in " + pickupId + " are checked and staged for Wayplan. Exceptions stay on hold. This action records your account.")) return;
+    setLoading(true);
+    try {
+      const {data,error}=await supabase.rpc("be_warehouse_mark_scanned_ready_v36", {p_pickup_id:pickupId});
+      if(error) throw error;
+      if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcels ready.");
+      await loadAll();
+      setMessage(data.ready_count + " parcels marked ready. Open Wayplan Command, click Open queue, then select the regional stops and assign the team.");
+    } catch(e:any) {setMessage(e.message || "Readiness confirmation unavailable. Refresh before retrying.");}
+    finally {setLoading(false);}
+  };
+
   const closeDispatchDay = async () => {
     setLoading(true);
     try {
@@ -334,6 +349,14 @@ export default function WarehousePage() {
         ))}
       </div>
 
+      <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
+        <h2 className="font-bold">Prepare received parcels for Wayplan</h2>
+        <p className="mb-3 text-sm text-slate-400">After checking and staging the received parcels, mark the pickup ready. Unreceived parcels and exceptions remain on hold.</p>
+        <div className="flex flex-wrap gap-2">
+          {readyPickups.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2">Mark ready for Wayplan: {id}</button>)}
+          <a href="#/wayplan-command" className="rounded-lg bg-blue-600 px-3 py-2">Open Wayplan Command</a>
+        </div>
+      </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
         {scanChoices && <div role="dialog" aria-label="Choose matching pickup" className="mb-4 rounded border border-amber-500 p-3">
