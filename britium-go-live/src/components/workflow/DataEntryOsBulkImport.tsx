@@ -626,8 +626,6 @@ function classifyRow(row: Omit<OsImportRow, "completionStatus" | "issues">, requ
   if (!["STANDARD", "EXPRESS", "SAME_DAY", "NEXT_DAY", "ECONOMY"].includes(row.serviceType)) issues.push("Service type is not recognized");
   if (!["ITEM_PRICE_PLUS_DECLARED_DELIVERY", "DELIVERY_CHARGE_ONLY", "EXACT_COLLECTION_AMOUNT"].includes(row.paymentType)) issues.push("Payment type is not recognized");
   if (!["STANDARD", "ROYAL", "COMMITMENT"].includes(row.merchantTier)) issues.push("Merchant tier is not recognized");
-  if (row.paymentType === "ITEM_PRICE_PLUS_DECLARED_DELIVERY" && row.itemPrice === "") issues.push("Item price is missing");
-  if (["ITEM_PRICE_PLUS_DECLARED_DELIVERY", "DELIVERY_CHARGE_ONLY"].includes(row.paymentType) && row.osSetPrice === "") issues.push("OS set price is missing");
   if (row.paymentType === "EXACT_COLLECTION_AMOUNT" && row.itemPrice === "" && row.osSetPrice === "") issues.push("Exact collection amount is missing");
   return { issues, completionStatus: issues.length ? "PARTIAL" as const : "COMPLETE" as const };
 }

@@ -1,3 +1,4 @@
+import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
 import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
 import { parseLocationReviewWorkbook } from "@/lib/locationReviewWorkbook";
 import { memo, useCallback, useLayoutEffect, useEffect, useMemo, useRef, useState } from "react";
@@ -146,6 +147,7 @@ type ParcelRow = {
   locationStatus: DataEntryLocationResolution;
   locationCandidate?: DeliveryLocation | null;
   saved: boolean;
+  skipped?: boolean;
 };
 
 type BulkImportDraft = {
@@ -465,7 +467,6 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     });
     updateRow(index, {
       ...routingPatch(nextRoute,{...row,township:option.destination_name}),
-      delivery_charges: tariffRate(option, row.customer_tier),
       message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was applied.`,
     });
     setOpen(false);
@@ -478,11 +479,6 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     const option=nextRoute.option as TariffOption|null;
     updateRow(index,nextRoute.providerCode?{
       ...routingPatch(nextRoute,{...row,township}),
-      ...(option
-        ?{delivery_charges:tariffRate(option,row.customer_tier)}
-        :row.service_provider_code&&row.service_provider_code!==nextRoute.providerCode
-          ?{delivery_charges:""}
-          :{}),
       message:providerRoutingMessage(nextRoute),
     }:{township,...routingPatch(nextRoute,{...row,township}),message:providerRoutingMessage(nextRoute)});
     setOpen(true);
@@ -540,7 +536,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -559,16 +555,18 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY · ROW {row.sourceRowNumber||"—"}</span>:null}
             <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>
             {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} · {route.deliveryMode.replaceAll("_"," ")}</span>:null}
+            {row.skipped?<span className="rounded-full bg-amber-400/20 px-2 py-1 text-xs text-amber-200">SKIPPED · PENDING CLARIFICATION</span>:null}
             {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
           </div>
           <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => calculate(index)} disabled={row.calculating} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
+          <button type="button" onClick={() => skip(index)} disabled={row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "Resume" : "Skip · Pending clarification"}</button>
+          <button type="button" onClick={() => calculate(index)} disabled={row.calculating || row.skipped} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
             {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />} တွက်ချက်ရန်
           </button>
           <button type="button" onClick={() => save(index)} disabled={
-              row.checking ||
+              row.checking || row.skipped ||
               (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
               !routeReady(row,tariffOptions)
             } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
@@ -577,6 +575,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>
 
+      <fieldset disabled={row.skipped || row.checking} className="min-w-0">
       {row.photoUnavailableAcknowledged ? (
         <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
           <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
@@ -693,7 +692,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           updateRow(index,nextRoute.providerCode?{
             delivery_address,
             ...routingPatch(nextRoute,{...row,delivery_address}),
-            ...(option?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
+            
             message:providerRoutingMessage(nextRoute),
           }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
         }}/></Field>
@@ -702,7 +701,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             const customer_tier=e.target.value;
             const option=(tariffOptions as TariffOption[]).find((item)=>item.destination_name===row.township&&(!row.service_provider_code||item.provider_code===row.service_provider_code));
             const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
-            updateRow(index,{customer_tier,tier_override,...(option?{delivery_charges:tariffRate(option,customer_tier)}:{})});
+            updateRow(index,{customer_tier,tier_override,});
           }}>
             <option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option>
           </select>
@@ -801,7 +800,9 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           <MoneyBox label="ကုန်သည်နောက်ဆုံးရှင်းတမ်း" value={c.merchant_final_settlement_amount} highlight />
         </div>
         <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-[10px] leading-5 text-cyan-100">
-          {isExact(type)
+          {!isExact(type)&&row.item_price===""&&row.delivery_charges===""
+            ? "Prepaid to merchant: collect 0 from the recipient. The merchant pays Britium delivery charges and surcharges."
+            : isExact(type)
             ? "Exact collection: customer COD is the entered exact total. Merchant settlement = exact total − Britium entitlement − merchant charges + merchant credits."
             : "Receiver delivery = merchant-declared delivery + weight/CBM/other delivery surcharges. Merchant settlement = item value + (receiver delivery − Britium entitlement) − merchant charges + merchant credits. A negative difference is deducted from the merchant, never added to the receiver."}
         </div>
@@ -812,6 +813,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>
 
+      </fieldset>
       {row.message ? <div className="mt-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
     </section>
   );
@@ -1122,9 +1124,10 @@ export default function DataEntryFinancialV2Page() {
       return updated;
     });
   },[]);
-  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto});
-  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto};});
+  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto,toggleSkip});
+  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto,toggleSkip};});
   const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
+  const skipEditorRow=useCallback((index:number)=>rowActionsRef.current.toggleSkip(index),[]);
   const saveEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveRow(...args),[]);
   const reviewEditorPhoto=useCallback((...args:any[])=>rowActionsRef.current.reviewPhoto(...args),[]);
 
@@ -1258,10 +1261,19 @@ export default function DataEntryFinancialV2Page() {
       return {
         ...row,
         ...routingPatch(route,row),
-        ...(option&&row.delivery_charges===""?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
       };
     });
-    return {tierAccess:nextTierAccess,rows:nextRows};
+    const held=await (supabase as any).from("be_data_entry_pending_drafts").select("parcel_sequence,snapshot,skipped").eq("pickup_id",pickup.pickup_id);
+    if(held.error) throw held.error;
+    const heldBySequence=new Map<number,any>((held.data||[]).map((d:any)=>[d.parcel_sequence,d]));
+    return {tierAccess:nextTierAccess,rows:nextRows.map(row=>{
+      const draft=heldBySequence.get(row.parcel_sequence);
+      const persisted=(proofResponses.find(r=>r.source==="be_data_entry_parcel_details")?.response.data||[]).some((d:any)=>Number(d.parcel_sequence)===row.parcel_sequence);
+      if(!draft || persisted) return row;
+      return {...row,...draft.snapshot,pickup_id:pickup.pickup_id,parcel_sequence:row.parcel_sequence,
+        saved:false,skipped:draft.skipped,checking:false,calculating:false,calculation:{},
+        message:draft.skipped?"Pending clarification saved. Resume when details are available.":"Draft restored. Review and save."};
+    })};
   }
 
   async function loadPickupRows(pickup:Pickup){
@@ -1275,9 +1287,31 @@ export default function DataEntryFinancialV2Page() {
     finally{setLoadingRows(false);}
   }
 
+  async function toggleSkip(index:number){
+    const row=rows[index];
+    if(!row || row.saved || row.checking || bulkSaving || bulkCalculating) return;
+    const skipped=!row.skipped;
+    updateRow(index,{checking:true});
+    try{
+      const {data,error}=await supabase.auth.getUser();
+      if(error || !data.user) throw error||new Error("Sign in to save a pending clarification.");
+      const snapshot={...row,skipped,saved:false,checking:false,calculating:false,calculation:{}};
+      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert({
+        owner_id:data.user.id,pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,
+        snapshot,skipped,updated_at:new Date().toISOString()
+      },{onConflict:"owner_id,pickup_id,parcel_sequence"});
+      if(result.error) throw result.error;
+      setRows(current=>current.map(r=>r.pickup_id===row.pickup_id&&r.parcel_sequence===row.parcel_sequence
+        ?{...r,skipped,checking:false,message:skipped?"Pending clarification saved. Calculate All and Save All exclude this row. Resume before final waybill generation.":"Resumed. Review the details, calculate and save."}:r));
+    }catch(error:any){
+      setRows(current=>current.map(r=>r.pickup_id===row.pickup_id&&r.parcel_sequence===row.parcel_sequence
+        ?{...r,checking:false,message:error?.message||"Could not save Skip state. This row has not been skipped."}:r));
+    }
+  }
+
   async function calculateRow(index:number):Promise<boolean>{
     if(!selectedPickup) return false;
-    const row=rows[index]; if(!row) return false;
+    const row=rows[index]; if(!row || row.skipped) return false;
     updateRow(index,{calculating:true,calculation:{},message:""});
     try{
       const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)});
@@ -1349,7 +1383,7 @@ export default function DataEntryFinancialV2Page() {
 
   async function saveRow(index:number){
     if(!selectedPickup) return;
-    const row=rows[index]; if(!row) return;
+    const row=rows[index]; if(!row || row.skipped) return;
 
     if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.proof_ref) {
       updateRow(index,{message:"No stored parcel photo reference exists. Photo capture/re-upload is required before saving."});
@@ -1415,6 +1449,7 @@ export default function DataEntryFinancialV2Page() {
         while(cursor<total){
           const index=cursor++;
           const row=sourceRows[index];
+          if(row.skipped) continue;
           try{
             const calculationRequest=(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])});
             let timer:ReturnType<typeof setTimeout>|undefined;
@@ -1451,15 +1486,12 @@ export default function DataEntryFinancialV2Page() {
       await Promise.all(Array.from({length:Math.min(6,total)},()=>worker()));
       setRows(current=>current.map((row,index)=>{
         const result=results.get(index);
-        if(!result) return row;
+        if(!result || row.skipped) return row;
         if(row.pickup_id!==sourceRows[index]?.pickup_id || row.parcel_sequence!==sourceRows[index]?.parcel_sequence) return row;
         if(JSON.stringify(payload(row,sourcePickup))!==sourcePayloads[index]) return {...row,calculating:false,calculation:{},message:"This parcel was edited during bulk calculation. Calculate it again to use the updated values."};
         return {...row,...result.patch};
       }));
-      setBulkMessage(calculated===rows.length
-        ? `Attempted all ${total} row(s). ${calculated} successful responses. Any rows edited during calculation are marked for recalculation.`
-        : `Attempted all ${total} row(s): ${calculated} successful responses; ${failures.length} failed. ${failures.join(" | ")}`
-      );
+      setBulkMessage(`Attempted ${completed} row(s): ${calculated} successful; ${failures.length} failed; ${sourceRows.filter(r=>r.skipped).length} skipped pending clarification. ${failures.slice(0,8).join(" | ")}${failures.length>8?" · Additional errors are shown on their parcel rows.":""}`);
     }finally{
       setBulkCalculating(false);
     }
@@ -1467,13 +1499,15 @@ export default function DataEntryFinancialV2Page() {
 
   function requireSaveReady(){
     if(!selectedPickup || !rows.length) throw new Error("Select a pickup with authorized registration rows first.");
-    const blocked=rows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed && !row.photoUnavailableAcknowledged);
+    if(rows.some(row=>row.checking)) throw new Error("Wait for the current save or Skip action to finish.");
+    const activeRows=rows.filter(row=>!row.skipped);
+    const blocked=activeRows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed && !row.photoUnavailableAcknowledged);
     if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
-    const invalidBypass=rows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
+    const invalidBypass=activeRows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
     if(invalidBypass) throw new Error(`Parcel ${invalidBypass.parcel_sequence}: OS softcopy photo bypass is missing its source file or audited reason.`);
-    const unresolvedRoutes=rows.filter((row)=>!routeForRow(row,tariffOptions).providerCode);
+    const unresolvedRoutes=activeRows.filter((row)=>!routeForRow(row,tariffOptions).providerCode);
     if(unresolvedRoutes.length) throw new Error(`Parcel ${unresolvedRoutes[0].parcel_sequence}: enter a recognized township so the delivery provider can be assigned.`);
-    const missingStations=rows.filter((row)=>!handoffStationReady(row,routeForRow(row,tariffOptions)));
+    const missingStations=activeRows.filter((row)=>!handoffStationReady(row,routeForRow(row,tariffOptions)));
     if(missingStations.length){
       const first=missingStations[0];
       const firstIndex=rows.findIndex((item)=>item.pickup_id===first.pickup_id&&item.parcel_sequence===first.parcel_sequence);
@@ -1481,7 +1515,7 @@ export default function DataEntryFinancialV2Page() {
       window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
       throw new Error(`Parcel ${first.parcel_sequence}: choose Aung Mingalar, Dagon Ayar/Thiri, or enter the other highway station before saving.`);
     }
-    const mapLocations=rows.filter((row)=>routeForRow(row,tariffOptions).mapRequired);
+    const mapLocations=activeRows.filter((row)=>routeForRow(row,tariffOptions).mapRequired);
     const unresolvedLocations=mapLocations.filter((row)=>row.locationStatus!=="SYNCED");
     if(unresolvedLocations.length){
       const first=unresolvedLocations[0];
@@ -1497,14 +1531,15 @@ export default function DataEntryFinancialV2Page() {
   async function persistAllRows(reason:string){
     requireSaveReady();
     if(!selectedPickup) throw new Error("Select a pickup first.");
-    const pendingRows=rows.filter((row)=>!row.saved);
+    const pendingRows=rows.filter((row)=>!row.saved && !row.skipped);
     if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0};
-    const batchCount=Math.ceil(pendingRows.length/SAFE_TRANSACTION_ROWS);
+    const batches=consecutivePendingBatches(pendingRows,SAFE_TRANSACTION_ROWS);
+    const batchCount=batches.length;
     let savedCount=0;
     const allSavedResults:any[]=[];
-    for(let offset=0;offset<pendingRows.length;offset+=SAFE_TRANSACTION_ROWS){
-      const batchRows=pendingRows.slice(offset,offset+SAFE_TRANSACTION_ROWS);
-      const batchNumber=Math.floor(offset/SAFE_TRANSACTION_ROWS)+1;
+    for(let batchIndex=0;batchIndex<batches.length;batchIndex++){
+      const batchRows=batches[batchIndex];
+      const batchNumber=batchIndex+1;
       setBulkMessage(`Saving batch ${batchNumber}/${batchCount}: ${savedCount}/${pendingRows.length} row(s) committed.`);
       const response=await (supabase as any).rpc("be_data_entry_financial_v2_save_batch_v22",{p_payload:{
         request_id:requestId(`FINANCIAL_V2_SAVE_ALL_BATCH_${batchNumber}`),
@@ -1527,7 +1562,7 @@ export default function DataEntryFinancialV2Page() {
       savedCount+=batchRows.length;
       allSavedResults.push(...savedResults);
       setRows((current)=>current.map((row)=>{
-        if(!savedSequences.has(row.parcel_sequence)) return row;
+        if(row.pickup_id!==selectedPickup.pickup_id || !savedSequences.has(row.parcel_sequence)) return row;
         const savedResult=savedBySequence.get(row.parcel_sequence) as any;
         return {
           ...row,
@@ -1560,12 +1595,12 @@ export default function DataEntryFinancialV2Page() {
       if(selectedPickup){
         setBulkImportDrafts((current)=>{
           const draft=current[selectedPickup.pickup_id];
-          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:true}}:current;
+          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:!rows.some(row=>row.skipped)}}:current;
         });
       }
       setBulkMessage(result.saved_count
-        ? `Saved ${Number(result.saved_count)} row(s) in ${Number(result.batch_count)} consecutive audited batch(es).`
-        : "All rows were already saved. No duplicate save was submitted."
+        ? `Saved ${Number(result.saved_count)} row(s) in ${Number(result.batch_count)} consecutive audited batch(es). ${rows.filter(row=>row.skipped).length} skipped pending clarification.`
+        : "All non-skipped rows were already saved. Pending clarifications remain on hold."
       );
     }catch(error:any){
       setBulkMessage(error?.message||"Save All failed. Successfully committed batches remain saved; retry to continue with unsaved rows only.");
@@ -1623,7 +1658,7 @@ export default function DataEntryFinancialV2Page() {
       const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions);
       const tariffOption=destination.option as TariffOption|null;
       const tariffDelivery:number|""=tariffOption?tariffRate(tariffOption,customerTier):"";
-      const declaredDelivery:number|""=sourceRow.osSetPrice===""?tariffDelivery:sourceRow.osSetPrice;
+      const declaredDelivery:number|""=sourceRow.osSetPrice;
       const exactValues=[sourceRow.itemPrice,sourceRow.osSetPrice]
         .filter((value):value is number=>value!==""&&Number.isFinite(Number(value)));
       const exactTotal:number|""=exactValues.length?exactValues.reduce((sum,value)=>sum+Number(value),0):"";
@@ -1887,6 +1922,7 @@ export default function DataEntryFinancialV2Page() {
     setWaybillMessageKind("SUCCESS");
 
     try{
+      if(rows.some(row=>row.skipped)) throw new Error("Some parcels are skipped pending clarification. You can calculate and save the other rows now. Resume and resolve skipped rows before generating this pickup's final waybill.");
       await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
 
       const requestId =
@@ -2353,9 +2389,9 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
-          <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every parcel.</div>
+          <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">
             <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart/PAGE_SIZE-1))} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">PREVIOUS</button>
             <button type="button" disabled={pageStart+PAGE_SIZE>=rows.length} onClick={()=>setPageIndex(pageStart/PAGE_SIZE+1)} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
