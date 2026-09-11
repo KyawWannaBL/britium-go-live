@@ -3,6 +3,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Warehouse, QrCode, Search, CheckCircle2, AlertTriangle, RefreshCw, XCircle, ListFilter, ScanLine, Package, MapPin } from 'lucide-react';
 
+import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
+import { normalizeWarehouseScan } from "@/lib/warehouseScan";
 export default function WarehousePage() {
   const { t } = useLanguage();
   
@@ -19,6 +21,7 @@ export default function WarehousePage() {
   const [scanInput, setScanInput] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [scanHistory, setScanHistory] = useState<{ waybill: string; status: string; message: string; type: 'success' | 'error' | 'warning' }[]>([]);
+  const scanBusy=useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Focus scanner input automatically
@@ -50,8 +53,11 @@ export default function WarehousePage() {
   // ─── SCANNER LOGIC (INTAKE & 3-STRIKE RETURNS) ───
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
-    const barcode = scanInput.trim();
-    if (!barcode) return;
+    if(scanBusy.current) return;
+    let barcode:string;
+    try {barcode=normalizeWarehouseScan(scanInput);}
+    catch(error:any){setScanHistory(prev=>[{waybill:scanInput,status:"ERROR",message:error.message,type:"error"},...prev].slice(0,20));return;}
+    scanBusy.current=true;
     
     setIsScanning(true);
     setScanInput(""); 
@@ -120,6 +126,7 @@ export default function WarehousePage() {
     } catch (err: any) {
       setScanHistory(prev => [{ waybill: barcode, status: 'ERROR', message: err.message, type: 'error' }, ...prev].slice(0, 20));
     } finally {
+      scanBusy.current=false;
       setIsScanning(false);
     }
   };
@@ -201,6 +208,7 @@ export default function WarehousePage() {
               <span>{t('Ensure your physical barcode scanner is connected and cursor is in the field below.', 'ဘားကုဒ်စကင်နာ ချိတ်ဆက်ထားခြင်းရှိမရှိ စစ်ဆေးပါ။')}</span>
             </p>
 
+            <WarehouseCameraScanner disabled={isScanning} onDetected={code=>setScanInput(code)} />
             <form onSubmit={handleScan} className="w-full max-w-md relative">
               <ScanLine size={20} className="absolute left-4 top-4 text-[#4d7a9b]" />
               <input 
@@ -211,7 +219,7 @@ export default function WarehousePage() {
                 placeholder={t('Scan or type Waybill No...', 'ဘားကုဒ် စကင်န်ဖတ်ပါ (သို့) စာရွက်အမှတ် ရိုက်ထည့်ပါ...')} 
                 className="w-full bg-[#081b2e] border-2 border-[#1a3a5c] text-white text-[16px] font-mono font-bold rounded-2xl py-4 pl-12 pr-4 outline-none focus:border-[#f6b84b] transition-colors disabled:opacity-50"
               />
-              <button type="submit" className="hidden">Submit</button>
+              <button type="submit" disabled={isScanning || !scanInput.trim()} className="mt-3 w-full min-h-11 rounded-xl bg-emerald-600 p-3 font-bold text-white disabled:opacity-50">Confirm warehouse scan</button>
             </form>
           </div>
 

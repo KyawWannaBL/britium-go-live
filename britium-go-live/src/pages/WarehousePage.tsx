@@ -1,5 +1,5 @@
 // @ts-nocheck
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle,
@@ -14,6 +14,8 @@ import {
   Truck,
 } from "lucide-react";
 
+import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
+import { normalizeWarehouseScan } from "@/lib/warehouseScan";
 const fmt = (v: any) =>
   v ? new Date(v).toLocaleString("en-GB", { timeZone: "Asia/Yangon" }) : "-";
 
@@ -35,6 +37,8 @@ function statusClass(status?: string) {
 export default function WarehousePage() {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, rows: [], reasons: [] });
+  const scanBusy=useRef(false);
+  const [scanMode,setScanMode]=useState<"inbound"|"dispatch"|"return">("inbound");
   const [scanCode, setScanCode] = useState("");
   const [reason, setReason] = useState("");
   const [remark, setRemark] = useState("");
@@ -69,16 +73,21 @@ export default function WarehousePage() {
 
   const actor = async () => {
     const { data } = await supabase.auth.getUser();
-    return data?.user?.email || "testwarehouse@britiumexpress.com";
+    if(!data?.user?.email) throw new Error("Sign in again before saving a warehouse scan.");
+    return data.user.email;
   };
 
   const doScan = async (kind: "inbound" | "dispatch" | "return", code?: string) => {
-    const tracking = String(code || scanCode || "").trim();
+    if(scanBusy.current) return;
+    let tracking:string;
+    try {tracking=normalizeWarehouseScan(code || scanCode || "");}
+    catch(error:any){setMessage(error.message);return;}
     if (!tracking) {
       setMessage("Scan or enter Delivery Way / Tracking No first.");
       return;
     }
 
+    scanBusy.current=true;
     setLoading(true);
     try {
       const email = await actor();
@@ -123,8 +132,9 @@ export default function WarehousePage() {
       setScanCode("");
       await loadAll();
     } catch (e: any) {
-      setMessage(e.message || "Scan failed.");
+      setMessage(e.message || "Scan confirmation unavailable. Check the parcel status before retrying.");
     } finally {
+      scanBusy.current=false;
       setLoading(false);
     }
   };
@@ -294,12 +304,22 @@ export default function WarehousePage() {
 
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
+        <WarehouseCameraScanner disabled={loading} onDetected={code=>{setScanCode(code);setMessage("Read "+code+". Choose Inbound, Dispatch or Return to save.");}} />
+        <label className="mb-3 block text-sm">Scanner Enter action:
+          <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
+            <option value="inbound">Inbound</option><option value="dispatch">Dispatch</option><option value="return">Return</option>
+          </select>
+        </label>
+        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: click the ID field and scan with Enter suffix. Phone: scan, check the ID, then choose an action.</p>
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1.5fr_1.2fr_1.4fr]">
           <input
+            aria-label="Scanned waybill ID"
+            autoComplete="off" autoCapitalize="off" spellCheck={false}
+            disabled={loading}
             value={scanCode}
             onChange={(e) => setScanCode(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") doScan("inbound");
+              if (e.key === "Enter" && !e.repeat) {e.preventDefault();void doScan(scanMode);}
             }}
             placeholder="Scan / enter Delivery Way ID"
             className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30]"
@@ -327,21 +347,21 @@ export default function WarehousePage() {
 
           <div className="grid grid-cols-3 gap-2">
             <button
-              onClick={() => doScan("inbound")}
+              disabled={loading} onClick={() => doScan("inbound")}
               className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-semibold hover:bg-emerald-600"
             >
               <ScanLine className="mr-1 inline h-4 w-4" />
               Inbound
             </button>
             <button
-              onClick={() => doScan("dispatch")}
+              disabled={loading} onClick={() => doScan("dispatch")}
               className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600"
             >
               <Truck className="mr-1 inline h-4 w-4" />
               Dispatch
             </button>
             <button
-              onClick={() => doScan("return")}
+              disabled={loading} onClick={() => doScan("return")}
               className="rounded-lg bg-amber-700 px-3 py-2 text-sm font-semibold hover:bg-amber-600"
             >
               <RotateCcw className="mr-1 inline h-4 w-4" />
@@ -465,19 +485,19 @@ export default function WarehousePage() {
                     <td className="p-2 min-w-[260px]">
                       <div className="flex flex-wrap gap-1">
                         <button
-                          onClick={() => doScan("inbound", code)}
+                          disabled={loading} onClick={() => doScan("inbound", code)}
                           className="rounded bg-emerald-700 px-2 py-1 text-xs font-semibold hover:bg-emerald-600"
                         >
                           Inbound Scan
                         </button>
                         <button
-                          onClick={() => doScan("dispatch", code)}
+                          disabled={loading} onClick={() => doScan("dispatch", code)}
                           className="rounded bg-blue-700 px-2 py-1 text-xs font-semibold hover:bg-blue-600"
                         >
                           Dispatch Scan
                         </button>
                         <button
-                          onClick={() => doScan("return", code)}
+                          disabled={loading} onClick={() => doScan("return", code)}
                           className="rounded bg-amber-700 px-2 py-1 text-xs font-semibold hover:bg-amber-600"
                         >
                           Return Scan
