@@ -1,3 +1,4 @@
+import { locationReadiness } from "@/lib/dataEntryLocationReadiness";
 import { calculateWithTimeoutRetry } from "@/lib/dataEntryCalculationRetry";
 import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
 import { defaultAmountEntryType } from "@/lib/defaultAmountEntryType";
@@ -537,7 +538,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -562,12 +563,12 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
         </div>
         <div className="flex gap-2">
-          <button type="button" onClick={() => skip(index)} disabled={row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "Resume" : "Skip · Pending clarification"}</button>
-          <button type="button" onClick={() => calculate(index)} disabled={row.calculating || row.skipped} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
+          <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "Resume" : "Skip · Pending clarification"}</button>
+          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
             {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />} တွက်ချက်ရန်
           </button>
           <button type="button" onClick={() => save(index)} disabled={
-              row.checking || row.skipped ||
+              busy || row.checking || row.skipped ||
               (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
               !routeReady(row,tariffOptions)
             } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
@@ -576,7 +577,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>
 
-      <fieldset disabled={row.skipped || row.checking} className="min-w-0">
+      <fieldset disabled={busy || row.skipped || row.checking} className="min-w-0">
       {row.photoUnavailableAcknowledged ? (
         <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
           <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
@@ -1091,26 +1092,19 @@ export default function DataEntryFinancialV2Page() {
     return [pickup.pickup_id,Math.max(pickup.registered_parcels,draftMaximum)];
   })),[bulkImportDrafts,pickups]);
   const importedLocationSummary=useMemo(()=>{
-    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0,interrupted:0};
+    const summary={total:0,synced:0,notRequired:0,resolving:0,review:0,interrupted:0,skipped:0};
     for(const row of rows){
-      if(!row.importedFromOs) continue;
       summary.total+=1;
-      if(row.locationStatus==="SYNCED") summary.synced+=1;
-      else if(row.locationStatus==="NOT_REQUIRED") summary.notRequired+=1;
-      else if(row.locationStatus==="REVIEW_REQUIRED"){
-        if(/timed out|validation failed|could not be loaded|unavailable/i.test(row.message)) summary.interrupted+=1;
-        else summary.review+=1;
-      }
-      else summary.resolving+=1;
+      summary[locationReadiness(row,routeForRow(row,tariffOptions))]+=1;
     }
     return summary;
-  },[rows]);
+  },[rows,tariffOptions]);
   const consolidatedLocationReviewRows=useMemo(()=>{
     const combined=[...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows];
     const unique=new Map<string,ParcelRow>();
     for(const row of combined) unique.set(`${row.pickup_id}:${row.parcel_sequence}`,row);
     return [...unique.values()].filter((row)=>
-      row.locationStatus==="REVIEW_REQUIRED"&&routeForRow(row,tariffOptions).mapRequired
+      !row.skipped&&row.locationStatus!=="SYNCED"&&routeForRow(row,tariffOptions).mapRequired
     );
   },[bulkImportDrafts,rows,tariffOptions]);
 
@@ -1486,42 +1480,42 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
-  function requireSaveReady(){
-    if(!selectedPickup || !rows.length) throw new Error("Select a pickup with authorized registration rows first.");
-    if(rows.some(row=>row.checking)) throw new Error("Wait for the current save or Skip action to finish.");
-    const activeRows=rows.filter(row=>!row.skipped);
-    const blocked=activeRows.find((row)=>!row.isAdditionalRegistration && !row.photoReviewed && !row.photoUnavailableAcknowledged);
-    if(blocked) throw new Error(`Parcel ${blocked.parcel_sequence}: approve the Rider or Driver photo before saving.`);
-    const invalidBypass=activeRows.find((row)=>row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10));
-    if(invalidBypass) throw new Error(`Parcel ${invalidBypass.parcel_sequence}: OS softcopy photo bypass is missing its source file or audited reason.`);
-    const unresolvedRoutes=activeRows.filter((row)=>!routeForRow(row,tariffOptions).providerCode);
-    if(unresolvedRoutes.length) throw new Error(`Parcel ${unresolvedRoutes[0].parcel_sequence}: enter a recognized township so the delivery provider can be assigned.`);
-    const missingStations=activeRows.filter((row)=>!handoffStationReady(row,routeForRow(row,tariffOptions)));
-    if(missingStations.length){
-      const first=missingStations[0];
-      const firstIndex=rows.findIndex((item)=>item.pickup_id===first.pickup_id&&item.parcel_sequence===first.parcel_sequence);
-      setPageIndex(Math.floor(firstIndex/PAGE_SIZE));
-      window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
-      throw new Error(`Parcel ${first.parcel_sequence}: choose Aung Mingalar, Dagon Ayar/Thiri, or enter the other highway station before saving.`);
-    }
-    const mapLocations=activeRows.filter((row)=>routeForRow(row,tariffOptions).mapRequired);
-    const unresolvedLocations=mapLocations.filter((row)=>row.locationStatus!=="SYNCED");
-    if(unresolvedLocations.length){
-      const first=unresolvedLocations[0];
-      const resolving=unresolvedLocations.filter((row)=>row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING").length;
-      const review=unresolvedLocations.filter((row)=>row.locationStatus==="REVIEW_REQUIRED").length;
-      const firstIndex=rows.findIndex((item)=>item.pickup_id===first.pickup_id&&item.parcel_sequence===first.parcel_sequence);
-      setPageIndex(Math.floor(firstIndex/PAGE_SIZE));
-      window.setTimeout(()=>document.getElementById(`data-entry-parcel-${first.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);
-      throw new Error(`Core-region location sync incomplete: ${mapLocations.length-unresolvedLocations.length}/${mapLocations.length} synchronized, ${resolving} still resolving, ${review} need review. Parcel ${first.parcel_sequence} is the first unresolved row; use Retry Location Sync or Apply coordinates for a corrected pin.`);
+  function rowSaveObstacle(row:ParcelRow):string {
+    if(row.skipped) return "Pending clarification";
+    if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged) return "Photo approval required";
+    if(row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10)) return "OS evidence source or reason is incomplete";
+    const route=routeForRow(row,tariffOptions);
+    if(!route.providerCode) return "Destination needs clarification";
+    if(!handoffStationReady(row,route)) return "Highway terminal name and charge required";
+    if(route.mapRequired&&row.locationStatus!=="SYNCED") return "Location needs synchronization or review";
+    return "";
+  }
+
+  async function preserveBlockedDrafts(blocked:ParcelRow[]){
+    if(!blocked.length) return;
+    const {data,error}=await supabase.auth.getUser();
+    if(error||!data.user) throw error||new Error("Sign in to preserve pending parcels.");
+    for(let offset=0;offset<blocked.length;offset+=SAFE_TRANSACTION_ROWS){
+      const group=blocked.slice(offset,offset+SAFE_TRANSACTION_ROWS);
+      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert(group.map(row=>({
+        owner_id:data.user!.id,pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,
+        skipped:true,updated_at:new Date().toISOString(),
+        snapshot:{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:rowSaveObstacle(row)}
+      })),{onConflict:"owner_id,pickup_id,parcel_sequence"});
+      if(result.error) throw new Error("Pending parcels could not be preserved: "+result.error.message);
+      const keys=new Set(group.map(row=>row.pickup_id+":"+row.parcel_sequence));
+      setRows(current=>current.map(row=>keys.has(row.pickup_id+":"+row.parcel_sequence)?{...row,skipped:true,message:"Pending draft saved: "+rowSaveObstacle(row)+". Use Resume after clarification."}:row));
     }
   }
 
   async function persistAllRows(reason:string){
-    requireSaveReady();
-    if(!selectedPickup) throw new Error("Select a pickup first.");
-    const pendingRows=rows.filter((row)=>!row.saved && !row.skipped);
-    if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0};
+    if(!selectedPickup||!rows.length) throw new Error("Select a pickup first.");
+    if(rows.some(row=>row.checking)) throw new Error("Wait for the current save or Skip action to finish.");
+    const blocked=rows.filter(row=>!row.saved&&!row.skipped&&Boolean(rowSaveObstacle(row)));
+    await preserveBlockedDrafts(blocked);
+    const heldCount=rows.filter(row=>row.skipped).length+blocked.length;
+    const pendingRows=rows.filter((row)=>!row.saved&&!rowSaveObstacle(row));
+    if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0,held_count:heldCount};
     const batches=consecutivePendingBatches(pendingRows,SAFE_TRANSACTION_ROWS);
     const batchCount=batches.length;
     let savedCount=0;
@@ -1570,13 +1564,15 @@ export default function DataEntryFinancialV2Page() {
         }};
       });
     }
-    const maximumSavedSequence=rows.reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
+    const newlySaved=new Set(pendingRows.map(row=>row.parcel_sequence));
+    const maximumSavedSequence=rows.filter(row=>row.saved||newlySaved.has(row.parcel_sequence)).reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
     setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,maximumSavedSequence)}:pickup));
-    return {ok:true,persisted:true,saved_count:savedCount,rows:allSavedResults,batch_count:batchCount};
+    return {ok:true,persisted:true,saved_count:savedCount,rows:allSavedResults,batch_count:batchCount,held_count:heldCount};
   }
 
   async function saveAll(){
     if(bulkSaving) return;
+    setMessage("");
     setBulkSaving(true);
     setBulkMessage("");
     try{
@@ -1584,12 +1580,12 @@ export default function DataEntryFinancialV2Page() {
       if(selectedPickup){
         setBulkImportDrafts((current)=>{
           const draft=current[selectedPickup.pickup_id];
-          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:!rows.some(row=>row.skipped)}}:current;
+          return draft?{...current,[selectedPickup.pickup_id]:{...draft,saved:result.held_count===0}}:current;
         });
       }
       setBulkMessage(result.saved_count
-        ? `Saved ${Number(result.saved_count)} row(s) in ${Number(result.batch_count)} consecutive audited batch(es). ${rows.filter(row=>row.skipped).length} skipped pending clarification.`
-        : "All non-skipped rows were already saved. Pending clarifications remain on hold."
+        ? `Saved ${Number(result.saved_count)} row(s) in ${Number(result.batch_count)} consecutive audited batch(es). ${result.held_count} preserved pending clarification. Use Resume on those parcels when ready.`
+        : `No additional ready rows to save. ${result.held_count} pending draft(s) remain; use Resume to resolve them.`
       );
     }catch(error:any){
       setBulkMessage(error?.message||"Save All failed. Successfully committed batches remain saved; retry to continue with unsaved rows only.");
@@ -1755,7 +1751,7 @@ export default function DataEntryFinancialV2Page() {
 
   async function validateImportedLocations(drafts:Record<string,BulkImportDraft>){
     const jobs=Object.values(drafts).flatMap((draft)=>draft.rows).filter((row)=>
-      row.importedFromOs&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"
+      !row.skipped&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"
     );
     let cursor=0;
     const worker=async()=>{
@@ -1772,13 +1768,7 @@ export default function DataEntryFinancialV2Page() {
 
   async function retryImportedLocationSync(){
     if(locationReviewBusy) return;
-    const retryable=rows.filter((row)=>
-      row.importedFromOs
-      && routeForRow(row,tariffOptions).mapRequired
-      && (row.locationStatus==="PENDING"||row.locationStatus==="SEARCHING"||(
-        row.locationStatus==="REVIEW_REQUIRED"&&/timed out|validation failed|could not be loaded|unavailable|no reliable google location/i.test(row.message)
-      ))
-    );
+    const retryable=rows.filter((row)=>["resolving","interrupted"].includes(locationReadiness(row,routeForRow(row,tariffOptions))));
     if(!retryable.length){
       setBulkMessage("No interrupted location validations remain. Use Review Excel only for genuinely ambiguous addresses.");
       return;
@@ -1911,8 +1901,8 @@ export default function DataEntryFinancialV2Page() {
     setWaybillMessageKind("SUCCESS");
 
     try{
-      if(rows.some(row=>row.skipped)) throw new Error("Some parcels are skipped pending clarification. You can calculate and save the other rows now. Resume and resolve skipped rows before generating this pickup's final waybill.");
-      await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
+      const persisted=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
+      if(persisted.held_count) throw new Error(`Ready rows saved. ${persisted.held_count} pending draft(s) need clarification before final waybill generation.`);
 
       const requestId =
         "WAYBILL:" +
@@ -2378,7 +2368,7 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
           <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">
@@ -2472,10 +2462,10 @@ export default function DataEntryFinancialV2Page() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Bulk location readiness</div>
-                <div className="mt-1 text-[13px] font-black text-white">{importedLocationSummary.synced} synchronized · {importedLocationSummary.notRequired} map not required · {importedLocationSummary.total} total</div>
+                <div className="mt-1 text-[13px] font-black text-white">{importedLocationSummary.synced} synchronized · {importedLocationSummary.notRequired} map not required · {importedLocationSummary.skipped} pending drafts · {importedLocationSummary.total} total</div>
                 <div className="mt-1 text-[10px] leading-5 text-[#b8d8ea]">
                   {importedLocationSummary.synced+importedLocationSummary.notRequired===importedLocationSummary.total
-                    ?"All imported rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
+                    ?"All rows are location-ready. Core-region pins are synchronized; outside-core routes correctly bypass the current Google/Wayplan coordinate flow."
                     :`${importedLocationSummary.resolving} core-region rows are validating · ${importedLocationSummary.interrupted} interrupted and retryable · ${importedLocationSummary.review} genuinely need review. Google Maps are loaded only when one parcel is opened manually.`}
                 </div>
               </div>
@@ -2488,6 +2478,11 @@ export default function DataEntryFinancialV2Page() {
             <div className="mt-3 rounded-lg border border-amber-300/25 bg-[#061524] px-3 py-2 text-[10px] leading-5 text-amber-100">Download combines every current pickup row requiring location review into one workbook. Correct latitude/longitude and re-upload it here. Files above 200 rows are applied automatically in consecutive audited batches.</div>
           </div>:null}
 
+          {rows.some(row=>row.skipped)?<div className="mt-4 rounded-xl border border-amber-300/40 p-4 text-amber-100">
+            <b>{rows.filter(row=>row.skipped).length} pending drafts preserved</b>
+            <p className="mt-1 text-xs">Other ready parcels can be saved. Open a parcel, select Resume, and resolve its missing details.</p>
+            <div className="mt-2 flex flex-wrap gap-2">{rows.map((row,index)=>({row,index})).filter(({row})=>row.skipped).slice(0,20).map(({row,index})=><button key={row.parcel_sequence} type="button" className="rounded-lg border border-amber-300/40 px-3 py-2 text-xs" onClick={()=>{setPageIndex(Math.floor(index/PAGE_SIZE));window.setTimeout(()=>document.getElementById(`data-entry-parcel-${row.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);}}>Open parcel {row.parcel_sequence}</button>)}</div>
+          </div>:null}
           {selectedPickup?<div data-extra-registration-v14="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/5 p-4">
             <div className="flex flex-wrap items-end gap-3">
               <div className="min-w-[260px] flex-1">
