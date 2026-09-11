@@ -629,6 +629,41 @@ function sharedLabelCss() {
 export default function BritiumUnifiedPrintStudioV33() {
   const [pdfBusy,setPdfBusy]=useState(false);
   const pdfOperation=useRef(false);
+  const [reprintReason,setReprintReason]=useState("");
+  const [printAudit,setPrintAudit]=useState<any>({requests:[],logs:[],can_approve:false});
+  async function refreshPrintAudit() {
+    const {data,error}=await (supabase as any).rpc("be_waybill_reprint_status_v2");
+    if(error) throw error;
+    setPrintAudit(data);
+  }
+  async function requestReprint() {
+    if(pdfOperation.current || !selectedRows.length || !reprintReason.trim()) return;
+    pdfOperation.current=true;setPdfBusy(true);
+    try {
+      const ids=[...new Set(selectedRows.map(row=>docNo(row,"WAYBILL")))];
+      const {data,error}=await (supabase as any).rpc("be_waybill_print_release_v2",{
+        p_way_ids:ids,p_request_only:true,p_reason:reprintReason.trim()
+      });
+      if(error) throw error;
+      setMessage(data.blocked.map((b:any)=>b.waybill_no+": "+b.message).join(" | "));
+      await refreshPrintAudit();
+    } catch(error:any){setMessage(error.message||"Reprint request failed.");}
+    finally {pdfOperation.current=false;setPdfBusy(false);}
+  }
+  async function decideReprint(request:any,decision:"APPROVED"|"REJECTED") {
+    if(pdfOperation.current) return;
+    if(!window.confirm(decision+" one reprint for "+request.document_no+" requested by "+request.requested_by+"? Reason: "+request.request_reason)) return;
+    pdfOperation.current=true;setPdfBusy(true);
+    try {
+      const {error}=await (supabase as any).rpc("be_waybill_reprint_decide_v2",{
+        p_request_id:request.id,p_decision:decision,p_note:"Decision confirmed in Waybill Studio"
+      });
+      if(error) throw error;
+      await refreshPrintAudit();
+      setMessage(request.document_no+": "+decision+". Approval permits one release for the requester.");
+    } catch(error:any){setMessage(error.message||"Decision failed.");}
+    finally {pdfOperation.current=false;setPdfBusy(false);}
+  }
   const [docType, setDocType] = useState<DocType>("WAYBILL");
   const [paper, setPaper] = useState<Paper>("4x6");
   const [label, setLabel] = useState<Label>("4x6");
@@ -663,6 +698,7 @@ export default function BritiumUnifiedPrintStudioV33() {
 
   useEffect(() => {
     void loadRows();
+    void refreshPrintAudit().catch(()=>{});
     const onWaybillCreated = (event: Event) => {
       const detail = (event as CustomEvent)?.detail || {};
       const pickupId = String(detail?.pickupId || detail?.pickup_id || "").trim();
@@ -675,6 +711,7 @@ export default function BritiumUnifiedPrintStudioV33() {
   }, []);
 
   async function guardedPrint(targetRows: PrintRow[]) {
+    if(docType==="WAYBILL") return savePdf(targetRows);
     if (!targetRows.length) {
       alert("Select at least one print row.");
       return;
@@ -717,16 +754,21 @@ export default function BritiumUnifiedPrintStudioV33() {
     win.document.close();
     pdfOperation.current=true;setPdfBusy(true);
     try {
-      const {data,error}=await (supabase as any).rpc("be_superadmin_waybill_pdf_authorize_v1",{
-        p_way_ids:targetRows.map(row=>docNo(row,"WAYBILL")),p_paper_size:paper,p_label_size:label
+      const uniqueRows=[...new Map(targetRows.map(row=>[docNo(row,"WAYBILL"),row])).values()];
+      const {data,error}=await (supabase as any).rpc("be_waybill_print_release_v2",{
+        p_way_ids:uniqueRows.map(row=>docNo(row,"WAYBILL")),p_paper_size:paper,p_label_size:label
       });
       if(error) throw error;
-      if(!data?.allowed || Number(data.authorized_count)!==new Set(targetRows.map(row=>docNo(row,"WAYBILL"))).size)
-        throw new Error("PDF print authorization was not confirmed.");
-      if(win.closed) throw new Error("The print window was closed. Open Print / Save PDF again.");
-      printRows(targetRows,win);
-      setMessage("In the print dialog, choose Save as PDF. Use scale 100%, no margins, and disable headers and footers. Authorization is logged; canceling the dialog does not create a PDF.");
-    } catch(error:any) {win.close();setMessage(error?.message||"PDF printing failed.");}
+      const releases=Array.isArray(data?.releases)?data.releases:[];
+      const releasedRows=uniqueRows.filter(row=>releases.some((r:any)=>r.waybill_no===docNo(row,"WAYBILL")));
+      if(releasedRows.length!==releases.length) throw new Error("Print release response mismatch. Check print history before retrying.");
+      if(releasedRows.length) {
+        if(win.closed) throw new Error("Print window closed after authorization. Request a reprint with the reason before retrying.");
+        printRows(releasedRows,win);
+      } else win.close();
+      setMessage(releasedRows.length+" waybill(s) released; "+(data.blocked?.length||0)+" blocked pending approval. Print one copy. A cancelled/failed print still requires a reason and new approval to retry.");
+      await refreshPrintAudit();
+    } catch(error:any) {win.close();setMessage(error?.message||"Print confirmation unavailable. Check print history before retrying.");}
     finally {pdfOperation.current=false;setPdfBusy(false);}
   }
 
@@ -742,6 +784,7 @@ export default function BritiumUnifiedPrintStudioV33() {
     win.document.write(html);
     win.document.close();
     win.focus();
+    win.addEventListener("afterprint",()=>win.close(),{once:true});
 
     const printAfterImages = async () => {
       const images = Array.from(win.document.images);
@@ -797,7 +840,7 @@ export default function BritiumUnifiedPrintStudioV33() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#061525] p-3 text-slate-100 md:p-5">
-      <style>{sharedLabelCss()}</style>
+      <style>{sharedLabelCss()+'@media print { main { display:none !important; } }'}</style>
       <div className="mx-auto max-w-[1600px] space-y-4">
         <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4 shadow-2xl md:p-5">
           <div className="inline-flex rounded-xl border-b-4 border-amber-700 bg-amber-400 px-4 py-2 text-xs font-black uppercase tracking-[0.24em] text-slate-950">
@@ -871,9 +914,9 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
               <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
-              <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Superadmin: Print / Save PDF"}</Button>
-              <Button tone="gold" onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
-              <Button tone="gold" disabled={!visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
+              <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Print / Save PDF"}</Button>
+              <Button tone="gold" disabled={pdfBusy || !selectedRows.length} onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
+              <Button tone="gold" disabled={pdfBusy || !visibleRows.length} onClick={() => void guardedPrint(visibleRows)}>Print all</Button>
             </div>
           </div>
 
@@ -888,6 +931,33 @@ export default function BritiumUnifiedPrintStudioV33() {
           <p className="mt-3 rounded-xl border border-amber-700/50 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{message} {layout.description}</p>
         </section>
 
+        {docType==="WAYBILL" && <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
+          <h2 className="text-lg font-bold text-amber-300">Reprint permission &amp; history</h2>
+          <p>First release is allowed once. Every further paper/PDF release requires a reason and explicit Superadmin approval, valid once for the requester.</p>
+          <label className="block mt-3">Reason for reprinting selected waybill numbers
+            <textarea value={reprintReason} onChange={e=>setReprintReason(e.target.value)} maxLength={2000} className="block w-full rounded bg-slate-950 p-3" placeholder="For example: printer jam damaged the label" />
+          </label>
+          <div className="flex gap-2 mt-2">
+            <Button disabled={pdfBusy || !selectedRows.length || !reprintReason.trim()} onClick={()=>void requestReprint()}>Request reprint for selected ({selectedRows.length})</Button>
+            <Button disabled={pdfBusy} onClick={()=>void refreshPrintAudit().catch(e=>setMessage(e.message))}>Refresh approvals &amp; history</Button>
+          </div>
+          <div className="max-h-80 overflow-auto mt-3">
+            <table className="w-full text-sm"><thead><tr><th>Waybill</th><th>Requester / time</th><th>Reason</th><th>Decision / approver</th><th>Use</th></tr></thead>
+            <tbody>{printAudit.requests.map((r:any)=><tr key={r.id} className="border-t border-sky-900">
+              <td className="p-2">{r.document_no}</td><td>{r.requested_by}<br/>{r.created_at}</td><td>{r.request_reason}</td>
+              <td>{r.approval_status}<br/>{r.approved_by} {r.approved_at}
+                {printAudit.can_approve && r.approval_status==="PENDING" && <div>
+                  <Button disabled={pdfBusy} onClick={()=>void decideReprint(r,"APPROVED")}>Approve one reprint</Button>
+                  <Button disabled={pdfBusy} onClick={()=>void decideReprint(r,"REJECTED")}>Reject</Button>
+                </div>}
+              </td><td>{r.consumed_at?("Used by "+r.consumed_by+" at "+r.consumed_at):"Not used"}</td>
+            </tr>)}</tbody></table>
+          </div>
+          <details className="mt-3"><summary>Print release history (latest 500)</summary>
+            <div className="max-h-64 overflow-auto"><table className="w-full text-sm"><thead><tr><th>Waybill</th><th>Release #</th><th>Released by / time</th><th>Approved by</th><th>Reason</th></tr></thead>
+            <tbody>{printAudit.logs.map((l:any)=><tr key={l.id}><td>{l.document_no}</td><td>{l.print_count}</td><td>{l.printed_by} / {l.created_at}</td><td>{l.approved_by||"First release"}</td><td>{l.reason}</td></tr>)}</tbody></table></div>
+          </details>
+        </section>}
         <section className="grid min-h-0 gap-4 xl:grid-cols-[330px_minmax(0,1fr)]">
           <aside className="min-h-0 rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
             <h2 className="mb-3 rounded-xl border-b-4 border-amber-700 bg-amber-400 px-3 py-2 font-black text-slate-950">Print rows</h2>
