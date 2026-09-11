@@ -38,6 +38,8 @@ export default function WarehousePage() {
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, rows: [], reasons: [] });
   const scanBusy=useRef(false);
+  const scanInputRef=useRef<HTMLInputElement>(null);
+  const restoreScanFocus=useRef(true);
   const [scanMode,setScanMode]=useState<"inbound"|"dispatch"|"return">("inbound");
   const [scanCode, setScanCode] = useState("");
   const [reason, setReason] = useState("");
@@ -72,6 +74,18 @@ export default function WarehousePage() {
     loadAll();
   }, [loadAll]);
 
+  useEffect(() => {
+    if(loading || scanChoices || !restoreScanFocus.current) return;
+    const frame=requestAnimationFrame(()=>{
+      if(scanInputRef.current){
+        scanInputRef.current.focus({preventScroll:true});
+        scanInputRef.current.select();
+        restoreScanFocus.current=false;
+      }
+    });
+    return ()=>cancelAnimationFrame(frame);
+  },[loading,scanChoices]);
+
   const actor = async () => {
     const { data } = await supabase.auth.getUser();
     if(!data?.user?.email) throw new Error("Sign in again before saving a warehouse scan.");
@@ -88,6 +102,7 @@ export default function WarehousePage() {
       return;
     }
 
+    restoreScanFocus.current=true;
     scanBusy.current=true;
     setLoading(true);
     try {
@@ -331,21 +346,24 @@ export default function WarehousePage() {
           <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
         </div>}
         <WarehouseCameraScanner disabled={loading} onDetected={code=>{setScanChoices(null);setScanCode(code);setMessage("Read "+code+". Choose Inbound, Dispatch or Return to save.");}} />
+        <p role="status" aria-live="polite" className="mb-3 font-semibold text-emerald-300">{loading ? "Processing scan — please wait…" : scanChoices ? "Choose the matching pickup to continue." : "Ready for next scan"}</p>
+        <button type="button" disabled={loading || !!scanChoices} className="mb-3 rounded bg-sky-700 px-3 py-2" onClick={()=>{scanInputRef.current?.focus({preventScroll:true});scanInputRef.current?.select();}}>Focus scanner</button>
         <label className="mb-3 block text-sm">Scanner Enter action:
           <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
             <option value="inbound">Inbound</option><option value="dispatch">Dispatch</option><option value="return">Return</option>
           </select>
         </label>
-        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: click the ID field and scan with Enter suffix. Phone: scan, check the ID, then choose an action.</p>
+        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: choose the action once and use an Enter suffix. After each saved scan, the cursor returns automatically. Wait until Ready before scanning the next parcel. Phone: scan, check the ID, then choose an action.</p>
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1.5fr_1.2fr_1.4fr]">
           <input
+            ref={scanInputRef}
             aria-label="Scanned waybill ID"
             autoComplete="off" autoCapitalize="off" spellCheck={false}
             disabled={loading}
             value={scanCode}
             onChange={(e) => {setScanCode(e.target.value);setScanChoices(null);}}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.repeat) {e.preventDefault();void doScan(scanMode);}
+              if (e.key === "Enter" && !e.repeat) {e.preventDefault();void doScan(scanMode,e.currentTarget.value);}
             }}
             placeholder="Scan / enter Delivery Way ID"
             className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30]"

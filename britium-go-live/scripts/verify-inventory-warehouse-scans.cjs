@@ -10,7 +10,7 @@ const js=ts.transpileModule(block,{compilerOptions:{target:ts.ScriptTarget.ES202
 async function test(matches,kind='inbound',chosen){
  let calls=[],messages=[],choices; const busy={current:false};
  const rpc=async(name,args)=>{calls.push({name,args});return name==='be_warehouse_resolve_scan_v3'?{data:{matches}}:{data:{ok:true,attempt_count:2,rto:false}}};
- const fn=new Function('supabase','scanBusy','normalizeWarehouseScan','scanCode','setMessage','setLoading','actor','setScanChoices','reason','remark','setScanCode','loadAll',js+';return doScan;')({rpc},busy,s=>s,'D0909-KAL-172',s=>messages.push(s),()=>{},async()=> 'warehouse@example.test',s=>choices=s,'FAILED','',()=>{},async()=>{});
+ const fn=new Function('restoreScanFocus','supabase','scanBusy','normalizeWarehouseScan','scanCode','setMessage','setLoading','actor','setScanChoices','reason','remark','setScanCode','loadAll',js+';return doScan;')({current:false},{rpc},busy,s=>s,'D0909-KAL-172',s=>messages.push(s),()=>{},async()=> 'warehouse@example.test',s=>choices=s,'FAILED','',()=>{},async()=>{});
  await fn(kind,undefined,chosen);assert.equal(busy.current,false);return {calls,messages,choices};
 }
 (async()=>{
