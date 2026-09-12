@@ -3,6 +3,9 @@ export type Resource = { id: string; name: string; zone?: string; capacity_kg?: 
 export type VanPlan = { vehicle_code: string; driver_code: string; helper_code: string; rows: Stop[] };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
+export const NORMAL_MIN_PARCELS_PER_VAN = 50;
+export const PRACTICAL_MAX_PARCELS_PER_VAN = 75;
+
 function validPoint(latitude: unknown, longitude: unknown) {
   return latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
 }
@@ -27,17 +30,19 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
   );
 }
 
-/** Geographic allocation keeps contiguous route groups. When an origin is supplied (Yangon),
- * every route is sequenced nearest-first from the canonical Head Office.
+/** Geographic allocation keeps contiguous route groups. Automatic van count uses a practical
+ * 50-75 parcel operating band. One below-50 van can still be explicitly approved when unavoidable.
+ * When an origin is supplied (Yangon), every route is sequenced nearest-first from Head Office.
  */
 export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: number, origin?: RouteOrigin): VanPlan[] {
   if (!rows.length) throw new Error("No ready parcels selected.");
   if (new Set(rows.map(r => r.delivery_way_id)).size !== rows.length) throw new Error("Duplicate parcel selection.");
   const available = vehicles.filter(v => v.available !== false);
   if (!available.length) throw new Error("No delivery van is available.");
-  const count = requested ?? Math.min(available.length, Math.max(1, Math.floor(rows.length / 50)));
+  const count = requested ?? Math.min(available.length, Math.max(1, Math.ceil(rows.length / PRACTICAL_MAX_PARCELS_PER_VAN)));
   if (!Number.isInteger(count) || count < 1 || count > Math.min(7, available.length, rows.length)) throw new Error("Choose an available van count.");
-  if (rows.length < (count - 1) * 50 + 1) throw new Error("This would leave more than one van below 50 parcels.");
+  if (rows.length > count * PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
+  if (rows.length < (count - 1) * NORMAL_MIN_PARCELS_PER_VAN + 1) throw new Error("This would leave more than one van below 50 parcels.");
   const towns = new Map<string, Stop[]>();
   for (const row of rows) {
     if (!row.township) throw new Error("A selected parcel has no township.");
@@ -64,7 +69,8 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   const sizes = Array.from({length:count},()=>Math.floor(rows.length/count));
   for(let i=0;i<rows.length%count;i++) sizes[i]++;
   // Concentrate any unavoidable shortfall into exactly one van.
-  for(let i=0;i<count-1;i++) if(sizes[i]<50) { const needed=50-sizes[i]; sizes[i]=50; sizes[count-1]-=needed; }
+  for(let i=0;i<count-1;i++) if(sizes[i]<NORMAL_MIN_PARCELS_PER_VAN) { const needed=NORMAL_MIN_PARCELS_PER_VAN-sizes[i]; sizes[i]=NORMAL_MIN_PARCELS_PER_VAN; sizes[count-1]-=needed; }
+  if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
   const unused=[...available]; let offset=0;
   return sizes.map(size=>{
     let batch=ordered.slice(offset,offset+=size);
