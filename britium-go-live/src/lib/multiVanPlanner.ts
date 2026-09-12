@@ -1,7 +1,19 @@
 export type Stop = { delivery_way_id: string; township: string; latitude?: number; longitude?: number; parcel_weight_kg?: number; [key: string]: unknown };
 export type Resource = { id: string; name: string; zone?: string; capacity_kg?: number; available?: boolean; [key: string]: unknown };
-export type RouteProvenance = { source?: string; route_mode?: string; distance_m?: number; duration_s?: number; request_count?: number; fallback?: boolean; warning?: string; optimized_at?: string };
-export type VanPlan = { vehicle_code: string; driver_code: string; rider_code: string; helper_code: string; rows: Stop[]; route?: RouteProvenance };
+export type RouteProvenance = { source?: string; route_mode?: string; distance_m?: number; duration_s?: number; request_count?: number; fallback?: boolean; warning?: string; optimized_at?: string; base_source?: string; manual?: boolean };
+export type VanPlan = {
+  vehicle_code: string;
+  driver_code: string;
+  rider_code: string;
+  helper_code: string;
+  rows: Stop[];
+  route?: RouteProvenance;
+  crew_mode?: "ROSTER" | "EMERGENCY_MANUAL";
+  manual_driver_name?: string;
+  manual_rider_name?: string;
+  manual_helper_name?: string;
+  emergency_substitution_reason?: string;
+};
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
 export const NORMAL_MIN_PARCELS_PER_VAN = 50;
@@ -31,10 +43,12 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
   );
 }
 
-/** Geographic allocation keeps contiguous township groups before the road optimizer is applied.
+/** Geographic allocation keeps township blocks contiguous before road optimization.
  * Automatic van count uses a practical 50-75 parcel operating band. One below-50 van can still
  * be explicitly approved when unavoidable. The initial sequence is only an emergency geographic
  * fallback; production road order is replaced by the authenticated route service before save.
+ * IMPORTANT: once township blocks are assembled we DO NOT globally re-sort each van by hub distance;
+ * doing that would interleave places such as South Okkalapa between East Dagon stops.
  */
 export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: number, origin?: RouteOrigin): VanPlan[] {
   if (!rows.length) throw new Error("No ready parcels selected.");
@@ -74,13 +88,12 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
   const unused=[...available]; let offset=0;
   return sizes.map(size=>{
-    let batch=ordered.slice(offset,offset+=size);
-    if(origin) batch=sortStopsNearestFirst(batch,origin);
+    const batch=ordered.slice(offset,offset+=size);
     const weight=batch.reduce((s,r)=>s+Number(r.parcel_weight_kg||0),0);
     const index=unused.findIndex(v=>!Number(v.capacity_kg)||Number(v.capacity_kg)>=weight);
     if(index<0) throw new Error("Known van weight capacities are insufficient. Adjust the selected parcels or van count.");
     const vehicle=unused.splice(index,1)[0];
-    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"GEOGRAPHIC_NEAREST_NEIGHBOUR_EMERGENCY",fallback:true}};
+    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,crew_mode:"ROSTER",route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"GEOGRAPHIC_TOWNSHIP_BLOCK_EMERGENCY",fallback:true}};
   });
 }
 
@@ -101,6 +114,6 @@ export function assignCrews(plans: VanPlan[], drivers: Resource[], riders: Resou
     const driver_code=choose(ds,p.rows,used); if(driver_code) used.add(driver_code);
     const rider_code=choose(rs,p.rows,used); if(rider_code) used.add(rider_code);
     const helper_code=choose(hs,p.rows,used); if(helper_code) used.add(helper_code);
-    return {...p,driver_code,rider_code,helper_code};
+    return {...p,crew_mode:"ROSTER",driver_code,rider_code,helper_code};
   });
 }
