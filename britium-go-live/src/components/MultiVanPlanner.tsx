@@ -81,7 +81,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
      </details>
    </section>)}
    {short.length>0&&<div style={{display:"grid",gap:8}}>
-     <strong>{short.length} van(s) below 50 parcels. Only one exception is allowed per operating day.</strong>
+     <strong>{short.length} van(s) below 50 parcels. Only one exception is allowed in this reviewed planning batch.</strong>
      <input style={field} disabled={busy} placeholder="Reason for the below-minimum van" value={reason} onChange={e=>{setReason(e.target.value);setApproved(false);}}/>
      <label><input type="checkbox" disabled={busy||short.length!==1||reason.trim().length<5} checked={approved} onChange={e=>setApproved(e.target.checked)}/> I approve this one van below 50 parcels. Record my account, van, parcel count and reason.</label>
    </div>}
