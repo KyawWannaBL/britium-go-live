@@ -1,6 +1,6 @@
 const GOOGLE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix";
 const MAPBOX_MATRIX_BASE = "https://api.mapbox.com/directions-matrix/v1/mapbox/driving";
-const MATRIX_BATCH = 25;
+const MATRIX_BATCH = 10;
 
 function env(...names) {
   for (const name of names) {
@@ -89,7 +89,6 @@ function optimizeMatrix(durations, distances) {
 
   let bestOrder = order;
   let bestCost = pathCost(bestOrder, durations, distances);
-  // Local 2-opt pass. The route is open-ended, so Head Office stays fixed and the final stop may move.
   for (let pass = 0; pass < 3; pass += 1) {
     let improved = false;
     for (let i = 1; i < bestOrder.length - 1; i += 1) {
