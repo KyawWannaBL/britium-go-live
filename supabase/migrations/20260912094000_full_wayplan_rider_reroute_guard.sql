@@ -82,3 +82,35 @@ begin
 end $$;
 revoke all on function public.be_wayplan_append_route_version(text,text,text,text,jsonb,bigint,bigint,integer,text,jsonb) from public,anon;
 grant execute on function public.be_wayplan_append_route_version(text,text,text,text,jsonb,bigint,bigint,integer,text,jsonb) to authenticated;
+
+-- All operational crew roles are mutually exclusive, and a Rider cannot be reused
+-- on another active Wayplan even when an operator edits a dispatch outside multi-van creation.
+create or replace function public.be_wayplan_distinct_rider_helper_guard()
+returns trigger language plpgsql set search_path=public,pg_temp as $$
+declare
+  v_driver text:=upper(btrim(coalesce(new.driver_code,'')));
+  v_rider text:=upper(btrim(coalesce(new.rider_code,'')));
+  v_helper text:=upper(btrim(coalesce(new.helper_code,'')));
+begin
+  if v_driver<>'' and v_rider<>'' and v_driver=v_rider then
+    raise exception using errcode='23514', message='The same workforce member cannot be assigned as both Driver and Rider on one Wayplan.';
+  end if;
+  if v_helper<>'' and ((v_driver<>'' and v_helper=v_driver) or (v_rider<>'' and v_helper=v_rider)) then
+    raise exception using errcode='23514', message='Driver, Rider and Helper must be different people on one Wayplan.';
+  end if;
+  if v_rider<>'' and exists(
+    select 1 from public.be_wayplan_dispatches d
+    where d.wayplan_id<>new.wayplan_id
+      and upper(coalesce(d.wayplan_status,'CREATED')) not in ('CANCELLED','COMPLETED','CLOSED')
+      and v_rider in (upper(btrim(coalesce(d.driver_code,''))),upper(btrim(coalesce(d.rider_code,''))),upper(btrim(coalesce(d.helper_code,''))))
+  ) then
+    raise exception using errcode='23514', message='This Rider is already assigned to another active Wayplan.';
+  end if;
+  return new;
+end $$;
+
+revoke all on function public.be_wayplan_distinct_rider_helper_guard() from public,anon,authenticated;
+drop trigger if exists be_wayplan_distinct_rider_helper_guard on public.be_wayplan_dispatches;
+create trigger be_wayplan_distinct_rider_helper_guard
+before insert or update of driver_code,rider_code,helper_code,wayplan_status on public.be_wayplan_dispatches
+for each row execute function public.be_wayplan_distinct_rider_helper_guard();
