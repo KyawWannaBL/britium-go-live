@@ -1,6 +1,7 @@
 export type Stop = { delivery_way_id: string; township: string; latitude?: number; longitude?: number; parcel_weight_kg?: number; [key: string]: unknown };
 export type Resource = { id: string; name: string; zone?: string; capacity_kg?: number; available?: boolean; [key: string]: unknown };
-export type VanPlan = { vehicle_code: string; driver_code: string; helper_code: string; rows: Stop[] };
+export type RouteProvenance = { source?: string; route_mode?: string; distance_m?: number; duration_s?: number; request_count?: number; fallback?: boolean; warning?: string; optimized_at?: string };
+export type VanPlan = { vehicle_code: string; driver_code: string; rider_code: string; helper_code: string; rows: Stop[]; route?: RouteProvenance };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
 export const NORMAL_MIN_PARCELS_PER_VAN = 50;
@@ -19,9 +20,9 @@ export function distanceKm(a: { latitude: number; longitude: number }, b: { lati
   return 6371*2*Math.atan2(Math.sqrt(h),Math.sqrt(Math.max(0,1-h)));
 }
 
-/** Yangon delivery sequence: nearest validated stop to the canonical Head Office first. */
+/** Emergency geographic fallback only. Never label this as Google road optimization. */
 export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[] {
-  if (!validPoint(origin?.latitude,origin?.longitude)) throw new Error("Yangon Head Office route origin is unavailable.");
+  if (!validPoint(origin?.latitude,origin?.longitude)) throw new Error("Route origin is unavailable.");
   for(const row of rows) if(!validPoint(row.latitude,row.longitude)) throw new Error("A selected parcel needs a validated location.");
   return [...rows].sort((a,b)=>
     distanceKm(origin,{latitude:Number(a.latitude),longitude:Number(a.longitude)})-
@@ -30,9 +31,10 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
   );
 }
 
-/** Geographic allocation keeps contiguous route groups. Automatic van count uses a practical
- * 50-75 parcel operating band. One below-50 van can still be explicitly approved when unavoidable.
- * When an origin is supplied (Yangon), every route is sequenced nearest-first from Head Office.
+/** Geographic allocation keeps contiguous township groups before the road optimizer is applied.
+ * Automatic van count uses a practical 50-75 parcel operating band. One below-50 van can still
+ * be explicitly approved when unavoidable. The initial sequence is only an emergency geographic
+ * fallback; production road order is replaced by the authenticated route service before save.
  */
 export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: number, origin?: RouteOrigin): VanPlan[] {
   if (!rows.length) throw new Error("No ready parcels selected.");
@@ -55,7 +57,7 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   });
   let ordered:Stop[];
   if(origin){
-    if(!validPoint(origin.latitude,origin.longitude)) throw new Error("Yangon Head Office route origin is unavailable.");
+    if(!validPoint(origin.latitude,origin.longitude)) throw new Error("Route origin is unavailable.");
     const blocks=[...towns.entries()].sort((a,b)=>distanceKm(origin,centroid(a[1]))-distanceKm(origin,centroid(b[1]))||a[0].localeCompare(b[0]));
     ordered=blocks.flatMap(([,rs])=>sortStopsNearestFirst(rs,origin));
   }else{
@@ -68,7 +70,6 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   }
   const sizes = Array.from({length:count},()=>Math.floor(rows.length/count));
   for(let i=0;i<rows.length%count;i++) sizes[i]++;
-  // Concentrate any unavoidable shortfall into exactly one van.
   for(let i=0;i<count-1;i++) if(sizes[i]<NORMAL_MIN_PARCELS_PER_VAN) { const needed=NORMAL_MIN_PARCELS_PER_VAN-sizes[i]; sizes[i]=NORMAL_MIN_PARCELS_PER_VAN; sizes[count-1]-=needed; }
   if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
   const unused=[...available]; let offset=0;
@@ -79,20 +80,27 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
     const index=unused.findIndex(v=>!Number(v.capacity_kg)||Number(v.capacity_kg)>=weight);
     if(index<0) throw new Error("Known van weight capacities are insufficient. Adjust the selected parcels or van count.");
     const vehicle=unused.splice(index,1)[0];
-    return {vehicle_code:vehicle.id,driver_code:"",helper_code:"",rows:batch};
+    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"GEOGRAPHIC_NEAREST_NEIGHBOUR_EMERGENCY",fallback:true}};
   });
 }
 
-export function assignCrews(plans: VanPlan[], drivers: Resource[], helpers: Resource[], normalize: (town:string)=>string): VanPlan[] {
-  const choose=(pool:Resource[],rows:Stop[])=>{
+export function assignCrews(plans: VanPlan[], drivers: Resource[], riders: Resource[], helpers: Resource[], normalize: (town:string)=>string): VanPlan[] {
+  const choose=(pool:Resource[],rows:Stop[],blocked:Set<string>)=>{
     const key=(s:string)=>normalize(s).toLowerCase().replace(/township|[^a-z0-9]/g,"");
     const score=(p:Resource)=>rows.reduce((n,r)=>{
       const town=key(r.township), zones=String(p.zone||"").split(",").map(key);
       return n+(zones.includes(town)?1:0);
     },0);
     pool.sort((a,b)=>score(b)-score(a)||a.id.localeCompare(b.id));
-    return pool.shift()?.id||"";
+    const index=pool.findIndex(x=>!blocked.has(x.id));
+    return index>=0?pool.splice(index,1)[0]?.id||"":"";
   };
-  const ds=drivers.filter(d=>d.available!==false), hs=helpers.filter(h=>h.available!==false);
-  return plans.map(p=>({...p,driver_code:choose(ds,p.rows),helper_code:choose(hs,p.rows)}));
+  const ds=drivers.filter(d=>d.available!==false), rs=riders.filter(r=>r.available!==false), hs=helpers.filter(h=>h.available!==false);
+  const used=new Set<string>();
+  return plans.map(p=>{
+    const driver_code=choose(ds,p.rows,used); if(driver_code) used.add(driver_code);
+    const rider_code=choose(rs,p.rows,used); if(rider_code) used.add(rider_code);
+    const helper_code=choose(hs,p.rows,used); if(helper_code) used.add(helper_code);
+    return {...p,driver_code,rider_code,helper_code};
+  });
 }
