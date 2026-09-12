@@ -1,6 +1,6 @@
 -- Warehouse must show the same business-facing Way ID used by Wayplan Command.
 -- Keep delivery_way_id as the canonical internal parcel key, but expose the
--- imported/source waybill number as the visible waybill/display ID.
+-- imported/source waybill number as the visible Way ID used by the Warehouse UI.
 
 create or replace function public.be_warehouse_scan_lifecycle_snapshot()
 returns jsonb
@@ -25,6 +25,11 @@ begin
           t.e->>'delivery_way_id'
         ),
         'display_way_id', coalesce(
+          src.source_waybill_no,
+          nullif(t.e->>'waybill_no',''),
+          t.e->>'delivery_way_id'
+        ),
+        'tracking_no', coalesce(
           src.source_waybill_no,
           nullif(t.e->>'waybill_no',''),
           t.e->>'delivery_way_id'
