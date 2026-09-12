@@ -2,11 +2,11 @@ import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { allocateVans, assignCrews, PRACTICAL_MAX_PARCELS_PER_VAN, type Resource, type Stop, type VanPlan } from "@/lib/multiVanPlanner";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
+import FullVanRouteMap from "@/components/FullVanRouteMap";
 
 const field: React.CSSProperties={padding:10,borderRadius:8,color:"#102b45",background:"white",border:"1px solid #9cc2d9"};
 const button: React.CSSProperties={...field,background:"#f6b84b",fontWeight:800,cursor:"pointer"};
 const secondary: React.CSSProperties={...field,background:"#173a55",color:"white",fontWeight:700,cursor:"pointer"};
-const danger: React.CSSProperties={...field,background:"#6b2b31",color:"white",fontWeight:700,cursor:"pointer"};
 
 function routeLabel(plan:VanPlan){
  const source=String(plan.route?.source||"GEOGRAPHIC_FALLBACK");
@@ -32,7 +32,7 @@ function googleMapSegments(origin:any, rows:Stop[]){
    const waypoints=chunk.slice(0,-1).map(coord).filter(Boolean).join("|");
    const q=new URLSearchParams({api:"1",origin:start,destination,travelmode:"driving"});
    if(waypoints) q.set("waypoints",waypoints);
-   output.push({label:`Google Map ${Math.floor(i/8)+1}`,url:`https://www.google.com/maps/dir/?${q.toString()}`});
+   output.push({label:`Open Google Maps ${Math.floor(i/8)+1}`,url:`https://www.google.com/maps/dir/?${q.toString()}`});
    start=destination;
  }
  return output;
@@ -95,7 +95,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
    try{
      const optimized=await optimizeOne(plans[index]);
      reset(plans.map((p,j)=>j===index?optimized:p));
-     setMessage(`Van ${index+1}: ${routeLabel(optimized)}. Review the sequence before saving.`);
+     setMessage(`Van ${index+1}: ${routeLabel(optimized)}. Review the sequence and whole route map before saving.`);
    }catch(e:any){setMessage(e?.message||"Could not optimize this van.");}
    finally{setBusy(false);}
  }
@@ -154,7 +154,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
  return <section style={{padding:16,border:"1px solid #1a3a5c",borderRadius:16,background:"#0b2236",display:"grid",gap:12}}>
    <h2 style={{margin:0}}>Automatic delivery van planning</h2>
    <p style={{margin:0}}>Plan {scopedRows.length} ready parcels by location. Normal operating band: <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong>. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
-   <p style={{margin:0}}>Google Routes road time/distance is primary. Each generated sequence remains editable by authorized management/operations staff before creation. Any manual edit is visibly labelled and the warehouse LIFO list changes automatically to the exact reverse.</p>
+   <p style={{margin:0}}>Google Routes road time/distance is primary. Each van has one complete Google road-map view covering the warehouse/origin and every planned stop. The generated sequence remains editable by authorized management/operations staff before creation; warehouse LIFO updates automatically to the exact reverse.</p>
    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
      <label>Pickup batch <select style={field} value={currentPickup} disabled={busy} onChange={e=>{setPickup(e.target.value);reset();}}><option value="*">All ready pickups</option>{Array.from(new Set(rows.map(r=>String(r.pickup_id||"")))).map(id=><option key={id} value={id}>{id}</option>)}</select></label>
      <label>Vans to use <select style={field} value={count} disabled={busy} onChange={e=>{setCount(e.target.value);reset();}}><option value="">Automatic — practical van count</option>{vehicles.filter(v=>v.available).map((_,i)=><option key={i} value={i+1}>{i+1}</option>)}</select></label>
@@ -164,6 +164,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
    {plans.map((plan,i)=>{
      const delivery=plan.rows; const lifo=[...delivery].reverse(); const maps=googleMapSegments(origin,delivery);
      const emergency=plan.crew_mode==="EMERGENCY_MANUAL";
+     const vehicleName=vehicles.find(v=>v.id===plan.vehicle_code)?.name||plan.vehicle_code||`Van ${i+1}`;
      return <section key={i} style={{padding:12,border:"1px solid #38566b",borderRadius:10}}>
        <strong>Van {i+1}: {delivery.length} parcels · {Array.from(new Set(delivery.map(r=>r.township))).join(", ")}</strong>
        <div style={{marginTop:6,fontWeight:800}}>{routeLabel(plan)}{plan.route?.duration_s?` · ${Math.round(Number(plan.route.duration_s)/60)} min`:""}{plan.route?.distance_m?` · ${(Number(plan.route.distance_m)/1000).toFixed(1)} km`:""}</div>
@@ -172,6 +173,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
          <button style={secondary} disabled={busy} onClick={()=>void reoptimizeOne(i)}>Re-optimize road route</button>
          {maps.map(m=><a key={m.label} href={m.url} target="_blank" rel="noreferrer" style={{...secondary,textDecoration:"none"}}>{m.label}</a>)}
        </div>
+       <FullVanRouteMap origin={origin} plan={plan} vanLabel={`Van ${i+1} · ${vehicleName}`} />
        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>
          <label>Vehicle <select style={field} disabled={busy} value={plan.vehicle_code} onChange={e=>patchPlan(i,{vehicle_code:e.target.value})}><option value="">Choose</option>{vehicles.filter(x=>x.available||x.id===plan.vehicle_code).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
          <label>Crew mode <select style={field} disabled={busy} value={plan.crew_mode||"ROSTER"} onChange={e=>patchPlan(i,{crew_mode:e.target.value as any})}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
