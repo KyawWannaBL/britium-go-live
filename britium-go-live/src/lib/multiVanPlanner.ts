@@ -1,6 +1,6 @@
 export type Stop = { delivery_way_id: string; township: string; latitude?: number; longitude?: number; parcel_weight_kg?: number; [key: string]: unknown };
 export type Resource = { id: string; name: string; zone?: string; capacity_kg?: number; available?: boolean; [key: string]: unknown };
-export type VanPlan = { vehicle_code: string; driver_code: string; helper_code: string; rows: Stop[] };
+export type VanPlan = { vehicle_code: string; driver_code: string; rider_code: string; helper_code: string; rows: Stop[] };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
 export const NORMAL_MIN_PARCELS_PER_VAN = 50;
@@ -79,11 +79,15 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
     const index=unused.findIndex(v=>!Number(v.capacity_kg)||Number(v.capacity_kg)>=weight);
     if(index<0) throw new Error("Known van weight capacities are insufficient. Adjust the selected parcels or van count.");
     const vehicle=unused.splice(index,1)[0];
-    return {vehicle_code:vehicle.id,driver_code:"",helper_code:"",rows:batch};
+    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch};
   });
 }
 
-export function assignCrews(plans: VanPlan[], drivers: Resource[], helpers: Resource[], normalize: (town:string)=>string): VanPlan[] {
+/** Automatically assign one authenticated driver, rider and (when available) helper to each van.
+ * Territory matches win, while every workforce resource can be used only once in the reviewed batch.
+ * Operators can still change the suggested assignments before creation.
+ */
+export function assignCrews(plans: VanPlan[], drivers: Resource[], riders: Resource[], helpers: Resource[], normalize: (town:string)=>string): VanPlan[] {
   const choose=(pool:Resource[],rows:Stop[])=>{
     const key=(s:string)=>normalize(s).toLowerCase().replace(/township|[^a-z0-9]/g,"");
     const score=(p:Resource)=>rows.reduce((n,r)=>{
@@ -93,6 +97,8 @@ export function assignCrews(plans: VanPlan[], drivers: Resource[], helpers: Reso
     pool.sort((a,b)=>score(b)-score(a)||a.id.localeCompare(b.id));
     return pool.shift()?.id||"";
   };
-  const ds=drivers.filter(d=>d.available!==false), hs=helpers.filter(h=>h.available!==false);
-  return plans.map(p=>({...p,driver_code:choose(ds,p.rows),helper_code:choose(hs,p.rows)}));
+  const ds=drivers.filter(d=>d.available!==false), rs=riders.filter(r=>r.available!==false), hs=helpers.filter(h=>h.available!==false);
+  if(ds.length<plans.length) throw new Error("Not enough available authenticated drivers for the selected vans.");
+  if(rs.length<plans.length) throw new Error("Not enough available authenticated riders for the selected vans.");
+  return plans.map(p=>({...p,driver_code:choose(ds,p.rows),rider_code:choose(rs,p.rows),helper_code:choose(hs,p.rows)}));
 }
