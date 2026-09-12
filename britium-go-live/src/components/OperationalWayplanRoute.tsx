@@ -20,16 +20,28 @@ function mapsUrl(stop:Stop){
 }
 function telUrl(phone:any){return `tel:${String(phone||"").replace(/[^+0-9]/g,"")}`;}
 
-export default function OperationalWayplanRoute({jobs,onOpenDelivery}:{jobs:Job[];onOpenDelivery:(job:Job)=>void}){
- const wayplanIds=useMemo(()=>Array.from(new Set(jobs.map(j=>String(j.wayplan_id||"").trim()).filter(Boolean))),[jobs]);
+export default function OperationalWayplanRoute({jobs=[],onOpenDelivery}:{jobs?:Job[];onOpenDelivery?:(job:Job)=>void}){
+ const suppliedWayplans=useMemo(()=>Array.from(new Set(jobs.map(j=>String(j.wayplan_id||"").trim()).filter(Boolean))),[jobs]);
+ const [assignedWayplans,setAssignedWayplans]=useState<string[]>([]);
+ const wayplanIds=suppliedWayplans.length?suppliedWayplans:assignedWayplans;
  const [wayplanId,setWayplanId]=useState("");
  const [snapshot,setSnapshot]=useState<any>(null);
  const [busy,setBusy]=useState(false);
  const [message,setMessage]=useState("");
  const [reason,setReason]=useState("");
 
+ useEffect(()=>{if(!suppliedWayplans.length)void loadAssignedWayplans();},[suppliedWayplans.length]);
  useEffect(()=>{if(!wayplanId&&wayplanIds.length)setWayplanId(wayplanIds[0]);},[wayplanIds,wayplanId]);
  useEffect(()=>{if(wayplanId)void load();else setSnapshot(null);},[wayplanId]);
+
+ async function loadAssignedWayplans(){
+   try{
+     const {data,error}=await supabase.rpc("be_my_operational_wayplans_v1");
+     if(error)throw error;
+     const ids=(Array.isArray(data?.wayplans)?data.wayplans:[]).map((x:any)=>String(x.wayplan_id||"")).filter(Boolean);
+     setAssignedWayplans(ids);
+   }catch(e:any){setMessage(e?.message||"Could not load assigned Wayplans.");}
+ }
 
  async function load(){
    setBusy(true);setMessage("");
@@ -73,22 +85,28 @@ export default function OperationalWayplanRoute({jobs,onOpenDelivery}:{jobs:Job[
 
  async function event(eventType:string){
    if(!current)return;
-   if(["CUSTOMER_UNAVAILABLE","RESCHEDULE","RTO","SKIP"].includes(eventType)&&reason.trim().length<3){setMessage("Enter a short reason before this exception action.");return;}
+   const eventReason=reason.trim();
+   if(["CUSTOMER_UNAVAILABLE","RESCHEDULE","RTO","SKIP"].includes(eventType)&&eventReason.length<3){setMessage("Enter a short reason before this exception action.");return;}
    setBusy(true);setMessage("");
    try{
      const gps=await position();
-     const {data,error}=await supabase.rpc("be_record_operational_stop_event_v1",{p_payload:{wayplan_id:wayplanId,delivery_way_id:current.delivery_way_id,event_type:eventType,reason:reason.trim()||null,...gps}});
+     const {data,error}=await supabase.rpc("be_record_operational_stop_event_v1",{p_payload:{wayplan_id:wayplanId,delivery_way_id:current.delivery_way_id,event_type:eventType,reason:eventReason||null,...gps}});
      if(error)throw error;if(!data?.ok)throw new Error(data?.error||"Could not record stop event.");
      setReason("");
-     if(data.requires_reroute)await rerouteRemaining(gps,`${eventType}: ${reason.trim()||"Rider route exception"}`);
+     if(data.requires_reroute)await rerouteRemaining(gps,`${eventType}: ${eventReason||"Rider route exception"}`);
      else {setMessage(`${eventType} recorded for ${current.delivery_way_id}.`);await load();}
    }catch(e:any){setMessage(e?.message||"Could not update current stop.");}
    finally{setBusy(false);}
  }
 
+ function openDelivery(){
+   if(currentJob&&onOpenDelivery){onOpenDelivery(currentJob);return;}
+   window.location.hash="#/delivery";
+ }
+
  if(!wayplanIds.length)return <div style={panel}><strong>No operational Wayplan assigned.</strong><div style={{marginTop:7,color:"#9cc2d9"}}>Published delivery Wayplans will appear here with a current-stop workflow.</div></div>;
 
- return <div style={{display:"grid",gap:12}}>
+ return <div style={{display:"grid",gap:12,color:"#eef8ff"}}>
    <div style={{...panel,display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}}>
      <label style={{fontWeight:800}}>Wayplan <select value={wayplanId} disabled={busy} onChange={e=>setWayplanId(e.target.value)} style={{marginLeft:8,padding:9,borderRadius:9}}>{wayplanIds.map(id=><option key={id}>{id}</option>)}</select></label>
      <button style={button} disabled={busy} onClick={()=>void load()}><RefreshCw size={16}/>Refresh</button>
@@ -102,7 +120,7 @@ export default function OperationalWayplanRoute({jobs,onOpenDelivery}:{jobs:Job[
        <a href={mapsUrl(current)} target="_blank" rel="noreferrer" style={{...gold,textDecoration:"none"}}><Navigation size={16}/>Navigate</a>
        {current.recipient_phone&&<a href={telUrl(current.recipient_phone)} style={{...button,textDecoration:"none"}}><Phone size={16}/>Call Customer</a>}
        <button style={button} disabled={busy} onClick={()=>void event("ARRIVED")}><MapPin size={16}/>Arrived</button>
-       <button style={gold} disabled={busy||!currentJob} onClick={()=>currentJob&&onOpenDelivery(currentJob)}><UserRoundCheck size={16}/>Delivery Proof / Delivered</button>
+       <button style={gold} disabled={busy} onClick={openDelivery}><UserRoundCheck size={16}/>Delivery Proof / Delivered</button>
      </div>
      <div style={{display:"grid",gap:8}}><input value={reason} disabled={busy} onChange={e=>setReason(e.target.value)} placeholder="Reason for unavailable / reschedule / RTO / skip" style={{padding:10,borderRadius:10,border:"1px solid #38566b"}}/><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
        <button style={danger} disabled={busy} onClick={()=>void event("CUSTOMER_UNAVAILABLE")}>Customer Unavailable</button>
