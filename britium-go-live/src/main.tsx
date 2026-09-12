@@ -10,6 +10,7 @@ import "./enterprisePortalAuthGate";
 import "./enterpriseFinalTouchBootstrap";
 import "./dataEntryTariffAutocomplete";
 import "./dataEntryGoLiveHardWire";
+import "./warehouseContinuousScanEnhancer";
 import "./components/pickupRequestSubmitGuard";
 import "./components/dataEntryHardFullscreenGuardV28";
 import "./components/dataEntryFullscreenGuardV32";
