@@ -1,5 +1,7 @@
 // Warehouse UX enhancer: persistent scan mode, Myanmar return reasons, manual fallback,
 // phone-camera auto-submit, and table space cleanup. Runs only on the Warehouse route.
+// IMPORTANT: all DOM writes are idempotent and performed with the observer disconnected
+// to prevent MutationObserver feedback loops / browser freezes.
 
 const MANUAL_CODE = "OTHER_MANUAL";
 const MANUAL_LABEL = "အခြားအကြောင်းပြချက် — ကိုယ်တိုင်ရိုက်ထည့်မည်";
@@ -28,6 +30,7 @@ const MM_LABELS: Record<string, string> = {
 };
 
 function setNativeValue(el: HTMLInputElement | HTMLSelectElement, value: string) {
+  if (el.value === value) return;
   const proto = el instanceof HTMLSelectElement ? HTMLSelectElement.prototype : HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   setter?.call(el, value);
@@ -62,7 +65,7 @@ function findRemarkInput(root: ParentNode): HTMLInputElement | null {
 function beautifyReasonDropdown(select: HTMLSelectElement) {
   for (const option of Array.from(select.options)) {
     const mm = MM_LABELS[option.value];
-    if (mm) option.textContent = mm;
+    if (mm && option.textContent !== mm) option.textContent = mm;
   }
   if (!Array.from(select.options).some((o) => o.value === MANUAL_CODE)) {
     const option = document.createElement("option");
@@ -88,14 +91,12 @@ function ensureManualInput(root: HTMLElement, reasonSelect: HTMLSelectElement, r
 
   const sync = () => {
     const isManual = reasonSelect.value === MANUAL_CODE;
-    manual!.style.display = isManual ? "block" : "none";
+    const desiredManualDisplay = isManual ? "block" : "none";
+    if (manual!.style.display !== desiredManualDisplay) manual!.style.display = desiredManualDisplay;
     if (remarkInput) {
-      if (isManual) {
-        remarkInput.style.display = "none";
-        setNativeValue(remarkInput, manual!.value.trim());
-      } else {
-        remarkInput.style.display = "block";
-      }
+      const desiredRemarkDisplay = isManual ? "none" : "block";
+      if (remarkInput.style.display !== desiredRemarkDisplay) remarkInput.style.display = desiredRemarkDisplay;
+      if (isManual) setNativeValue(remarkInput, manual!.value.trim());
     }
   };
 
@@ -118,13 +119,19 @@ function hideRedundantTableColumns(root: HTMLElement) {
     const actionIdx = labels.indexOf("ACTIONS");
 
     if (waybillIdx >= 0 && deliveryIdx >= 0) {
-      headers[waybillIdx].textContent = "WAY ID / WAYBILL";
+      if (headers[waybillIdx].textContent !== "WAY ID / WAYBILL") headers[waybillIdx].textContent = "WAY ID / WAYBILL";
       const col = deliveryIdx + 1;
-      table.querySelectorAll(`tr > *:nth-child(${col})`).forEach((el) => ((el as HTMLElement).style.display = "none"));
+      table.querySelectorAll(`tr > *:nth-child(${col})`).forEach((el) => {
+        const node = el as HTMLElement;
+        if (node.style.display !== "none") node.style.display = "none";
+      });
     }
     if (actionIdx >= 0) {
       const col = actionIdx + 1;
-      table.querySelectorAll(`tr > *:nth-child(${col})`).forEach((el) => ((el as HTMLElement).style.display = "none"));
+      table.querySelectorAll(`tr > *:nth-child(${col})`).forEach((el) => {
+        const node = el as HTMLElement;
+        if (node.style.display !== "none") node.style.display = "none";
+      });
     }
   }
 }
@@ -153,7 +160,9 @@ function enhance() {
   const remarkInput = findRemarkInput(root);
 
   if (modeSelect) {
-    modeSelect.setAttribute("aria-label", "Warehouse continuous scan mode");
+    if (modeSelect.getAttribute("aria-label") !== "Warehouse continuous scan mode") {
+      modeSelect.setAttribute("aria-label", "Warehouse continuous scan mode");
+    }
     const label = modeSelect.closest("label");
     if (label && !label.dataset.beContinuousLabel) {
       label.dataset.beContinuousLabel = "1";
@@ -172,10 +181,45 @@ function enhance() {
 }
 
 if (typeof window !== "undefined") {
-  const observer = new MutationObserver(() => enhance());
-  window.addEventListener("hashchange", () => enhance());
-  window.addEventListener("DOMContentLoaded", () => {
-    enhance();
-    observer.observe(document.body, { subtree: true, childList: true, characterData: true });
-  });
+  let observer: MutationObserver | null = null;
+  let scheduled = false;
+  let running = false;
+
+  const observe = () => {
+    if (!observer || !document.body) return;
+    observer.observe(document.body, { subtree: true, childList: true });
+  };
+
+  const runSafely = () => {
+    scheduled = false;
+    if (running) return;
+    running = true;
+    observer?.disconnect();
+    try {
+      enhance();
+    } finally {
+      running = false;
+      observe();
+    }
+  };
+
+  const schedule = () => {
+    if (!location.hash.startsWith("#/warehouse") || scheduled || running) return;
+    scheduled = true;
+    window.requestAnimationFrame(runSafely);
+  };
+
+  observer = new MutationObserver(() => schedule());
+  window.addEventListener("hashchange", schedule);
+
+  const start = () => {
+    schedule();
+    observe();
+  };
+
+  if (document.readyState === "loading") {
+    window.addEventListener("DOMContentLoaded", start, { once: true });
+  } else {
+    start();
+  }
 }
