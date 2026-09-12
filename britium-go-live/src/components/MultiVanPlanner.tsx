@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { allocateVans, assignCrews, sortStopsNearestFirst, type Resource, type Stop, type VanPlan } from "@/lib/multiVanPlanner";
+import { allocateVans, assignCrews, sortStopsNearestFirst, PRACTICAL_MAX_PARCELS_PER_VAN, type Resource, type Stop, type VanPlan } from "@/lib/multiVanPlanner";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
 
 const field: React.CSSProperties={padding:10,borderRadius:8,color:"#102b45",background:"white",border:"1px solid #9cc2d9"};
@@ -31,7 +31,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
      if(region==="YANGON"&&!origin) throw new Error("Yangon Head Office route origin is unavailable.");
      const raw=allocateVans(scopedRows,vehicles,count?Number(count):undefined,origin);
      changed(assignCrews(raw,drivers,helpers,convertMyanmarTownshipToEnglish));
-     setMessage(region==="YANGON"?"Review nearest-first routes from Yangon Head Office and each van's reverse LIFO warehouse loading list.":"Review the suggested vans and crews. You may adjust assignments before creating.");
+     setMessage(region==="YANGON"?"Review practical 50–75 parcel van routes, nearest-first from Yangon Head Office, with reverse LIFO warehouse loading lists.":"Review the suggested vans and crews. You may adjust assignments before creating.");
    } catch(e:any){setMessage(e.message);}
  }
  async function save(){
@@ -49,14 +49,15 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
    finally{setBusy(false);}
  }
  const short=plans.filter(p=>p.rows.length<50);
+ const oversized=plans.filter(p=>p.rows.length>PRACTICAL_MAX_PARCELS_PER_VAN);
  return <section style={{padding:16,border:"1px solid #1a3a5c",borderRadius:16,background:"#0b2236",display:"grid",gap:12}}>
    <h2 style={{margin:0}}>Automatic delivery van planning</h2>
-   <p style={{margin:0}}>Plan {scopedRows.length} ready parcels by location. Normal minimum: 50 parcels per delivery van. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
+   <p style={{margin:0}}>Plan {scopedRows.length} ready parcels by location. Normal operating band: <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong>. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
    {region==="YANGON"&&<p style={{margin:0}}>Yangon delivery order starts with the validated stop closest to <strong>{origin?.label||"Yangon Head Office"}</strong> and progresses outward. Warehouse loading is generated in exact reverse order (LIFO).</p>}
    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
      <label>Pickup batch <select style={field} value={currentPickup} disabled={busy} onChange={e=>{setPickup(e.target.value);changed([]);}}><option value="*">All ready pickups</option>{Array.from(new Set(rows.map(r=>String(r.pickup_id||"")))).map(id=><option key={id} value={id}>{id}</option>)}</select></label>
      <label>Vans to use <select style={field} value={count} onChange={e=>{setCount(e.target.value);changed([]);}}>
-       <option value="">Automatic — only vans needed</option>{vehicles.filter(v=>v.available).map((_,i)=><option key={i} value={i+1}>{i+1}</option>)}
+       <option value="">Automatic — practical van count</option>{vehicles.filter(v=>v.available).map((_,i)=><option key={i} value={i+1}>{i+1}</option>)}
      </select></label>
      <button style={button} disabled={busy||!context||!scopedRows.length||(region==="YANGON"&&!origin)} onClick={preview}>Preview automatic Wayplans</button>
    </div>
@@ -92,11 +93,12 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
        </div>
      </details>
    </section>})}
+   {oversized.length>0&&<strong>{oversized.length} van(s) exceed the practical {PRACTICAL_MAX_PARCELS_PER_VAN}-parcel maximum. Use more vans before creating Wayplans.</strong>}
    {short.length>0&&<div style={{display:"grid",gap:8}}>
      <strong>{short.length} van(s) below 50 parcels. Only one exception is allowed in this reviewed planning batch.</strong>
      <input style={field} disabled={busy} placeholder="Reason for the below-minimum van" value={reason} onChange={e=>{setReason(e.target.value);setApproved(false);}}/>
      <label><input type="checkbox" disabled={busy||short.length!==1||reason.trim().length<5} checked={approved} onChange={e=>setApproved(e.target.checked)}/> I approve this one van below 50 parcels. Record my account, van, parcel count and reason.</label>
    </div>}
-   {plans.length>0&&<button style={button} disabled={busy||plans.some(p=>!p.driver_code||!p.rows.length)||short.length>1||(short.length===1&&!approved)} onClick={save}>{busy?"Creating Wayplans…":"Create reviewed Wayplans + LIFO lists"}</button>}
+   {plans.length>0&&<button style={button} disabled={busy||plans.some(p=>!p.driver_code||!p.rows.length)||oversized.length>0||short.length>1||(short.length===1&&!approved)} onClick={save}>{busy?"Creating Wayplans…":"Create reviewed Wayplans + LIFO lists"}</button>}
  </section>;
 }

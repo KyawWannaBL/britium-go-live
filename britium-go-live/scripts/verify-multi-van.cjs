@@ -7,17 +7,20 @@ try {
    assert.equal(result.diagnostics.filter(d=>d.category===1).length,0);
    fs.writeFileSync(path.join(temp,name+'.js'),result.outputText);
  }
- const {allocateVans,assignCrews,sortStopsNearestFirst,distanceKm}=require(path.join(temp,'multiVanPlanner.js'));
+ const {allocateVans,assignCrews,sortStopsNearestFirst,distanceKm,PRACTICAL_MAX_PARCELS_PER_VAN}=require(path.join(temp,'multiVanPlanner.js'));
  const {convertMyanmarTownshipToEnglish:normalize}=require(path.join(temp,'myanmarAddressConverter.js'));
  const vehicles=Array.from({length:7},(_,i)=>({id:'V'+i,name:'Van'+i,capacity_kg:800}));
  const rows=n=>Array.from({length:n},(_,i)=>({delivery_way_id:'D'+i,township:['မြောက်ဒဂုံ','တောင်ဒဂုံ','ဒဂုံ','အရှေ့ဒဂုံ'][i%4],latitude:16.8+i%4/100,longitude:96.1+i%7/100,parcel_weight_kg:1}));
- for(const n of [1,49,50,99,100,149,150,191,216,289,500]){
+ for(const n of [1,49,50,75,76,99,100,149,150,152,191,216,289,500]){
    const p=allocateVans(rows(n),vehicles);
    assert.equal(p.flatMap(x=>x.rows).length,n);
    assert.equal(new Set(p.flatMap(x=>x.rows.map(r=>r.delivery_way_id))).size,n);
-   assert.equal(p.length,Math.min(7,Math.max(1,Math.floor(n/50))));
+   assert.equal(p.length,Math.min(7,Math.max(1,Math.ceil(n/PRACTICAL_MAX_PARCELS_PER_VAN))));
    assert.ok(p.filter(x=>x.rows.length<50).length<=1);
+   assert.ok(p.every(x=>x.rows.length<=PRACTICAL_MAX_PARCELS_PER_VAN));
  }
+ assert.deepEqual(allocateVans(rows(152),vehicles).map(p=>p.rows.length),[51,51,50]);
+ assert.throws(()=>allocateVans(rows(152),vehicles,1),/practical maximum/);
  assert.deepEqual(allocateVans(rows(216),vehicles,5).map(p=>p.rows.length),[50,50,50,50,16]);
  assert.throws(()=>allocateVans(rows(216),vehicles,6),/more than one/);
  assert.throws(()=>allocateVans([{delivery_way_id:'D',township:'ဒဂုံ'}],vehicles),/validated location/);
@@ -43,5 +46,5 @@ try {
    assert.equal(lifo[lifo.length-1].delivery_way_id,plan.rows[0].delivery_way_id);
  }
  assert.throws(()=>sortStopsNearestFirst(near,{latitude:NaN,longitude:96.1}),/origin/);
- console.log('PASS: minimum, one-short-van allocation, all parcels preserved, distinct townships, territory crew selection, unavailable vehicles, capacity, Yangon HQ nearest-first route and LIFO reversal.');
+ console.log('PASS: pragmatic 50-75 parcel van band, 152=>51/51/50, one-short-van exception, all parcels preserved, territory crews, capacity, Yangon HQ nearest-first route and LIFO reversal.');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
