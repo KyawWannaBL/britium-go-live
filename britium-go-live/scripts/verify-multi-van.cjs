@@ -7,7 +7,7 @@ try {
    assert.equal(result.diagnostics.filter(d=>d.category===1).length,0);
    fs.writeFileSync(path.join(temp,name+'.js'),result.outputText);
  }
- const {allocateVans,assignCrews}=require(path.join(temp,'multiVanPlanner.js'));
+ const {allocateVans,assignCrews,sortStopsNearestFirst,distanceKm}=require(path.join(temp,'multiVanPlanner.js'));
  const {convertMyanmarTownshipToEnglish:normalize}=require(path.join(temp,'myanmarAddressConverter.js'));
  const vehicles=Array.from({length:7},(_,i)=>({id:'V'+i,name:'Van'+i,capacity_kg:800}));
  const rows=n=>Array.from({length:n},(_,i)=>({delivery_way_id:'D'+i,township:['မြောက်ဒဂုံ','တောင်ဒဂုံ','ဒဂုံ','အရှေ့ဒဂုံ'][i%4],latitude:16.8+i%4/100,longitude:96.1+i%7/100,parcel_weight_kg:1}));
@@ -27,5 +27,21 @@ try {
  const crew=assignCrews(p,[{id:'A',name:'A',zone:'South Dagon'},{id:'B',name:'B',zone:'North Dagon'}],[],normalize);
  assert.equal(crew[0].driver_code,'B');
  const disabled=allocateVans(rows(50),[{id:'X',name:'X',available:false},...vehicles]);assert.notEqual(disabled[0].vehicle_code,'X');
- console.log('PASS: minimum, one-short-van allocation, all parcels preserved, distinct townships, territory crew selection, unavailable vehicles and capacity.');
+ const hq={latitude:16.8409,longitude:96.1735,label:'Yangon Head Office'};
+ const near=[
+  {delivery_way_id:'FAR',township:'A',latitude:17.05,longitude:96.30,parcel_weight_kg:1},
+  {delivery_way_id:'NEAR',township:'A',latitude:16.842,longitude:96.175,parcel_weight_kg:1},
+  {delivery_way_id:'MID',township:'A',latitude:16.90,longitude:96.20,parcel_weight_kg:1},
+ ];
+ assert.deepEqual(sortStopsNearestFirst(near,hq).map(x=>x.delivery_way_id),['NEAR','MID','FAR']);
+ const hqPlan=allocateVans(rows(150),vehicles,3,hq);
+ for(const plan of hqPlan){
+   const d=plan.rows.map(r=>distanceKm(hq,{latitude:Number(r.latitude),longitude:Number(r.longitude)}));
+   for(let i=1;i<d.length;i++) assert.ok(d[i]>=d[i-1]-1e-9,'HQ delivery order must be nearest-first within each van');
+   const lifo=[...plan.rows].reverse();
+   assert.equal(lifo[0].delivery_way_id,plan.rows[plan.rows.length-1].delivery_way_id);
+   assert.equal(lifo[lifo.length-1].delivery_way_id,plan.rows[0].delivery_way_id);
+ }
+ assert.throws(()=>sortStopsNearestFirst(near,{latitude:NaN,longitude:96.1}),/origin/);
+ console.log('PASS: minimum, one-short-van allocation, all parcels preserved, distinct townships, territory crew selection, unavailable vehicles, capacity, Yangon HQ nearest-first route and LIFO reversal.');
 }finally{fs.rmSync(temp,{recursive:true,force:true});}
