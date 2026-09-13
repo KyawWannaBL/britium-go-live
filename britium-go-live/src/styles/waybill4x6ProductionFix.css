@@ -1,0 +1,166 @@
+/* BRITIUM_WAYBILL_4X6_PRODUCTION_FIX_V34_20260914
+   Production override for the live nested Vite app served by Vercel.
+   Keep physical page dimensions exact while making the 4x6 preview/print readable.
+*/
+
+.be-label.be-4x6 {
+  width: 101.6mm !important;
+  height: 152.4mm !important;
+  grid-template-rows: 30mm 23mm 40mm 35mm minmax(0, 1fr) !important;
+  padding: 3mm !important;
+  border: .45mm solid #111 !important;
+  font-size: 9.4pt !important;
+  line-height: 1.25 !important;
+  overflow: hidden !important;
+}
+
+.be-4x6 .full-head {
+  grid-template-columns: minmax(0, 1fr) 31mm !important;
+  gap: 2.5mm !important;
+  padding-bottom: 2mm !important;
+  border-bottom: .45mm solid #111 !important;
+}
+
+.be-4x6 .full-brand {
+  padding-top: 0 !important;
+  gap: 2.5mm !important;
+}
+
+.be-4x6 .full-brand .be-logo {
+  width: 13mm !important;
+  height: 13mm !important;
+  font-size: 17pt !important;
+}
+
+.be-4x6 .full-brand-copy strong {
+  font-size: 16pt !important;
+  line-height: 1 !important;
+  letter-spacing: .1mm !important;
+}
+
+.be-4x6 .full-brand-copy span {
+  margin-top: 1mm !important;
+  font-size: 10pt !important;
+  line-height: 1.05 !important;
+}
+
+.be-4x6 .full-brand-copy small {
+  margin-top: 1mm !important;
+  font-size: 7.6pt !important;
+}
+
+.be-4x6 .full-code time {
+  transform: none !important;
+  font-size: 6.5pt !important;
+  line-height: 1.05 !important;
+}
+
+.be-4x6 .full-code .qr {
+  width: 20mm !important;
+  height: 20mm !important;
+  margin: .8mm auto !important;
+}
+
+.be-4x6 .full-code strong {
+  font-size: 8pt !important;
+  line-height: 1.05 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.be-4x6 .full-merchant,
+.be-4x6 .full-recipient {
+  grid-template-columns: 19mm minmax(0, 1fr) !important;
+  gap: 2mm !important;
+  padding: 2.2mm 0 !important;
+  border-bottom: .45mm solid #111 !important;
+}
+
+.be-4x6 .section-label {
+  font-size: 8.5pt !important;
+  font-weight: 900 !important;
+}
+
+.be-4x6 .section-copy strong {
+  font-size: 13.5pt !important;
+  line-height: 1.13 !important;
+}
+
+.be-4x6 .section-copy b {
+  margin-top: 1mm !important;
+  font-size: 10.5pt !important;
+  line-height: 1.12 !important;
+}
+
+.be-4x6 .section-copy p {
+  margin-top: 1mm !important;
+  font-size: 9pt !important;
+  line-height: 1.33 !important;
+  -webkit-line-clamp: 4 !important;
+}
+
+.be-4x6 .full-finance {
+  grid-template-columns: minmax(0, .78fr) minmax(0, 1fr) 31mm !important;
+  border-bottom: .45mm solid #111 !important;
+}
+
+.be-4x6 .finance-column {
+  padding: 2.2mm 1.8mm 1.5mm 0 !important;
+}
+
+.be-4x6 .finance-column + .finance-column {
+  padding-left: 1.8mm !important;
+  border-left: .35mm solid #111 !important;
+}
+
+.be-4x6 .finance-column p {
+  margin-bottom: 1.3mm !important;
+}
+
+.be-4x6 .finance-column span {
+  font-size: 7.2pt !important;
+}
+
+.be-4x6 .finance-column b {
+  margin-top: .4mm !important;
+  font-size: 10pt !important;
+}
+
+.be-4x6 .full-finance .cod-box {
+  margin: 2mm 0 2mm 1.8mm !important;
+  padding: 2mm !important;
+  min-height: 0 !important;
+}
+
+.be-4x6 .full-finance .cod-box small {
+  font-size: 8pt !important;
+}
+
+.be-4x6 .full-finance .cod-box strong {
+  font-size: 18pt !important;
+  line-height: 1 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.be-4x6 .full-remarks {
+  grid-template-columns: 17mm minmax(0, 1fr) !important;
+  gap: 1.8mm !important;
+  padding-top: 2mm !important;
+  font-size: 8pt !important;
+  line-height: 1.3 !important;
+}
+
+/* Browser preview: preserve the exact physical aspect ratio and prevent parent rules from shrinking text. */
+.sheet .be-4x6,
+.slot .be-4x6 {
+  transform: none !important;
+  zoom: 1 !important;
+}
+
+@media print {
+  @page { size: 4in 6in; margin: 0; }
+  html, body { width: 4in; margin: 0 !important; padding: 0 !important; }
+  .paper-4x6 { width: 4in !important; height: 6in !important; }
+  .be-label.be-4x6 { break-inside: avoid; page-break-inside: avoid; }
+}
