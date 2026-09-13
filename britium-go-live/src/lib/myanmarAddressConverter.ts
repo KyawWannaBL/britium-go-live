@@ -81,6 +81,13 @@ function englishOrdinal(value: string | number) {
 
 export function normalizeEnglishAddressForGeocoding(value: unknown) {
   return String(value ?? "")
+    // Britium Yangon coverage aliases: these are spelling/sub-township labels,
+    // not separate delivery zones. Normalize them to the tariff-master township.
+    .replace(/\bhlaing\s*thar(?:y|i)a(?:r)?\s*[（(]?\s*(?:east|west)\s*[)）]?\s*(?:township)?\b/gi, "Hlaing Tharyar Township")
+    .replace(/\bhlaingtharya\s*[（(]?\s*(?:east|west)\s*[)）]?\s*(?:township)?\b/gi, "Hlaing Tharyar Township")
+    .replace(/\bhlaing\s*thar(?:y|i)a(?:r)?\s+township\b/gi, "Hlaing Tharyar Township")
+    .replace(/\b(?:kyeemyindaing|kyimyindaing|kyeemyindine|kyimyindine)\s*(?:township)?\b/gi, "Kyimyindaing Township")
+    .replace(/\b(?:mingalartaungnyunt|minglartaungnyunt|mingalataungnyunt|mingalar\s*taung\s*nyunt|mingala\s*taung\s*nyunt)\s*(?:township)?\b/gi, "Mingala Taungnyunt Township")
     .replace(/\bdagon\s+myothit\s*[（(]?\s*north\s*[)）]?\s*(?:township)?\b/gi, "North Dagon Township")
     .replace(/\bdagon\s+myothit\s*[（(]?\s*south\s*[)）]?\s*(?:township)?\b/gi, "South Dagon Township")
     .replace(/\bdagon\s+myothit\s*[（(]?\s*east\s*[)）]?\s*(?:township)?\b/gi, "East Dagon Township")
