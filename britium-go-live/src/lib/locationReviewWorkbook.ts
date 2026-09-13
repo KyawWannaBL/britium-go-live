@@ -1,8 +1,16 @@
 type ReviewPickup = { pickup_id: string; expected_parcels: number; verified_parcels: number };
-type ReviewRow = { township: string; delivery_address: string; locationCandidate?: { latitude: number; longitude: number } | null };
+type ReviewRow = { township: string; delivery_address: string; locationCandidate?: { latitude: number; longitude: number; matchLevel?: string; confidence?: number; coordinateSource?: string } | null };
+
+const SAFE_AUTO_LEVELS = new Set(["ADDRESS_EXACT", "POI_EXACT"]);
+
+function truthy(value: string) {
+  return ["YES", "TRUE", "1", "Y"].includes(value.trim().toUpperCase());
+}
 
 // A workbook survives browser state loss. Validate its identities against the
 // authenticated pickup list; the review RPC independently enforces access/range.
+// V30 additionally carries location quality evidence so the server can reject
+// township-centre/default coordinates instead of treating them as exact pins.
 export function parseLocationReviewWorkbook(
   entries: Record<string, unknown>[],
   pickups: ReviewPickup[],
@@ -12,6 +20,7 @@ export function parseLocationReviewWorkbook(
   const seen = new Set<string>();
   return entries.map((entry, index) => {
     const value = (key: string) => String(entry[key] ?? "").trim();
+    const first = (...keys: string[]) => keys.map(value).find(Boolean) || "";
     const fail = (message: string): never => { throw new Error(`Excel row ${index + 2}: ${message}`); };
     const deliveryWayId = value("Delivery Way ID");
     const pickupId = value("Pickup ID");
@@ -45,11 +54,30 @@ export function parseLocationReviewWorkbook(
     const township = value("Township") || current?.township || "";
     const address = value("Delivery Address") || current?.delivery_address || "";
     if (township.length < 2 || address.length < 3) fail("Township and Delivery Address are required.");
+
+    const matchLevel = first("Suggested Match Level", "Location Precision")
+      || String(current?.locationCandidate?.matchLevel || "").toUpperCase();
+    const confidenceText = first("Suggested Confidence", "Confidence");
+    const confidence = confidenceText ? Number(confidenceText) : Number(current?.locationCandidate?.confidence || 0);
+    const coordinateSource = first("Suggested Source", "Coordinate Source")
+      || String(current?.locationCandidate?.coordinateSource || "");
+    const manualPinConfirmed = truthy(first("Manual Pin Confirmed", "Manual Pin Confirmation"));
+
+    if (action === "SKIP_REVIEW") {
+      if (!SAFE_AUTO_LEVELS.has(matchLevel.toUpperCase()) || !Number.isFinite(confidence) || confidence < 0.95) {
+        fail("SKIP_REVIEW is allowed only for ADDRESS_EXACT or POI_EXACT suggestions with confidence at least 0.95. Otherwise enter a corrected/manual pin.");
+      }
+    }
+
     return {
       delivery_way_id: deliveryWayId, pickup_id: pickupId, parcel_sequence: sequence,
       township,
       delivery_address: address,
       latitude, longitude, action, reason, source_file_name: fileName, source_row_number: index + 2,
+      match_level: matchLevel || (action === "APPLY_CORRECTION" ? "MANUAL" : ""),
+      confidence: Number.isFinite(confidence) ? confidence : 0,
+      coordinate_source: coordinateSource,
+      manual_pin_confirmed: manualPinConfirmed,
     };
   });
 }
