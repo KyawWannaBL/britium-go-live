@@ -1,4 +1,4 @@
--- Wayplan usability: audited map pin correction + Rider Finish -> next-stop progression.
+-- Wayplan usability: audited map pin correction + proof-safe Rider Finish -> next-stop progression.
 
 create or replace function public.be_update_delivery_location_pin_v1(
   p_delivery_way_id text,
@@ -81,6 +81,87 @@ end $$;
 revoke all on function public.be_update_delivery_location_pin_v1(text,numeric,numeric,text) from public,anon;
 grant execute on function public.be_update_delivery_location_pin_v1(text,numeric,numeric,text) to authenticated;
 
+create or replace function public.be_rider_finish_current_stop_v1(
+  p_wayplan_id text,
+  p_delivery_way_id text
+) returns jsonb
+language plpgsql
+security definer
+set search_path=public,auth,private,pg_temp
+as $$
+declare
+  v_wayplan text:=nullif(btrim(p_wayplan_id),'');
+  v_delivery text:=nullif(btrim(p_delivery_way_id),'');
+  v_identity jsonb:=private.be_field_primary_context_v101();
+  v_code text:=upper(coalesce(v_identity->>'worker_code',''));
+  v_role text:=lower(coalesce(v_identity->>'role',''));
+  v_allowed boolean:=false;
+  v_proof_ready boolean:=false;
+  v_version integer:=1;
+  v_snapshot jsonb;
+begin
+  if auth.uid() is null or v_role not in ('rider','driver') then
+    return jsonb_build_object('ok',false,'error','PRIMARY_RIDER_OR_DRIVER_REQUIRED');
+  end if;
+  if v_wayplan is null or v_delivery is null then
+    return jsonb_build_object('ok',false,'error','WAYPLAN_AND_DELIVERY_WAY_REQUIRED');
+  end if;
+
+  select exists(
+    select 1 from public.be_wayplan_dispatches d
+    where d.wayplan_id=v_wayplan
+      and ((v_role='rider' and upper(coalesce(d.rider_code,''))=v_code)
+        or (v_role='driver' and upper(coalesce(d.driver_code,''))=v_code))
+  ), coalesce((d.metadata->>'active_route_version')::integer,1)
+  into v_allowed,v_version
+  from public.be_wayplan_dispatches d
+  where d.wayplan_id=v_wayplan;
+
+  if not coalesce(v_allowed,false) then
+    return jsonb_build_object('ok',false,'error','WAYPLAN_NOT_ASSIGNED_TO_SIGNED_IN_WORKER');
+  end if;
+
+  select (
+    exists(select 1 from public.shipment_delivery_proofs p where p.delivery_way_id=v_delivery and upper(coalesce(p.proof_type,'DELIVERY'))='DELIVERY')
+    or exists(select 1 from public.be_wayplan_items i where (i.delivery_way_id=v_delivery or i.tracking_no=v_delivery) and (upper(coalesce(i.delivery_status,''))='DELIVERED' or i.delivered_at is not null))
+    or exists(select 1 from public.be_wayplan_dispatch_stops s where s.wayplan_id=v_wayplan and s.delivery_way_id=v_delivery and upper(coalesce(s.stop_status,s.rider_status,''))='DELIVERED')
+  ) into v_proof_ready;
+
+  if not coalesce(v_proof_ready,false) then
+    return jsonb_build_object(
+      'ok',false,
+      'error','DELIVERY_PROOF_REQUIRED_BEFORE_FINISH',
+      'message','Complete delivery proof, receiver signature and COD/payment confirmation before pressing Finish.'
+    );
+  end if;
+
+  update public.be_wayplan_dispatch_stops
+  set stop_status='DELIVERED',rider_status='DELIVERED',rider_action_at=coalesce(rider_action_at,now()),updated_at=now(),
+      metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object('last_operational_event','DELIVERED','last_operational_event_at',now(),'finish_next_stop',true)
+  where wayplan_id=v_wayplan and delivery_way_id=v_delivery
+    and upper(coalesce(stop_status,rider_status,''))<>'DELIVERED';
+
+  if not exists(
+    select 1 from public.be_wayplan_stop_events_v1 e
+    where e.wayplan_id=v_wayplan and e.delivery_way_id=v_delivery and e.event_type='DELIVERED'
+  ) then
+    insert into public.be_wayplan_stop_events_v1(wayplan_id,delivery_way_id,route_version,event_type,actor_id,actor_code,actor_role,reason,payload)
+    values(v_wayplan,v_delivery,v_version,'DELIVERED',auth.uid(),v_code,v_role,'Finish current drop and advance to next stop',jsonb_build_object('finish_next_stop',true,'proof_verified',true));
+  end if;
+
+  v_snapshot:=public.be_rider_operational_route_snapshot(v_wayplan);
+  return v_snapshot||jsonb_build_object(
+    'ok',true,
+    'recorded_event','DELIVERED',
+    'finished_stop_delivery_way_id',v_delivery,
+    'advance_to_next_stop',true,
+    'route_complete',(v_snapshot->'current_stop' is null),
+    'proof_verified',true
+  );
+end $$;
+revoke all on function public.be_rider_finish_current_stop_v1(text,text) from public,anon;
+grant execute on function public.be_rider_finish_current_stop_v1(text,text) to authenticated;
+
 create or replace function public.be_rider_operational_route_action(p_payload jsonb)
 returns jsonb
 language plpgsql
@@ -93,11 +174,12 @@ declare
   v_result jsonb;
   v_snapshot jsonb;
 begin
+  if v_action in ('FINISH','FINISH_STOP') then
+    return public.be_rider_finish_current_stop_v1(p_payload->>'wayplan_id',p_payload->>'delivery_way_id');
+  end if;
+
   v_event:=case v_action
     when 'ARRIVED' then 'ARRIVED'
-    when 'DELIVERED' then 'DELIVERED'
-    when 'FINISH' then 'DELIVERED'
-    when 'FINISH_STOP' then 'DELIVERED'
     when 'CUSTOMER_UNAVAILABLE' then 'CUSTOMER_UNAVAILABLE'
     when 'RESCHEDULE' then 'RESCHEDULE'
     when 'RTO' then 'RTO'
@@ -116,10 +198,7 @@ begin
   v_snapshot:=public.be_rider_operational_route_snapshot(p_payload->>'wayplan_id');
   return v_snapshot||jsonb_build_object(
     'reroute_required',coalesce((v_result->>'requires_reroute')::boolean,false),
-    'recorded_event',v_event,
-    'finished_stop_delivery_way_id',case when v_event='DELIVERED' then p_payload->>'delivery_way_id' else null end,
-    'advance_to_next_stop',v_event='DELIVERED',
-    'route_complete',v_event='DELIVERED' and (v_snapshot->'current_stop' is null)
+    'recorded_event',v_event
   );
 end $$;
 revoke all on function public.be_rider_operational_route_action(jsonb) from public,anon;
