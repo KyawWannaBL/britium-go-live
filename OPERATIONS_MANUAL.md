@@ -1,29 +1,31 @@
 # Britium Express - Complete Operations Manual
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Last Updated:** September 13, 2026  
 **Production System:** https://britiumexpress.com  
 **Document Owner:** Britium Express Operations Team
 
 ---
 
-## Revision Summary - Version 1.2
+## Revision Summary - Version 1.3
 
-Version 1.2 replaces the previous generic Yangon van-planning rules with the approved **Yangon Van Assignment Master**, strengthens Auto Geo Review quality controls, and retains the current map-pin, Rider guidance, Warehouse LIFO, crew and finance controls.
+Version 1.3 updates the manual for the current Production release after the Waybill and Yangon Wayplan alignment. It keeps the Version 1.2 Safe Auto Geo, Yangon 3/5/9 master-planning, road-routing, Rider, Warehouse LIFO, crew and finance controls, and adds the production rules for the **4 x 6 inch Waybill / Print Studio**.
 
 Key changes:
 
-- Safe Auto Geo Review accepts only reliable address/POI-level results for automatic route eligibility.
+- Waybill printing is standardized to a true **4 x 6 inch portrait label**.
+- Print mode isolates the Waybill label from the rest of the application so only the label is sent to the printer.
+- The prominent destination field is the **canonical Township / Route Area**, not the State/Region name.
+- A parcel for Dawbon, North Dagon, South Dagon, East Dagon, Dagon Seikkan, etc. must display that correct township/route area rather than a generic **Yangon** destination.
+- When a reliable township cannot be determined, the label must show **LOCATION REVIEW** instead of fabricating or falling back to an incorrect destination.
+- AWB, sender, recipient, delivery address, weight and COD/collection information remain visible within the 4 x 6 label layout.
+- Safe Auto Geo Review continues to accept only reliable address/POI-level results for automatic route eligibility.
 - Township-centre/default coordinates and the retired generic Yangon fallback `16.800000, 96.150000` are not valid route-ready locations.
-- Manual location correction requires confirmation of the actual delivery pin.
-- Yangon aliases are canonicalized without changing Britium scope or tariff: Hlaingthaya East/West -> Hlaingthaya; Kyeemyindaing -> Kyimyindaing; Mingalartaungnyunt/Minglartaungnyunt -> Mingala Taungnyunt.
-- Yangon automatic planning is volume-driven: **<45 parcels = 3-zone plan; 45-95 = 5-zone plan; >95 = 9-route plan**.
+- Yangon automatic planning remains volume-driven: **<45 parcels = 3-zone plan; 45-95 = 5-zone plan; >95 = 9-route plan**.
 - The approved operational zone is assigned first; actual stop sequence is optimized afterwards on the road network.
 - Straight-line/geographic routing is not accepted for automatic Wayplan creation.
-- Google Routes is primary; Mapbox may be used only as a labelled road-based fallback.
-- Each route remains limited to 75 stops. If a master zone exceeds 75 route-ready stops, Operations must split that zone before creation.
-- The standard below-50 exception remains for the non-Yangon planner, but does not block the volume-driven Yangon master plan.
-- Whole-route map review, click/drag pin correction, emergency crew substitution, immutable Warehouse LIFO, and Rider **Finish & guide next stop** remain active controls.
+- Each active route remains limited to 75 stops.
+- The standard below-50 exception remains for the non-Yangon planner, while the approved Yangon master may legitimately create multiple routes below 50 parcels.
 
 ---
 
@@ -52,11 +54,11 @@ Key changes:
 
 # 1. System Overview
 
-Britium Express is the operational platform for shipment registration, location validation, warehouse processing, road-route planning, vehicle and crew assignment, field delivery, proof capture, COD handling, reporting and administration.
+Britium Express is the operational platform for shipment registration, location validation, Waybill generation, warehouse processing, road-route planning, vehicle and crew assignment, field delivery, proof capture, COD handling, reporting and administration.
 
 The normal operating flow is:
 
-**Data Entry -> Safe Location Validation -> Warehouse -> Yangon Zone Assignment / Regional Planning -> Road Optimization -> Vehicle & Crew Assignment -> Warehouse LIFO Loading -> Rider Delivery -> Proof / COD -> Finance / Reporting**
+**Data Entry -> Safe Location Validation -> 4 x 6 Waybill -> Warehouse -> Yangon Zone Assignment / Regional Planning -> Road Optimization -> Vehicle & Crew Assignment -> Warehouse LIFO Loading -> Rider Delivery -> Proof / COD -> Finance / Reporting**
 
 ## 1.1 Generated Route vs Active Route
 
@@ -75,6 +77,19 @@ Automatic Wayplans must be based on an actual road-routing source.
 - A straight-line or geographic-only route is not acceptable for automatic Wayplan creation.
 - If no road-routing matrix is available, automatic creation must stop and Operations must resolve the routing service before dispatch.
 
+## 1.3 Waybill Destination Principle
+
+The Waybill is an operational routing label. The main destination must therefore identify the **delivery township / route area**, not merely the State or Region.
+
+Examples:
+
+- Dawbon delivery -> **Dawbon** destination.
+- North Dagon delivery -> **North Dagon** destination.
+- East Dagon delivery -> **East Dagon** destination.
+- Dagon Township delivery -> **Dagon** destination.
+
+These locations are not interchangeable. If the township is unresolved or unreliable, use **LOCATION REVIEW** until corrected.
+
 ---
 
 # 2. Roles and Access
@@ -86,7 +101,7 @@ Automatic Wayplans must be based on an actual road-routing source.
 | Operations / Operations Admin | Daily control, Wayplan creation and exceptions |
 | Supervisor | Team assignment, review and exception support |
 | Wayplan Manager | Zone planning, road-route review and dispatch preparation |
-| Data Entry / Encoder | Shipment registration, bulk upload and location validation |
+| Data Entry / Encoder | Shipment registration, bulk upload, location validation, Waybill generation and print verification |
 | Warehouse Staff | Inbound, sorting, loading, dispatch and returns |
 | Rider / Driver | Assigned route execution, proof, COD and field exceptions |
 | Finance | COD verification, settlement and reconciliation |
@@ -145,6 +160,29 @@ The following names are the same Britium-covered township for routing and tariff
 These remain **Britium / Yangon / Doorstep Map** deliveries and inherit the canonical township tariff.
 
 Dagon Township, North Dagon, South Dagon, East Dagon and Dagon Seikkan remain distinct operational areas.
+
+### 4.1.4 Waybill Generation and 4 x 6 Printing
+
+After the shipment and delivery location are reviewed:
+
+1. Open the Waybill / Print Studio record for the parcel.
+2. Confirm the **AWB** belongs to the intended shipment.
+3. Check the prominent **Destination Township / Route Area** field.
+4. Confirm sender, recipient and delivery address.
+5. Confirm weight and COD / collection amount where applicable.
+6. If the destination shows **LOCATION REVIEW**, correct or approve the location before operational dispatch.
+7. Print on **4 x 6 inch portrait** label stock.
+
+Production print behavior:
+
+- Page size is fixed to **4 in x 6 in**.
+- Print margins are designed as zero at page level; the label contains its own internal padding.
+- Only the Waybill label is visible in print mode; menus, cards and surrounding application content are excluded.
+- Do not intentionally replace the Township / Route Area with a generic State/Region name.
+- If the printer driver exposes scale controls, use **100% / Actual Size** rather than a setting that enlarges or reduces the label.
+- If the printer driver lists approximately **100 x 150 mm** instead of 4 x 6 inches, use that matching label stock/profile.
+
+**Control rule:** a correct postal code or Region name does not compensate for a wrong township destination. The township/route area must reflect the actual delivery area.
 
 ---
 
@@ -341,11 +379,14 @@ Finance verifies expected versus received amounts, investigates variances and re
 - Run Safe Auto Geo Review.
 - Resolve every REVIEW REQUIRED location that must enter the day's Wayplan.
 - Confirm canonical township and Britium/provider scope.
+- Generate the Waybill only after the shipment data and destination township are correct.
+- Verify that the 4 x 6 label shows the correct **Destination Township / Route Area** before attaching it to the parcel.
 
 ### Warehouse
 
 - Complete inbound processing and sorting.
 - Confirm Wayplan-ready status.
+- Reject or return for correction any parcel whose label destination clearly conflicts with the validated shipment destination.
 
 ### Wayplan / Operations
 
@@ -419,6 +460,33 @@ Complete Delivery Proof, signature and required COD/payment information, then re
 
 Manual emergency names do not create authentication automatically. Operations must provision a proper Rider account if Rider-App functions are required.
 
+## 6.9 Waybill Prints on the Wrong Paper Size
+
+1. Confirm the physical label roll / sheet is **4 x 6 inches** or the printer's matching approximately **100 x 150 mm** profile.
+2. Select portrait orientation.
+3. Use the matching 4 x 6 printer paper profile rather than A4, Letter or Receipt roll size.
+4. Use **100% / Actual Size** if the driver exposes scaling.
+5. Do not add browser headers, footers or manual margins.
+6. Reprint one test label before printing a batch.
+
+The application itself defines a 4 x 6 page, but the printer driver must also be configured for matching physical stock.
+
+## 6.10 Waybill Destination Shows Yangon Instead of the Township
+
+Do not use the label operationally until corrected.
+
+1. Re-open the shipment / Waybill record.
+2. Verify the recipient township field.
+3. Confirm the township is not being confused with the State/Region field.
+4. Correct or canonicalize the township where required.
+5. Regenerate/reprint the Waybill.
+
+Example: a Dawbon parcel must show **Dawbon**, not merely **Yangon**.
+
+## 6.11 Waybill Shows LOCATION REVIEW
+
+This is a safety state, not a printable routing substitute. Verify the recipient address and township, correct the delivery location if needed, save the resolved location, then regenerate the label.
+
 ---
 
 # 7. Audit, Route Versioning and Control Rules
@@ -434,6 +502,9 @@ Manual emergency names do not create authentication automatically. Operations mu
 9. **Reserved vehicles:** 1H-6033 and 7R-1473 remain outside normal drop-off allocation.
 10. **Standard non-Yangon minimum:** 50-75 remains normal; at most one below-50 route may be approved with reason.
 11. **Yangon master minimum:** the 3/5/9 volume plan may legitimately produce multiple routes below 50; no separate below-minimum approval is required merely because of the master-plan split.
+12. **Waybill destination control:** the operational destination is the canonical Township / Route Area; do not substitute a generic State/Region name.
+13. **Waybill print control:** production Waybills are 4 x 6 inch portrait labels and must not be intentionally reformatted to A4/Letter as the parcel label.
+14. **Unresolved destination control:** when the township cannot be reliably resolved, use **LOCATION REVIEW** and correct the record rather than printing an invented destination.
 
 ---
 
@@ -455,7 +526,17 @@ Manual emergency names do not create authentication automatically. Operations mu
 
 **Master zone -> road optimize -> whole map -> fix pins -> edit sequence if justified -> review LIFO -> create.**
 
-## 8.4 Rider Current-Stop Buttons
+## 8.4 4 x 6 Waybill Rule
+
+**Correct shipment -> validated township -> canonical Township / Route Area -> 4 x 6 portrait label -> verify AWB / recipient / address / weight / COD -> print.**
+
+Do not accept:
+
+- Generic **Yangon** when the actual destination township is known.
+- **LOCATION REVIEW** as a final dispatch destination.
+- A4/Letter output as the parcel's production label when the 4 x 6 printer profile is available.
+
+## 8.5 Rider Current-Stop Buttons
 
 | Button | Use |
 |---|---|
@@ -473,7 +554,7 @@ Manual emergency names do not create authentication automatically. Operations mu
 
 # 9. Document Control
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Last Updated:** September 13, 2026  
 **Document Owner:** Britium Express Operations Team  
 **System:** https://britiumexpress.com
@@ -485,6 +566,11 @@ Manual emergency names do not create authentication automatically. Operations mu
 | 1.0 | 2026-04-10 | Initial operations manual |
 | 1.1 | 2026-09-13 | Map-pin correction, Rider next-stop guidance, LIFO controls, secure credentials |
 | 1.2 | 2026-09-13 | Safe Auto Geo quality gate; Yangon township aliases; approved 3/5/9 Yangon Van Assignment Master; fixed-zone-first road optimization; 75-stop route control; Yangon master save-flow alignment |
+| 1.3 | 2026-09-13 | Production 4 x 6 Waybill print standard; Township / Route Area destination control; LOCATION REVIEW safety state; printer troubleshooting; current production Wayplan/Waybill alignment |
+
+## Production Release Reference
+
+Version 1.3 reflects the Production application release anchored by commit `fce7105` (**Fix 4x6 waybill layout and align Yangon wayplanning with fleet master plan**).
 
 ---
 
