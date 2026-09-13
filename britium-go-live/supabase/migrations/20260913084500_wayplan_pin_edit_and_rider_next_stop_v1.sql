@@ -108,10 +108,10 @@ begin
   end if;
 
   select exists(
-    select 1 from public.be_wayplan_dispatches d
-    where d.wayplan_id=v_wayplan
-      and ((v_role='rider' and upper(coalesce(d.rider_code,''))=v_code)
-        or (v_role='driver' and upper(coalesce(d.driver_code,''))=v_code))
+    select 1 from public.be_wayplan_dispatches d2
+    where d2.wayplan_id=v_wayplan
+      and ((v_role='rider' and upper(coalesce(d2.rider_code,''))=v_code)
+        or (v_role='driver' and upper(coalesce(d2.driver_code,''))=v_code))
   ), coalesce((d.metadata->>'active_route_version')::integer,1)
   into v_allowed,v_version
   from public.be_wayplan_dispatches d
