@@ -1,27 +1,29 @@
 # Britium Express - Complete Operations Manual
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Last Updated:** September 13, 2026  
 **Production System:** https://britiumexpress.com  
 **Document Owner:** Britium Express Operations Team
 
 ---
 
-## Revision Summary - Version 1.1
+## Revision Summary - Version 1.2
 
-This revision updates the operating manual to reflect the current Wayplan, map-location correction, and Rider guided-delivery workflow now used in Production.
+Version 1.2 replaces the previous generic Yangon van-planning rules with the approved **Yangon Van Assignment Master**, strengthens Auto Geo Review quality controls, and retains the current map-pin, Rider guidance, Warehouse LIFO, crew and finance controls.
 
-Key changes in this version:
+Key changes:
 
-- Adds click-or-drag manual delivery pin correction directly on the Wayplan map.
-- Adds the same map-pin correction capability for the Rider's current stop.
-- Recalculates the affected active road route after a corrected pin is saved.
-- Adds proof-safe **Finish & guide next stop** behavior in the Rider workflow.
-- Documents immutable Warehouse LIFO history versus the Rider's active route version.
-- Documents the normal **50-75 parcels per delivery van** operating band and the controlled below-50 exception.
-- Clarifies that pickup/highway vehicles **1H-6033** and **7R-1473** remain reserved from normal delivery-van allocation.
-- Removes hard-coded login passwords from the manual. Credentials must be provisioned through authorized account administration only.
-- Updates the Production URL to **britiumexpress.com**.
+- Safe Auto Geo Review accepts only reliable address/POI-level results for automatic route eligibility.
+- Township-centre/default coordinates and the retired generic Yangon fallback `16.800000, 96.150000` are not valid route-ready locations.
+- Manual location correction requires confirmation of the actual delivery pin.
+- Yangon aliases are canonicalized without changing Britium scope or tariff: Hlaingthaya East/West -> Hlaingthaya; Kyeemyindaing -> Kyimyindaing; Mingalartaungnyunt/Minglartaungnyunt -> Mingala Taungnyunt.
+- Yangon automatic planning is volume-driven: **<45 parcels = 3-zone plan; 45-95 = 5-zone plan; >95 = 9-route plan**.
+- The approved operational zone is assigned first; actual stop sequence is optimized afterwards on the road network.
+- Straight-line/geographic routing is not accepted for automatic Wayplan creation.
+- Google Routes is primary; Mapbox may be used only as a labelled road-based fallback.
+- Each route remains limited to 75 stops. If a master zone exceeds 75 route-ready stops, Operations must split that zone before creation.
+- The standard below-50 exception remains for the non-Yangon planner, but does not block the volume-driven Yangon master plan.
+- Whole-route map review, click/drag pin correction, emergency crew substitution, immutable Warehouse LIFO, and Rider **Finish & guide next stop** remain active controls.
 
 ---
 
@@ -31,13 +33,15 @@ Key changes in this version:
 2. Roles and Access
 3. Login, Session and Security
 4. Core Operations
-   - 4.1 Data Entry and Location Validation
+   - 4.1 Data Entry and Safe Location Validation
    - 4.2 Warehouse Operations
-   - 4.3 Wayplan and Multi-Van Planning
-   - 4.4 Manual Location Correction on the Map
-   - 4.5 Rider / Driver Delivery Execution
-   - 4.6 Delivery Exceptions and Rerouting
-   - 4.7 Finance and COD Handover
+   - 4.3 Yangon Van Assignment Master
+   - 4.4 Road Optimization and Whole-Route Review
+   - 4.5 Manual Location Correction on the Map
+   - 4.6 Vehicle and Crew Assignment
+   - 4.7 Rider / Driver Delivery Execution
+   - 4.8 Delivery Exceptions and Rerouting
+   - 4.9 Finance and COD Handover
 5. Daily Operating Procedure
 6. Troubleshooting
 7. Audit, Route Versioning and Control Rules
@@ -48,26 +52,28 @@ Key changes in this version:
 
 # 1. System Overview
 
-Britium Express is the operational platform for shipment registration, warehouse processing, route planning, field delivery, proof capture, COD handling, reporting, and operational administration.
+Britium Express is the operational platform for shipment registration, location validation, warehouse processing, road-route planning, vehicle and crew assignment, field delivery, proof capture, COD handling, reporting and administration.
 
-The normal parcel flow is:
+The normal operating flow is:
 
-**Data Entry -> Location Validation -> Warehouse -> Wayplan -> Vehicle / Crew Assignment -> Warehouse LIFO Loading -> Rider Delivery -> Proof / COD -> Finance / Reporting**
+**Data Entry -> Safe Location Validation -> Warehouse -> Yangon Zone Assignment / Regional Planning -> Road Optimization -> Vehicle & Crew Assignment -> Warehouse LIFO Loading -> Rider Delivery -> Proof / COD -> Finance / Reporting**
 
-The system uses role-based access controls. Users should only perform actions available to their assigned role and operational responsibility.
+## 1.1 Generated Route vs Active Route
 
-## 1.1 Current Route Model
+- **Generated route:** reviewed delivery sequence saved when the Wayplan is created.
+- **Warehouse LIFO snapshot:** exact reverse of the generated route and retained as immutable loading history.
+- **Active Rider route:** current field sequence; it may change after a pin correction, skip, reschedule, customer-unavailable event or RTO action.
 
-The current route model separates two important concepts:
+A Rider reroute does not rewrite the original Warehouse loading snapshot.
 
-- **Generated / Warehouse route history:** the route sequence used to create the Wayplan and the corresponding reverse-order Warehouse LIFO loading snapshot. This history is retained for operational traceability.
-- **Active Rider route:** the current field-delivery sequence. It may be recalculated when a stop location is corrected or when an operational exception makes a stop ineligible for the current trip.
+## 1.2 Road-Routing Principle
 
-A Rider reroute does **not** rewrite the Warehouse loading history of an already generated Wayplan.
+Automatic Wayplans must be based on an actual road-routing source.
 
-## 1.2 Google Mapping
-
-Google road routing is the primary road-routing source for the supported core operating areas. When the route service is unavailable, the system may show an explicitly labelled fallback route. Staff must never treat a geographic fallback as if it were a Google-optimized road route.
+- **Google Routes** is the primary source.
+- **Mapbox road matrix** may be used as a labelled road-based fallback when Google is unavailable.
+- A straight-line or geographic-only route is not acceptable for automatic Wayplan creation.
+- If no road-routing matrix is available, automatic creation must stop and Operations must resolve the routing service before dispatch.
 
 ---
 
@@ -75,84 +81,70 @@ Google road routing is the primary road-routing source for the supported core op
 
 | Role | Main Operational Responsibility |
 |---|---|
-| Super Admin / Admin | System-wide administration and controlled operational intervention |
-| Management / Director | Oversight, Wayplan review and authorized operational decisions |
-| Operations / Operations Admin | Daily operating control, Wayplan creation and exception handling |
-| Supervisor | Team assignment, operational review and exception support |
-| Wayplan Manager | Route planning, van allocation, route review and dispatch preparation |
-| Data Entry / Encoder | Shipment registration, bulk upload and data validation |
-| Warehouse Staff | Inbound, sorting, loading, dispatch and return processing |
-| Rider / Driver | Assigned route execution, customer delivery, proof, COD and field exceptions |
-| Finance | COD verification, settlement and financial review |
-| Customer Service | Address/customer follow-up and delivery exception support |
+| Super Admin / Admin | System administration and controlled intervention |
+| Management / Director | Oversight, route review and authorized decisions |
+| Operations / Operations Admin | Daily control, Wayplan creation and exceptions |
+| Supervisor | Team assignment, review and exception support |
+| Wayplan Manager | Zone planning, road-route review and dispatch preparation |
+| Data Entry / Encoder | Shipment registration, bulk upload and location validation |
+| Warehouse Staff | Inbound, sorting, loading, dispatch and returns |
+| Rider / Driver | Assigned route execution, proof, COD and field exceptions |
+| Finance | COD verification, settlement and reconciliation |
+| Customer Service | Address/customer follow-up and exception support |
 | Merchant | Merchant-authorized shipment and reporting functions |
 
 ## 2.1 Location-Edit Permission
 
-Manual map-pin updates are controlled actions.
-
-- Authorized management, operations, Wayplan and supervisor roles may correct delivery locations during planning/review.
-- An authenticated Rider or Driver may correct the location of a parcel on an active Wayplan assigned to that worker.
-- Every saved manual pin correction is audit-recorded.
+- Authorized management, operations, Wayplan and supervisor roles may correct delivery pins during review.
+- An authenticated Rider or Driver may correct the current stop of an assigned active Wayplan.
+- Every saved correction is audit-recorded.
 
 ---
 
 # 3. Login, Session and Security
 
-## 3.1 Accessing Production
-
 1. Open **https://britiumexpress.com**.
-2. Sign in using the account issued to you by the authorized administrator.
-3. Confirm that the portal shown matches your role.
-4. If the portal is incorrect or an action is denied, do not use another person's account. Contact the administrator or supervisor.
+2. Sign in with the account issued to you.
+3. Confirm that the correct portal and role are shown.
+4. Never use another person's account to bypass permission problems.
 
-## 3.2 Password Handling
+Rider devices should permit GPS/location, camera and external navigation opening.
 
-- Shared passwords must not be written in this manual, chat messages, spreadsheets, or printed operating sheets.
-- Use password reset when a password is forgotten.
-- Never share an authenticated Rider or Driver account with another field worker.
-- If the system reports an invalid or expired session, sign in again using your own account.
-
-## 3.3 Location and Camera Permission
-
-Rider devices should allow:
-
-- Location / GPS permission for current-position and proof functions.
-- Camera permission for delivery or pickup photos when required.
-- Pop-up / external navigation opening when using **Finish & guide next stop** and Google Maps navigation.
+Do not store shared passwords in manuals, chat, spreadsheets or printed operating sheets.
 
 ---
 
 # 4. Core Operations
 
-## 4.1 Data Entry and Location Validation
+## 4.1 Data Entry and Safe Location Validation
 
-### 4.1.1 Single and Bulk Registration
+### 4.1.1 Required Location Data
 
-Data Entry operators may register shipments individually or through the approved bulk-upload workflow.
+Before a mapped parcel becomes Wayplan-ready, verify recipient address, correct township/region, ward or village tract when available, postal code where applicable, delivery coordinates, and service provider / delivery scope.
 
-Before saving or generating a waybill, verify:
+### 4.1.2 Safe Auto Geo Review
 
-- Merchant / customer information.
-- Recipient name and phone number.
-- Delivery address.
-- Correct township and city/region.
-- Postal code where required.
-- Item price / COD values where applicable.
-- Service provider / routing result where applicable.
-- Delivery coordinates when the shipment is in a mapped operating area.
+Use **Auto-Geocode Review File - SAFE ADDRESS MODE** for bulk location review.
 
-### 4.1.2 Location Review
+- **ADDRESS_EXACT / POI_EXACT + confidence >= 0.95 + ACCEPTED** -> may become route-ready automatically.
+- Street-, ward- or approximate-level result -> **REVIEW REQUIRED**.
+- Missing or unreliable result -> **REVIEW REQUIRED**; no fake fallback coordinate is inserted.
+- Manual correction -> actual pin must be verified and **Manual Pin Confirmed = YES**.
+- Bulk blind acceptance is prohibited.
 
-When the system flags a location for review:
+**Never copy one township coordinate to many unrelated addresses.** Township-centre/default coordinates are not address-level delivery points.
 
-1. Check the original address, township, ward and postal information.
-2. Confirm that the mapped result represents the actual delivery area.
-3. If the location is wrong, correct the pin using the map-based workflow described in Section 4.4.
-4. Save the corrected location.
-5. Re-run or review the route result before final Wayplan creation.
+### 4.1.3 Canonical Yangon Township Aliases
 
-**Important:** Similar names must not be treated as the same township. For example, Dagon Township and the North, South and East Dagon new-town areas are operationally different delivery areas and must remain correctly distinguished.
+The following names are the same Britium-covered township for routing and tariff purposes:
+
+- **Hlaingthaya East / Hlaingthaya West -> Hlaingthaya (လှိုင်သာယာ)**.
+- **Kyeemyindaing / Kyimyindaing -> Kyimyindaing (ကြည့်မြင်တိုင်)**.
+- **Mingalartaungnyunt / Minglartaungnyunt / Mingala Taungnyunt -> Mingala Taungnyunt (မင်္ဂလာတောင်ညွန့်)**.
+
+These remain **Britium / Yangon / Doorstep Map** deliveries and inherit the canonical township tariff.
+
+Dagon Township, North Dagon, South Dagon, East Dagon and Dagon Seikkan remain distinct operational areas.
 
 ---
 
@@ -160,215 +152,182 @@ When the system flags a location for review:
 
 ### 4.2.1 Inbound
 
-1. Receive and scan the parcel.
+1. Scan and receive the parcel.
 2. Confirm Way ID / waybill information.
-3. Record parcel condition and any exception.
+3. Record condition and exceptions.
 4. Place the parcel into the correct warehouse flow.
 
-### 4.2.2 Wayplan Loading
+### 4.2.2 LIFO Loading
 
 After a Wayplan is generated:
 
-1. Open the generated Wayplan loading list.
-2. Load parcels using the Warehouse **LIFO** order supplied by the system.
-3. The loading list is the exact reverse of the reviewed generated delivery sequence.
+1. Open the generated loading list.
+2. Load parcels in the system-provided **LIFO** order.
+3. LIFO is the exact reverse of the final reviewed delivery sequence.
 4. Confirm parcel count before dispatch.
-5. Do not manually rewrite an already generated Warehouse route snapshot to match later Rider reroutes.
+5. Do not rewrite an already generated loading snapshot to match a later Rider reroute.
 
-### 4.2.3 Why Warehouse History Stays Locked
+### 4.2.3 Reserved Vehicles
 
-A delivery route can change after dispatch because of a corrected pin, customer unavailability, rescheduling, skip or RTO action. The Warehouse snapshot remains the historical record of how the vehicle was originally loaded. The Rider's current active route may therefore be a newer route version.
-
----
-
-## 4.3 Wayplan and Multi-Van Planning
-
-### 4.3.1 Automatic Van Planning
-
-The system groups ready parcels by location and prepares practical delivery-van plans.
-
-Normal operating rules:
-
-- **50 parcels minimum per delivery van** under normal operation.
-- **75 parcels practical maximum per delivery van.**
-- The system should use only the practical number of vans required; it does not need to appoint the entire fleet every day.
-- At most one below-50 van may be accepted in a reviewed planning batch, and only with an explicit operator approval and reason.
-- Pickup/highway vehicles **1H-6033** and **7R-1473** remain reserved and are not part of normal drop-off van allocation.
-
-### 4.3.2 Create and Review a Route Plan
-
-1. Open the Wayplan creation / command area.
-2. Select the ready pickup batch or the applicable ready parcels.
-3. Select **Automatic - practical van count** unless there is an approved reason to set the van count manually.
-4. Click **Generate / optimize route plan**.
-5. Review each van:
-   - Vehicle.
-   - Driver.
-   - Rider.
-   - Optional helper.
-   - Parcel count.
-   - Township grouping.
-   - Route source.
-   - Distance and estimated road time when available.
-6. Open **View whole Google route map** for each van.
-7. Check numbered stops for obvious location errors.
-8. Correct any wrong pin before final creation using Section 4.4.
-9. Re-check the delivery sequence and Warehouse LIFO list.
-10. Create the reviewed Wayplans.
-
-### 4.3.3 Manual Sequence Adjustment
-
-Authorized operators may move a stop up or down in the planned sequence before Wayplan creation. A manually edited sequence must still be reviewed on the map. Warehouse LIFO automatically follows the reverse of the final reviewed generated sequence.
-
-### 4.3.4 Route Source Labels
-
-Users may see route-source descriptions such as:
-
-- **Google Routes road optimized** - primary production road optimization.
-- **Mapbox fallback** - secondary fallback when available.
-- **Emergency geographic fallback - NOT Google optimized** - a fallback sequence that must not be described as a Google road route.
-
-If a fallback route is shown, review it carefully before dispatch.
+Pickup/highway vehicles **1H-6033** and **7R-1473** remain reserved and must not be allocated as normal Yangon drop-off delivery vans.
 
 ---
 
-## 4.4 Manual Location Correction on the Map
+## 4.3 Yangon Van Assignment Master
 
-This is the preferred manual correction method. Users do not need to type latitude and longitude values manually.
+### 4.3.1 Scope and Hub
 
-### 4.4.1 Correct a Stop During Wayplan Review
+**Hub:** East Dagon Logistics Center  
+**Scope:** Yangon Urban Region  
+**Excluded from this master:** Dala, Seikkyi Kanaungto and Thanlyin.
 
-1. Open the van's **whole Google route map**.
-2. Click the numbered marker of the delivery you want to correct.
-3. Either:
-   - Click the exact correct drop-off point on the map, or
-   - Drag the selected marker to the correct place.
-4. Confirm the proposed pin displayed by the system.
-5. Click **Update location**.
-6. Wait for the save confirmation.
-7. The affected van route is recalculated automatically.
-8. Review the new numbered delivery sequence.
-9. Review the corresponding Warehouse LIFO list again before creating the Wayplan.
+Parcels for excluded areas must follow their approved separate routing/provider workflow and must not be forced into a Yangon master zone.
 
-### 4.4.2 Correct the Current Stop in the Rider App
+### 4.3.2 Automatic Volume Trigger
+
+| Route-ready Yangon parcel volume | Automatic plan |
+|---|---|
+| Fewer than 45 | **Low Volume - 3 zones** |
+| 45 to 95 | **Standard - 5 zones** |
+| More than 95 | **High Volume - 9 routes** |
+
+The master-zone boundary is operational policy. The road optimizer decides the stop order **inside** the assigned zone; it does not freely mix unrelated townships merely to balance counts.
+
+### 4.3.3 Low Volume Plan - 3 Zones
+
+| Route | Zone | Townships | Preferred vehicle | Dispatch |
+|---|---|---|---|---|
+| A | East & North-East | East Dagon, North Dagon, South Dagon, Dagon Seikkan, Thingangyun, South Okkalapa, North Okkalapa, Yankin | 1.5-Ton Box Van | 08:30 |
+| B | Urban Core & Inner West | Thaketa, Dawbon, Tamwe, Bahan, Mingala Taungnyunt, Kyauktada, Pabedan, Latha, Lanmadaw, Botahtaung, Pazundaung, Dagon, Sanchaung, Ahlone, Kyimyindaing | 1-Ton High-Roof Van | 08:00 |
+| C | Outer West & North | Hlaing, Kamayut, Mayangone, Insein, Mingaladon, Shwepyitha, Hlaingthaya | 1.5-Ton Cargo Van | 08:30 |
+
+### 4.3.4 Standard Plan - 5 Zones
+
+| Route | Zone | Townships | Preferred vehicle | Dispatch |
+|---|---|---|---|---|
+| 1 | East Core | East Dagon, North Dagon, South Dagon, Dagon Seikkan | 1.5-Ton Box Van | 08:30 |
+| 2 | North-East Corridor | Thingangyun, South Okkalapa, North Okkalapa, Yankin | 1-Ton Delivery Van | 09:00 |
+| 3 | Central-East Corridor | Tamwe, Bahan, Mingala Taungnyunt, Thaketa, Dawbon | 1-Ton Light Van | 09:00 |
+| 4 | Downtown, CBD & Inner West | Kyauktada, Pabedan, Latha, Lanmadaw, Botahtaung, Pazundaung, Dagon, Sanchaung, Ahlone, Kyimyindaing | High-Roof Compact Van / LWB Walk-In | 08:00 |
+| 5 | West & North Gateway | Hlaing, Kamayut, Mayangone, Insein, Mingaladon, Shwepyitha, Hlaingthaya | 1.5-Ton High-Capacity Cargo Van | 08:30 |
+
+### 4.3.5 High Volume Plan - 9 Routes
+
+| Route | Zone | Townships |
+|---|---|---|
+| 1 | East Dagon & Dagon Seikkan | East Dagon, Dagon Seikkan |
+| 2 | North Dagon & South Dagon | North Dagon, South Dagon |
+| 3 | South Okkalapa & Thingangyun | South Okkalapa, Thingangyun |
+| 4 | North Okkalapa & Yankin | North Okkalapa, Yankin |
+| 5 | Central-East Peninsula | Thaketa, Dawbon, Tamwe, Bahan, Mingala Taungnyunt |
+| 6 | Downtown Core | Kyauktada, Pabedan, Latha, Lanmadaw, Botahtaung, Pazundaung, Dagon |
+| 7 | Inner West | Sanchaung, Ahlone, Kyimyindaing |
+| 8 | Outer Residential & North-West | Hlaing, Kamayut, Mayangone, Insein, Mingaladon |
+| 9 | Industrial Gateway | Hlaingthaya, Shwepyitha |
+
+### 4.3.6 Route-Count and Stop Controls
+
+- Only routes with parcels are activated for the day; the system does not need to use every configured route when that zone has zero parcels.
+- Each active route has a hard maximum of **75 stops**.
+- If one zone exceeds 75 route-ready parcels, Operations must split that operational zone into additional practical routes before creation.
+- Yangon master zones may contain fewer than 50 parcels because the split is driven by the approved 3/5/9 plan and do not require the standard below-50 exception approval.
+- Outside the Yangon master plan, the normal 50-75 parcel operating band and one-below-minimum exception remain in force.
+
+---
+
+## 4.4 Road Optimization and Whole-Route Review
+
+### 4.4.1 Planning Sequence
+
+For Yangon:
+
+**Validated locations -> canonical township -> approved 3/5/9 zone -> vehicle & crew -> real road optimization -> whole-route map review -> final sequence -> Warehouse LIFO -> Wayplan creation**
+
+### 4.4.2 Route Sources
+
+- **Google Routes road optimized** - primary.
+- **Mapbox road optimized fallback** - acceptable road-based fallback when clearly labelled.
+- **Operator-edited route** - allowed after management/operations review; re-optimize when road time/distance needs refreshing.
+- **Straight-line/geographic-only route** - not acceptable for automatic creation.
+
+### 4.4.3 Whole-Route Map
+
+Open the whole-route map for every active route and review hub/origin, numbered delivery stops, township continuity, road geometry, cross-city zig-zags and wrong pins. The map is a review tool; it does not override the approved master-zone boundary.
+
+---
+
+## 4.5 Manual Location Correction on the Map
+
+### 4.5.1 During Wayplan Review
+
+1. Open the route's whole map.
+2. Select the affected numbered stop.
+3. Click the exact drop-off point or drag the marker.
+4. Press **Update location**.
+5. Confirm save success.
+6. Recalculate the affected road route.
+7. Review the new sequence and LIFO order before creation.
+
+### 4.5.2 During Rider Delivery
 
 1. Open **Active Wayplan Route**.
-2. At the current stop, open **Correct delivery pin on map**.
-3. Tap the exact delivery point or drag the marker.
-4. Click **Update location**.
-5. The corrected location is saved.
-6. If more than one eligible stop remains, the remaining active route is recalculated.
-7. Continue using the new active route.
+2. Open **Correct delivery pin on map** for the current stop.
+3. Tap/drag to the actual location.
+4. Press **Update location**.
+5. Continue with the recalculated active route.
 
-### 4.4.3 What the System Records
-
-A saved manual pin correction records the delivery identifier, previous coordinates, new coordinates, user and update context in the audit trail. The coordinate source becomes a manual-pin correction.
-
-### 4.4.4 Important Control Rule
-
-Correcting a location changes the active planning/delivery coordinates. It does **not** silently rewrite historical Warehouse loading history for an already generated Wayplan.
+Every approved pin change records old coordinates, new coordinates, user and context in the audit trail.
 
 ---
 
-## 4.5 Rider / Driver Delivery Execution
+## 4.6 Vehicle and Crew Assignment
 
-The Rider field workflow is designed around one current stop at a time:
+### 4.6.1 Normal Roster
 
-**Current Stop -> Complete Required Action -> Finish -> Guided Next Stop**
+- Driver and Rider must be active roster users.
+- Helper is optional.
+- The same person cannot serve two active routes in the same plan.
+- Busy vehicle/crew assignments are rejected.
+- Vehicle weight capacity must not be exceeded.
 
-### 4.5.1 Start the Route
+### 4.6.2 Emergency Manual Substitution
 
-1. Sign in with the assigned Rider or Driver account.
-2. Open the Rider App and **Active Wayplan Route**.
-3. Confirm:
-   - Wayplan ID.
-   - Active route version.
-   - Current stop.
-   - Delivery sequence.
-4. Press **Navigate current stop** to open Google navigation for the current destination.
+Use **Emergency substitution** only when necessary and approved. Manual Driver and Rider names plus a mandatory operational reason are required; Helper is optional.
 
-### 4.5.2 At the Customer Location
-
-1. Confirm that the map location and physical address match.
-2. If the pin is wrong, correct it using Section 4.4.2.
-3. Press **Arrived** when appropriate.
-4. Contact the customer if required.
-5. Complete the delivery proof process.
-
-### 4.5.3 Delivery Proof Requirements
-
-Before the stop can be finished as delivered, complete the applicable proof and payment controls:
-
-- Receiver information.
-- Required proof photo where applicable.
-- Receiver electronic signature.
-- GPS capture.
-- COD amount confirmation when COD applies.
-- Payment method and required payment reference for electronic payment flows.
-
-Use **Complete Delivery Proof** before pressing **Finish & guide next stop**.
-
-### 4.5.4 Finish and Automatically Move to the Next Stop
-
-After proof and payment requirements are complete:
-
-1. Return to the Active Wayplan Route screen.
-2. Press **Finish & guide next stop**.
-3. The system verifies that the current delivery has the required completed proof state.
-4. The current stop is closed as delivered.
-5. The next eligible stop automatically becomes the current stop.
-6. Google navigation opens for that next stop.
-7. Continue the same process until no eligible delivery stops remain.
-
-For the final stop, the system closes the drop and reports that no remaining delivery stop exists.
-
-### 4.5.5 Proof-Safe Finish
-
-**Finish is not a shortcut around proof capture.** If delivery proof, signature or required COD/payment confirmation is incomplete, the system blocks Finish and instructs the Rider to complete the delivery proof first.
+The substitution is audit-recorded. A manually substituted Rider does **not** automatically receive Rider-App authentication; provision the account separately if mobile Rider functions are required.
 
 ---
 
-## 4.6 Delivery Exceptions and Rerouting
+## 4.7 Rider / Driver Delivery Execution
 
-The current-stop screen provides controlled exception actions.
+The field workflow is:
 
-### Customer Unavailable
+**Current Stop -> Navigate -> Arrive -> Proof / COD -> Finish & guide next stop -> Next Stop**
 
-Use when the receiver cannot complete the delivery. Record the appropriate reason and follow Customer Service / Supervisor instructions.
+Before Finish, complete applicable receiver details, proof photo, receiver signature, GPS capture, COD amount and payment method/reference.
 
-### Reschedule
-
-Use when delivery must be attempted later. The current route is updated so the Rider can continue with eligible stops.
-
-### Skip
-
-Use only for a legitimate operational reason. The system removes the stop from the current eligible sequence and recalculates the remaining route where required.
-
-### RTO
-
-Use when the parcel must return to origin / Warehouse according to the approved operating process.
-
-### Rerouting Rule
-
-When an exception makes the current stop ineligible for the current trip, the system may recalculate the remaining active route. This creates or applies a newer active route version without changing the original Warehouse loading history.
+When **Finish & guide next stop** is pressed after proof completion, the current stop closes, the next eligible stop becomes current automatically, and navigation opens for the next location. Finish is blocked when required proof/payment data is incomplete.
 
 ---
 
-## 4.7 Finance and COD Handover
+## 4.8 Delivery Exceptions and Rerouting
 
-### Rider / Driver
+Use the correct action:
 
-1. Confirm the required COD at the delivery point.
-2. Record the actual collected amount and payment method using the approved proof workflow.
-3. Do not mark a COD delivery complete with an unresolved amount mismatch.
-4. At end of duty, hand over collected funds and supporting records according to Finance procedure.
+- **Customer Unavailable** - customer cannot complete delivery.
+- **Reschedule** - move delivery to later handling.
+- **Skip** - operationally skip the stop with reason.
+- **RTO** - return parcel according to approved process.
 
-### Finance
+An exception may create a newer active route version. It does not rewrite the original generated route or Warehouse loading history.
 
-1. Review Rider / Driver settlement information.
-2. Verify expected versus received amounts.
-3. Investigate any variance before approval.
-4. Retain the approved settlement trail for reconciliation.
+---
+
+## 4.9 Finance and COD Handover
+
+Rider/Driver must confirm expected COD, record actual collection/payment method, avoid completing a COD delivery with unresolved amount mismatch, and hand over collected funds and records at end of duty.
+
+Finance verifies expected versus received amounts, investigates variances and retains the settlement audit trail.
 
 ---
 
@@ -378,200 +337,144 @@ When an exception makes the current stop ineligible for the current trip, the sy
 
 ### Data Entry
 
-- Complete registration and bulk-upload review.
-- Resolve material location errors.
-- Ensure ready parcels contain the required routing data.
+- Complete registration and bulk upload.
+- Run Safe Auto Geo Review.
+- Resolve every REVIEW REQUIRED location that must enter the day's Wayplan.
+- Confirm canonical township and Britium/provider scope.
 
 ### Warehouse
 
-- Complete inbound processing.
-- Sort ready parcels.
+- Complete inbound processing and sorting.
 - Confirm Wayplan-ready status.
 
 ### Wayplan / Operations
 
-- Generate practical van plans.
-- Confirm 50-75 parcel operating band where possible.
-- Review the route source and whole route map.
-- Correct wrong pins before dispatch.
-- Confirm vehicle, Driver, Rider and helper where applicable.
-- Review Warehouse LIFO list.
-- Create the Wayplans.
+1. Select route-ready Yangon parcels.
+2. Generate the Yangon master plan.
+3. Confirm the triggered plan: 3, 5 or 9 zones/routes.
+4. Confirm excluded areas are not mixed into the Yangon master.
+5. Confirm every active route is <=75 stops.
+6. Assign a suitable delivery vehicle and crew.
+7. Run road optimization.
+8. Review the whole-route map.
+9. Correct wrong pins.
+10. Make justified manual sequence changes if needed.
+11. Review Warehouse LIFO.
+12. Create the reviewed Wayplans.
 
 ### Rider / Driver
 
-- Sign in using the assigned account.
-- Review the active Wayplan.
-- Confirm device GPS, camera and navigation access.
-- Verify vehicle and parcel count before departure.
+- Sign in with the assigned account.
+- Confirm GPS, camera and navigation permissions.
+- Verify assigned vehicle, parcel count and current route.
 
 ## 5.2 During Delivery
 
-For every stop:
+For each stop:
 
-1. Navigate to current stop.
-2. Correct the pin if needed.
-3. Arrive and contact customer as required.
-4. Complete delivery proof and COD/payment confirmation.
-5. Press **Finish & guide next stop**.
-6. Follow the automatically advanced next-stop navigation.
+**Navigate -> verify location -> correct pin if needed -> Arrived -> proof/COD -> Finish & guide next stop**.
 
-For exceptions, use the correct exception action rather than falsely finishing the stop as delivered.
+Use exception actions instead of falsely completing a failed delivery.
 
 ## 5.3 End of Route
 
 - Confirm no eligible stops remain.
-- Return RTO / failed / returned parcels to the appropriate Warehouse process.
+- Return RTO/failed parcels through Warehouse process.
 - Submit COD and supporting records.
-- Report unresolved location or routing issues to Operations / Customer Service.
-- Complete end-of-duty reporting.
+- Report unresolved route/location issues.
 
 ---
 
 # 6. Troubleshooting
 
-## 6.1 Wrong Location on the Map
+## 6.1 Auto Geo Shows Too Many Review Rows
 
-**Preferred solution:**
+Do not force-accept them. Approximate or ambiguous locations are intentionally blocked from route-ready status until corrected.
 
-1. Select the affected delivery marker.
-2. Click or drag to the correct drop-off point.
-3. Press **Update location**.
-4. Wait for the route to recalculate.
-5. Review the new sequence before continuing.
+## 6.2 Many Addresses Share One Coordinate
 
-Do not restart the entire batch just because one pin is wrong.
+Treat this as a location-quality problem unless the addresses truly share one building/compound. Correct the actual pins; do not reuse a township-centre coordinate.
 
-## 6.2 Update Location Button Is Disabled
+## 6.3 Yangon Master Township Mapping Error
 
-Check that:
+Correct the township/alias before planning. Do not manually move an unknown township into an unrelated zone.
 
-- A delivery stop has been selected.
-- A new point has been chosen on the map.
-- You are signed in with an authorized role or you are the assigned Rider / Driver for the active Wayplan.
-- The internet connection is available.
+## 6.4 Route Has More Than 75 Stops
 
-## 6.3 Google Map Does Not Load
+Split the affected master zone operationally into an additional route, then road-optimize both routes before creation.
 
-- Confirm internet access.
-- Refresh the page once.
-- Check that the browser allows the page to load mapping resources.
-- If the road line is unavailable but stop pins are visible, review/correct stop pins and use the available route controls.
-- If the problem persists, report it to IT with the Wayplan ID and screenshot.
+## 6.5 Road Routing Unavailable
 
-## 6.4 Route Recalculation Fails After Pin Correction
+Automatic creation must stop. Do not accept a straight line as a delivery route. Restore Google Routes or the road-based fallback, then re-run optimization.
 
-- The location may already be saved even if road optimization fails.
-- Use **Re-optimize road route** before saving/dispatching the Wayplan.
-- Do not dispatch an obviously incorrect fallback sequence without review.
+## 6.6 Wrong Pin on Map
 
-## 6.5 Finish Is Blocked
+Select the stop -> click/drag actual point -> **Update location** -> re-optimize -> review again.
 
-If **Finish & guide next stop** reports that proof is required:
+## 6.7 Finish Is Blocked
 
-1. Open **Complete Delivery Proof**.
-2. Complete receiver details, signature, proof/GPS and COD/payment fields required for that parcel.
-3. Submit the proof successfully.
-4. Return to the route screen.
-5. Press **Finish & guide next stop** again.
+Complete Delivery Proof, signature and required COD/payment information, then retry **Finish & guide next stop**.
 
-## 6.6 Next-Stop Navigation Does Not Open
+## 6.8 Emergency Rider Cannot Use Rider App
 
-- Make sure the browser allows a new navigation tab/window.
-- Use the current stop's **Navigate current stop** button if the automatic handoff is blocked by the device/browser.
-- Confirm the next stop has validated coordinates.
-
-## 6.7 Rider Has No Active Wayplan
-
-- Confirm the correct Rider / Driver account is signed in.
-- Confirm the Wayplan has been assigned to that worker.
-- Confirm the Wayplan is not completed, closed or cancelled.
-- Ask Operations to verify the assignment if needed.
-
-## 6.8 Cannot Login / Session Expired
-
-- Re-enter the correct account credentials.
-- Use password reset if required.
-- Do not borrow another user's session.
-- If repeated automatic logout occurs, record the time, account role and screenshot and report to IT.
+Manual emergency names do not create authentication automatically. Operations must provision a proper Rider account if Rider-App functions are required.
 
 ---
 
 # 7. Audit, Route Versioning and Control Rules
 
-## 7.1 Manual Pin Audit
-
-Every approved location pin update should be traceable to the user who made the change. The audit trail records the previous and new location values and the update context.
-
-## 7.2 Generated Route Versus Active Route
-
-- **Generated route:** reviewed route at Wayplan creation.
-- **Warehouse LIFO snapshot:** reverse of the generated delivery sequence used for loading.
-- **Active route:** current field route; may be newer after corrections or exceptions.
-
-Never alter historical Warehouse loading evidence merely to make it match a later Rider reroute.
-
-## 7.3 Assignment Control
-
-Riders and Drivers may act only on Wayplans assigned to them. If an assignment error is detected, Operations must correct the assignment rather than asking users to share accounts.
-
-## 7.4 Below-50 Van Exception
-
-The normal minimum is 50 parcels. One below-minimum van may be approved only when operationally unavoidable. The approving user must enter a reason so the exception remains reviewable.
-
-## 7.5 Fallback Route Control
-
-A fallback route must remain visibly labelled as fallback. Staff must not present it as a Google-optimized route.
+1. **Location quality gate:** only exact accepted or approved manual-pin locations should enter automatic mapped planning.
+2. **Yangon master boundary:** fixed operational zone first; road optimizer orders stops inside the zone.
+3. **Straight-line prohibition:** automatic Wayplan creation requires a real road route.
+4. **Generated route immutability:** retain the original generated route/version.
+5. **Warehouse LIFO immutability:** retain original loading snapshot.
+6. **Active route versioning:** field changes create/use a newer active route when needed.
+7. **Manual pin audit:** record old/new coordinates and actor.
+8. **Crew audit:** emergency manual substitution requires a reason.
+9. **Reserved vehicles:** 1H-6033 and 7R-1473 remain outside normal drop-off allocation.
+10. **Standard non-Yangon minimum:** 50-75 remains normal; at most one below-50 route may be approved with reason.
+11. **Yangon master minimum:** the 3/5/9 volume plan may legitimately produce multiple routes below 50; no separate below-minimum approval is required merely because of the master-plan split.
 
 ---
 
 # 8. Quick Reference
 
-## 8.1 Rider Current-Stop Buttons
+## 8.1 Yangon Plan Trigger
+
+| Eligible Yangon volume | Plan |
+|---|---|
+| <45 | 3 zones |
+| 45-95 | 5 zones |
+| >95 | 9 routes |
+
+## 8.2 Safe Geo Rule
+
+**Exact address/POI -> route-ready. Approximate/uncertain -> review. Manual correction -> confirm actual pin. No township-centre fallback.**
+
+## 8.3 Wayplan Review
+
+**Master zone -> road optimize -> whole map -> fix pins -> edit sequence if justified -> review LIFO -> create.**
+
+## 8.4 Rider Current-Stop Buttons
 
 | Button | Use |
 |---|---|
-| Navigate current stop | Open navigation to the current delivery point |
-| Correct delivery pin on map | Manually fix the current stop by map click or drag |
-| Arrived | Record arrival at the customer location |
-| Call Customer | Call the recipient when a phone number is available |
-| Complete Delivery Proof | Capture the required delivery proof / payment information |
-| Finish & guide next stop | Close a proof-complete delivery and automatically move to the next eligible stop |
-| Customer Unavailable | Record an unavailable-customer exception |
-| Reschedule | Move the stop out of the current completion flow for later handling |
-| Skip | Skip the stop for the current active route with an operational reason |
-| RTO | Return the parcel to origin / Warehouse process |
-
-## 8.2 Wayplan Map Correction
-
-**Select stop -> click/drag correct point -> Update location -> route recalculates -> review sequence -> review LIFO -> create Wayplan**
-
-## 8.3 Van Planning Rules
-
-- Normal minimum: **50 parcels / delivery van**.
-- Practical maximum: **75 parcels / delivery van**.
-- Only one below-50 exception in a reviewed batch, with explicit approval and reason.
-- Use the practical number of vans rather than automatically using the entire fleet.
-- **1H-6033** and **7R-1473** remain reserved for pickup/highway work.
-
-## 8.4 Common Route Terms
-
-- **Wayplan:** planned group and order of deliveries assigned to a vehicle/crew.
-- **LIFO:** Last In, First Out loading arrangement; Warehouse loading is the reverse of the generated delivery sequence.
-- **Active Route Version:** current field-delivery order used by the Rider.
-- **Generated Route Version:** original reviewed route version saved at Wayplan creation.
-- **Manual Pin:** user-corrected latitude/longitude selected on the map.
-- **RTO:** Return to Origin.
-- **POD:** Proof of Delivery.
-- **COD:** Cash / Collection on Delivery according to the parcel's payment requirement.
+| Navigate current stop | Open navigation to current stop |
+| Correct delivery pin on map | Fix the current pin |
+| Arrived | Record arrival |
+| Complete Delivery Proof | Capture proof/payment |
+| Finish & guide next stop | Complete proof-safe delivery and advance |
+| Customer Unavailable | Record unavailable customer |
+| Reschedule | Defer stop |
+| Skip | Skip with operational reason |
+| RTO | Return to origin / Warehouse |
 
 ---
 
 # 9. Document Control
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Last Updated:** September 13, 2026  
-**Next Review:** After the next material Wayplan / Rider workflow release or operational policy change  
 **Document Owner:** Britium Express Operations Team  
 **System:** https://britiumexpress.com
 
@@ -580,7 +483,8 @@ A fallback route must remain visibly labelled as fallback. Staff must not presen
 | Version | Date | Summary |
 |---|---|---|
 | 1.0 | 2026-04-10 | Initial operations manual |
-| 1.1 | 2026-09-13 | Production URL; map-pin correction; route recalculation; 50-75 parcel van rules; proof-safe Finish and next-stop guidance; Warehouse LIFO controls; hard-coded password removal |
+| 1.1 | 2026-09-13 | Map-pin correction, Rider next-stop guidance, LIFO controls, secure credentials |
+| 1.2 | 2026-09-13 | Safe Auto Geo quality gate; Yangon township aliases; approved 3/5/9 Yangon Van Assignment Master; fixed-zone-first road optimization; 75-stop route control; Yangon master save-flow alignment |
 
 ---
 
