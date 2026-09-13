@@ -100,6 +100,20 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
    finally{setBusy(false);}
  }
 
+ async function updateStopPin(index:number,deliveryWayId:string,latitude:number,longitude:number){
+   setBusy(true);
+   setMessage(`Location updated. Recalculating Van ${index+1} road route…`);
+   try{
+     const changed:VanPlan={...plans[index],rows:plans[index].rows.map(row=>row.delivery_way_id===deliveryWayId?{...row,latitude,longitude}:row)};
+     const optimized=await optimizeOne(changed);
+     reset(plans.map((p,j)=>j===index?optimized:p));
+     setMessage(`Van ${index+1}: corrected pin saved and route recalculated as ${routeLabel(optimized)}. Review the new numbered sequence and LIFO list before creating Wayplans.`);
+   }catch(e:any){
+     setMessage(e?.message||"Location was saved, but the van route could not be recalculated. Use Re-optimize road route before saving the Wayplan.");
+     throw e;
+   }finally{setBusy(false);}
+ }
+
  function moveStop(index:number,from:number,to:number){
    if(to<0||to>=plans[index].rows.length||from===to)return;
    const rows=[...plans[index].rows]; const [item]=rows.splice(from,1); rows.splice(to,0,item);
@@ -154,7 +168,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
  return <section style={{padding:16,border:"1px solid #1a3a5c",borderRadius:16,background:"#0b2236",display:"grid",gap:12}}>
    <h2 style={{margin:0}}>Automatic delivery van planning</h2>
    <p style={{margin:0}}>Plan {scopedRows.length} ready parcels by location. Normal operating band: <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong>. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
-   <p style={{margin:0}}>Google Routes road time/distance is primary. Each van has one complete Google road-map view covering the warehouse/origin and every planned stop. The generated sequence remains editable by authorized management/operations staff before creation; warehouse LIFO updates automatically to the exact reverse.</p>
+   <p style={{margin:0}}>Google Routes road time/distance is primary. Each van has one complete Google road-map view covering the warehouse/origin and every planned stop. To correct a location, select its numbered pin, click the correct place on the map, then press Update location; the van route recalculates automatically. Warehouse LIFO remains the exact reverse of the reviewed delivery sequence.</p>
    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
      <label>Pickup batch <select style={field} value={currentPickup} disabled={busy} onChange={e=>{setPickup(e.target.value);reset();}}><option value="*">All ready pickups</option>{Array.from(new Set(rows.map(r=>String(r.pickup_id||"")))).map(id=><option key={id} value={id}>{id}</option>)}</select></label>
      <label>Vans to use <select style={field} value={count} disabled={busy} onChange={e=>{setCount(e.target.value);reset();}}><option value="">Automatic — practical van count</option>{vehicles.filter(v=>v.available).map((_,i)=><option key={i} value={i+1}>{i+1}</option>)}</select></label>
@@ -173,7 +187,7 @@ export default function MultiVanPlanner({rows,region,onSaved}:{rows:Stop[];regio
          <button style={secondary} disabled={busy} onClick={()=>void reoptimizeOne(i)}>Re-optimize road route</button>
          {maps.map(m=><a key={m.label} href={m.url} target="_blank" rel="noreferrer" style={{...secondary,textDecoration:"none"}}>{m.label}</a>)}
        </div>
-       <FullVanRouteMap origin={origin} plan={plan} vanLabel={`Van ${i+1} · ${vehicleName}`} />
+       <FullVanRouteMap origin={origin} plan={plan} vanLabel={`Van ${i+1} · ${vehicleName}`} allowLocationEdit onStopPinUpdated={(deliveryWayId,latitude,longitude)=>updateStopPin(i,deliveryWayId,latitude,longitude)} />
        <div style={{display:"flex",gap:10,flexWrap:"wrap",marginTop:10}}>
          <label>Vehicle <select style={field} disabled={busy} value={plan.vehicle_code} onChange={e=>patchPlan(i,{vehicle_code:e.target.value})}><option value="">Choose</option>{vehicles.filter(x=>x.available||x.id===plan.vehicle_code).map(x=><option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
          <label>Crew mode <select style={field} disabled={busy} value={plan.crew_mode||"ROSTER"} onChange={e=>patchPlan(i,{crew_mode:e.target.value as any})}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
