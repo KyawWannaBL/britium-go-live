@@ -1,13 +1,14 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, MapPin, Phone, RefreshCw, Route, SkipForward, UserX, CalendarClock, RotateCcw } from "lucide-react";
+import { ArrowLeft, CheckCircle2, MapPin, Phone, RefreshCw, Route, SkipForward, UserX, CalendarClock, RotateCcw, Navigation } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import RiderStopPinEditor from "@/components/RiderStopPinEditor";
 
 type StopRow={sequence:number;delivery_way_id:string;waybill_no?:string;recipient_name?:string;recipient_phone?:string;address?:string;township?:string;notes?:string;status?:string;latitude?:number;longitude?:number};
 type Snapshot={ok:boolean;wayplan_id?:string|null;route_version?:number;route_kind?:string;optimizer_source?:string;route_mode?:string;distance_m?:number;duration_s?:number;current_stop?:StopRow|null;stops?:StopRow[];warehouse_snapshot?:any;warehouse_route_immutable?:boolean;message?:string};
 
 const C={bg:"#061524",panel:"#0b2236",panel2:"#102b45",border:"#1a3a5c",text:"#eef8ff",sub:"#9cc2d9",gold:"#f6b84b",blue:"#4ea8de",green:"#34d399",red:"#f87171",purple:"#c084fc"};
 const btn=(tone="plain"):React.CSSProperties=>({border:`1px solid ${tone==="red"?C.red:tone==="green"?C.green:tone==="gold"?C.gold:C.border}`,background:tone==="red"?"rgba(248,113,113,.12)":tone==="green"?"rgba(52,211,153,.12)":tone==="gold"?C.gold:C.panel2,color:tone==="gold"?C.bg:C.text,borderRadius:12,padding:"10px 13px",fontWeight:800,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:7,textDecoration:"none"});
-const terminal=new Set(["DELIVERED","RTO","SKIP","RESCHEDULE","CUSTOMER_UNAVAILABLE","RETURN_TO_WAREHOUSE","FAILED_DELIVERY"]);
+const terminal=new Set(["DELIVERED","RTO","SKIP","SKIPPED","RESCHEDULE","DELIVERY_RESCHEDULED","CUSTOMER_UNAVAILABLE","RETURN_TO_WAREHOUSE","FAILED_DELIVERY","CANCELLED"]);
 
 function sourceLabel(value?:string){
  if(value==="GOOGLE_ROUTES")return "Google Routes road optimized";
@@ -70,7 +71,7 @@ export default function RiderOperationalRoutePage(){
   try{
    const remark=actionName==="CUSTOMER_UNAVAILABLE"?"Customer unavailable at current stop":actionName==="RESCHEDULE"?"Customer requested reschedule":actionName==="SKIP"?"Stop skipped for current route":actionName==="RTO"?"Marked return to origin":"Arrived at customer";
    const {data,error:rpcError}=await supabase.rpc("be_rider_operational_route_action",{p_payload:{wayplan_id:snapshot.wayplan_id,delivery_way_id:current.delivery_way_id,action:actionName,remark}});
-   if(rpcError)throw rpcError; if(data?.ok===false)throw new Error(data?.error||"Route action failed.");
+   if(rpcError)throw rpcError; if(data?.ok===false)throw new Error(data?.message||data?.error||"Route action failed.");
    setSnapshot(data as Snapshot);
    if(data?.reroute_required){
     const remaining=(data.stops||[]).filter((s:StopRow)=>!terminal.has(String(s.status||"").toUpperCase()));
@@ -81,11 +82,47 @@ export default function RiderOperationalRoutePage(){
   finally{setBusy(false);}
  }
 
+ async function pinUpdated(latitude:number,longitude:number){
+  if(!snapshot?.wayplan_id||!current)return;
+  const corrected=(snapshot.stops||[]).map(stop=>stop.delivery_way_id===current.delivery_way_id?{...stop,latitude,longitude}:stop);
+  const remaining=corrected.filter(stop=>!terminal.has(String(stop.status||"").toUpperCase()));
+  if(remaining.length>1)await roadOptimize(snapshot.wayplan_id,remaining);
+  else{
+   setSnapshot({...snapshot,stops:corrected,current_stop:{...current,latitude,longitude}});
+   setMessage("Corrected location saved. This is the final remaining stop, so no additional route optimization is required.");
+  }
+ }
+
+ async function finishAndGuideNext(){
+  if(!snapshot?.wayplan_id||!current)return;
+  // Open synchronously so mobile browsers allow us to hand off navigation after the server confirms Finish.
+  const navigationWindow=window.open("about:blank","_blank");
+  setBusy(true);setError("");setMessage("Finishing this drop and preparing the next stop…");
+  try{
+   const {data,error:rpcError}=await supabase.rpc("be_rider_operational_route_action",{p_payload:{wayplan_id:snapshot.wayplan_id,delivery_way_id:current.delivery_way_id,action:"FINISH_STOP"}});
+   if(rpcError)throw rpcError;
+   if(data?.ok===false)throw new Error(data?.message||data?.error||"Could not finish this stop.");
+   setSnapshot(data as Snapshot);
+   const next=data?.current_stop as StopRow|null;
+   if(next){
+    const url=navigateUrl(next);
+    if(navigationWindow) navigationWindow.location.replace(url);
+    setMessage(`Finished ${current.waybill_no||current.delivery_way_id}. Next: Stop ${next.sequence} · ${next.waybill_no||next.delivery_way_id}. Navigation is ready.`);
+   }else{
+    navigationWindow?.close();
+    setMessage("Final drop finished. No delivery stops remain in this Wayplan.");
+   }
+  }catch(e:any){
+   navigationWindow?.close();
+   setError(e?.message||"Could not finish this stop. Complete delivery proof/signature/COD confirmation first, then press Finish.");
+  }finally{setBusy(false);}
+ }
+
  if(loading)return <main style={{minHeight:"100vh",background:C.bg,color:C.text,display:"grid",placeItems:"center",fontFamily:"Poppins,Inter,system-ui,sans-serif"}}><div><RefreshCw className="be-spin"/> Loading operational route…</div></main>;
  return <main style={{minHeight:"100vh",background:C.bg,color:C.text,fontFamily:"Poppins,Inter,system-ui,sans-serif",padding:16}}>
   <div style={{maxWidth:1080,margin:"0 auto",display:"grid",gap:14}}>
    <header style={{display:"flex",justifyContent:"space-between",gap:12,alignItems:"center",flexWrap:"wrap"}}>
-    <div><div style={{color:C.gold,fontWeight:900,letterSpacing:2}}>BRITIUM RIDER · ACTIVE WAYPLAN</div><h1 style={{margin:"6px 0"}}>Current Stop → Action → Next Stop</h1></div>
+    <div><div style={{color:C.gold,fontWeight:900,letterSpacing:2}}>BRITIUM RIDER · ACTIVE WAYPLAN</div><h1 style={{margin:"6px 0"}}>Current Stop → Finish → Guided Next Stop</h1><div style={{color:C.sub}}>Complete each drop, press Finish, and the system advances to the next planned location automatically.</div></div>
     <div style={{display:"flex",gap:8}}><button style={btn()} onClick={()=>{window.location.hash="#/wall"}}><ArrowLeft size={16}/> Wall</button><button style={btn()} disabled={busy} onClick={()=>void load()}><RefreshCw size={16}/> Sync</button></div>
    </header>
    {error&&<div style={{border:`1px solid ${C.red}`,background:"rgba(248,113,113,.12)",borderRadius:12,padding:12,color:C.red}}>{error}</div>}
@@ -102,16 +139,19 @@ export default function RiderOperationalRoutePage(){
       <div><strong>{current.recipient_name||"Recipient"}</strong>{current.recipient_phone?` · ${current.recipient_phone}`:""}</div>
       <div>{current.address||"No address"}{current.township?` · ${current.township}`:""}</div>
       {current.notes&&<div style={{color:C.sub}}>Notes: {current.notes}</div>}
+      <RiderStopPinEditor stop={current} onUpdated={pinUpdated}/>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-       <a style={btn()} href={navigateUrl(current)} target="_blank" rel="noreferrer"><MapPin size={16}/> Navigate</a>
+       <a style={btn()} href={navigateUrl(current)} target="_blank" rel="noreferrer"><Navigation size={16}/> Navigate current stop</a>
        {current.recipient_phone&&<a style={btn()} href={`tel:${current.recipient_phone}`}><Phone size={16}/> Call Customer</a>}
        <button style={btn("gold")} disabled={busy} onClick={()=>void action("ARRIVED")}><CheckCircle2 size={16}/> Arrived</button>
        <button style={btn("red")} disabled={busy} onClick={()=>void action("CUSTOMER_UNAVAILABLE")}><UserX size={16}/> Customer Unavailable</button>
        <button style={btn()} disabled={busy} onClick={()=>void action("RESCHEDULE")}><CalendarClock size={16}/> Reschedule</button>
        <button style={btn()} disabled={busy} onClick={()=>void action("SKIP")}><SkipForward size={16}/> Skip</button>
        <button style={btn("red")} disabled={busy} onClick={()=>void action("RTO")}><RotateCcw size={16}/> RTO</button>
-       <button style={btn("green")} disabled={busy} onClick={()=>{window.location.hash="#/delivery"}}><CheckCircle2 size={16}/> Complete Delivery Proof</button>
+       <button style={btn("gold")} disabled={busy} onClick={()=>{window.location.hash="#/delivery"}}><CheckCircle2 size={16}/> Complete Delivery Proof</button>
+       <button style={btn("green")} disabled={busy} onClick={()=>void finishAndGuideNext()}><Navigation size={16}/> Finish & guide next stop</button>
       </div>
+      <div style={{fontSize:12,color:C.sub}}>Finish is proof-safe: receiver proof/signature and COD/payment confirmation must already be completed. After Finish, the next eligible stop becomes current and Google navigation opens automatically.</div>
     </section>:<section style={{background:C.panel,border:`1px solid ${C.green}`,borderRadius:16,padding:18,color:C.green,fontWeight:800}}>No eligible stop remains in this active route.</section>}
     <section style={{background:C.panel,border:`1px solid ${C.border}`,borderRadius:16,padding:16}}>
      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><Route size={18}/><strong>Active road sequence</strong></div>
