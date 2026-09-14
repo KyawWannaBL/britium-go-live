@@ -15,6 +15,33 @@ export default defineConfig({
     },
   },
 
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("xlsx")) return "vendor-xlsx";
+          if (id.includes("pdfkit") || id.includes("qrcode") || id.includes("jsbarcode") || id.includes("react-barcode") || id.includes("react-qr-code")) {
+            return "vendor-print";
+          }
+          if (id.includes("mapbox-gl")) return "vendor-maps";
+          if (id.includes("recharts")) return "vendor-charts";
+          if (id.includes("framer-motion")) return "vendor-motion";
+          if (id.includes("@supabase")) return "vendor-supabase";
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          if (id.includes("react-hook-form") || id.includes("@hookform") || id.includes("zod") || id.includes("zustand") || id.includes("sonner")) {
+            return "vendor-forms-state";
+          }
+          if (id.includes("react-dom") || id.includes("react-router") || /node_modules[\\/]react[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          return "vendor-misc";
+        },
+      },
+    },
+  },
+
   server: {
     host: "0.0.0.0",
     port: 5173,
