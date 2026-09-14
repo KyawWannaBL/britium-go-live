@@ -1,53 +1,100 @@
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useAuth } from '@/contexts/auth';
+import { useAuth } from '@/contexts/AuthContext';
+import { normalizeRole } from '@/lib/portalRegistry';
+
+function roleLabel(role?: string) {
+  const normalized = normalizeRole(role);
+  if (normalized === 'superadmin' || normalized === 'super-admin') return 'SUPER ADMIN';
+  return normalized.replace(/-/g, ' ').toUpperCase();
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return '?';
+  return parts.slice(0, 2).map((part) => part[0]?.toUpperCase()).join('');
+}
 
 export default function ProfilePage() {
   const { t } = useLanguage();
-  const auth = useAuth() as any;
+  const { user, profile } = useAuth();
+
+  const email = profile?.email || user?.email || '-';
+  const fallbackName = email.includes('@') ? email.split('@')[0] : email;
+  const displayName = profile?.full_name || user?.user_metadata?.full_name || user?.user_metadata?.name || fallbackName || '-';
+  const role = roleLabel(profile?.role);
+  const status = (profile?.status || (profile?.authorized ? 'active' : 'unknown')).toUpperCase();
+  const branch = profile?.branch_code || '-';
+  const territories = profile?.territories ?? [];
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div className="flex justify-between items-center border-b border-[#1a3a5c] pb-4">
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex items-center justify-between border-b border-[#1a3a5c] pb-4">
         <div>
-          <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px]">{t('PROFILE', 'ကိုယ်ရေးအချက်အလက်')}</h1>
-          <p className="text-[#4d7a9b] text-[13px]">{t('User identity, contact details, and credential management.', 'ကိုယ်ရေးအချက်အလက်များနှင့် စကားဝှက်များကို ပြင်ဆင်ပါ။')}</p>
+          <h1 className="mb-1 text-[16px] uppercase text-[#f6b84b]">{t('PROFILE', 'ကိုယ်ရေးအချက်အလက်')}</h1>
+          <p className="text-[13px] text-[#4d7a9b]">{t('Current login identity and authorized operating scope.', 'လက်ရှိဝင်ရောက်ထားသည့် အကောင့်နှင့် ခွင့်ပြုထားသော လုပ်ငန်းနယ်ပယ်။')}</p>
         </div>
-        <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-4 py-2 rounded-full text-[11px] uppercase tracking-widest font-bold">
-          {t('AUTHENTICATED USER', 'အတည်ပြုပြီး အကောင့်')}
+        <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-[11px] font-bold uppercase tracking-widest text-emerald-400">
+          {status}
         </span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-8 flex flex-col items-center justify-center text-center">
-          <div className="w-24 h-24 rounded-full border-2 border-[#f6b84b] flex items-center justify-center text-3xl text-[#f6b84b] mb-4 bg-[#1a3a5c]">S</div>
-          <h2 className="text-[#eef8ff] text-[18px] mb-1">sai</h2>
-          <p className="text-[#4d7a9b] text-[13px] mb-4">{auth?.user?.email || 'sai@britiumexpress.com'}</p>
-          <span className="bg-[#1a3a5c] text-[#4ea8de] px-4 py-1.5 rounded-full text-[11px] uppercase tracking-widest">SUPER ADMIN</span>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-8 text-center">
+          <div className="mb-4 flex h-24 w-24 items-center justify-center rounded-full border-2 border-[#f6b84b] bg-[#1a3a5c] text-3xl text-[#f6b84b]">
+            {initials(displayName)}
+          </div>
+          <h2 className="mb-1 text-[18px] text-[#eef8ff]">{displayName}</h2>
+          <p className="mb-4 break-all text-[13px] text-[#4d7a9b]">{email}</p>
+          <span className="rounded-full bg-[#1a3a5c] px-4 py-1.5 text-[11px] uppercase tracking-widest text-[#4ea8de]">
+            {role}
+          </span>
         </div>
 
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6">
-            <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest mb-6 border-b border-[#1a3a5c] pb-4">{t('Profile Information', 'ကိုယ်ရေးအချက်အလက်')}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('DISPLAY NAME', 'အမည်')}</label><input defaultValue="sai" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none" /></div>
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('EMAIL ADDRESS', 'အီးမေးလ်')}</label><input readOnly value={auth?.user?.email || 'sai@britiumexpress.com'} className="w-full bg-[#061524] border border-[#1a3a5c] text-[#4d7a9b] p-3 rounded-xl outline-none cursor-not-allowed" /></div>
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('PHONE', 'ဖုန်း')}</label><input defaultValue="+95-9-..." className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none" /></div>
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('DEPARTMENT', 'ဌာန')}</label><input className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none" /></div>
+        <div className="space-y-6 lg:col-span-2">
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-6">
+            <h3 className="mb-6 border-b border-[#1a3a5c] pb-4 text-[14px] uppercase tracking-widest text-[#eef8ff]">{t('Login Information', 'ဝင်ရောက်အသုံးပြုသူ အချက်အလက်')}</h3>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Info label={t('DISPLAY NAME', 'အမည်')} value={displayName} />
+              <Info label={t('EMAIL ADDRESS', 'အီးမေးလ်')} value={email} />
+              <Info label={t('ROLE', 'တာဝန်/အခန်းကဏ္ဍ')} value={role} />
+              <Info label={t('ACCOUNT STATUS', 'အကောင့်အခြေအနေ')} value={status} />
+              <Info label={t('BRANCH', 'ရုံးခွဲ')} value={branch} />
+              <Info label={t('USER ID', 'အသုံးပြုသူ ID')} value={profile?.auth_user_id || user?.id || '-'} />
             </div>
-            <button className="bg-[#f6b84b] text-[#061524] px-6 py-2.5 rounded-xl text-[13px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors font-medium">{t('Save Changes', 'သိမ်းဆည်းမည်')}</button>
           </div>
 
-          <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6">
-            <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest mb-6 border-b border-[#1a3a5c] pb-4">{t('Change Password', 'စကားဝှက် ပြောင်းရန်')}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('CURRENT PASSWORD', 'လက်ရှိစကားဝှက်')}</label><input type="password" placeholder="••••••••" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b]" /></div>
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('NEW PASSWORD', 'စကားဝှက်သစ်')}</label><input type="password" placeholder="••••••••" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b]" /></div>
-               <div><label className="block text-[#4d7a9b] text-[11px] uppercase tracking-widest mb-2">{t('CONFIRM PASSWORD', 'အတည်ပြုရန်')}</label><input type="password" placeholder="••••••••" className="w-full bg-[#061524] border border-[#1a3a5c] text-[#eef8ff] p-3 rounded-xl outline-none focus:border-[#f6b84b]" /></div>
-            </div>
-            <button className="bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] hover:border-[#4ea8de] px-6 py-2.5 rounded-xl text-[13px] uppercase tracking-wider transition-colors">{t('Change Password', 'ပြောင်းလဲမည်')}</button>
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-6">
+            <h3 className="mb-4 border-b border-[#1a3a5c] pb-4 text-[14px] uppercase tracking-widest text-[#eef8ff]">{t('Authorized Territory', 'ခွင့်ပြုထားသော လုပ်ငန်းနယ်ပယ်')}</h3>
+            {territories.length ? (
+              <div className="space-y-3">
+                {territories.map((territory, index) => (
+                  <div key={`${territory.scope_type}-${territory.branch_code ?? ''}-${territory.township_key ?? ''}-${index}`} className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-4">
+                    <div className="flex flex-wrap items-center gap-2 text-[12px] text-[#eef8ff]">
+                      <strong>{territory.scope_type}</strong>
+                      {territory.branch_code ? <span>• {territory.branch_code}</span> : null}
+                      {territory.township_key ? <span>• {territory.township_key}</span> : null}
+                    </div>
+                    <div className="mt-2 text-[11px] uppercase tracking-wide text-[#4d7a9b]">
+                      {territory.can_read ? 'READ ' : ''}{territory.can_create ? 'CREATE ' : ''}{territory.can_update ? 'UPDATE ' : ''}{territory.can_delete ? 'DELETE' : ''}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-[12px] text-[#4d7a9b]">{t('No territory restriction is assigned to this role.', 'ဤအခန်းကဏ္ဍအတွက် သီးခြားနယ်ပယ်ကန့်သတ်ချက် မသတ်မှတ်ထားပါ။')}</p>
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="mb-2 text-[11px] uppercase tracking-widest text-[#4d7a9b]">{label}</div>
+      <div className="min-h-12 break-all rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-[13px] text-[#eef8ff]">{value}</div>
     </div>
   );
 }
