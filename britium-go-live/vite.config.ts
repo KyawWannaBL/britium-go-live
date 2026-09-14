@@ -28,7 +28,15 @@ export default defineConfig({
           if (id.includes("recharts")) return "vendor-charts";
           if (id.includes("framer-motion")) return "vendor-motion";
           if (id.includes("@supabase")) return "vendor-supabase";
-          return undefined;
+          if (id.includes("lucide-react")) return "vendor-icons";
+          if (id.includes("@radix-ui")) return "vendor-radix";
+          if (id.includes("react-hook-form") || id.includes("@hookform") || id.includes("zod") || id.includes("zustand") || id.includes("sonner")) {
+            return "vendor-forms-state";
+          }
+          if (id.includes("react-dom") || id.includes("react-router") || /node_modules[\\/]react[\\/]/.test(id)) {
+            return "vendor-react";
+          }
+          return "vendor-misc";
         },
       },
     },
