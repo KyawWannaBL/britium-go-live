@@ -41,6 +41,8 @@ import {
 } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
+import { filterAuthorizedPaths } from "@/lib/accessControl";
 
 const GLOBAL_FONT = "font-['Poppins','Noto_Sans_Myanmar',sans-serif] antialiased";
 
@@ -164,6 +166,12 @@ function isRouteActive(pathname: string, path: string) {
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const role = profile?.role;
+  const visibleGroups = NAV_GROUPS.map((group) => ({
+    ...group,
+    links: filterAuthorizedPaths(role, group.links),
+  })).filter((group) => group.links.length > 0);
 
   async function signOut() {
     await supabase.auth.signOut();
@@ -186,7 +194,7 @@ export default function Sidebar() {
       </div>
 
       <nav className="custom-scrollbar flex-1 space-y-6 overflow-y-auto p-4 pb-24">
-        {NAV_GROUPS.map((group) => (
+        {visibleGroups.map((group) => (
           <section key={group.title} aria-labelledby={`nav-${group.title.replaceAll(" ", "-").toLowerCase()}`}>
             <div
               id={`nav-${group.title.replaceAll(" ", "-").toLowerCase()}`}
