@@ -1,4 +1,7 @@
 const MAX_STOPS = 500;
+const FLOOR = 45;
+const SPRAWL_CEILING = 70;
+const COMPACT_CEILING = 95;
 
 function env(...names) {
   for (const name of names) {
@@ -84,57 +87,152 @@ function normalizeStops(stops) {
   });
 }
 
-const PLANS = {
-  LOW_3: [
-    ["A","East & North-East",["East Dagon","North Dagon","South Dagon","Dagon Seikkan","Thingangyun","South Okkalapa","North Okkalapa","Yankin"],"1.5-Ton Box Van","08:30","Clear the Dagon home zone first, then continue into the Okkalapa / Thingangyun residential arc. Optimize the actual stop order by road travel time."],
-    ["B","Urban Core & Inner West",["Thaketa","Dawbon","Tamwe","Bahan","Mingala Taungnyunt","Kyauktada","Pabedan","Latha","Lanmadaw","Botahtaung","Pazundaung","Dagon","Sanchaung","Ahlone","Kyimyindaing"],"1-Ton High-Roof Van","08:00","Transit to Thaketa / Dawbon, cross the central-east corridor into Downtown, then finish through Ahlone and Kyimyindaing."],
-    ["C","Outer West & North",["Hlaing","Kamayut","Mayangone","Insein","Mingaladon","Shwepyitha","Hlaingthaya"],"1.5-Ton Cargo Van","08:30","Keep the long outer arc isolated. Use the live road matrix to choose northern-first or bridge-first order."],
-  ],
-  STANDARD_5: [
-    ["1","East Core",["East Dagon","North Dagon","South Dagon","Dagon Seikkan"],"1.5-Ton Box Van","08:30","Micro-route around the East Dagon hub; prioritize dense and bulky B2B/residential drops and preserve reload capability."],
-    ["2","North-East Corridor",["Thingangyun","South Okkalapa","North Okkalapa","Yankin"],"1-Ton Delivery Van","09:00","Use No. 2 Highway / Thanthumar / Waizayantar corridor logic; optimize actual stop order by live road time."],
-    ["3","Central-East Corridor",["Tamwe","Bahan","Mingala Taungnyunt","Thaketa","Dawbon"],"1-Ton Light Van","09:00","Prefer Thaketa / Dawbon before inner-city congestion where road-time evidence supports it, then sweep Tamwe, Mingala Taungnyunt and Bahan."],
-    ["4","Downtown, CBD & Inner West",["Kyauktada","Pabedan","Latha","Lanmadaw","Botahtaung","Pazundaung","Dagon","Sanchaung","Ahlone","Kyimyindaing"],"High-Roof Compact Van / LWB Walk-In","08:00","Use Lower Pazundaung / Strand Road as the principal spine where practical, then continue into Ahlone and Kyimyindaing."],
-    ["5","West & North Gateway",["Hlaing","Kamayut","Mayangone","Insein","Mingaladon","Shwepyitha","Hlaingthaya"],"1.5-Ton High-Capacity Cargo Van","08:30","Use No. 3 Highway / Khayay Pin / Bayintnaung access according to road time; keep western and northern drops continuous."],
-  ],
-  HIGH_9: [
-    ["1","East Dagon & Dagon Seikkan",["East Dagon","Dagon Seikkan"],"Van","08:30","Industrial and hub-adjacent micro-route; prioritize large cargo and dense local drops."],
-    ["2","North Dagon & South Dagon",["North Dagon","South Dagon"],"Van","08:30","Residential Dagon micro-route optimized by ward and road time."],
-    ["3","South Okkalapa & Thingangyun",["South Okkalapa","Thingangyun"],"Delivery Van","09:00","Mid-city residential route around Thanthumar / Waizayantar access."],
-    ["4","North Okkalapa & Yankin",["North Okkalapa","Yankin"],"Delivery Van","09:00","North-east residential route; live road optimizer determines practical direction from the hub."],
-    ["5","Central-East Peninsula",["Thaketa","Dawbon","Tamwe","Bahan","Mingala Taungnyunt"],"Light Van","09:00","Dedicated central-east loop using actual bridge and junction road-time costs."],
-    ["6","Downtown Core",["Kyauktada","Pabedan","Latha","Lanmadaw","Botahtaung","Pazundaung","Dagon"],"Bulk Cargo / Mobile Hub Van","08:00","Downtown via Strand Road spine; mobile-hub handoff may be enabled by operations."],
-    ["7","Inner West",["Sanchaung","Ahlone","Kyimyindaing"],"Compact Van / Motorcycle / Three-Wheeler","08:00","Gridlock-resistant inner-west route; operations may substitute smaller units for narrow streets."],
-    ["8","Outer Residential & North-West",["Hlaing","Kamayut","Mayangone","Insein","Mingaladon"],"Delivery Van","08:30","Dedicated outer residential and north-west route; keeps these townships from being mixed arbitrarily into central routes."],
-    ["9","Industrial Gateway",["Hlaingthaya","Shwepyitha"],"Heavy Cargo Van","08:30","Dedicated industrial/western route using Aung Zeya / Bayintnaung bridge access according to road conditions."],
-  ],
-};
-const EXCLUDED = new Set(["Dala","Seikkyi Kanaungto","Thanlyin"]);
-function planCode(count) { return count < 45 ? "LOW_3" : count <= 95 ? "STANDARD_5" : "HIGH_9"; }
-function planName(code) { return code === "LOW_3" ? "Option 2 · Low-Volume Consolidation" : code === "STANDARD_5" ? "Option 1 · Standard 5-Zone Baseline" : "Option 3 · High-Volume 9-Route Expansion"; }
+const ZONES = [
+  { id: "Z1", name: "Downtown (CBD)", townships: ["Kyauktada","Pabedan","Lanmadaw","Latha","Botahtaung","Pazundaung"], ceiling: COMPACT_CEILING, vehicle: "Compact Van / Micro-Van", departure: "YCDC LEGAL ENTRY WINDOW" },
+  { id: "Z2", name: "Inner City (West & Central)", townships: ["Dagon","Ahlone","Kyimyindaing","Sanchaung","Kamayut","Bahan"], ceiling: SPRAWL_CEILING, vehicle: "Compact / 1-Ton Delivery Van", departure: "08:00" },
+  { id: "Z3", name: "Inner East & South-East", townships: ["Mingala Taungnyunt","Tamwe","Dawbon","Thaketa","Thingangyun","Yankin","South Okkalapa"], ceiling: SPRAWL_CEILING, vehicle: "1-Ton Delivery Van", departure: "08:30" },
+  { id: "Z4", name: "The Dagons (East Suburbs)", townships: ["North Dagon","South Dagon","East Dagon","Dagon Seikkan"], ceiling: SPRAWL_CEILING, vehicle: "1.5-Ton Box / Delivery Van", departure: "08:30" },
+  { id: "Z5", name: "Northern Corridor", townships: ["Mayangone","Hlaing","Insein","Mingaladon","North Okkalapa"], ceiling: SPRAWL_CEILING, vehicle: "1.5-Ton Delivery Van", departure: "08:30" },
+  { id: "Z6", name: "Trans-River West (Industrial)", townships: ["Hlaingthaya","Shwepyitha"], ceiling: SPRAWL_CEILING, vehicle: "High-Capacity Cargo Van", departure: "FULL-SHIFT BRIDGE CROSSING" },
+];
+const ZONE_BY_TOWNSHIP = new Map(ZONES.flatMap((zone) => zone.townships.map((township) => [township, zone])));
+const COMPACT_TOWNSHIPS = new Set(["Kyauktada","Pabedan","Lanmadaw","Latha","Botahtaung","Pazundaung","Sanchaung","Bahan"]);
+const ROYAL_OUTSOURCED = new Set(["Dala","Seikkyi Kanaungto"]);
+const OTHER_OUT_OF_SCOPE = new Set(["Thanlyin"]);
 
-function assignPlan(stops) {
-  const excluded = stops.filter((s) => EXCLUDED.has(s.township));
-  const unmapped = stops.filter((s) => !s.township);
-  const eligible = stops.filter((s) => s.township && !EXCLUDED.has(s.township));
-  const code = planCode(eligible.length);
-  const definitions = PLANS[code];
-  const routeByTownship = new Map();
-  definitions.forEach((def, index) => def[2].forEach((township) => routeByTownship.set(township, index)));
-  const routes = definitions.map((def) => ({
-    route_code: def[0], name: def[1], configured_townships: def[2], vehicle_type: def[3], dispatch_window: def[4], routing_strategy: def[5],
-    parcel_count: 0, delivery_way_ids: [], townships: {}, road_optimization_required: true,
-  }));
-  const unsupported = [];
-  for (const stop of eligible) {
-    const index = routeByTownship.get(stop.township);
-    if (index === undefined) { unsupported.push(stop); continue; }
-    const route = routes[index];
-    route.parcel_count += 1;
-    route.delivery_way_ids.push(stop.delivery_way_id);
-    route.townships[stop.township] = (route.townships[stop.township] || 0) + 1;
+const EXPANSION_GROUPS = [
+  ["Lanmadaw","Latha","Pabedan"],
+  ["Kyauktada","Botahtaung","Pazundaung"],
+  ["Ahlone","Kyimyindaing"],
+  ["Dawbon","Thaketa"],
+  ["Mingala Taungnyunt","Tamwe"],
+  ["East Dagon","North Dagon"],
+  ["Dagon Seikkan","South Dagon"],
+  ["Mayangone","Insein"],
+  ["Mingaladon","Insein"],
+];
+
+const HARD_FENCES = [
+  "NEVER_CROSS_HLAING_RIVER_FOR_CAPACITY_BALANCING",
+  "NEVER_MERGE_DOWNTOWN_WITH_EAST_SUBURBS",
+  "DALA_AND_SEIKGYI_KANAUNGTO_ALWAYS_OUTSOURCE_TO_ROYAL_EXPRESS",
+];
+
+function ceilingForTownships(townships) {
+  return townships.every((t) => COMPACT_TOWNSHIPS.has(t)) ? COMPACT_CEILING : SPRAWL_CEILING;
+}
+function centroid(rows) {
+  return {
+    latitude: rows.reduce((sum, row) => sum + row.latitude, 0) / rows.length,
+    longitude: rows.reduce((sum, row) => sum + row.longitude, 0) / rows.length,
+  };
+}
+function axisFor(townships) {
+  if (townships.includes("North Dagon")) return { axis: "longitude", divider: "Pinlon Road proxy: geographic east/west split" };
+  if (townships.includes("Sanchaung")) return { axis: "longitude", divider: "Baho Road proxy: geographic east/west split" };
+  if (townships.includes("Hlaing") || townships.includes("Kamayut")) return { axis: "longitude", divider: "Pyay Road proxy: geographic east/west split" };
+  if (townships.includes("Thingangyun") || townships.includes("Tamwe")) return { axis: "latitude", divider: "Kyaik Ka San / Lay Daung Kan proxy: geographic north/south split" };
+  return { axis: "longitude", divider: "Geographic median split inside approved township/cluster" };
+}
+function splitGeographically(rows, ceiling, townships) {
+  const routeCount = Math.ceil(rows.length / ceiling);
+  const { axis, divider } = axisFor(townships);
+  const sorted = [...rows].sort((a, b) => Number(a[axis]) - Number(b[axis]) || a.delivery_way_id.localeCompare(b.delivery_way_id));
+  const chunks = [];
+  for (let i = 0; i < routeCount; i++) {
+    const start = Math.floor(i * sorted.length / routeCount);
+    const end = Math.floor((i + 1) * sorted.length / routeCount);
+    chunks.push({ rows: sorted.slice(start, end), divider });
   }
-  return { code, eligible, excluded, unmapped, unsupported, routes };
+  return chunks;
+}
+function countByTownship(rows) {
+  const counts = {};
+  for (const row of rows) counts[row.township] = (counts[row.township] || 0) + 1;
+  return counts;
+}
+function groupRowsByTownship(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const list = map.get(row.township) || [];
+    list.push(row);
+    map.set(row.township, list);
+  }
+  return map;
+}
+function buildBaselineBuckets(zoneRows) {
+  const townMap = groupRowsByTownship(zoneRows);
+  const used = new Set();
+  const buckets = [];
+  for (const group of EXPANSION_GROUPS) {
+    const applicable = group.filter((t) => townMap.has(t));
+    if (applicable.length < 2) continue;
+    const members = applicable.flatMap((t) => townMap.get(t) || []);
+    const allLow = applicable.every((t) => (townMap.get(t) || []).length < FLOOR);
+    const ceiling = ceilingForTownships(applicable);
+    if (allLow && members.length <= ceiling) {
+      buckets.push({ rows: members, townships: applicable, strategy: "EXPAND", note: "Approved adjacent low-volume townships absorbed into one van." });
+      applicable.forEach((t) => used.add(t));
+    }
+  }
+  for (const [township, rows] of townMap.entries()) {
+    if (used.has(township)) continue;
+    buckets.push({ rows, townships: [township], strategy: rows.length < FLOOR ? "LOW_VOLUME_STANDALONE" : "BASELINE", note: rows.length < FLOOR ? "No safe approved adjacent absorption available; retain as low-volume route or operator reassignment." : "Fixed township baseline." });
+  }
+  return buckets;
+}
+function routeFromChunk(zone, bucket, rows, index, divider) {
+  const townships = [...new Set(rows.map((r) => r.township))];
+  const ceiling = ceilingForTownships(townships);
+  const counts = countByTownship(rows);
+  return {
+    route_code: `${zone.id}-${index + 1}`,
+    zone_code: zone.id,
+    zone_name: zone.name,
+    strategy: bucket.strategy,
+    capacity_profile: ceiling === COMPACT_CEILING ? "HIGH_DENSITY_COMPACT" : "SPRAWL_TRAFFIC",
+    floor: FLOOR,
+    ceiling,
+    parcel_count: rows.length,
+    townships,
+    townships_map: counts,
+    delivery_way_ids: rows.map((r) => r.delivery_way_id),
+    recommended_vehicle: zone.vehicle,
+    recommended_departure: zone.departure,
+    geographic_center: centroid(rows),
+    divider: divider || null,
+    note: bucket.note,
+  };
+}
+function planZone(zone, zoneRows) {
+  const routes = [];
+  let seq = 0;
+  for (const bucket of buildBaselineBuckets(zoneRows)) {
+    const ceiling = ceilingForTownships(bucket.townships);
+    if (bucket.rows.length > ceiling) {
+      const chunks = splitGeographically(bucket.rows, ceiling, bucket.townships);
+      for (const chunk of chunks) {
+        const squeezed = { ...bucket, strategy: "SQUEEZE", note: "Ceiling breached: keep the core geography compact and assign peripheral overflow to a floater van. Decouple B2B/bulk stops first where identified." };
+        routes.push(routeFromChunk(zone, squeezed, chunk.rows, seq++, chunk.divider));
+      }
+    } else {
+      routes.push(routeFromChunk(zone, bucket, bucket.rows, seq++));
+    }
+  }
+  return routes;
+}
+function assignPlan(stops) {
+  const royal = stops.filter((s) => ROYAL_OUTSOURCED.has(s.township));
+  const otherExcluded = stops.filter((s) => OTHER_OUT_OF_SCOPE.has(s.township));
+  const unmapped = stops.filter((s) => !s.township);
+  const unsupported = stops.filter((s) => s.township && !ROYAL_OUTSOURCED.has(s.township) && !OTHER_OUT_OF_SCOPE.has(s.township) && !ZONE_BY_TOWNSHIP.has(s.township));
+  const eligible = stops.filter((s) => ZONE_BY_TOWNSHIP.has(s.township));
+  const routes = [];
+  for (const zone of ZONES) {
+    const zoneRows = eligible.filter((s) => ZONE_BY_TOWNSHIP.get(s.township)?.id === zone.id);
+    if (zoneRows.length) routes.push(...planZone(zone, zoneRows));
+  }
+  return { royal, otherExcluded, unmapped, unsupported, eligible, routes };
 }
 
 export default {
@@ -155,21 +253,28 @@ export default {
           unsupported: assigned.unsupported.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.raw_township, canonical_township: s.township })),
         }, 422);
       }
-      const activeRoutes = assigned.routes.filter((route) => route.parcel_count > 0);
       return json({
         ok: true,
-        plan_code: assigned.code,
-        plan_name: planName(assigned.code),
+        plan_code: "YANGON_DYNAMIC_ZONING_V37",
+        plan_name: "Yangon Dynamic Van Zoning V37",
         hub: { name: "East Dagon Logistics Center", ...origin },
-        scope: "YANGON_URBAN_MASTER",
-        thresholds: { low_volume: "<45", standard_volume: "45-95", high_volume: ">95" },
+        scope: "BRITIUM_YANGON_ZONES_1_TO_6",
+        thresholds: { floor: FLOOR, sprawl_ceiling: SPRAWL_CEILING, compact_ceiling: COMPACT_CEILING },
         eligible_parcel_count: assigned.eligible.length,
-        recommended_unit_count: PLANS[assigned.code].length,
-        active_route_count: activeRoutes.length,
-        routes: assigned.routes.map((route) => ({ ...route, township_counts: Object.entries(route.townships).map(([township, parcel_count]) => ({ township, parcel_count })) })),
-        excluded_from_yangon_plan: assigned.excluded.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, reason: "OUTSIDE_YANGON_VAN_MASTER_SCOPE" })),
-        sequencing_policy: "FIXED_OPERATIONAL_ZONE_FIRST_THEN_ACTUAL_ROAD_TIME_OPTIMIZATION",
-        road_geometry_policy: "DO_NOT_DRAW_OR_ACCEPT_STRAIGHT_LINE_AS_DELIVERY_ROUTE",
+        recommended_unit_count: assigned.routes.length,
+        active_route_count: assigned.routes.length,
+        routes: assigned.routes.map((route) => ({ ...route, township_counts: Object.entries(route.townships_map).map(([township, parcel_count]) => ({ township, parcel_count })) })),
+        outsourced_to_royal_express: assigned.royal.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, service_provider: "ROYAL", reason: "OUT_OF_SCOPE_FOR_BRITIUM_YANGON_DELIVERY" })),
+        excluded_from_yangon_plan: [
+          ...assigned.royal.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, reason: "OUTSOURCED_TO_ROYAL_EXPRESS" })),
+          ...assigned.otherExcluded.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, reason: "OUTSIDE_YANGON_VAN_MASTER_SCOPE" })),
+        ],
+        hard_fences: HARD_FENCES,
+        sequencing_policy: "APPROVED_LOGISTICS_ZONE_AND_TOWNSHIP_CLUSTER_FIRST_THEN_GOOGLE_ROAD_TIME_OPTIMIZATION",
+        road_geometry_policy: "DO_NOT_CROSS_HARD_FENCES_FOR_CAPACITY_BALANCING",
+        motorcycle_policy: "PROHIBITED_FROM_AUTOMATIC_YANGON_FLEET_PLANNING",
+        low_volume_policy: "EXPAND_ONLY_WITHIN_PREAPPROVED_ADJACENCY; OTHERWISE_STAND_DOWN_OR_REASSIGN_EXCESS_VAN",
+        high_volume_policy: "DECOUPLE_B2B_BULK_THEN_SQUEEZE_BY_ARTERIAL_OR_GEOGRAPHIC_MEDIAN_AND_USE_FLOATER",
         manual_editable: true,
         generated_at: new Date().toISOString(),
       });
