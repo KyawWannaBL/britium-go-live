@@ -16,8 +16,13 @@ export type VanPlan = {
 };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
-export const NORMAL_MIN_PARCELS_PER_VAN = 50;
-export const PRACTICAL_MAX_PARCELS_PER_VAN = 75;
+// V37 generic UI guardrails. The authoritative per-zone ceiling is returned by /api/wayplan-zone-plan:
+// 70 for sprawling/congested routes and 95 for compact/high-density routes.
+export const NORMAL_MIN_PARCELS_PER_VAN = 45;
+export const PRACTICAL_MAX_PARCELS_PER_VAN = 95;
+
+const OUTSOURCED_YANGON_TOWNSHIPS = new Set(["dala","ဒလ","seikgyi kanaungto","seikkyi kanaungto","ဆိပ်ကြီးခနောင်တို"]);
+function townshipKey(value: unknown) { return String(value || "").normalize("NFC").trim().toLowerCase().replace(/\s+/g," "); }
 
 function validPoint(latitude: unknown, longitude: unknown) {
   return latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude));
@@ -43,22 +48,22 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
   );
 }
 
-/** Geographic allocation keeps township blocks contiguous before road optimization.
- * Automatic van count uses a practical 50-75 parcel operating band. One below-50 van can still
- * be explicitly approved when unavoidable. The initial sequence is only an emergency geographic
- * fallback; production road order is replaced by the authenticated route service before save.
- * IMPORTANT: once township blocks are assembled we DO NOT globally re-sort each van by hub distance;
- * doing that would interleave places such as South Okkalapa between East Dagon stops.
+/**
+ * Generic geographic fallback. Production Yangon allocation is governed by the V37 zone API.
+ * This helper prevents the UI from imposing the superseded 50-75 global band while preserving
+ * one below-floor route exception. Dala and Seikgyi Kanaungto are never eligible for Britium vans.
  */
 export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: number, origin?: RouteOrigin): VanPlan[] {
   if (!rows.length) throw new Error("No ready parcels selected.");
   if (new Set(rows.map(r => r.delivery_way_id)).size !== rows.length) throw new Error("Duplicate parcel selection.");
+  const outsourced = rows.filter(r => OUTSOURCED_YANGON_TOWNSHIPS.has(townshipKey(r.township)));
+  if (outsourced.length) throw new Error("Dala and Seikgyi Kanaungto are out of Britium van scope and must be assigned to ROYAL Express.");
   const available = vehicles.filter(v => v.available !== false);
   if (!available.length) throw new Error("No delivery van is available.");
   const count = requested ?? Math.min(available.length, Math.max(1, Math.ceil(rows.length / PRACTICAL_MAX_PARCELS_PER_VAN)));
   if (!Number.isInteger(count) || count < 1 || count > Math.min(7, available.length, rows.length)) throw new Error("Choose an available van count.");
-  if (rows.length > count * PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
-  if (rows.length < (count - 1) * NORMAL_MIN_PARCELS_PER_VAN + 1) throw new Error("This would leave more than one van below 50 parcels.");
+  if (rows.length > count * PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`Use more delivery vans: compact-route safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van; the V37 zone API may impose a 70-parcel ceiling.`);
+  if (rows.length < (count - 1) * NORMAL_MIN_PARCELS_PER_VAN + 1) throw new Error("This would leave more than one van below 45 parcels.");
   const towns = new Map<string, Stop[]>();
   for (const row of rows) {
     if (!row.township) throw new Error("A selected parcel has no township.");
@@ -85,7 +90,7 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   const sizes = Array.from({length:count},()=>Math.floor(rows.length/count));
   for(let i=0;i<rows.length%count;i++) sizes[i]++;
   for(let i=0;i<count-1;i++) if(sizes[i]<NORMAL_MIN_PARCELS_PER_VAN) { const needed=NORMAL_MIN_PARCELS_PER_VAN-sizes[i]; sizes[i]=NORMAL_MIN_PARCELS_PER_VAN; sizes[count-1]-=needed; }
-  if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: practical maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
+  if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: compact-route safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
   const unused=[...available]; let offset=0;
   return sizes.map(size=>{
     const batch=ordered.slice(offset,offset+=size);
@@ -93,7 +98,7 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
     const index=unused.findIndex(v=>!Number(v.capacity_kg)||Number(v.capacity_kg)>=weight);
     if(index<0) throw new Error("Known van weight capacities are insufficient. Adjust the selected parcels or van count.");
     const vehicle=unused.splice(index,1)[0];
-    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,crew_mode:"ROSTER",route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"GEOGRAPHIC_TOWNSHIP_BLOCK_EMERGENCY",fallback:true}};
+    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,crew_mode:"ROSTER",route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"V37_ZONE_GUARDED_GEOGRAPHIC_FALLBACK",fallback:true,warning:"Authoritative 70/95 ceiling and hard-fence validation must come from the Yangon V37 zone planner before save."}};
   });
 }
 
