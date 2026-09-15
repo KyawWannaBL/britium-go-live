@@ -115,6 +115,7 @@ export interface CustomerVoiceCreateResult {
   route: CustomerVoiceDepartment;
   workflow_status: CustomerVoiceWorkflowStatus;
   notification_status: string;
+  idempotent_replay?: boolean;
 }
 
 export interface CustomerVoiceAction {
@@ -125,6 +126,29 @@ export interface CustomerVoiceAction {
   actor_role?: string | null;
   resulting_status?: CustomerVoiceWorkflowStatus | null;
   created_at: string;
+}
+
+export interface CustomerVoiceEscalation {
+  id: string;
+  escalation_reason: string;
+  requested_department?: CustomerVoiceDepartment | null;
+  status: string;
+  raised_at: string;
+  review_note?: string | null;
+}
+
+export interface CustomerVoiceNotification {
+  id: string;
+  destination_department: CustomerVoiceDepartment;
+  status: string;
+  transport_status?: string | null;
+  transport_error?: string | null;
+  created_at: string;
+  sent_at?: string | null;
+  seen_at?: string | null;
+  acknowledged_at?: string | null;
+  actioned_at?: string | null;
+  resolved_at?: string | null;
 }
 
 export interface CustomerVoiceRecord {
@@ -143,5 +167,24 @@ export interface CustomerVoiceRecord {
   resolution_status?: string | null;
   due_at?: string | null;
   created_at: string;
+  updated_at?: string | null;
   closed_at?: string | null;
+  actions?: CustomerVoiceAction[];
+  escalations?: CustomerVoiceEscalation[];
+  notifications?: CustomerVoiceNotification[];
+}
+
+export interface CustomerVoiceHistory {
+  ok: boolean;
+  delivery_way_id: string;
+  voices: CustomerVoiceRecord[];
+}
+
+export interface CustomerVoiceTransitionResult {
+  ok: boolean;
+  voice_id: string;
+  workflow_status: CustomerVoiceWorkflowStatus;
+  current_department?: CustomerVoiceDepartment;
+  original_department?: CustomerVoiceDepartment;
+  override_reason?: string;
 }
