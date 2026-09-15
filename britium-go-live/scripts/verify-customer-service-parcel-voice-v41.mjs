@@ -25,6 +25,15 @@ const migrationChecks = [
   "latest_internal_action",
   "escalation_flag",
   "sla_due_at",
+  "be_cs_route_department",
+  "REDELIVERY",
+  "ADDRESS_CORRECTION",
+  "LOCATION_CORRECTION",
+  "PARCEL_MISSING",
+  "WAREHOUSE_ISSUE",
+  "COD_ISSUE",
+  "PAYMENT_ISSUE",
+  "PICKUP_ISSUE",
   "be_cs_create_customer_voice",
   "be_cs_acknowledge_customer_voice",
   "be_cs_resolve_customer_voice",
@@ -41,21 +50,20 @@ const pageChecks = [
   "Superadmin Override",
 ];
 
-const migrationFile = fs
+const migrationFiles = fs
   .readdirSync(migrationsDir)
-  .filter((name) => /customer_service_parcel_voice_v41\.sql$/i.test(name))
-  .sort()
-  .at(-1);
+  .filter((name) => /customer_service_parcel_voice_v41.*\.sql$/i.test(name))
+  .sort();
 
-const migrationSource = migrationFile
-  ? fs.readFileSync(path.join(migrationsDir, migrationFile), "utf8")
-  : "";
+const migrationSource = migrationFiles
+  .map((name) => fs.readFileSync(path.join(migrationsDir, name), "utf8"))
+  .join("\n");
 const pageSource = fs.readFileSync(pagePath, "utf8");
 
 const failures = [];
 
-if (!migrationFile) {
-  failures.push("migration file matching *customer_service_parcel_voice_v41.sql");
+if (!migrationFiles.length) {
+  failures.push("migration file matching *customer_service_parcel_voice_v41*.sql");
 }
 
 for (const marker of migrationChecks) {
