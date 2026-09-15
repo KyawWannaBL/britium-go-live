@@ -6,6 +6,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const migrationsDir = path.join(root, "supabase", "migrations");
 const pagePath = path.join(root, "src", "pages", "CustomerServicePortalPage.tsx");
+const apiPath = path.join(root, "src", "customerService", "customerVoiceApi.ts");
 
 const migrationChecks = [
   "be_customer_voices",
@@ -35,17 +36,42 @@ const migrationChecks = [
   "PAYMENT_ISSUE",
   "PICKUP_ISSUE",
   "be_cs_create_customer_voice",
+  "be_cs_mark_customer_voice_seen",
   "be_cs_acknowledge_customer_voice",
+  "be_cs_update_customer_voice_action",
   "be_cs_resolve_customer_voice",
+  "be_cs_confirm_customer_voice",
+  "be_cs_close_customer_voice",
   "be_cs_escalate_customer_voice",
+  "be_cs_reopen_customer_voice",
   "be_cs_superadmin_override_route",
+  "be_cs_customer_voice_history",
   "SUPERADMIN_OVERRIDE_REQUIRED",
+];
+
+const apiChecks = [
+  "loadCustomerServiceParcels",
+  "loadCustomerVoiceHistory",
+  "createCustomerVoice",
+  "markCustomerVoiceSeen",
+  "acknowledgeCustomerVoice",
+  "updateCustomerVoiceAction",
+  "resolveCustomerVoice",
+  "confirmCustomerVoice",
+  "closeCustomerVoice",
+  "escalateCustomerVoice",
+  "reopenCustomerVoice",
+  "superadminOverrideCustomerVoiceRoute",
 ];
 
 const pageChecks = [
   "Open Voices",
+  "Current Owner",
+  "Latest Customer Voice",
   "Customer Voices",
   "Status Timeline",
+  "Internal Action History",
+  "Add Customer Voice",
   "Escalate",
   "Superadmin Override",
 ];
@@ -59,6 +85,7 @@ const migrationSource = migrationFiles
   .map((name) => fs.readFileSync(path.join(migrationsDir, name), "utf8"))
   .join("\n");
 const pageSource = fs.readFileSync(pagePath, "utf8");
+const apiSource = fs.existsSync(apiPath) ? fs.readFileSync(apiPath, "utf8") : "";
 
 const failures = [];
 
@@ -68,6 +95,10 @@ if (!migrationFiles.length) {
 
 for (const marker of migrationChecks) {
   if (!migrationSource.includes(marker)) failures.push(`migration marker: ${marker}`);
+}
+
+for (const marker of apiChecks) {
+  if (!apiSource.includes(marker)) failures.push(`api marker: ${marker}`);
 }
 
 for (const marker of pageChecks) {
