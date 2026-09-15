@@ -26,8 +26,8 @@ $old$;
          or lower(btrim(d.township))='unknown'))
      or v_bad_way_ids<>0 or v_missing_parcels<>0 then
 $new$;
-  v_old_message text := $$'message','Selected parcels must have saved, valid financial details and approved delivery locations. Incomplete parcels remain pending.'$$;
-  v_new_message text := $$'message','Selected parcels must exist with canonical Way IDs and required recipient, phone, township, and address details.'$$;
+  v_old_message text := $msg$'message','Selected parcels must have saved, valid financial details and approved delivery locations. Incomplete parcels remain pending.'$msg$;
+  v_new_message text := $msg$'message','Selected parcels must exist with canonical Way IDs and required recipient, phone, township, and address details.'$msg$;
 begin
   select p.oid, pg_get_functiondef(p.oid)
     into v_oid, v_def
