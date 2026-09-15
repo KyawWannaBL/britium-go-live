@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   allocateVans,
   assignCrews,
+  NORMAL_MIN_PARCELS_PER_VAN,
   PRACTICAL_MAX_PARCELS_PER_VAN,
   type Resource,
   type Stop,
@@ -116,7 +117,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   async function optimizeOne(plan: OperationalVanPlan): Promise<OperationalVanPlan> {
     if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
-    if (plan.rows.length > 75) throw new Error(`${plan.master?.zoneName || "This route"} has ${plan.rows.length} stops. Split the zone operationally before road optimization because one route is limited to 75 stops.`);
+    if (plan.rows.length > PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`${plan.master?.zoneName || "This route"} has ${plan.rows.length} stops. Split the zone operationally before road optimization because one route is limited to ${PRACTICAL_MAX_PARCELS_PER_VAN} stops.`);
     const token = await roadSession();
     const response = await fetch("/api/wayplan-route", {
       method: "POST",
@@ -276,7 +277,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   async function preview() {
     setBusy(true);
-    setMessage(isYangonMaster ? "Stage 1/2: assigning parcels to the approved Yangon 3/5/9 operational zones…" : "Stage 1/2: allocating parcels to practical delivery vans…");
+    setMessage(isYangonMaster ? "Stage 1/2: assigning parcels to the approved Yangon operational zones…" : "Stage 1/2: allocating parcels to practical delivery vans…");
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
@@ -329,13 +330,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           optimized_at: p.route?.optimized_at || new Date().toISOString(),
         },
       })),
-      approve_below_minimum: isYangonMaster ? true : approved,
-      below_minimum_reason: isYangonMaster ? "YANGON_MASTER_VOLUME_ZONE" : reason,
+      approve_below_minimum: approved,
+      below_minimum_reason: reason,
     };
     const body = JSON.stringify(payload);
     if (request.current?.body !== body) request.current = { body, id: crypto.randomUUID() };
     try {
-      const { data, error } = await supabase.rpc("be_generate_multi_van_v2", { p_payload: { ...payload, request_id: request.current!.id } });
+      const { data, error } = await supabase.rpc("be_generate_multi_van_v3", { p_payload: { ...payload, request_id: request.current!.id } });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Wayplan creation failed.");
       setMessage(`${data.wayplans.length} road-reviewed Wayplans created for ${data.parcel_count} parcels with immutable generated route versions and Warehouse LIFO snapshots.`);
@@ -349,21 +350,21 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     }
   }
 
-  const short = isYangonMaster ? [] : plans.filter((p) => p.rows.length < 50);
+  const short = plans.filter((p) => p.rows.length < NORMAL_MIN_PARCELS_PER_VAN);
   const oversized = plans.filter((p) => p.rows.length > PRACTICAL_MAX_PARCELS_PER_VAN);
   const invalidCrew = plans.some((p) => p.crew_mode === "EMERGENCY_MANUAL"
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
     : !p.driver_code || !p.rider_code);
   const roadInvalid = plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED"].includes(String(p.route?.source || "")));
-  const cannotSave = busy || !plans.length || invalidCrew || roadInvalid || oversized.length > 0 || (!isYangonMaster && (short.length > 1 || (short.length === 1 && (!approved || reason.trim().length < 5))));
+  const cannotSave = busy || !plans.length || invalidCrew || roadInvalid || oversized.length > 0 || short.length > 1 || (short.length === 1 && (!approved || reason.trim().length < 5));
 
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <h2 style={{ margin: 0 }}>{isYangonMaster ? "Yangon Van Assignment Master · road optimized" : "Strategic road-based delivery van planning"}</h2>
     {isYangonMaster ? <>
-      <p style={{ margin: 0 }}>East Dagon Logistics Center master plan: <strong>&lt;45 route-ready parcels = 3-zone plan · 45–95 = 5-zone plan · &gt;95 = 9-route expansion.</strong> Parcels are assigned to the approved operational zone first; the actual stop order is then optimized on the road network.</p>
-      <p style={{ margin: 0 }}>Dala, Seikkyi Kanaungto and Thanlyin are excluded from this Yangon urban master. Hlaingthaya East/West are treated as Hlaingthaya; Kyeemyindaing as Kyimyindaing; Mingalartaungnyunt as Mingala Taungnyunt.</p>
+      <p style={{ margin: 0 }}>Yangon master planning now uses one consistent operating contract: <strong>{NORMAL_MIN_PARCELS_PER_VAN}–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong>, with only one operator-approved under-{NORMAL_MIN_PARCELS_PER_VAN} exception.</p>
+      <p style={{ margin: 0 }}>Dala and Seikkyi Kanaungto are assigned to ROYAL Express. Thanlyin remains within Britium Express planning as a dedicated south-east corridor.</p>
     </> : <>
-      <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
+      <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>{NORMAL_MIN_PARCELS_PER_VAN}–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
     </>}
     <p style={{ margin: 0 }}>Straight-line/geographic fallback is not accepted for automatic Wayplan creation. Google Routes is primary; Mapbox may be used only as a road-based fallback. Review each active route on the whole-route map before creation.</p>
 
@@ -425,8 +426,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       </section>;
     })}
 
-    {!isYangonMaster && short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one van below 50 parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
-    {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
+    {short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one van below {NORMAL_MIN_PARCELS_PER_VAN} parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
+    {short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below {NORMAL_MIN_PARCELS_PER_VAN} parcels. Adjust the parcel selection before creation.</p>}
+    {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds {PRACTICAL_MAX_PARCELS_PER_VAN} stops. Split that operational zone before creation.</p>}
     <button style={button} disabled={cannotSave} onClick={save}>Create reviewed Wayplans</button>
   </section>;
 }
