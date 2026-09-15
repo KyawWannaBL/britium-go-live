@@ -13,6 +13,7 @@ import "./dataEntryTariffAutocomplete";
 import "./dataEntryGoLiveHardWire";
 import "./autoGeoReviewSafety";
 import "./warehouseContinuousScanEnhancer";
+import "./dataEntryPickupReconciliationEnhancer";
 import "./components/pickupRequestSubmitGuard";
 import "./components/dataEntryHardFullscreenGuardV28";
 import "./components/dataEntryFullscreenGuardV32";
