@@ -16,10 +16,9 @@ export type VanPlan = {
 };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
 
-// V37 generic UI guardrails. The authoritative per-zone ceiling is returned by /api/wayplan-zone-plan:
-// 70 for sprawling/congested routes and 95 for compact/high-density routes.
-export const NORMAL_MIN_PARCELS_PER_VAN = 45;
-export const PRACTICAL_MAX_PARCELS_PER_VAN = 95;
+// V38 shared operational guardrails. Every planning layer must use the same 50-75 contract.
+export const NORMAL_MIN_PARCELS_PER_VAN = 50;
+export const PRACTICAL_MAX_PARCELS_PER_VAN = 75;
 
 const OUTSOURCED_YANGON_TOWNSHIPS = new Set(["dala","ဒလ","seikgyi kanaungto","seikkyi kanaungto","ဆိပ်ကြီးခနောင်တို"]);
 function townshipKey(value: unknown) { return String(value || "").normalize("NFC").trim().toLowerCase().replace(/\s+/g," "); }
@@ -49,9 +48,9 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
 }
 
 /**
- * Generic geographic fallback. Production Yangon allocation is governed by the V37 zone API.
- * This helper prevents the UI from imposing the superseded 50-75 global band while preserving
- * one below-floor route exception. Dala and Seikgyi Kanaungto are never eligible for Britium vans.
+ * Generic geographic fallback. Production Yangon allocation is governed by the zone API.
+ * The shared contract is 50-75 parcels per van, with at most one explicitly approved under-50 exception.
+ * Dala and Seikgyi Kanaungto are never eligible for Britium vans.
  */
 export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: number, origin?: RouteOrigin): VanPlan[] {
   if (!rows.length) throw new Error("No ready parcels selected.");
@@ -62,8 +61,8 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   if (!available.length) throw new Error("No delivery van is available.");
   const count = requested ?? Math.min(available.length, Math.max(1, Math.ceil(rows.length / PRACTICAL_MAX_PARCELS_PER_VAN)));
   if (!Number.isInteger(count) || count < 1 || count > Math.min(7, available.length, rows.length)) throw new Error("Choose an available van count.");
-  if (rows.length > count * PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`Use more delivery vans: compact-route safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van; the V37 zone API may impose a 70-parcel ceiling.`);
-  if (rows.length < (count - 1) * NORMAL_MIN_PARCELS_PER_VAN + 1) throw new Error("This would leave more than one van below 45 parcels.");
+  if (rows.length > count * PRACTICAL_MAX_PARCELS_PER_VAN) throw new Error(`Use more delivery vans: safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
+  if (rows.length < (count - 1) * NORMAL_MIN_PARCELS_PER_VAN + 1) throw new Error("This would leave more than one van below 50 parcels.");
   const towns = new Map<string, Stop[]>();
   for (const row of rows) {
     if (!row.township) throw new Error("A selected parcel has no township.");
@@ -90,7 +89,7 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
   const sizes = Array.from({length:count},()=>Math.floor(rows.length/count));
   for(let i=0;i<rows.length%count;i++) sizes[i]++;
   for(let i=0;i<count-1;i++) if(sizes[i]<NORMAL_MIN_PARCELS_PER_VAN) { const needed=NORMAL_MIN_PARCELS_PER_VAN-sizes[i]; sizes[i]=NORMAL_MIN_PARCELS_PER_VAN; sizes[count-1]-=needed; }
-  if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: compact-route safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
+  if (sizes.some(size=>size>PRACTICAL_MAX_PARCELS_PER_VAN)) throw new Error(`Use more delivery vans: safety maximum is ${PRACTICAL_MAX_PARCELS_PER_VAN} parcels per van.`);
   const unused=[...available]; let offset=0;
   return sizes.map(size=>{
     const batch=ordered.slice(offset,offset+=size);
@@ -98,7 +97,7 @@ export function allocateVans(rows: Stop[], vehicles: Resource[], requested?: num
     const index=unused.findIndex(v=>!Number(v.capacity_kg)||Number(v.capacity_kg)>=weight);
     if(index<0) throw new Error("Known van weight capacities are insufficient. Adjust the selected parcels or van count.");
     const vehicle=unused.splice(index,1)[0];
-    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,crew_mode:"ROSTER",route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"V37_ZONE_GUARDED_GEOGRAPHIC_FALLBACK",fallback:true,warning:"Authoritative 70/95 ceiling and hard-fence validation must come from the Yangon V37 zone planner before save."}};
+    return {vehicle_code:vehicle.id,driver_code:"",rider_code:"",helper_code:"",rows:batch,crew_mode:"ROSTER",route:{source:"GEOGRAPHIC_FALLBACK",route_mode:"V38_CAPACITY_GUARDED_GEOGRAPHIC_FALLBACK",fallback:true,warning:"Authoritative 50-75 capacity and hard-fence validation must pass before save."}};
   });
 }
 
