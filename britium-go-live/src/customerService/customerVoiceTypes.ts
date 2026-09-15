@@ -112,6 +112,8 @@ export interface CreateCustomerVoiceInput {
   issueType: CustomerVoiceIssueType;
   priority?: CustomerVoicePriority;
   customerVoiceText: string;
+  dueAt?: string;
+  callbackAt?: string;
   idempotencyKey?: string;
   context?: Record<string, unknown>;
 }
@@ -122,4 +124,13 @@ export interface CustomerVoiceMutationResult {
   route?: CustomerVoiceDepartment;
   workflow_status: CustomerVoiceWorkflowStatus;
   notification_status?: string;
+  current_department?: CustomerVoiceDepartment;
+  previous_department?: CustomerVoiceDepartment;
+  requested_department?: CustomerVoiceDepartment | null;
+}
+
+export interface CustomerVoiceErrorPayload {
+  ok?: false;
+  error?: string;
+  message?: string;
 }
