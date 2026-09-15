@@ -30,7 +30,7 @@ replaceOnce(
 replaceOnce(
   "bulk skip handler",
   '  async function calculateRow(index:number):Promise<boolean>{\n',
-  '  async function skipPendingClarificationAll(){\n    if(!pendingClarificationRows.length||bulkSaving||bulkCalculating||locationReviewBusy||waybillBusy) return;\n    setBulkSaving(true);\n    setBulkMessage("");\n    try{\n      const {data,error}=await supabase.auth.getUser();\n      if(error||!data.user) throw error||new Error("Sign in to preserve pending clarifications.");\n      const now=new Date().toISOString();\n      const eligibleKeys=new Set(pendingClarificationRows.map((row)=>`${row.pickup_id}:${row.parcel_sequence}`));\n      const drafts=pendingClarificationRows.map((row)=>({\n        owner_id:data.user!.id,\n        pickup_id:row.pickup_id,\n        parcel_sequence:row.parcel_sequence,\n        skipped:true,\n        updated_at:now,\n        snapshot:{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when customer or merchant details are available."},\n      }));\n      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert(drafts,{onConflict:"owner_id,pickup_id,parcel_sequence"});\n      if(result.error) throw result.error;\n      const applySkipped=(row:ParcelRow)=>eligibleKeys.has(`${row.pickup_id}:${row.parcel_sequence}`)\n        ?{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when details are available."}\n        :row;\n      setRows((current)=>current.map(applySkipped));\n      setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applySkipped)}])));\n      setBulkMessage(`Skipped and preserved ${drafts.length} pending clarification row(s). Calculate All and Save All will continue with the remaining ready parcels.`);\n    }catch(error:any){\n      setBulkMessage(error?.message||"Unable to preserve pending clarification rows.");\n    }finally{\n      setBulkSaving(false);\n    }\n  }\n\n  async function calculateRow(index:number):Promise<boolean>{\n'
+  '  async function skipPendingClarificationAll(){\n    if(!pendingClarificationRows.length||bulkSaving||bulkCalculating||locationReviewBusy||waybillBusy) return;\n    setBulkSaving(true);\n    setBulkMessage("");\n    try{\n      const {data,error}=await supabase.auth.getUser();\n      if(error||!data.user) throw error||new Error("Sign in to preserve pending clarifications.");\n      const now=new Date().toISOString();\n      const eligibleKeys=new Set(pendingClarificationRows.map((row)=>`${row.pickup_id}:${row.parcel_sequence}`));\n      const drafts=pendingClarificationRows.map((row)=>({\n        owner_id:data.user!.id,\n        pickup_id:row.pickup_id,\n        parcel_sequence:row.parcel_sequence,\n        skipped:true,\n        updated_at:now,\n        snapshot:{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when customer or merchant details are available."},\n      }));\n      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert(drafts,{onConflict:"owner_id,pickup_id,parcel_sequence"});\n      if(result.error) throw result.error;\n      const applySkipped=(row:ParcelRow)=>eligibleKeys.has(`${row.pickup_id}:${row.parcel_sequence}`)\n        ?{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when details are available."}\n        :row;\n      setRows((current)=>current.map(applySkipped));\n      setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applySkipped)}])));\n      setBulkMessage("Skipped and preserved "+drafts.length+" pending clarification row(s). Calculate All and Save All will continue with the remaining ready parcels.");\n    }catch(error:any){\n      setBulkMessage(error?.message||"Unable to preserve pending clarification rows.");\n    }finally{\n      setBulkSaving(false);\n    }\n  }\n\n  async function calculateRow(index:number):Promise<boolean>{\n'
 );
 
 const locationStart = source.indexOf('  function patchImportedLocation(\n');
@@ -38,7 +38,83 @@ const locationEnd = source.indexOf('  async function retryImportedLocationSync()
 if (locationStart < 0 || locationEnd < 0 || locationEnd <= locationStart) {
   throw new Error("V40 location-validation anchors not found");
 }
-const locationReplacement = `  function patchImportedLocation(\n    pickupId:string,\n    parcelSequence:number,\n    patch:Partial<ParcelRow>,\n    expectedStatuses?:DataEntryLocationResolution[],\n  ){\n    patchImportedLocationsBatch([{pickupId,parcelSequence,patch,expectedStatuses}]);\n  }\n\n  function patchImportedLocationsBatch(\n    updates:Array<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>,\n  ){\n    if(!updates.length) return;\n    const byKey=new Map(updates.map((update)=>[\`${'${update.pickupId}:${update.parcelSequence}'}\`,update]));\n    const applyPatch=(row:ParcelRow)=>{\n      const update=byKey.get(\`${'${row.pickup_id}:${row.parcel_sequence}'}\`);\n      if(!update) return row;\n      if(update.expectedStatuses&&!update.expectedStatuses.includes(row.locationStatus)) return row;\n      return {...row,...update.patch};\n    };\n    setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyPatch)}])));\n    setRows((current)=>current.map(applyPatch));\n  }\n\n  async function validateImportedLocationResult(row:ParcelRow):Promise<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>{\n    const base={pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,expectedStatuses:["PENDING","SEARCHING"] as DataEntryLocationResolution[]};\n    try{\n      const found=await Promise.race([\n        resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township,ward:row.sourceWard,postalCode:row.sourcePostalCode,merchantId:row.pickup_id,client:supabase}),\n        new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Location validation timed out after 20 seconds. Retry this row; only genuinely ambiguous addresses should use Review Excel.")),20000)),\n      ]);\n      if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){\n        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."}};\n      }\n      const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";\n      if(reviewRequired){\n        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."}};\n      }\n      const accepted={...found,originalAddress:row.delivery_address};\n      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)){\n        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:accepted,message:"A manual location correction is already pending for this parcel."}};\n      }\n      await saveDeliveryLocation(supabase,accepted);\n      const manualOverride=manualLocationCorrectionsRef.current.get(row.delivery_way_id);\n      if(manualOverride){\n        await saveDeliveryLocation(supabase,manualOverride);\n        return {...base,patch:{locationStatus:"SYNCED",locationCandidate:manualOverride,message:"Manual location correction synchronized with Wayplan."}};\n      }\n      return {...base,patch:{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."}};\n    }catch(error:any){\n      return {...base,patch:{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."}};\n    }\n  }\n\n  async function validateImportedLocations(drafts:Record<string,BulkImportDraft>){\n    const jobs=Object.values(drafts).flatMap((draft)=>draft.rows).filter((row)=>\n      !row.skipped&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"\n    );\n    for(let offset=0;offset<jobs.length;offset+=LOCATION_VALIDATION_BATCH_SIZE){\n      const batch=jobs.slice(offset,offset+LOCATION_VALIDATION_BATCH_SIZE);\n      patchImportedLocationsBatch(batch.map((row)=>({\n        pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,\n        patch:{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},\n        expectedStatuses:["PENDING"],\n      })));\n      const results=await Promise.all(batch.map((row)=>validateImportedLocationResult({...row,locationStatus:"SEARCHING"})));\n      patchImportedLocationsBatch(results);\n      setBulkMessage(`Location validation: ${Math.min(offset+batch.length,jobs.length)}/${jobs.length} core-region row(s) checked.`);\n      await yieldToBrowser();\n    }\n    setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);\n  }\n\n`;
+
+const locationReplacement = [
+  '  function patchImportedLocation(',
+  '    pickupId:string,',
+  '    parcelSequence:number,',
+  '    patch:Partial<ParcelRow>,',
+  '    expectedStatuses?:DataEntryLocationResolution[],',
+  '  ){',
+  '    patchImportedLocationsBatch([{pickupId,parcelSequence,patch,expectedStatuses}]);',
+  '  }',
+  '',
+  '  function patchImportedLocationsBatch(',
+  '    updates:Array<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>,',
+  '  ){',
+  '    if(!updates.length) return;',
+  '    const byKey=new Map(updates.map((update)=>[update.pickupId+":"+update.parcelSequence,update]));',
+  '    const applyPatch=(row:ParcelRow)=>{',
+  '      const update=byKey.get(row.pickup_id+":"+row.parcel_sequence);',
+  '      if(!update) return row;',
+  '      if(update.expectedStatuses&&!update.expectedStatuses.includes(row.locationStatus)) return row;',
+  '      return {...row,...update.patch};',
+  '    };',
+  '    setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyPatch)}])));',
+  '    setRows((current)=>current.map(applyPatch));',
+  '  }',
+  '',
+  '  async function validateImportedLocationResult(row:ParcelRow):Promise<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>{',
+  '    const base={pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,expectedStatuses:["PENDING","SEARCHING"] as DataEntryLocationResolution[]};',
+  '    try{',
+  '      const found=await Promise.race([',
+  '        resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township,ward:row.sourceWard,postalCode:row.sourcePostalCode,merchantId:row.pickup_id,client:supabase}),',
+  '        new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Location validation timed out after 20 seconds. Retry this row; only genuinely ambiguous addresses should use Review Excel.")),20000)),',
+  '      ]);',
+  '      if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){',
+  '        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."}};',
+  '      }',
+  '      const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";',
+  '      if(reviewRequired){',
+  '        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."}};',
+  '      }',
+  '      const accepted={...found,originalAddress:row.delivery_address};',
+  '      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)){',
+  '        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:accepted,message:"A manual location correction is already pending for this parcel."}};',
+  '      }',
+  '      await saveDeliveryLocation(supabase,accepted);',
+  '      const manualOverride=manualLocationCorrectionsRef.current.get(row.delivery_way_id);',
+  '      if(manualOverride){',
+  '        await saveDeliveryLocation(supabase,manualOverride);',
+  '        return {...base,patch:{locationStatus:"SYNCED",locationCandidate:manualOverride,message:"Manual location correction synchronized with Wayplan."}};',
+  '      }',
+  '      return {...base,patch:{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."}};',
+  '    }catch(error:any){',
+  '      return {...base,patch:{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."}};',
+  '    }',
+  '  }',
+  '',
+  '  async function validateImportedLocations(drafts:Record<string,BulkImportDraft>){',
+  '    const jobs=Object.values(drafts).flatMap((draft)=>draft.rows).filter((row)=>',
+  '      !row.skipped&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"',
+  '    );',
+  '    for(let offset=0;offset<jobs.length;offset+=LOCATION_VALIDATION_BATCH_SIZE){',
+  '      const batch=jobs.slice(offset,offset+LOCATION_VALIDATION_BATCH_SIZE);',
+  '      patchImportedLocationsBatch(batch.map((row)=>({',
+  '        pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,',
+  '        patch:{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},',
+  '        expectedStatuses:["PENDING"],',
+  '      })));',
+  '      const results=await Promise.all(batch.map((row)=>validateImportedLocationResult({...row,locationStatus:"SEARCHING"})));',
+  '      patchImportedLocationsBatch(results);',
+  '      setBulkMessage("Location validation: "+Math.min(offset+batch.length,jobs.length)+"/"+jobs.length+" core-region row(s) checked.");',
+  '      await yieldToBrowser();',
+  '    }',
+  '    setBulkMessage("Background location validation completed for "+jobs.length+" core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.");',
+  '  }',
+  '',
+].join('\n');
+
 source = source.slice(0, locationStart) + locationReplacement + source.slice(locationEnd);
 
 replaceOnce(
