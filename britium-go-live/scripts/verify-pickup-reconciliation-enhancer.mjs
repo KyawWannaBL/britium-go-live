@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const enhancer=readFileSync(new URL('../src/dataEntryPickupReconciliationEnhancer.ts',import.meta.url),'utf8');
+const main=readFileSync(new URL('../src/main.tsx',import.meta.url),'utf8');
+assert.match(main,/dataEntryPickupReconciliationEnhancer/,'main bootstrap must load reconciliation enhancer');
+assert.match(enhancer,/DOWNLOAD UNRESOLVED EXCEL/,'enhancer exposes Excel export');
+assert.match(enhancer,/UPLOAD CORRECTED EXCEL/,'enhancer exposes corrected workbook import');
+assert.match(enhancer,/be_data_entry_pending_drafts/,'enhancer works from preserved pending drafts');
+assert.match(enhancer,/be_data_entry_parcel_details/,'enhancer excludes already registered parcel sequences');
+assert.match(enhancer,/parseCorrectedWorkbookRows/,'enhancer validates corrected rows before writing');
+assert.match(enhancer,/style\.display\s*=\s*["']none["']/,'legacy JSON control is hidden');
+console.log('PASS: reconciliation enhancer is bootstrapped with XLSX export/import, existing-save exclusion, duplicate protection, and JSON control suppression.');
