@@ -62,8 +62,8 @@ function googleMapSegments(origin: any, rows: Stop[]) {
 export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[]; region: string; onSaved: () => void }) {
   const [context, setContext] = useState<any>(null);
   const [plans, setPlans] = useState<OperationalVanPlan[]>([]);
-  const [pickup, setPickup] = useState("");
-  const currentPickup = pickup || String(rows[0]?.pickup_id || "");
+  const [pickup, setPickup] = useState("*");
+  const currentPickup = pickup;
   const scopedRows = currentPickup === "*" ? rows : rows.filter((r) => String(r.pickup_id || "") === currentPickup);
   const [count, setCount] = useState("");
   const [reason, setReason] = useState("");
@@ -269,7 +269,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           source: "YANGON_MASTER_PENDING_ROAD",
           route_mode: result.sequencing_policy,
           fallback: false,
-          warning: `Wave ${assignment.wave_no} · Trip ${assignment.trip_no}. ${result.plan_name} · Zone ${route.route_code}: ${route.name}. ${townshipSummary ? `Today: ${townshipSummary}. ` : ""}${route.routing_strategy || ""}`,
+          warning: `Wave ${assignment.wave_no} · Trip ${assignment.trip_no}. ${result.plan_name} · Route ${route.route_code}: ${route.name}. ${townshipSummary ? `Today: ${townshipSummary}. ` : ""}${route.routing_strategy || ""}`,
           optimized_at: result.generated_at,
         },
       } as OperationalVanPlan;
@@ -284,7 +284,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   async function preview() {
     setBusy(true);
-    setMessage(isYangonMaster ? "Stage 1/2: assigning parcels to Yangon zones and sequential fleet waves…" : "Stage 1/2: allocating parcels to practical delivery vans…");
+    setMessage(isYangonMaster ? "Stage 1/2: balancing compatible Yangon volumes to 50–75 parcels and assigning sequential fleet waves…" : "Stage 1/2: allocating parcels to practical delivery vans…");
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
@@ -339,8 +339,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           optimized_at: p.route?.optimized_at || new Date().toISOString(),
         },
       })),
-      approve_below_minimum: isYangonMaster ? true : approved,
-      below_minimum_reason: isYangonMaster ? "YANGON_MASTER_VOLUME_ZONE" : reason,
+      approve_below_minimum: approved,
+      below_minimum_reason: reason,
     };
     const body = JSON.stringify(payload);
     if (request.current?.body !== body) request.current = { body, id: crypto.randomUUID() };
@@ -359,19 +359,19 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     }
   }
 
-  const short = isYangonMaster ? [] : plans.filter((p) => p.rows.length < 50);
+  const short = plans.filter((p) => p.rows.length < 50);
   const oversized = plans.filter((p) => p.rows.length > 75);
   const invalidCrew = plans.some((p) => p.crew_mode === "EMERGENCY_MANUAL"
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
     : !p.driver_code || !p.rider_code);
   const roadInvalid = plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED"].includes(String(p.route?.source || "")));
-  const cannotSave = busy || !plans.length || invalidCrew || roadInvalid || oversized.length > 0 || (!isYangonMaster && (short.length > 1 || (short.length === 1 && (!approved || reason.trim().length < 5))));
+  const cannotSave = busy || !plans.length || invalidCrew || roadInvalid || oversized.length > 0 || short.length > 1 || (short.length === 1 && (!approved || reason.trim().length < 5));
 
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <h2 style={{ margin: 0 }}>{isYangonMaster ? "Yangon Van Assignment Master · road optimized" : "Strategic road-based delivery van planning"}</h2>
     {isYangonMaster ? <>
-      <p style={{ margin: 0 }}>East Dagon Logistics Center master plan uses the approved Yangon dynamic zones, then allocates those road routes across the active delivery fleet in <strong>sequential waves</strong>. A vehicle can run another trip only in a later wave.</p>
-      <p style={{ margin: 0 }}>Dala, Seikkyi Kanaungto and Thanlyin are excluded from this Yangon urban master. Hlaingthaya East/West are treated as Hlaingthaya; Kyeemyindaing as Kyimyindaing; Mingalartaungnyunt as Mingala Taungnyunt.</p>
+      <p style={{ margin: 0 }}>East Dagon Logistics Center balances compatible Yangon volume into the <strong>50–75 parcels per route</strong> operating band, then assigns those routes across the active delivery fleet in sequential waves. A vehicle can run another trip only in a later wave.</p>
+      <p style={{ margin: 0 }}>The Hlaing River hard fence remains isolated, Downtown is never merged with East Suburbs, and Dala/Seikkyi Kanaungto remain outside Britium van planning.</p>
     </> : <>
       <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway fleets remain reserved by Fleet Master role.</p>
     </>}
@@ -435,7 +435,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       </section>;
     })}
 
-    {!isYangonMaster && short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one van below 50 parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
+    {short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one route below 50 parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
+    {short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below 50 parcels. Reassign or hold low-volume parcels before creation.</p>}
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
     <button style={button} disabled={cannotSave} onClick={save}>Create reviewed Wayplans</button>
   </section>;
