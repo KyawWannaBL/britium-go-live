@@ -40,3 +40,4 @@ await import("./verify-wayplan-fleet-multitrip-v43.mjs");
 await import("./verify-wayplan-zone-overlap-v37.mjs");
 await import("./verify-wayplan-minimum-load-v44.mjs");
 await import("./verify-wayplan-filter-route-crew-v45.mjs");
+await import("./verify-wayplan-created-revision-v46.mjs");
