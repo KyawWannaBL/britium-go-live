@@ -19,7 +19,10 @@ const requiredMarkers = [
   'filterWayplanQueueRows(readyRows',
   'groupWayplanQueueRows(filteredReadyRows, groupBy)',
   'toggleVisibleWayplanSelection(prev, filteredReadyRows)',
-  'rows={filteredSelectedRows.length ? filteredSelectedRows : filteredReadyRows}',
+  'Select All Filtered',
+  'Clear Filtered',
+  'const plannerRows = filteredSelectedRows;',
+  'rows={plannerRows}',
   'groupedReadyRows.map((group)',
   'filteredReadyRows.length} filtered / {readyRows.length} ready stops',
   'No ways match the current filters.',
@@ -36,3 +39,4 @@ console.log("Wayplan queue filter UI contract PASS");
 await import("./verify-wayplan-fleet-multitrip-v43.mjs");
 await import("./verify-wayplan-zone-overlap-v37.mjs");
 await import("./verify-wayplan-minimum-load-v44.mjs");
+await import("./verify-wayplan-filter-route-crew-v45.mjs");

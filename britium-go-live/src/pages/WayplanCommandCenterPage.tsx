@@ -168,6 +168,7 @@ export default function WayplanCommandCenterPage() {
     () => filteredReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
     [filteredReadyRows, selected]
   );
+  const plannerRows = filteredSelectedRows;
   const groupedReadyRows = useMemo(
     () => groupWayplanQueueRows(filteredReadyRows, groupBy),
     [filteredReadyRows, groupBy]
@@ -440,7 +441,14 @@ export default function WayplanCommandCenterPage() {
           </div>
         </Card>
 
-        <MultiVanPlanner rows={filteredSelectedRows.length ? filteredSelectedRows : filteredReadyRows} region={selectedRegion} onSaved={() => void loadAll()} />
+        <Card style={{ padding: 12 }}>
+          <div style={{ fontWeight: 900, color: C.gold }}>Filtered Wayplan Task</div>
+          <div style={{ marginTop: 4, color: C.sub, fontSize: 12 }}>
+            Select the filtered ways below, then optimize only those selected ways from <strong style={{ color: C.text }}>Britium Ventures Head Office</strong>. The route planner uses the configured Yangon Head Office origin and automatically assigns the available <strong style={{ color: C.text }}>Driver / Rider / Helper</strong> roster before Google road optimization and operator review.
+          </div>
+        </Card>
+
+        <MultiVanPlanner rows={plannerRows} region={selectedRegion} onSaved={() => void loadAll()} />
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 360px", gap: 16 }} className="wayplan-grid">
           <Card>
@@ -450,7 +458,7 @@ export default function WayplanCommandCenterPage() {
                 <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>{filteredReadyRows.length} filtered / {readyRows.length} ready stops / {selectedRows.length} selected</p>
               </div>
               <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("plain")}>
-                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Visible" : "Select Visible"}
+                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered" : "Select All Filtered"}
               </button>
             </div>
 
@@ -464,7 +472,13 @@ export default function WayplanCommandCenterPage() {
                 <label style={{ color: C.sub, fontSize: 11 }}>Group By<select value={groupBy} onChange={(e) => setGroupBy(e.target.value as WayplanQueueGroupBy)} style={input()}><option value="NONE">None</option><option value="TOWNSHIP">Township</option><option value="MERCHANT">Merchant</option><option value="PROVIDER">Service Provider</option></select></label>
                 <label style={{ color: C.sub, fontSize: 11 }}>Search<div style={{ position: "relative" }}><Search size={15} style={{ position: "absolute", left: 11, top: 13, color: C.sub }} /><input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value)} placeholder="Waybill, recipient, address..." style={{ ...input(), paddingLeft: 34 }} /></div></label>
               </div>
-              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button></div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>{filteredSelectedRows.length} of {filteredReadyRows.length} filtered ways selected for route optimization and crew assignment.</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered" : "Select All Filtered"}</button>
+                  <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
+                </div>
+              </div>
             </div>
 
             <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 14 }}>
