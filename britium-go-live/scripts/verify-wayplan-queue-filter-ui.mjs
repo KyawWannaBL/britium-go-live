@@ -34,3 +34,4 @@ if (missing.length) {
 
 console.log("Wayplan queue filter UI contract PASS");
 await import("./verify-wayplan-fleet-multitrip-v43.mjs");
+await import("./verify-wayplan-zone-overlap-v37.mjs");
