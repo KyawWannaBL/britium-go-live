@@ -52,14 +52,15 @@ for (const wave of new Set(crewed.map((x) => x.wave_no))) {
 }
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const root = path.resolve(here, "..");
-const plannerSource = fs.readFileSync(path.join(root, "src", "components", "MultiVanPlanner.tsx"), "utf8");
+const appRoot = path.resolve(here, "..");
+const repoRoot = path.resolve(appRoot, "..");
+const plannerSource = fs.readFileSync(path.join(appRoot, "src", "components", "MultiVanPlanner.tsx"), "utf8");
 assert.ok(plannerSource.includes("scheduleSequentialRouteWaves"), "Yangon planner must use sequential route waves");
 assert.ok(plannerSource.includes('supabase.rpc("be_generate_multi_van_v43"'), "Wayplan UI must save through the V43 RPC");
 assert.ok(plannerSource.includes("wave_no: p.wave_no"), "saved Wayplans must carry wave number");
 assert.ok(plannerSource.includes("trip_no: p.trip_no"), "saved Wayplans must carry vehicle trip number");
 
-const migrationPath = path.join(root, "supabase", "migrations", "20260916143000_wayplan_fleet_multitrip_v43.sql");
+const migrationPath = path.join(repoRoot, "supabase", "migrations", "20260916143000_wayplan_fleet_multitrip_v43.sql");
 assert.ok(fs.existsSync(migrationPath), "V43 fleet/multi-trip migration must exist");
 const migration = fs.readFileSync(migrationPath, "utf8");
 for (const marker of [
