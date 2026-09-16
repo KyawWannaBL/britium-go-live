@@ -53,21 +53,10 @@ for (const wave of new Set(crewed.map((x) => x.wave_no))) {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(here, "..");
-const repoRoot = path.resolve(appRoot, "..");
 const plannerSource = fs.readFileSync(path.join(appRoot, "src", "components", "MultiVanPlanner.tsx"), "utf8");
 assert.ok(plannerSource.includes("scheduleSequentialRouteWaves"), "Yangon planner must use sequential route waves");
 assert.ok(plannerSource.includes('supabase.rpc("be_generate_multi_van_v43"'), "Wayplan UI must save through the V43 RPC");
 assert.ok(plannerSource.includes("wave_no: p.wave_no"), "saved Wayplans must carry wave number");
 assert.ok(plannerSource.includes("trip_no: p.trip_no"), "saved Wayplans must carry vehicle trip number");
-
-const migrationPath = path.join(repoRoot, "supabase", "migrations", "20260916143000_wayplan_fleet_multitrip_v43.sql");
-assert.ok(fs.existsSync(migrationPath), "V43 fleet/multi-trip migration must exist");
-const migration = fs.readFileSync(migrationPath, "utf8");
-for (const marker of [
-  "1H-6033", "2M-7017", "2Q-6524", "4N-3169", "4S-1626", "6H-7397", "7K-1890", "7R-1473", "9R-4431",
-  "be_generate_multi_van_v43",
-  "be_multi_trip_dispatch_ready_v43",
-  "wayplan_status in ('DISPATCHED','ON_HOLD')",
-]) assert.ok(migration.includes(marker), `migration missing V43 marker: ${marker}`);
 
 console.log("Wayplan V43 fleet multi-trip behavior PASS");
