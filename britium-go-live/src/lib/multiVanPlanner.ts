@@ -13,8 +13,11 @@ export type VanPlan = {
   manual_rider_name?: string;
   manual_helper_name?: string;
   emergency_substitution_reason?: string;
+  wave_no?: number;
+  trip_no?: number;
 };
 export type RouteOrigin = { latitude: number; longitude: number; label?: string; branch_code?: string };
+export type SequentialRouteAssignment<T> = T & { vehicle_code: string; wave_no: number; trip_no: number };
 
 // V37 generic UI guardrails. The authoritative per-zone ceiling is returned by /api/wayplan-zone-plan:
 // 70 for sprawling/congested routes and 95 for compact/high-density routes.
@@ -46,6 +49,39 @@ export function sortStopsNearestFirst(rows: Stop[], origin: RouteOrigin): Stop[]
     distanceKm(origin,{latitude:Number(b.latitude),longitude:Number(b.longitude)}) ||
     a.delivery_way_id.localeCompare(b.delivery_way_id)
   );
+}
+
+/**
+ * Assign route-sized jobs to the active delivery fleet in sequential waves.
+ * A vehicle may serve once per wave and can be reused in later waves.
+ */
+export function scheduleSequentialRouteWaves<T extends { weight_kg?: number }>(routes: T[], vehicles: Resource[]): SequentialRouteAssignment<T>[] {
+  const available = vehicles.filter((vehicle) => vehicle.available !== false);
+  if (!routes.length) return [];
+  if (!available.length) throw new Error("No delivery van is available.");
+
+  const assignments: SequentialRouteAssignment<T>[] = [];
+  const tripCounts = new Map<string, number>();
+  let waveNo = 1;
+  let unused = [...available];
+
+  for (const route of routes) {
+    const weight = Number(route.weight_kg || 0);
+    let index = unused.findIndex((vehicle) => !Number(vehicle.capacity_kg) || Number(vehicle.capacity_kg) >= weight);
+    if (index < 0) {
+      waveNo += 1;
+      unused = [...available];
+      index = unused.findIndex((vehicle) => !Number(vehicle.capacity_kg) || Number(vehicle.capacity_kg) >= weight);
+    }
+    if (index < 0) throw new Error(`No delivery vehicle can safely carry a ${weight.toLocaleString()} kg route.`);
+
+    const vehicle = unused.splice(index, 1)[0];
+    const tripNo = (tripCounts.get(vehicle.id) || 0) + 1;
+    tripCounts.set(vehicle.id, tripNo);
+    assignments.push({ ...route, vehicle_code: vehicle.id, wave_no: waveNo, trip_no: tripNo });
+  }
+
+  return assignments;
 }
 
 /**
@@ -113,12 +149,23 @@ export function assignCrews(plans: VanPlan[], drivers: Resource[], riders: Resou
     const index=pool.findIndex(x=>!blocked.has(x.id));
     return index>=0?pool.splice(index,1)[0]?.id||"":"";
   };
-  const ds=drivers.filter(d=>d.available!==false), rs=riders.filter(r=>r.available!==false), hs=helpers.filter(h=>h.available!==false);
-  const used=new Set<string>();
-  return plans.map(p=>{
-    const driver_code=choose(ds,p.rows,used); if(driver_code) used.add(driver_code);
-    const rider_code=choose(rs,p.rows,used); if(rider_code) used.add(rider_code);
-    const helper_code=choose(hs,p.rows,used); if(helper_code) used.add(helper_code);
+
+  const wavePools = new Map<number, { drivers: Resource[]; riders: Resource[]; helpers: Resource[]; used: Set<string> }>();
+  return plans.map((p)=>{
+    const wave = Math.max(1, Number(p.wave_no || 1));
+    let pools = wavePools.get(wave);
+    if (!pools) {
+      pools = {
+        drivers: drivers.filter(d=>d.available!==false),
+        riders: riders.filter(r=>r.available!==false),
+        helpers: helpers.filter(h=>h.available!==false),
+        used: new Set<string>(),
+      };
+      wavePools.set(wave, pools);
+    }
+    const driver_code=choose(pools.drivers,p.rows,pools.used); if(driver_code) pools.used.add(driver_code);
+    const rider_code=choose(pools.riders,p.rows,pools.used); if(rider_code) pools.used.add(rider_code);
+    const helper_code=choose(pools.helpers,p.rows,pools.used); if(helper_code) pools.used.add(helper_code);
     return {...p,crew_mode:"ROSTER",driver_code,rider_code,helper_code};
   });
 }
