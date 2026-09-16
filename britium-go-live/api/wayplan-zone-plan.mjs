@@ -98,6 +98,17 @@ const ZONE_BY_TOWNSHIP = new Map(ZONES.flatMap((zone) => zone.townships.map((tow
 const ROYAL_OUTSOURCED = new Set(["Dala","Seikkyi Kanaungto"]);
 const OTHER_OUT_OF_SCOPE = new Set(["Thanlyin"]);
 const MAINLAND_ZONE_ORDER = ["Z1", "Z2", "Z5", "Z3", "Z4"];
+const EXPANSION_GROUPS = [
+  ["Lanmadaw","Latha","Pabedan"],
+  ["Kyauktada","Botahtaung","Pazundaung"],
+  ["Ahlone","Kyimyindaing"],
+  ["Dawbon","Thaketa"],
+  ["Mingala Taungnyunt","Tamwe"],
+  ["East Dagon","North Dagon"],
+  ["Dagon Seikkan","South Dagon"],
+  ["Mayangone","Insein"],
+  ["Mingaladon","Insein"],
+];
 
 const HARD_FENCES = [
   "NEVER_CROSS_HLAING_RIVER_FOR_CAPACITY_BALANCING",
@@ -115,6 +126,36 @@ function countByTownship(rows) {
   const counts = {};
   for (const row of rows) counts[row.township] = (counts[row.township] || 0) + 1;
   return counts;
+}
+function groupRowsByTownship(rows) {
+  const map = new Map();
+  for (const row of rows) {
+    const list = map.get(row.township) || [];
+    list.push(row);
+    map.set(row.township, list);
+  }
+  return map;
+}
+export function buildBaselineBuckets(zoneRows) {
+  const townMap = groupRowsByTownship(zoneRows);
+  const used = new Set();
+  const buckets = [];
+  for (const group of EXPANSION_GROUPS) {
+    const applicable = group.filter((township) => townMap.has(township));
+    if (applicable.length < 2) continue;
+    if (applicable.some((township) => used.has(township))) continue;
+    const members = applicable.flatMap((township) => townMap.get(township) || []);
+    const allLow = applicable.every((township) => (townMap.get(township) || []).length < FLOOR);
+    if (allLow && members.length <= ROUTE_CEILING) {
+      buckets.push({ rows: members, townships: applicable, strategy: "EXPAND", note: "Approved adjacent low-volume townships absorbed into one van." });
+      applicable.forEach((township) => used.add(township));
+    }
+  }
+  for (const [township, rows] of townMap.entries()) {
+    if (used.has(township)) continue;
+    buckets.push({ rows, townships: [township], strategy: rows.length < FLOOR ? "LOW_VOLUME_STANDALONE" : "BASELINE", note: rows.length < FLOOR ? "Legacy V37 standalone bucket retained for overlap regression; V44 rebalances before production routing." : "Fixed township baseline." });
+  }
+  return buckets;
 }
 function practicalRouteSizes(total) {
   if (total <= 0) return [];
