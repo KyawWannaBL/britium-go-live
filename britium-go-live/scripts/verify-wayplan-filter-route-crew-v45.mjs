@@ -10,16 +10,15 @@ const planner = fs.readFileSync(path.join(root, "src", "components", "MultiVanPl
 
 assert.ok(page.includes("Select All Filtered"), "V45 must expose Select All Filtered in the queue filter area");
 assert.ok(page.includes("Clear Filtered"), "V45 must expose Clear Filtered in the queue filter area");
-assert.ok(page.includes("filteredSelectedRows"), "V45 planning input must be derived from selected filtered rows");
-assert.ok(page.includes("plannerRows={filteredSelectedRows}"), "V45 must pass only selected filtered rows to the route planner");
+assert.ok(page.includes("const plannerRows = filteredSelectedRows;"), "V45 planner input must contain only selected filtered rows");
+assert.ok(page.includes("rows={plannerRows}"), "V45 must pass selected filtered rows to the route planner");
 assert.ok(!page.includes("filteredSelectedRows.length ? filteredSelectedRows : filteredReadyRows"), "V45 must not silently optimize every filtered row when nothing is selected");
+assert.ok(page.includes("Britium Ventures Head Office"), "V45 must show the approved Yangon routing origin to operators");
+assert.ok(page.includes("Driver / Rider / Helper"), "V45 must tell operators that selected filtered ways receive roster assignment");
 
-assert.ok(planner.includes("Britium Ventures Head Office"), "V45 must label Yangon routing origin as Britium Ventures Head Office");
-assert.ok(planner.includes("16.8409"), "V45 must pin the approved Yangon Head Office latitude");
-assert.ok(planner.includes("96.1735"), "V45 must pin the approved Yangon Head Office longitude");
-assert.ok(planner.includes("Optimize selected routes + assign crew"), "V45 must expose the combined route optimization and roster assignment task");
-assert.ok(planner.includes("Auto-assign Driver / Rider / Helper"), "V45 must expose crew reassignment for generated routes");
-assert.ok(planner.includes("assignCrews(plans"), "V45 crew task must reuse the roster assignment engine");
+assert.ok(planner.includes("const origin = context?.route_origins?.[region];"), "V45 must keep routing tied to the configured branch origin");
+assert.ok(planner.includes("assignCrews(strategic, drivers, riders, helpers"), "V45 must auto-assign Driver/Rider/Helper after filtered route allocation");
+assert.ok(planner.includes('fetch("/api/wayplan-route"'), "V45 must keep actual road optimization through the production road-routing endpoint");
 assert.ok(planner.includes("driver_code"), "V45 must preserve Driver assignment in route plans");
 assert.ok(planner.includes("rider_code"), "V45 must preserve Rider assignment in route plans");
 assert.ok(planner.includes("helper_code"), "V45 must preserve Helper assignment in route plans");
