@@ -2,19 +2,24 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   RefreshCw,
-  Route,
-  Truck,
-  PackageCheck,
   Printer,
   Send,
-  FileText,
   MapPin,
   CheckCircle2,
+  Search,
+  SlidersHorizontal,
+  RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import MultiVanPlanner from "@/components/MultiVanPlanner";
-import { routeOrder } from "@/lib/dispatchAllocation";
 import { guardedBrowserPrint } from "@/lib/documentPrintGuard";
+import {
+  filterWayplanQueueRows,
+  getWayplanQueueFilterOptions,
+  groupWayplanQueueRows,
+  toggleVisibleWayplanSelection,
+  type WayplanQueueGroupBy,
+} from "@/lib/wayplanQueueFilters";
 
 type Row = Record<string, any>;
 type WayplanRegionCode = "YANGON" | "MANDALAY" | "NAYPYITAW";
@@ -95,9 +100,10 @@ function input() {
   } as React.CSSProperties;
 }
 
-function Card({ children, style }: { children: React.ReactNode; style?: React.CSSProperties }) {
+function Card({ children, style, id }: { children: React.ReactNode; style?: React.CSSProperties; id?: string }) {
   return (
     <section
+      id={id}
       style={{
         border: `1px solid ${C.border}`,
         background: C.panel,
@@ -112,18 +118,6 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
   );
 }
 
-
-function buildDispatchAllocationPayload(rows: any[]) {
-  return rows.map((row) => {
-    const id = String(row.delivery_way_id || row.tracking_no || row.pickup_id || row.id || "");
-    const township = String(row.township || row.pickup_township || row.delivery_township || row.town || "");
-    const type = String(row.job_type || row.type || row.operation_type || "DELIVERY").toUpperCase().includes("PICKUP")
-      ? "PICKUP"
-      : "DELIVERY";
-    return routeOrder({ id, township, type });
-  });
-}
-
 export default function WayplanCommandCenterPage() {
   const [loading, setLoading] = useState(false);
   const [readyRows, setReadyRows] = useState<Row[]>([]);
@@ -135,14 +129,21 @@ export default function WayplanCommandCenterPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const [vehicleCode, setVehicleCode] = useState("FLT001");
-  const [vehicleName, setVehicleName] = useState("6H-7397");
-  const [driverCode, setDriverCode] = useState("DRV001");
-  const [driverName, setDriverName] = useState("U Wai Phyo Lwin");
-  const [riderCode, setRiderCode] = useState("RID001");
-  const [riderName, setRiderName] = useState("Ko Kyaw Zin Khant");
-  const [helperCode, setHelperCode] = useState("HLP001");
-  const [helperName, setHelperName] = useState("Ko Moe Sat Zin Tun");
+  const [townshipFilter, setTownshipFilter] = useState("ALL");
+  const [merchantFilter, setMerchantFilter] = useState("ALL");
+  const [providerFilter, setProviderFilter] = useState("ALL");
+  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [queueSearch, setQueueSearch] = useState("");
+  const [groupBy, setGroupBy] = useState<WayplanQueueGroupBy>("NONE");
+
+  const [vehicleCode] = useState("FLT001");
+  const [vehicleName] = useState("6H-7397");
+  const [driverCode] = useState("DRV001");
+  const [driverName] = useState("U Wai Phyo Lwin");
+  const [riderCode] = useState("RID001");
+  const [riderName] = useState("Ko Kyaw Zin Khant");
+  const [helperCode] = useState("HLP001");
+  const [helperName] = useState("Ko Moe Sat Zin Tun");
 
   const selectedRows = useMemo(
     () => readyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
@@ -152,6 +153,26 @@ export default function WayplanCommandCenterPage() {
     () => regions.find((region) => region.region_code === selectedRegion) || null,
     [regions, selectedRegion]
   );
+  const queueFilterOptions = useMemo(() => getWayplanQueueFilterOptions(readyRows), [readyRows]);
+  const filteredReadyRows = useMemo(
+    () => filterWayplanQueueRows(readyRows, {
+      township: townshipFilter,
+      merchant: merchantFilter,
+      provider: providerFilter,
+      status: statusFilter,
+      search: queueSearch,
+    }),
+    [readyRows, townshipFilter, merchantFilter, providerFilter, statusFilter, queueSearch]
+  );
+  const filteredSelectedRows = useMemo(
+    () => filteredReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
+    [filteredReadyRows, selected]
+  );
+  const groupedReadyRows = useMemo(
+    () => groupWayplanQueueRows(filteredReadyRows, groupBy),
+    [filteredReadyRows, groupBy]
+  );
+  const allVisibleSelected = filteredReadyRows.length > 0 && filteredSelectedRows.length === filteredReadyRows.length;
 
   const manifestStops = useMemo(() => {
     const stops = activeWayplan?.stops;
@@ -167,21 +188,25 @@ export default function WayplanCommandCenterPage() {
     return [];
   }, [activeWayplan]);
 
-  const selectedTotalCod = selectedRows.reduce((sum, row) => sum + Number(row.cod_amount || 0), 0);
-  const selectedTotalWeight = selectedRows.reduce((sum, row) => sum + Number(row.parcel_weight_kg || 0), 0);
+  function resetQueueFilters() {
+    setTownshipFilter("ALL");
+    setMerchantFilter("ALL");
+    setProviderFilter("ALL");
+    setStatusFilter("ALL");
+    setQueueSearch("");
+    setGroupBy("NONE");
+  }
 
   async function loadAll() {
     setLoading(true);
     setError("");
     setMessage("");
-
     try {
       const [regionResult, queueResult, wayplanResult] = await Promise.all([
         supabase.rpc("be_wayplan_region_options_v19"),
         supabase.rpc("be_multi_van_queue", { p_region: selectedRegion }),
         supabase.rpc("be_wayplan_command_center", { p_limit: 100 }),
       ]);
-
       if (regionResult.error) throw regionResult.error;
       if (queueResult.error) throw queueResult.error;
       if (wayplanResult.error) throw wayplanResult.error;
@@ -198,7 +223,7 @@ export default function WayplanCommandCenterPage() {
       setReadyRows(Array.isArray(q) ? q : []);
       setSelected({});
       setWayplans(filteredWayplans);
-      setActiveWayplan(filteredWayplans.find(w => w.wayplan_status !== "CANCELLED") || null);
+      setActiveWayplan(filteredWayplans.find((wayplan) => wayplan.wayplan_status !== "CANCELLED") || null);
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Could not load dispatch / wayplan data.");
@@ -246,27 +271,14 @@ export default function WayplanCommandCenterPage() {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
   }
 
-  function toggleAll() {
-    const allSelected = readyRows.length > 0 && selectedRows.length === readyRows.length;
-    if (allSelected) {
-      setSelected({});
-      return;
-    }
-
-    const next: Record<string, boolean> = {};
-    readyRows.forEach((row) => {
-      const id = text(row.delivery_way_id || row.waybill_no);
-      if (id) next[id] = true;
-    });
-    setSelected(next);
+  function toggleAllVisible() {
+    setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredReadyRows));
   }
 
   async function generateWayplan() {
     setError("");
     setMessage("");
-
     const deliveryIds = selectedRows.map((row) => text(row.delivery_way_id || row.waybill_no)).filter(Boolean);
-
     if (!deliveryIds.length) {
       setError("Select at least one stop before generating wayplan.");
       return;
@@ -275,9 +287,7 @@ export default function WayplanCommandCenterPage() {
       setError(`${selectedRegion} Wayplan is disabled. Activate it before generating a plan.`);
       return;
     }
-
     setLoading(true);
-
     try {
       const { data, error } = await supabase.rpc("be_generate_wayplan", {
         p_payload: {
@@ -295,10 +305,8 @@ export default function WayplanCommandCenterPage() {
           actor: "wayplan_command_center",
         },
       });
-
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.error || "Wayplan generation failed.");
-
       setMessage(`Wayplan generated: ${data?.wayplan_id || "created"}`);
       setSelected({});
       await loadAll();
@@ -310,29 +318,20 @@ export default function WayplanCommandCenterPage() {
     }
   }
 
-
   async function updateWayplanStatus(nextStatus: string) {
     if (!activeWayplan?.wayplan_id) {
       setError("Select a wayplan first.");
       return;
     }
-
     setLoading(true);
     setError("");
     setMessage("");
-
     try {
       const { data, error } = await supabase.rpc("be_wayplan_update_status", {
-        p_payload: {
-          wayplan_id: activeWayplan.wayplan_id,
-          status: nextStatus,
-          actor: "wayplan_command_center",
-        },
+        p_payload: { wayplan_id: activeWayplan.wayplan_id, status: nextStatus, actor: "wayplan_command_center" },
       });
-
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.error || "Could not update wayplan status.");
-
       setMessage(`${activeWayplan.wayplan_id} updated to ${nextStatus}.`);
       await loadAll();
     } catch (err: any) {
@@ -348,22 +347,15 @@ export default function WayplanCommandCenterPage() {
       setError("Select a wayplan first.");
       return;
     }
-
     setLoading(true);
     setError("");
     setMessage("");
-
     try {
       const { data, error } = await supabase.rpc("be_dispatch_start_wayplan", {
-        p_payload: {
-          wayplan_id: activeWayplan.wayplan_id,
-          actor: "wayplan_command_center",
-        },
+        p_payload: { wayplan_id: activeWayplan.wayplan_id, actor: "wayplan_command_center" },
       });
-
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.error || "Could not dispatch wayplan.");
-
       setMessage(`${activeWayplan.wayplan_id} dispatched.`);
       await loadAll();
     } catch (err: any) {
@@ -381,14 +373,15 @@ export default function WayplanCommandCenterPage() {
     }
     await guardedBrowserPrint({
       documentType: "MANIFEST",
-      documentNo: manifestNo || selectedManifest?.manifest_no || selectedManifest?.manifestNo || selectedManifest?.wayplan_id || selectedManifest?.batch_id || "MANIFEST-UNKNOWN",
-      actorEmail: user?.email || "operator@britiumexpress.com",
-      actorRole: userRole || "operator",
-      reason: "Manifest Print Studio batch print",
+      documentNo: activeWayplan.wayplan_id || "MANIFEST-UNKNOWN",
+      actorEmail: "operator@britiumexpress.com",
+      actorRole: "operator",
+      reason: "Wayplan Command Center manifest print",
     });
   }
 
   useEffect(() => {
+    resetQueueFilters();
     void loadAll();
   }, [selectedRegion]);
 
@@ -398,23 +391,9 @@ export default function WayplanCommandCenterPage() {
         @media print {
           body * { visibility: hidden !important; }
           #wayplan-manifest, #wayplan-manifest * { visibility: visible !important; }
-          #wayplan-manifest {
-            position: absolute !important;
-            left: 0 !important;
-            top: 0 !important;
-            width: 100% !important;
-            background: white !important;
-            color: black !important;
-            padding: 20px !important;
-          }
+          #wayplan-manifest { position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; background: white !important; color: black !important; padding: 20px !important; }
           #wayplan-manifest table { width: 100%; border-collapse: collapse; }
-          #wayplan-manifest th, #wayplan-manifest td {
-            border: 1px solid #111;
-            padding: 6px;
-            font-size: 11px;
-            color: black !important;
-          }
-          #wayplan-manifest .no-print { display: none !important; }
+          #wayplan-manifest th, #wayplan-manifest td { border: 1px solid #111; padding: 6px; font-size: 11px; color: black !important; }
         }
       `}</style>
 
@@ -426,17 +405,10 @@ export default function WayplanCommandCenterPage() {
               <h1 style={{ margin: "8px 0 4px", fontSize: 24 }}>Wayplan Command Center</h1>
               <p style={{ margin: 0, color: C.sub }}>Generate wayplans, produce manifest, and dispatch to warehouse / field team.</p>
             </div>
-
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={loadAll} disabled={loading} style={btn("plain")}>
-                <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> Refresh
-              </button>
-              <button onClick={printManifest} style={btn("gold")}>
-                <Printer size={16} /> Print Manifest
-              </button>
-              <button onClick={dispatchWayplan} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}>
-                <Send size={16} /> Dispatch Wayplan
-              </button>
+              <button onClick={loadAll} disabled={loading} style={btn("plain")}><RefreshCw size={16} /> Refresh</button>
+              <button onClick={printManifest} style={btn("gold")}><Printer size={16} /> Print Manifest</button>
+              <button onClick={dispatchWayplan} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}><Send size={16} /> Dispatch Wayplan</button>
             </div>
           </div>
         </Card>
@@ -452,82 +424,62 @@ export default function WayplanCommandCenterPage() {
           <div data-wayplan-region-control-v19="true" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
             {regions.map((region) => {
               const focused = selectedRegion === region.region_code;
-              return <div key={region.region_code} style={{ border: `1px solid ${focused ? C.gold : C.border}`, background: focused ? "rgba(246,184,75,0.10)" : C.panel2, borderRadius: 14, padding: 12 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                  <div>
-                    <strong style={{ display: "block", color: C.text }}>{region.display_name}</strong>
-                    <small style={{ color: C.sub }}>{region.branch_code} · Google Map {region.map_enabled ? "enabled" : "disabled"}</small>
+              return (
+                <div key={region.region_code} style={{ border: `1px solid ${focused ? C.gold : C.border}`, background: focused ? "rgba(246,184,75,0.10)" : C.panel2, borderRadius: 14, padding: 12 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+                    <div><strong style={{ display: "block" }}>{region.display_name}</strong><small style={{ color: C.sub }}>{region.branch_code} · Google Map {region.map_enabled ? "enabled" : "disabled"}</small></div>
+                    <span style={{ borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 900, color: region.is_active ? C.green : C.red, border: `1px solid ${region.is_active ? C.green : C.red}` }}>{region.is_active ? "ACTIVE" : "DISABLED"}</span>
                   </div>
-                  <span style={{ borderRadius: 999, padding: "5px 9px", fontSize: 10, fontWeight: 900, color: region.is_active ? C.green : C.red, border: `1px solid ${region.is_active ? C.green : C.red}` }}>{region.is_active ? "ACTIVE" : "DISABLED"}</span>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button type="button" onClick={() => focusRegion(region)} disabled={!region.is_active || loading} style={{ ...btn(focused ? "gold" : "plain"), flex: 1, opacity: region.is_active ? 1 : 0.45 }}>Open queue</button>
+                    <button type="button" onClick={() => void toggleRegionActive(region)} disabled={loading} style={btn(region.is_active ? "red" : "green")}>{region.is_active ? "Disable" : "Activate"}</button>
+                  </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
-                  <button type="button" onClick={() => focusRegion(region)} disabled={!region.is_active || loading} style={{ ...btn(focused ? "gold" : "plain"), flex: 1, opacity: region.is_active ? 1 : 0.45 }}>Open queue</button>
-                  <button type="button" onClick={() => void toggleRegionActive(region)} disabled={loading} style={btn(region.is_active ? "red" : "green")}>{region.is_active ? "Disable" : "Activate"}</button>
-                </div>
-              </div>;
+              );
             })}
           </div>
         </Card>
 
-        <MultiVanPlanner rows={selectedRows.length ? selectedRows : readyRows} region={selectedRegion} onSaved={() => void loadAll()} />
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 16 }} className="wayplan-grid">
+        <MultiVanPlanner rows={filteredSelectedRows.length ? filteredSelectedRows : filteredReadyRows} region={selectedRegion} onSaved={() => void loadAll()} />
+
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 360px", gap: 16 }} className="wayplan-grid">
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", alignItems: "center", marginBottom: 12 }}>
               <div>
                 <h2 style={{ margin: 0, fontSize: 16 }}>{selectedRegionOption?.display_name || selectedRegion} Ready for Wayplan Queue</h2>
-                <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>{readyRows.length} ready stops / {selectedRows.length} selected</p>
+                <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>{filteredReadyRows.length} filtered / {readyRows.length} ready stops / {selectedRows.length} selected</p>
               </div>
+              <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("plain")}>
+                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Visible" : "Select Visible"}
+              </button>
+            </div>
 
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={toggleAll} style={btn("plain")}>
-                  <CheckCircle2 size={15} /> {selectedRows.length === readyRows.length && readyRows.length ? "Clear" : "Select All"}
-                </button>
-                
+            <div data-wayplan-queue-filters="true" style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 12, marginBottom: 12 }}>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, color: C.gold, fontSize: 12, fontWeight: 900 }}><SlidersHorizontal size={15} /> FILTER & GROUP WAYS</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 8 }}>
+                <label style={{ color: C.sub, fontSize: 11 }}>Township<select value={townshipFilter} onChange={(e) => setTownshipFilter(e.target.value)} style={input()}><option value="ALL">All Townships</option>{queueFilterOptions.townships.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+                <label style={{ color: C.sub, fontSize: 11 }}>Merchant<select value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} style={input()}><option value="ALL">All Merchants</option>{queueFilterOptions.merchants.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+                <label style={{ color: C.sub, fontSize: 11 }}>Service Provider<select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} style={input()}><option value="ALL">All Providers</option>{queueFilterOptions.providers.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+                <label style={{ color: C.sub, fontSize: 11 }}>Status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={input()}><option value="ALL">All Statuses</option>{queueFilterOptions.statuses.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
+                <label style={{ color: C.sub, fontSize: 11 }}>Group By<select value={groupBy} onChange={(e) => setGroupBy(e.target.value as WayplanQueueGroupBy)} style={input()}><option value="NONE">None</option><option value="TOWNSHIP">Township</option><option value="MERCHANT">Merchant</option><option value="PROVIDER">Service Provider</option></select></label>
+                <label style={{ color: C.sub, fontSize: 11 }}>Search<div style={{ position: "relative" }}><Search size={15} style={{ position: "absolute", left: 11, top: 13, color: C.sub }} /><input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value)} placeholder="Waybill, recipient, address..." style={{ ...input(), paddingLeft: 34 }} /></div></label>
               </div>
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}><button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button></div>
             </div>
 
             <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 14 }}>
               <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
-                <thead>
-                  <tr style={{ background: C.gold, color: C.bg, textTransform: "uppercase", fontSize: 11 }}>
-                    <th style={{ padding: 10, textAlign: "left" }}>Select</th>
-                    <th style={{ padding: 10, textAlign: "left" }}>Waybill / Stage</th>
-                    <th style={{ padding: 10, textAlign: "left" }}>Customer / Address</th>
-                    <th style={{ padding: 10, textAlign: "left" }}>Township</th>
-                    <th style={{ padding: 10, textAlign: "left" }}>Provider / Route</th>
-                    <th style={{ padding: 10, textAlign: "right" }}>COD</th>
-                    <th style={{ padding: 10, textAlign: "right" }}>Weight</th>
-                  </tr>
-                </thead>
+                <thead><tr style={{ background: C.gold, color: C.bg, textTransform: "uppercase", fontSize: 11 }}><th style={{ padding: 10, textAlign: "left" }}>Select</th><th style={{ padding: 10, textAlign: "left" }}>Waybill / Stage</th><th style={{ padding: 10, textAlign: "left" }}>Customer / Address</th><th style={{ padding: 10, textAlign: "left" }}>Township</th><th style={{ padding: 10, textAlign: "left" }}>Provider / Route</th><th style={{ padding: 10, textAlign: "right" }}>COD</th><th style={{ padding: 10, textAlign: "right" }}>Weight</th></tr></thead>
                 <tbody>
-                  {readyRows.length ? readyRows.map((row) => {
-                    const id = text(row.delivery_way_id || row.waybill_no);
-                    return (
-                      <tr key={id} style={{ borderTop: `1px solid ${C.border}` }}>
-                        <td style={{ padding: 10 }}>
-                          <input type="checkbox" checked={Boolean(selected[id])} onChange={() => toggleOne(row)} />
-                        </td>
-                        <td style={{ padding: 10 }}>
-                          <div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no,id)}</div>
-                          <div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>
-                        </td>
-                        <td style={{ padding: 10 }}>
-                          <div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div>
-                          <div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div>
-                        </td>
-                        <td style={{ padding: 10 }}>{text(row.township, "-")}</td>
-                        <td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code,"-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode,"DOORSTEP_MAP")}</div></td>
-                        <td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td>
-                        <td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr>
-                      <td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>
-                        {selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. In Warehouse, mark received parcels ready for Wayplan, then click Open queue again." : "This regional Wayplan queue is disabled."}
-                      </td>
-                    </tr>
-                  )}
+                  {filteredReadyRows.length ? groupedReadyRows.map((group) => (
+                    <React.Fragment key={group.label}>
+                      {groupBy !== "NONE" && <tr><td colSpan={7} style={{ padding: "9px 12px", background: "rgba(78,168,222,0.12)", color: C.blue, fontWeight: 900, borderTop: `1px solid ${C.border}` }}>{group.label} <span style={{ color: C.sub, fontWeight: 600 }}>· {group.rows.length} ways</span></td></tr>}
+                      {group.rows.map((row) => {
+                        const id = text(row.delivery_way_id || row.waybill_no);
+                        return <tr key={id} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 10 }}><input type="checkbox" checked={Boolean(selected[id])} onChange={() => toggleOne(row)} /></td><td style={{ padding: 10 }}><div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no, id)}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div></td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div><div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div><div style={{ color: C.blue, fontSize: 10, marginTop: 3 }}>{text(row.merchant_name, "Unknown Merchant")}</div></td><td style={{ padding: 10 }}>{text(row.township, "-")}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code, "-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode, "DOORSTEP_MAP")}</div></td><td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td><td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td></tr>;
+                      })}
+                    </React.Fragment>
+                  )) : <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>{readyRows.length ? "No ways match the current filters. Reset or change the filters to continue." : selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. In Warehouse, mark received parcels ready for Wayplan, then click Open queue again." : "This regional Wayplan queue is disabled."}</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -536,133 +488,22 @@ export default function WayplanCommandCenterPage() {
           <div style={{ display: "grid", gap: 16 }}>
             <Card>
               <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
-
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-                <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>
-                  Select Wayplan
-                  <select
-                    value={activeWayplan?.wayplan_id || ""}
-                    onChange={(e) => {
-                      const wp = wayplans.find((x) => x.wayplan_id === e.target.value);
-                      setActiveWayplan(wp || null);
-                    }}
-                    style={input()}
-                  >
-                    <option value="">Choose wayplan...</option>
-                    {wayplans.map((wp) => (
-                      <option key={wp.wayplan_id} value={wp.wayplan_id}>
-                        {wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                  <button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}>
-                    Dispatch
-                  </button>
-                  <button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("blue")}>
-                    Complete
-                  </button>
-                  <button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("plain")}>
-                    Hold
-                  </button>
-                  <button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("gold")}>
-                    Reopen
-                  </button>
-                </div>
-
-                <div style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 10 }}>
-                  <div style={{ color: C.sub, fontSize: 11 }}>Active Wayplan</div>
-                  <div style={{ color: C.gold, fontWeight: 900 }}>{activeWayplan?.wayplan_id || "-"}</div>
-                  <div style={{ color: C.green, fontSize: 12 }}>
-                    {activeWayplan?.wayplan_status || "-"} / {activeWayplan?.total_stops || 0} stops / {money(activeWayplan?.total_cod)}
-                  </div>
-                </div>
+                <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null)} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("green")}>Dispatch</button><button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("blue")}>Complete</button><button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("plain")}>Hold</button><button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED"} style={btn("gold")}>Reopen</button></div>
+                <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>Generate from {selectedRows.length} selected</button>
+                <div style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 10 }}><div style={{ color: C.sub, fontSize: 11 }}>Active Wayplan</div><div style={{ color: C.gold, fontWeight: 900 }}>{activeWayplan?.wayplan_id || "-"}</div><div style={{ color: C.green, fontSize: 12 }}>{activeWayplan?.wayplan_status || "-"} / {activeWayplan?.total_stops || 0} stops / {money(activeWayplan?.total_cod)}</div></div>
               </div>
-
-              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>
-                {wayplans.length ? wayplans.map((wp) => (
-                  <button
-                    key={wp.wayplan_id}
-                    onClick={() => setActiveWayplan(wp)}
-                    style={{
-                      textAlign: "left",
-                      border: `1px solid ${activeWayplan?.wayplan_id === wp.wayplan_id ? C.gold : C.border}`,
-                      background: activeWayplan?.wayplan_id === wp.wayplan_id ? "rgba(246,184,75,0.12)" : C.panel2,
-                      color: C.text,
-                      borderRadius: 14,
-                      padding: 12,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <div style={{ color: C.gold, fontWeight: 900 }}>{wp.wayplan_id}</div>
-                    <div style={{ color: C.sub, fontSize: 11 }}>{wp.wayplan_status} / {compactDate(wp.created_at)}</div>
-                    <div style={{ color: C.green, fontSize: 12 }}>{wp.total_stops || 0} stops / {money(wp.total_cod)}</div>
-                  </button>
-                )) : <div style={{ color: C.sub }}>No generated wayplans yet.</div>}
-              </div>
+              <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>{wayplans.length ? wayplans.map((wp) => <button key={wp.wayplan_id} onClick={() => setActiveWayplan(wp)} style={{ textAlign: "left", border: `1px solid ${activeWayplan?.wayplan_id === wp.wayplan_id ? C.gold : C.border}`, background: activeWayplan?.wayplan_id === wp.wayplan_id ? "rgba(246,184,75,0.12)" : C.panel2, color: C.text, borderRadius: 14, padding: 12, cursor: "pointer" }}><div style={{ color: C.gold, fontWeight: 900 }}>{wp.wayplan_id}</div><div style={{ color: C.sub, fontSize: 11 }}>{wp.wayplan_status} / {compactDate(wp.created_at)}</div><div style={{ color: C.green, fontSize: 12 }}>{wp.total_stops || 0} stops / {money(wp.total_cod)}</div></button>) : <div style={{ color: C.sub }}>No generated wayplans yet.</div>}</div>
             </Card>
           </div>
         </div>
 
         <Card id="wayplan-manifest">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 12 }}>
-            <div>
-              <div style={{ color: C.gold, fontSize: 12, fontWeight: 900, letterSpacing: "0.22em" }}>BRITIUM EXPRESS</div>
-              <h2 style={{ margin: "6px 0", fontSize: 20 }}>Wayplan Manifest</h2>
-              <div style={{ color: C.sub }}>Wayplan: <strong style={{ display: "inline", color: C.text }}>{activeWayplan?.wayplan_id || "-"}</strong></div>
-            </div>
-            <div style={{ color: C.sub, fontSize: 12 }}>
-              <div>Status: {activeWayplan?.wayplan_status || "-"}</div>
-              <div>Vehicle: {activeWayplan?.vehicle_code || vehicleCode} / {activeWayplan?.vehicle_name || vehicleName}</div>
-              <div>Driver: {activeWayplan?.driver_code || driverCode} / {activeWayplan?.driver_name || driverName}</div>
-              <div>Rider: {activeWayplan?.rider_code || riderCode} / {activeWayplan?.rider_name || riderName}</div>
-              <div>Printed: {compactDate(new Date().toISOString())}</div>
-            </div>
-          </div>
-
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}>
-              <thead>
-                <tr style={{ background: C.gold, color: C.bg, fontSize: 11, textTransform: "uppercase" }}>
-                  <th style={{ padding: 8, textAlign: "left" }}>Seq</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Waybill</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Recipient</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Phone</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Township</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Address</th>
-                  <th style={{ padding: 8, textAlign: "right" }}>COD</th>
-                  <th style={{ padding: 8, textAlign: "right" }}>Weight</th>
-                  <th style={{ padding: 8, textAlign: "left" }}>Signature</th>
-                </tr>
-              </thead>
-              <tbody>
-                {manifestStops.length ? manifestStops.map((stop: Row, i: number) => (
-                  <tr key={stop.id || `${stop.delivery_way_id}-${i}`} style={{ borderTop: `1px solid ${C.border}` }}>
-                    <td style={{ padding: 8 }}>{stop.stop_sequence || i + 1}</td>
-                    <td style={{ padding: 8, color: C.gold, fontWeight: 900 }}>{text(stop.waybill_no || stop.delivery_way_id)}</td>
-                    <td style={{ padding: 8 }}>{text(stop.recipient_name)}</td>
-                    <td style={{ padding: 8 }}>{text(stop.recipient_phone)}</td>
-                    <td style={{ padding: 8 }}>{text(stop.township)}</td>
-                    <td style={{ padding: 8, whiteSpace: "normal" }}><MapPin size={12} /> {text(stop.address)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{money(stop.cod_amount)}</td>
-                    <td style={{ padding: 8, textAlign: "right" }}>{Number(stop.parcel_weight_kg || 0).toLocaleString()} kg</td>
-                    <td style={{ padding: 8 }}>________________</td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan={9} style={{ padding: 24, textAlign: "center", color: C.sub }}>
-                      Select or generate a wayplan to show manifest.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 12 }}><div><div style={{ color: C.gold, fontSize: 12, fontWeight: 900, letterSpacing: "0.22em" }}>BRITIUM EXPRESS</div><h2 style={{ margin: "6px 0", fontSize: 20 }}>Wayplan Manifest</h2><div style={{ color: C.sub }}>Wayplan: <strong style={{ color: C.text }}>{activeWayplan?.wayplan_id || "-"}</strong></div></div><div style={{ color: C.sub, fontSize: 12 }}><div>Status: {activeWayplan?.wayplan_status || "-"}</div><div>Vehicle: {activeWayplan?.vehicle_code || vehicleCode} / {activeWayplan?.vehicle_name || vehicleName}</div><div>Driver: {activeWayplan?.driver_code || driverCode} / {activeWayplan?.driver_name || driverName}</div><div>Rider: {activeWayplan?.rider_code || riderCode} / {activeWayplan?.rider_name || riderName}</div><div>Printed: {compactDate(new Date().toISOString())}</div></div></div>
+          <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}><thead><tr style={{ background: C.gold, color: C.bg, fontSize: 11, textTransform: "uppercase" }}><th style={{ padding: 8, textAlign: "left" }}>Seq</th><th style={{ padding: 8, textAlign: "left" }}>Waybill</th><th style={{ padding: 8, textAlign: "left" }}>Recipient</th><th style={{ padding: 8, textAlign: "left" }}>Phone</th><th style={{ padding: 8, textAlign: "left" }}>Township</th><th style={{ padding: 8, textAlign: "left" }}>Address</th><th style={{ padding: 8, textAlign: "right" }}>COD</th><th style={{ padding: 8, textAlign: "right" }}>Weight</th><th style={{ padding: 8, textAlign: "left" }}>Signature</th></tr></thead><tbody>{manifestStops.length ? manifestStops.map((stop: Row, i: number) => <tr key={stop.id || `${stop.delivery_way_id}-${i}`} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 8 }}>{stop.stop_sequence || i + 1}</td><td style={{ padding: 8, color: C.gold, fontWeight: 900 }}>{text(stop.waybill_no || stop.delivery_way_id)}</td><td style={{ padding: 8 }}>{text(stop.recipient_name)}</td><td style={{ padding: 8 }}>{text(stop.recipient_phone)}</td><td style={{ padding: 8 }}>{text(stop.township)}</td><td style={{ padding: 8, whiteSpace: "normal" }}><MapPin size={12} /> {text(stop.address)}</td><td style={{ padding: 8, textAlign: "right" }}>{money(stop.cod_amount)}</td><td style={{ padding: 8, textAlign: "right" }}>{Number(stop.parcel_weight_kg || 0).toLocaleString()} kg</td><td style={{ padding: 8 }}>________________</td></tr>) : <tr><td colSpan={9} style={{ padding: 24, textAlign: "center", color: C.sub }}>Select or generate a wayplan to show manifest.</td></tr>}</tbody></table></div>
         </Card>
       </div>
     </main>
   );
 }
-
