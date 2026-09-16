@@ -160,13 +160,14 @@ function groupRowsByTownship(rows) {
   }
   return map;
 }
-function buildBaselineBuckets(zoneRows) {
+export function buildBaselineBuckets(zoneRows) {
   const townMap = groupRowsByTownship(zoneRows);
   const used = new Set();
   const buckets = [];
   for (const group of EXPANSION_GROUPS) {
     const applicable = group.filter((t) => townMap.has(t));
     if (applicable.length < 2) continue;
+    if (applicable.some((t) => used.has(t))) continue;
     const members = applicable.flatMap((t) => townMap.get(t) || []);
     const allLow = applicable.every((t) => (townMap.get(t) || []).length < FLOOR);
     const ceiling = ceilingForTownships(applicable);
