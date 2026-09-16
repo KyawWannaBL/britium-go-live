@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/apply-data-entry-performance-v40.mjs && npm run verify:data-entry-performance-v40 && npm run verify:customer-service-parcel-voice-v41 && npm run verify:customer-service-routing-v41 && npm run verify:wayplan-queue-filters && npm run verify:wayplan-queue-filter-ui && npm run verify:data-entry-input-latency-v42 && vite build",
+    "build": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && npm run verify:data-entry-performance-v40 && npm run verify:customer-service-parcel-voice-v41 && npm run verify:customer-service-routing-v41 && npm run verify:wayplan-queue-filters && npm run verify:wayplan-queue-filter-ui && npm run verify:data-entry-input-latency-v42 && vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "verify:data-entry-performance-v40": "node scripts/verify-data-entry-performance-v40.mjs",
@@ -84,7 +84,7 @@
     "react-day-picker": "^10.0.1",
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.79.0",
-    "react-qr-code": "^2.2.0",
+    "react-qr-code": "^4.2.0",
     "react-resizable-panels": "^4.11.2",
     "react-router-dom": "^6.30.6",
     "react-signature-canvas": "^1.1.0-alpha.2",
