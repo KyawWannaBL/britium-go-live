@@ -78,6 +78,8 @@ export function filterWayplanQueueRows(rows: Row[], filters: WayplanQueueFilters
 }
 
 export function groupWayplanQueueRows(rows: Row[], groupBy: WayplanQueueGroupBy) {
+  if (groupBy === "NONE") return [{ label: "All Ways", rows: [...rows] }];
+
   const groups = new Map<string, Row[]>();
   for (const row of rows) {
     const label = wayplanQueueGroupLabel(row, groupBy);
