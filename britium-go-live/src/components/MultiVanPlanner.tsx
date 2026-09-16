@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import {
   allocateVans,
   assignCrews,
+  scheduleSequentialRouteWaves,
   PRACTICAL_MAX_PARCELS_PER_VAN,
   type Resource,
   type Stop,
@@ -150,10 +151,12 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     setBusy(true);
     setMessage(note || "Calculating actual road routes for the affected vans…");
     try {
-      const optimized = await Promise.all(next.map(optimizeOne));
+      const optimized: OperationalVanPlan[] = [];
+      for (const plan of next) optimized.push(await optimizeOne(plan));
       reset(optimized);
       const sources = Array.from(new Set(optimized.map((p) => routeLabel(p))));
-      setMessage(`Review ${optimized.length} active route(s). Road source: ${sources.join(" / ")}. Warehouse loading is the exact reverse of each reviewed road route.`);
+      const waveCount = Math.max(1, ...optimized.map((p) => Number(p.wave_no || 1)));
+      setMessage(`Review ${optimized.length} active route(s) across ${waveCount} fleet wave(s). Road source: ${sources.join(" / ")}. Warehouse loading is the exact reverse of each reviewed road route.`);
     } catch (e: any) {
       setPlans([]);
       setMessage(`No automatic Wayplan was generated. ${e?.message || "Road routing is unavailable."}`);
@@ -229,23 +232,28 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     if (!response.ok || !result?.ok) throw new Error(result?.message || result?.error || `Yangon master planning failed (${response.status}).`);
     const activeRoutes = (result.routes || []).filter((route: any) => Number(route.parcel_count || 0) > 0);
     if (!activeRoutes.length) throw new Error("No route-ready parcel remains inside the Yangon urban master scope.");
-    if (activeRoutes.length > usableVehicles.length) throw new Error(`${result.plan_name} requires ${activeRoutes.length} active delivery unit(s) today, but only ${usableVehicles.length} delivery vehicle(s) are available.`);
     const byId = new Map(scopedRows.map((row) => [row.delivery_way_id, row]));
-    const unused = [...usableVehicles];
-    return activeRoutes.map((route: any) => {
+    const routeJobs = activeRoutes.map((route: any) => {
       const routeRows = (route.delivery_way_ids || []).map((id: string) => byId.get(String(id))).filter(Boolean) as Stop[];
       if (routeRows.length !== Number(route.parcel_count || 0)) throw new Error(`${route.name} contains an incomplete parcel assignment.`);
-      const weight = routeRows.reduce((sum, row) => sum + Number(row.parcel_weight_kg || 0), 0);
-      const vehicleIndex = unused.findIndex((v) => !Number(v.capacity_kg) || Number(v.capacity_kg) >= weight);
-      if (vehicleIndex < 0) throw new Error(`No remaining delivery vehicle can safely carry ${route.name}.`);
-      const vehicle = unused.splice(vehicleIndex, 1)[0];
+      return {
+        route,
+        routeRows,
+        weight_kg: routeRows.reduce((sum, row) => sum + Number(row.parcel_weight_kg || 0), 0),
+      };
+    });
+    const scheduled = scheduleSequentialRouteWaves(routeJobs, usableVehicles);
+    return scheduled.map((assignment) => {
+      const { route, routeRows } = assignment;
       const townshipSummary = (route.township_counts || []).map((x: any) => `${x.township} (${x.parcel_count})`).join(", ");
       return {
-        vehicle_code: vehicle.id,
+        vehicle_code: assignment.vehicle_code,
         driver_code: "",
         rider_code: "",
         helper_code: "",
         crew_mode: "ROSTER",
+        wave_no: assignment.wave_no,
+        trip_no: assignment.trip_no,
         rows: routeRows,
         master: {
           planCode: result.plan_code,
@@ -261,7 +269,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           source: "YANGON_MASTER_PENDING_ROAD",
           route_mode: result.sequencing_policy,
           fallback: false,
-          warning: `${result.plan_name} · Zone ${route.route_code}: ${route.name}. ${townshipSummary ? `Today: ${townshipSummary}. ` : ""}${route.routing_strategy || ""}`,
+          warning: `Wave ${assignment.wave_no} · Trip ${assignment.trip_no}. ${result.plan_name} · Zone ${route.route_code}: ${route.name}. ${townshipSummary ? `Today: ${townshipSummary}. ` : ""}${route.routing_strategy || ""}`,
           optimized_at: result.generated_at,
         },
       } as OperationalVanPlan;
@@ -276,7 +284,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   async function preview() {
     setBusy(true);
-    setMessage(isYangonMaster ? "Stage 1/2: assigning parcels to the approved Yangon 3/5/9 operational zones…" : "Stage 1/2: allocating parcels to practical delivery vans…");
+    setMessage(isYangonMaster ? "Stage 1/2: assigning parcels to Yangon zones and sequential fleet waves…" : "Stage 1/2: allocating parcels to practical delivery vans…");
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
@@ -303,9 +311,11 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     setMessage("");
     const payload = {
       region_code: region,
-      planning_mode: isYangonMaster ? "YANGON_MASTER" : "STANDARD_50_75",
+      planning_mode: isYangonMaster ? "YANGON_MASTER_MULTI_TRIP" : "STANDARD_50_75",
       plans: plans.map((p) => ({
         vehicle_code: p.vehicle_code,
+        wave_no: p.wave_no,
+        trip_no: p.trip_no,
         crew_mode: p.crew_mode || "ROSTER",
         driver_code: p.crew_mode === "EMERGENCY_MANUAL" ? null : p.driver_code,
         rider_code: p.crew_mode === "EMERGENCY_MANUAL" ? null : p.rider_code,
@@ -335,10 +345,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     const body = JSON.stringify(payload);
     if (request.current?.body !== body) request.current = { body, id: crypto.randomUUID() };
     try {
-      const { data, error } = await supabase.rpc("be_generate_multi_van_v2", { p_payload: { ...payload, request_id: request.current!.id } });
+      const { data, error } = await supabase.rpc("be_generate_multi_van_v43", { p_payload: { ...payload, request_id: request.current!.id } });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Wayplan creation failed.");
-      setMessage(`${data.wayplans.length} road-reviewed Wayplans created for ${data.parcel_count} parcels with immutable generated route versions and Warehouse LIFO snapshots.`);
+      setMessage(`${data.wayplans.length} road-reviewed Wayplans created for ${data.parcel_count} parcels across ${data.wave_count || 1} fleet wave(s), with immutable generated route versions and Warehouse LIFO snapshots.`);
       setPlans([]);
       request.current = null;
       onSaved();
@@ -350,7 +360,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   }
 
   const short = isYangonMaster ? [] : plans.filter((p) => p.rows.length < 50);
-  const oversized = plans.filter((p) => p.rows.length > PRACTICAL_MAX_PARCELS_PER_VAN);
+  const oversized = plans.filter((p) => p.rows.length > 75);
   const invalidCrew = plans.some((p) => p.crew_mode === "EMERGENCY_MANUAL"
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
     : !p.driver_code || !p.rider_code);
@@ -360,10 +370,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <h2 style={{ margin: 0 }}>{isYangonMaster ? "Yangon Van Assignment Master · road optimized" : "Strategic road-based delivery van planning"}</h2>
     {isYangonMaster ? <>
-      <p style={{ margin: 0 }}>East Dagon Logistics Center master plan: <strong>&lt;45 route-ready parcels = 3-zone plan · 45–95 = 5-zone plan · &gt;95 = 9-route expansion.</strong> Parcels are assigned to the approved operational zone first; the actual stop order is then optimized on the road network.</p>
+      <p style={{ margin: 0 }}>East Dagon Logistics Center master plan uses the approved Yangon dynamic zones, then allocates those road routes across the active delivery fleet in <strong>sequential waves</strong>. A vehicle can run another trip only in a later wave.</p>
       <p style={{ margin: 0 }}>Dala, Seikkyi Kanaungto and Thanlyin are excluded from this Yangon urban master. Hlaingthaya East/West are treated as Hlaingthaya; Kyeemyindaing as Kyimyindaing; Mingalartaungnyunt as Mingala Taungnyunt.</p>
     </> : <>
-      <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway vehicles 7R-1473 and 1H-6033 remain reserved.</p>
+      <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway fleets remain reserved by Fleet Master role.</p>
     </>}
     <p style={{ margin: 0 }}>Straight-line/geographic fallback is not accepted for automatic Wayplan creation. Google Routes is primary; Mapbox may be used only as a road-based fallback. Review each active route on the whole-route map before creation.</p>
 
@@ -381,10 +391,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const maps = googleMapSegments(origin, delivery);
       const emergency = plan.crew_mode === "EMERGENCY_MANUAL";
       const vehicleName = vehicles.find((v) => v.id === plan.vehicle_code)?.name || plan.vehicle_code || `Van ${i + 1}`;
-      const title = plan.master ? `Route ${plan.master.routeCode} · ${plan.master.zoneName}` : `Van ${i + 1}`;
-      return <section key={`${plan.master?.routeCode || i}-${plan.vehicle_code}`} style={{ padding: 12, border: "1px solid #38566b", borderRadius: 10 }}>
+      const title = plan.master ? `Wave ${plan.wave_no || 1} · Trip ${plan.trip_no || 1} · Route ${plan.master.routeCode} · ${plan.master.zoneName}` : `Van ${i + 1}`;
+      return <section key={`${plan.wave_no || 1}-${plan.master?.routeCode || i}-${plan.vehicle_code}`} style={{ padding: 12, border: "1px solid #38566b", borderRadius: 10 }}>
         <strong>{title}: {delivery.length} parcels · {Array.from(new Set(delivery.map((r) => r.township))).join(", ")}</strong>
-        {plan.master && <div style={{ marginTop: 4, fontSize: 12 }}>Master plan: {plan.master.planName} · Preferred vehicle: {plan.master.vehicleType} · Dispatch: {plan.master.dispatchWindow}</div>}
+        {plan.master && <div style={{ marginTop: 4, fontSize: 12 }}>Master plan: {plan.master.planName} · Vehicle: {vehicleName} · Preferred type: {plan.master.vehicleType} · Dispatch: {plan.master.dispatchWindow}</div>}
         <div style={{ marginTop: 6, fontWeight: 800 }}>{routeLabel(plan)}{plan.route?.duration_s ? ` · ${Math.round(Number(plan.route.duration_s) / 60)} min` : ""}{plan.route?.distance_m ? ` · ${(Number(plan.route.distance_m) / 1000).toFixed(1)} km` : ""}</div>
         {plan.route?.warning && <div style={{ marginTop: 5 }}>{plan.route.warning}</div>}
 
