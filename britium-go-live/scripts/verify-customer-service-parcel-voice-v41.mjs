@@ -47,6 +47,12 @@ const migrationChecks = [
   "be_cs_superadmin_override_route",
   "be_cs_customer_voice_history",
   "SUPERADMIN_OVERRIDE_REQUIRED",
+  "be_cs_resolve_parcel_branch",
+  "delivery_region",
+  "YANGON",
+  "MANDALAY",
+  "NAYPYITAW",
+  "OUTSIDE_CORE",
 ];
 
 const apiChecks = [
@@ -95,6 +101,11 @@ if (!migrationFiles.length) {
 
 for (const marker of migrationChecks) {
   if (!migrationSource.includes(marker)) failures.push(`migration marker: ${marker}`);
+}
+
+const resolverUseCount = (migrationSource.match(/be_cs_resolve_parcel_branch\s*\(/g) || []).length;
+if (resolverUseCount < 3) {
+  failures.push("migration contract: be_cs_resolve_parcel_branch must be defined and used by both queue and create RPCs");
 }
 
 for (const marker of apiChecks) {
