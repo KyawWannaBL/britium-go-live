@@ -1,0 +1,53 @@
+import assert from "node:assert/strict";
+import {
+  assignCrews,
+  scheduleSequentialRouteWaves,
+} from "../src/lib/multiVanPlanner.ts";
+
+const vehicles = [
+  { id: "FLT011", name: "1H-6033", capacity_kg: 700, available: true },
+  { id: "FLT003", name: "2Q-6524", capacity_kg: 850, available: true },
+  { id: "FLT002", name: "4S-1626", capacity_kg: 850, available: true },
+  { id: "FLT001", name: "6H-7397", capacity_kg: 700, available: true },
+  { id: "FLT006", name: "7K-1890", capacity_kg: 1500, available: true },
+  { id: "FLT004", name: "7R-1473", capacity_kg: 780, available: true },
+  { id: "FLT005", name: "9R-4431", capacity_kg: 300, available: true },
+];
+
+const routes = Array.from({ length: 19 }, (_, index) => ({
+  id: `R${index + 1}`,
+  weight_kg: index === 0 ? 1200 : 200,
+}));
+
+const assignments = scheduleSequentialRouteWaves(routes, vehicles);
+assert.equal(assignments.length, 19, "every route must be scheduled");
+assert.equal(Math.max(...assignments.map((x) => x.wave_no)), 3, "19 routes across 7 delivery fleets should require 3 sequential waves");
+assert.equal(assignments[0].vehicle_code, "FLT006", "the 1200kg route must use the 1500kg Box Truck");
+for (const wave of new Set(assignments.map((x) => x.wave_no))) {
+  const inWave = assignments.filter((x) => x.wave_no === wave);
+  assert.equal(new Set(inWave.map((x) => x.vehicle_code)).size, inWave.length, `a vehicle cannot appear twice in wave ${wave}`);
+}
+assert.ok(
+  new Set(assignments.map((x) => x.vehicle_code)).size < assignments.length,
+  "vehicles must be reusable on later waves",
+);
+
+const planRows = assignments.slice(0, 10).map((assignment, index) => ({
+  vehicle_code: assignment.vehicle_code,
+  driver_code: "",
+  rider_code: "",
+  helper_code: "",
+  wave_no: assignment.wave_no,
+  rows: [{ delivery_way_id: `D0916-TST-${String(index + 1).padStart(3, "0")}`, township: "Dagon" }],
+}));
+const drivers = Array.from({ length: 7 }, (_, index) => ({ id: `DRV${index + 1}`, name: `Driver ${index + 1}`, available: true }));
+const riders = Array.from({ length: 7 }, (_, index) => ({ id: `RID${index + 1}`, name: `Rider ${index + 1}`, available: true }));
+const crewed = assignCrews(planRows, drivers, riders, [], (town) => town);
+assert.ok(crewed.every((plan) => plan.driver_code && plan.rider_code), "later waves may reuse roster crew after the earlier wave");
+for (const wave of new Set(crewed.map((x) => x.wave_no))) {
+  const sameWave = crewed.filter((x) => x.wave_no === wave);
+  assert.equal(new Set(sameWave.map((x) => x.driver_code)).size, sameWave.length, `drivers must be unique inside wave ${wave}`);
+  assert.equal(new Set(sameWave.map((x) => x.rider_code)).size, sameWave.length, `riders must be unique inside wave ${wave}`);
+}
+
+console.log("Wayplan V43 fleet multi-trip behavior PASS");
