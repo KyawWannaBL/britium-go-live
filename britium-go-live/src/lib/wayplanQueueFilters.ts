@@ -1,10 +1,10 @@
 export type WayplanQueueGroupBy = "NONE" | "TOWNSHIP" | "MERCHANT" | "PROVIDER";
 
 export type WayplanQueueFilters = {
-  township: string;
-  merchant: string;
-  provider: string;
-  status: string;
+  townships: string[];
+  merchants: string[];
+  providers: string[];
+  statuses: string[];
   search: string;
 };
 
@@ -43,18 +43,27 @@ export function getWayplanQueueFilterOptions(rows: Row[]) {
   };
 }
 
+function matchesSelected(value: string, selected: string[]) {
+  return selected.length === 0 || selected.includes(value);
+}
+
 export function filterWayplanQueueRows(rows: Row[], filters: WayplanQueueFilters) {
   const query = clean(filters.search).toLocaleLowerCase();
+  const selectedTownships = Array.isArray(filters.townships) ? filters.townships : [];
+  const selectedMerchants = Array.isArray(filters.merchants) ? filters.merchants : [];
+  const selectedProviders = Array.isArray(filters.providers) ? filters.providers : [];
+  const selectedStatuses = Array.isArray(filters.statuses) ? filters.statuses : [];
+
   return rows.filter((row) => {
     const township = clean(row.township, "Unknown Township");
     const merchant = wayplanQueueMerchant(row);
     const provider = clean(row.service_provider_code, "Unassigned Provider");
     const statuses = [clean(row.dispatch_status), clean(row.warehouse_status)].filter(Boolean);
 
-    if (filters.township !== "ALL" && township !== filters.township) return false;
-    if (filters.merchant !== "ALL" && merchant !== filters.merchant) return false;
-    if (filters.provider !== "ALL" && provider !== filters.provider) return false;
-    if (filters.status !== "ALL" && !statuses.includes(filters.status)) return false;
+    if (!matchesSelected(township, selectedTownships)) return false;
+    if (!matchesSelected(merchant, selectedMerchants)) return false;
+    if (!matchesSelected(provider, selectedProviders)) return false;
+    if (selectedStatuses.length > 0 && !statuses.some((status) => selectedStatuses.includes(status))) return false;
     if (!query) return true;
 
     const haystack = [

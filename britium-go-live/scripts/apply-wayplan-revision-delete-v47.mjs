@@ -30,3 +30,4 @@ if (!source.includes('data-wayplan-revision-actions-v47="true"')) {
 
 fs.writeFileSync(pagePath, source);
 console.log("Applied Wayplan revision/delete V47 build patch");
+await import("./apply-wayplan-multiselect-save-v48.mjs");
