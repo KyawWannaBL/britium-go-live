@@ -33,10 +33,10 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
   }
 
   return (
-    <label style={{ color: "#9cc2d9", fontSize: 11 }}>
-      {label}
+    <div style={{ color: "#9cc2d9", fontSize: 11 }}>
+      <div style={{ marginBottom: 2 }}>{label}</div>
       <details data-wayplan-multiselect-filter={filterKey} style={{ position: "relative" }}>
-        <summary style={control}>{summary}</summary>
+        <summary aria-label={`${label} filter: ${summary}`} style={control}>{summary}</summary>
         <div
           style={{
             position: "absolute",
@@ -80,6 +80,6 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
           ))}
         </div>
       </details>
-    </label>
+    </div>
   );
 }
