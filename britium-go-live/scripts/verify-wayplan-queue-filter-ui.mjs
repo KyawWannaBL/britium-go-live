@@ -9,14 +9,23 @@ const source = fs.readFileSync(pagePath, "utf8");
 
 const requiredMarkers = [
   'from "@/lib/wayplanQueueFilters"',
+  'from "@/components/MultiSelectQueueFilter"',
   'data-wayplan-queue-filters="true"',
-  'Township<select',
-  'Merchant<select',
-  'Service Provider<select',
-  'Status<select',
+  'label="Township" allLabel="All Townships"',
+  'values={townshipFilters}',
+  'label="Merchant" allLabel="All Merchants"',
+  'values={merchantFilters}',
+  'label="Service Provider" allLabel="All Providers"',
+  'values={providerFilters}',
+  'label="Status" allLabel="All Statuses"',
+  'values={statusFilters}',
   'Group By<select',
   'placeholder="Waybill, recipient, address..."',
   'filterWayplanQueueRows(readyRows',
+  'townships: townshipFilters',
+  'merchants: merchantFilters',
+  'providers: providerFilters',
+  'statuses: statusFilters',
   'groupWayplanQueueRows(filteredReadyRows, groupBy)',
   'toggleVisibleWayplanSelection(prev, filteredReadyRows)',
   'Select All Filtered',
@@ -30,12 +39,12 @@ const requiredMarkers = [
 
 const missing = requiredMarkers.filter((marker) => !source.includes(marker));
 if (missing.length) {
-  console.error("Wayplan queue filter UI contract FAILED:");
+  console.error("Wayplan queue multi-select filter UI contract FAILED:");
   for (const marker of missing) console.error(` - missing: ${marker}`);
   process.exit(1);
 }
 
-console.log("Wayplan queue filter UI contract PASS");
+console.log("Wayplan queue multi-select filter UI contract PASS");
 await import("./verify-wayplan-fleet-multitrip-v43.mjs");
 await import("./verify-wayplan-zone-overlap-v37.mjs");
 await import("./verify-wayplan-minimum-load-v44.mjs");
