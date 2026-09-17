@@ -42,3 +42,4 @@ await import("./verify-wayplan-minimum-load-v44.mjs");
 await import("./verify-wayplan-filter-route-crew-v45.mjs");
 await import("./verify-wayplan-created-revision-v46.mjs");
 await import("./verify-wayplan-revision-delete-v47.mjs");
+await import("./verify-wayplan-revision-save-v48.mjs");
