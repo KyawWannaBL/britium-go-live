@@ -212,7 +212,7 @@ export default function WayplanCommandCenterPage() {
     setRevisionRemoveSelected({});
   }
 
-  async function loadAll() {
+  async function loadAll(preferredWayplanId = "") {
     setLoading(true);
     setError("");
     try {
@@ -238,6 +238,10 @@ export default function WayplanCommandCenterPage() {
       setSelected({});
       setWayplans(filteredWayplans);
       setActiveWayplan((previous) => {
+        if (preferredWayplanId) {
+          const preferred = filteredWayplans.find((wayplan) => wayplan.wayplan_id === preferredWayplanId);
+          if (preferred) return preferred;
+        }
         if (previous?.wayplan_id) {
           const fresh = filteredWayplans.find((wayplan) => wayplan.wayplan_id === previous.wayplan_id);
           if (fresh) return fresh;
@@ -366,10 +370,28 @@ export default function WayplanCommandCenterPage() {
     const replacementId = text(result?.replacement_wayplan_id);
     const sourceId = text(result?.replaces_wayplan_id || revisionSource?.wayplan_id);
     cancelRevision();
-    await loadAll();
+    await loadAll(replacementId);
     if (replacementId) {
-      setMessage(`Revision saved: ${replacementId} replaces ${sourceId}. The replacement remains CREATED and must be reviewed/dispatched separately; the original history is preserved.`);
+      setMessage(`Revision saved: ${replacementId} replaces ${sourceId}. The replacement remains CREATED. Next: review its manifest, complete Supervisor approval + mandatory Dispatch scan, then Dispatch.`);
+      requestAnimationFrame(() => document.getElementById("generated-wayplans")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     }
+  }
+
+  async function handleMultiVanSaved(result: any) {
+    const ids = Array.isArray(result?.created_wayplan_ids)
+      ? result.created_wayplan_ids.map((id: any) => text(id)).filter(Boolean)
+      : Array.isArray(result?.wayplans)
+        ? result.wayplans.map((wayplan: any) => text(wayplan?.wayplan_id)).filter(Boolean)
+        : [];
+    const firstId = ids[0] || "";
+    setError("");
+    await loadAll(firstId);
+    setMessage(
+      ids.length
+        ? `${ids.length} reviewed Wayplan${ids.length === 1 ? "" : "s"} created: ${ids.join(", ")}. Status is CREATED. Next: review manifest → Supervisor approval → mandatory Dispatch scan → Dispatch Wayplan.`
+        : "Reviewed Wayplans created. Status is CREATED. Next: review manifest → Supervisor approval → mandatory Dispatch scan → Dispatch Wayplan."
+    );
+    requestAnimationFrame(() => document.getElementById("generated-wayplans")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   }
 
   async function generateWayplan() {
@@ -428,7 +450,7 @@ export default function WayplanCommandCenterPage() {
         p_payload: { wayplan_id: activeWayplan.wayplan_id, status: nextStatus, actor: "wayplan_command_center" },
       });
       if (error) throw error;
-      if (data?.ok === false) throw new Error(data?.error || "Could not update wayplan status.");
+      if (data?.ok === false) throw new Error([data?.error || "Could not update wayplan status.", data?.next_step].filter(Boolean).join(" Next: "));
       setMessage(`${activeWayplan.wayplan_id} updated to ${nextStatus}.`);
       await loadAll();
     } catch (err: any) {
@@ -452,7 +474,7 @@ export default function WayplanCommandCenterPage() {
         p_payload: { wayplan_id: activeWayplan.wayplan_id, actor: "wayplan_command_center" },
       });
       if (error) throw error;
-      if (data?.ok === false) throw new Error(data?.error || "Could not dispatch wayplan.");
+      if (data?.ok === false) throw new Error([data?.error || "Could not dispatch wayplan.", data?.next_step].filter(Boolean).join(" Next: "));
       setMessage(`${activeWayplan.wayplan_id} dispatched.`);
       await loadAll();
     } catch (err: any) {
@@ -571,7 +593,7 @@ export default function WayplanCommandCenterPage() {
               Select the filtered ways below, then optimize only those selected ways from <strong style={{ color: C.text }}>Britium Ventures Head Office</strong>. The route planner uses the configured Yangon Head Office origin and automatically assigns the available <strong style={{ color: C.text }}>Driver / Rider / Helper</strong> roster before Google road optimization and operator review.
             </div>
           </Card>
-          <MultiVanPlanner rows={plannerRows} region={selectedRegion} onSaved={() => void loadAll()} />
+          <MultiVanPlanner rows={plannerRows} region={selectedRegion} onSaved={handleMultiVanSaved} />
         </>}
 
         <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 360px", gap: 16 }} className="wayplan-grid">
@@ -624,7 +646,7 @@ export default function WayplanCommandCenterPage() {
           </Card>
 
           <div style={{ display: "grid", gap: 16 }}>
-            <Card>
+            <Card id="generated-wayplans">
               <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
                 <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
@@ -633,6 +655,14 @@ export default function WayplanCommandCenterPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("green")}>Dispatch</button><button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("blue")}>Complete</button><button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("plain")}>Hold</button><button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("gold")}>Reopen</button></div>
                 {!revisionSource && <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>Generate from {selectedRows.length} selected</button>}
                 <div style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 10 }}><div style={{ color: C.sub, fontSize: 11 }}>Active Wayplan</div><div style={{ color: C.gold, fontWeight: 900 }}>{activeWayplan?.wayplan_id || "-"}</div><div style={{ color: C.green, fontSize: 12 }}>{activeWayplan?.wayplan_status || "-"} / {activeWayplan?.total_stops || 0} stops / {money(activeWayplan?.total_cod)}</div></div>
+                {activeWayplan?.wayplan_status === "CREATED" && <div data-wayplan-next-process-v51="true" style={{ border: `1px solid ${C.blue}`, background: "rgba(78,168,222,0.10)", borderRadius: 14, padding: 10, fontSize: 11, lineHeight: 1.55 }}>
+                  <strong style={{ color: C.blue }}>NEXT PROCESS</strong>
+                  <div>1. Review this generated Wayplan and its manifest.</div>
+                  <div>2. Complete Supervisor approval.</div>
+                  <div>3. Complete mandatory Dispatch parcel scan.</div>
+                  <div>4. Click <strong>Dispatch</strong>. The backend blocks dispatch until approval and scanning are complete.</div>
+                  <div>5. After dispatch, Rider/Driver executes the route; live status/tracking follows the dispatched Wayplan.</div>
+                </div>}
               </div>
               <div style={{ display: "grid", gap: 8, maxHeight: 360, overflowY: "auto" }}>{wayplans.length ? wayplans.map((wp) => <button key={wp.wayplan_id} onClick={() => { cancelRevision(); setActiveWayplan(wp); }} style={{ textAlign: "left", border: `1px solid ${activeWayplan?.wayplan_id === wp.wayplan_id ? C.gold : C.border}`, background: activeWayplan?.wayplan_id === wp.wayplan_id ? "rgba(246,184,75,0.12)" : C.panel2, color: C.text, borderRadius: 14, padding: 12, cursor: "pointer" }}><div style={{ color: C.gold, fontWeight: 900 }}>{wp.wayplan_id}</div><div style={{ color: C.sub, fontSize: 11 }}>{wp.wayplan_status} / {compactDate(wp.created_at)}</div><div style={{ color: C.green, fontSize: 12 }}>{wp.total_stops || 0} stops / {money(wp.total_cod)}</div></button>) : <div style={{ color: C.sub }}>No generated wayplans yet.</div>}</div>
             </Card>
