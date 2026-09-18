@@ -85,6 +85,7 @@ const WaybillStudioPage = safeLazy(() => import("@/pages/WaybillStudioPage"));
 const WayplanCreatePage = safeLazy(() => import("@/pages/WayplanCreatePage"));
 const WayplanCommandCenterPage = safeLazy(() => import("@/pages/WayplanCommandCenterPage"));
 const WorkforceCommissionPage = safeLazy(() => import("@/pages/WorkforceCommissionPage"));
+const WorkforceManagementPage = safeLazy(() => import("@/pages/WorkforceManagementPage"));
 
 const DataEntryExcelRegisterPage = safeLazy(() => import("@/pages/DataEntryExcelRegisterPage"));
 const DataEntryPhotoCheckPage = safeLazy(() => import("@/pages/DataEntryPhotoCheckPage"));
@@ -211,6 +212,7 @@ function AppRoutes() {
             <Route path="/wayplan/create" element={<WayplanCreatePage />} />
             <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
             <Route path="/workforce-commission" element={<WorkforceCommissionPage />} />
+            <Route path="/workforce-management" element={<WorkforceManagementPage />} />
             <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
             <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
             <Route path="/ops-workflow" element={<UnifiedOperationsWorkflowPage />} />
