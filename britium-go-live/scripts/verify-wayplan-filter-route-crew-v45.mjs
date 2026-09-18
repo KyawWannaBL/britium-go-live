@@ -10,8 +10,8 @@ const planner = fs.readFileSync(path.join(root, "src", "components", "MultiVanPl
 
 assert.ok(page.includes("Select All Filtered"), "V45 must expose Select All Filtered in the queue filter area");
 assert.ok(page.includes("Clear Filtered"), "V45 must expose Clear Filtered in the queue filter area");
-assert.ok(page.includes("const plannerRows = filteredSelectedRows;"), "V45 planner input must contain only selected filtered rows");
-assert.ok(page.includes("rows={plannerRows}"), "V45 must pass selected filtered rows to the route planner");
+assert.ok(page.includes("const plannerRows = selectedRows;"), "V52 planner input must preserve all explicitly selected rows after filters collapse or change");
+assert.ok(page.includes("rows={plannerRows}"), "V52 must pass explicitly selected rows to the route planner");
 assert.ok(!page.includes("filteredSelectedRows.length ? filteredSelectedRows : filteredReadyRows"), "V45 must not silently optimize every filtered row when nothing is selected");
 assert.ok(page.includes("Britium Ventures Head Office"), "V45 must show the approved Yangon routing origin to operators");
 assert.ok(page.includes("Driver / Rider / Helper"), "V45 must tell operators that selected filtered ways receive roster assignment");
