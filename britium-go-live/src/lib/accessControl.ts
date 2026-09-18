@@ -8,6 +8,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/admin-hr', rule('hr-admin')],
   ['/audit-logs', rule('management', 'director')],
   ['/settings', rule('management', 'director')],
+  ['/workforce-management', rule('management', 'director')],
   ['/go-live-control', rule('management', 'director', 'operations-admin')],
   ['/go-live-readiness', rule('management', 'director', 'operations-admin')],
   ['/analytics', rule('management', 'director', 'operations', 'operations-admin', 'finance', 'supervisor')],
