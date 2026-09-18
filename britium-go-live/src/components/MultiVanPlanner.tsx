@@ -193,15 +193,41 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     return session.access_token;
   }
 
+  async function fetchWayplanApi(path: string, init: RequestInit, label: string) {
+    const attempts = 3;
+    let lastError: any = null;
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 45000);
+      try {
+        const response = await fetch(path, { ...init, signal: controller.signal, cache: "no-store" });
+        if (response.ok || ![502, 503, 504].includes(response.status)) return response;
+        lastError = new Error(`${label} temporarily unavailable (HTTP ${response.status}).`);
+      } catch (error: any) {
+        const message = error?.name === "AbortError"
+          ? `${label} timed out after 45 seconds.`
+          : error?.message || `${label} failed to fetch.`;
+        lastError = new Error(message);
+      } finally {
+        clearTimeout(timeoutId);
+      }
+      if (attempt < attempts) {
+        setMessage(`${label} network request failed. Retrying automatically (${attempt + 1}/${attempts})…`);
+        await new Promise((resolve) => setTimeout(resolve, 700 * attempt));
+      }
+    }
+    throw new Error(`${lastError?.message || `${label} failed to fetch.`} Please retry; your parcel selection is preserved.`);
+  }
+
   async function optimizeOne(plan: OperationalVanPlan): Promise<OperationalVanPlan> {
     if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
     if (plan.rows.length > 75) throw new Error(`${plan.master?.zoneName || "This route"} has ${plan.rows.length} stops. Split the zone operationally before road optimization because one route is limited to 75 stops.`);
     const token = await roadSession();
-    const response = await fetch("/api/wayplan-route", {
+    const response = await fetchWayplanApi("/api/wayplan-route", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ origin, stops: plan.rows }),
-    });
+    }, "Wayplan road optimizer");
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
     if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("Automatic Wayplan rejected: a real road-routing source was not available.");
@@ -301,11 +327,11 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     const usableVehicles = vehicles.filter((v) => v.available !== false);
     if (!usableVehicles.length) throw new Error("No delivery van is currently available.");
     const token = await roadSession();
-    const response = await fetch("/api/wayplan-zone-plan", {
+    const response = await fetchWayplanApi("/api/wayplan-zone-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ origin, stops: scopedRows }),
-    });
+    }, "Yangon master route planner");
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.ok) throw new Error(result?.message || result?.error || `Yangon master planning failed (${response.status}).`);
     const activeRoutes = (result.routes || []).filter((route: any) => Number(route.parcel_count || 0) > 0);
@@ -374,7 +400,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       await optimizePlans(crewed, "Stage 2/2: optimizing every active route on the actual road network…");
     } catch (e: any) {
       setPlans([]);
-      setMessage(`No automatic Wayplan was generated. ${e?.message || "Strategic road planning failed."}`);
+      setMessage(`No automatic Wayplan was generated. ${e?.message || "Strategic road planning failed."} The selected parcels remain selected; you do not need to restart the queue workflow.`);
       setBusy(false);
     }
   }
