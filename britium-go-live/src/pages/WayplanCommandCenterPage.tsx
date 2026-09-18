@@ -212,7 +212,8 @@ export default function WayplanCommandCenterPage() {
     setRevisionRemoveSelected({});
   }
 
-  async function loadAll(preferredWayplanId = "") {
+  async function loadAll(preferredWayplanId: unknown = "") {
+    const preferredId = typeof preferredWayplanId === "string" ? preferredWayplanId : "";
     setLoading(true);
     setError("");
     try {
@@ -238,8 +239,8 @@ export default function WayplanCommandCenterPage() {
       setSelected({});
       setWayplans(filteredWayplans);
       setActiveWayplan((previous) => {
-        if (preferredWayplanId) {
-          const preferred = filteredWayplans.find((wayplan) => wayplan.wayplan_id === preferredWayplanId);
+        if (preferredId) {
+          const preferred = filteredWayplans.find((wayplan) => wayplan.wayplan_id === preferredId);
           if (preferred) return preferred;
         }
         if (previous?.wayplan_id) {
