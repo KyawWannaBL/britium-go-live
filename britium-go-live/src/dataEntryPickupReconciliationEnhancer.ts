@@ -6,6 +6,7 @@ import {
 } from "@/lib/pickupReconciliation";
 
 const PANEL_ID = "britium-pickup-reconciliation-panel";
+const RECONCILIATION_TOGGLE_ID = "britium-pickup-reconciliation-toggle";
 const FILE_INPUT_ID = "britium-pickup-reconciliation-upload";
 const LEGACY_TEXT = "DOWNLOAD UNRESOLVED ROWS";
 const CHUNK_SIZE = 50;
@@ -247,15 +248,46 @@ function makeButton(label: string, onClick: () => void | Promise<void>): HTMLBut
   return button;
 }
 
+function toggleReconciliationPanel(open?: boolean): void {
+  const panel = document.getElementById(PANEL_ID);
+  const toggle = document.getElementById(RECONCILIATION_TOGGLE_ID) as HTMLButtonElement | null;
+  if (!panel) return;
+  const shouldOpen = open ?? panel.style.display === "none";
+  panel.style.display = shouldOpen ? "block" : "none";
+  toggle?.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function createReconciliationToggle(): HTMLButtonElement {
+  const button = document.createElement("button");
+  button.id = RECONCILIATION_TOGGLE_ID;
+  button.type = "button";
+  button.textContent = "PICKUP RECONCILIATION";
+  button.setAttribute("aria-expanded", "false");
+  button.style.cssText = "position:fixed;right:18px;bottom:66px;z-index:2147482999;border:1px solid rgba(251,191,36,.65);background:#071b2b;color:#fbbf24;border-radius:999px;padding:10px 14px;font:900 10px/1.2 system-ui;letter-spacing:.08em;box-shadow:0 10px 30px rgba(0,0,0,.32);cursor:pointer";
+  button.addEventListener("click", () => toggleReconciliationPanel());
+  return button;
+}
+
 function createPanel(): HTMLElement {
   const panel = document.createElement("aside");
   panel.id = PANEL_ID;
-  panel.style.cssText = "position:fixed;right:18px;bottom:18px;z-index:2147483000;max-width:min(680px,calc(100vw - 36px));background:#071b2b;border:1px solid rgba(251,191,36,.55);box-shadow:0 16px 50px rgba(0,0,0,.4);border-radius:12px;padding:12px;color:white;font-family:system-ui";
+  panel.style.cssText = "position:fixed;right:18px;bottom:112px;z-index:2147483000;max-width:min(680px,calc(100vw - 36px));background:#071b2b;border:1px solid rgba(251,191,36,.55);box-shadow:0 16px 50px rgba(0,0,0,.4);border-radius:12px;padding:12px;color:white;font-family:system-ui";
+  panel.style.display = "none";
 
+  const header = document.createElement("div");
+  header.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px";
   const title = document.createElement("div");
   title.textContent = "PICKUP RECONCILIATION";
-  title.style.cssText = "font:900 11px/1.2 system-ui;letter-spacing:.12em;color:#fbbf24;margin-bottom:8px";
-  panel.appendChild(title);
+  title.style.cssText = "font:900 11px/1.2 system-ui;letter-spacing:.12em;color:#fbbf24";
+  header.appendChild(title);
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.textContent = "×";
+  closeButton.setAttribute("aria-label", "Close Pickup Reconciliation");
+  closeButton.style.cssText = "border:1px solid rgba(148,163,184,.45);background:#102536;color:white;border-radius:7px;padding:3px 8px;font:900 15px/1 system-ui;cursor:pointer";
+  closeButton.addEventListener("click", () => toggleReconciliationPanel(false));
+  header.appendChild(closeButton);
+  panel.appendChild(header);
 
   const actions = document.createElement("div");
   actions.style.cssText = "display:flex;gap:8px;flex-wrap:wrap;align-items:center";
@@ -301,15 +333,21 @@ function reconcileDom(): void {
   scheduled = false;
   const active = hideLegacyJsonButton();
   let panel = document.getElementById(PANEL_ID);
+  let toggle = document.getElementById(RECONCILIATION_TOGGLE_ID);
   if (!active) {
     if (panel) panel.style.display = "none";
+    if (toggle) toggle.style.display = "none";
     return;
   }
+  if (!toggle) {
+    toggle = createReconciliationToggle();
+    document.body.appendChild(toggle);
+  }
+  toggle.style.display = "block";
   if (!panel) {
     panel = createPanel();
     document.body.appendChild(panel);
   }
-  panel.style.display = "block";
 }
 
 function scheduleDomReconcile(): void {
