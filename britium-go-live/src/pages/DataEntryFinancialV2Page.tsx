@@ -860,6 +860,7 @@ function BritiumQuickTools() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [customPickupId, setCustomPickupId] = useState('');
+  const [quickToolsOpen,setQuickToolsOpen]=useState(false);
   
   const geocodeInputRef = useRef<HTMLInputElement>(null);
   const convertInputRef = useRef<HTMLInputElement>(null);
@@ -1036,10 +1037,31 @@ function BritiumQuickTools() {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[9999] flex flex-col gap-2 rounded-xl border border-[#2b6388] bg-[#0c1e2c] p-4 shadow-2xl w-72">
-      <div className="mb-1 text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">
-        Data Processing Tools
-      </div>
+    <>
+      <button
+        type="button"
+        data-quick-tools-toggle="true"
+        aria-expanded={quickToolsOpen}
+        onClick={()=>setQuickToolsOpen((open)=>!open)}
+        className="fixed bottom-6 right-6 z-[9998] rounded-full border border-[#2b6388] bg-[#0c1e2c] px-4 py-2.5 text-[11px] font-black text-[#f6b84b] shadow-xl hover:bg-[#12314a]"
+      >
+        {quickToolsOpen ? "CLOSE DATA TOOLS" : "DATA TOOLS"}
+      </button>
+      {quickToolsOpen?(
+      <div className="fixed bottom-20 right-6 z-[9999] flex w-72 flex-col gap-2 rounded-xl border border-[#2b6388] bg-[#0c1e2c] p-4 shadow-2xl">
+        <div className="mb-1 flex items-center justify-between gap-3">
+          <div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">
+            Data Processing Tools
+          </div>
+          <button
+            type="button"
+            aria-label="Close Data Processing Tools"
+            onClick={()=>setQuickToolsOpen(false)}
+            className="rounded-md border border-[#2b6388] px-2 py-1 text-xs font-black text-white hover:bg-[#12314a]"
+          >
+            ×
+          </button>
+        </div>
       
       <div className="flex flex-col gap-1 mb-2">
         <label className="text-[10px] font-bold text-[#8db4ce]">Remarkable Name (Bulk Container ID)</label>
@@ -1075,7 +1097,9 @@ function BritiumQuickTools() {
           {statusText}
         </div>
       )}
-    </div>
+      </div>
+      ):null}
+    </>
   );
 }
 
