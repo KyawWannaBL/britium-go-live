@@ -149,6 +149,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "System & HR",
     links: [
       { name: "Admin / HR", path: "/admin-hr", icon: Users },
+      { name: "Workforce Management", path: "/workforce-management", icon: UserCheck },
       { name: "Accounts", path: "/accounts", icon: Users },
       { name: "Profile", path: "/profile", icon: User },
       { name: "Audit Logs", path: "/audit-logs", icon: ClipboardList },
