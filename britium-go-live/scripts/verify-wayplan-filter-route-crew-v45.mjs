@@ -18,7 +18,7 @@ assert.ok(page.includes("Driver / Rider / Helper"), "V45 must tell operators tha
 
 assert.ok(planner.includes("const origin = context?.route_origins?.[region];"), "V45 must keep routing tied to the configured branch origin");
 assert.ok(planner.includes("assignCrews(strategic, drivers, riders, helpers"), "V45 must auto-assign Driver/Rider/Helper after filtered route allocation");
-assert.ok(planner.includes('fetch("/api/wayplan-route"'), "V45 must keep actual road optimization through the production road-routing endpoint");
+assert.ok(planner.includes('fetch("/api/wayplan-route"') || planner.includes('fetchWayplanApi("/api/wayplan-route"'), "V45 must keep actual road optimization through the production road-routing endpoint");
 assert.ok(planner.includes("driver_code"), "V45 must preserve Driver assignment in route plans");
 assert.ok(planner.includes("rider_code"), "V45 must preserve Rider assignment in route plans");
 assert.ok(planner.includes("helper_code"), "V45 must preserve Helper assignment in route plans");
