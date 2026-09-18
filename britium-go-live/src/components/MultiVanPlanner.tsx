@@ -59,7 +59,7 @@ function googleMapSegments(origin: any, rows: Stop[]) {
   return output;
 }
 
-export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[]; region: string; onSaved: () => void }) {
+export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[]; region: string; onSaved: (result: any) => void | Promise<void> }) {
   const [context, setContext] = useState<any>(null);
   const [plans, setPlans] = useState<OperationalVanPlan[]>([]);
   const [pickup, setPickup] = useState("*");
@@ -308,7 +308,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       return;
     }
     setBusy(true);
-    setMessage("");
+    setMessage(`Creating ${plans.length} reviewed Wayplan${plans.length === 1 ? "" : "s"} for ${plans.reduce((sum, plan) => sum + plan.rows.length, 0)} parcels…`);
     const payload = {
       region_code: region,
       planning_mode: isYangonMaster ? "YANGON_MASTER_MULTI_TRIP" : "STANDARD_50_75",
@@ -344,17 +344,26 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     };
     const body = JSON.stringify(payload);
     if (request.current?.body !== body) request.current = { body, id: crypto.randomUUID() };
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
-      const { data, error } = await supabase.rpc("be_generate_multi_van_v43", { p_payload: { ...payload, request_id: request.current!.id } });
+      const rpcRequest = supabase.rpc("be_generate_multi_van_v43", { p_payload: { ...payload, request_id: request.current!.id } });
+      const timeoutRequest = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error("No response from Wayplan creation after 60 seconds. The request ID is preserved, so retrying will not create duplicates.")), 60000);
+      });
+      const { data, error } = await Promise.race([rpcRequest, timeoutRequest]) as any;
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || "Wayplan creation failed.");
-      setMessage(`${data.wayplans.length} road-reviewed Wayplans created for ${data.parcel_count} parcels across ${data.wave_count || 1} fleet wave(s), with immutable generated route versions and Warehouse LIFO snapshots.`);
+
+      const createdWayplans = Array.isArray(data.wayplans) ? data.wayplans : [];
+      const createdIds = createdWayplans.map((wayplan: any) => String(wayplan?.wayplan_id || "")).filter(Boolean);
+      setMessage(`${createdWayplans.length} road-reviewed Wayplan${createdWayplans.length === 1 ? "" : "s"} created for ${data.parcel_count || 0} parcels across ${data.wave_count || 1} fleet wave(s). Next: review the CREATED Wayplan/manifest, complete Supervisor approval + mandatory Dispatch scan, then publish Dispatch.`);
       setPlans([]);
       request.current = null;
-      onSaved();
+      await onSaved({ ...data, created_wayplan_ids: createdIds });
     } catch (e: any) {
-      setMessage(`${e.message} Retry uses the same request to avoid duplicate Wayplans.`);
+      setMessage(`Wayplan creation failed: ${e?.message || "Unknown error."} The reviewed routes are still on screen. Correct the issue and retry; the same request ID prevents duplicate Wayplans.`);
     } finally {
+      if (timeoutId) clearTimeout(timeoutId);
       setBusy(false);
     }
   }
@@ -438,6 +447,6 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     {short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one route below 50 parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
     {short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below 50 parcels. Reassign or hold low-volume parcels before creation.</p>}
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
-    <button style={button} disabled={cannotSave} onClick={save}>Create reviewed Wayplans</button>
+    <button style={button} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : "Create reviewed Wayplans"}</button>
   </section>;
 }
