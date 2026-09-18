@@ -41,7 +41,7 @@ function routeLabel(plan: VanPlan) {
   const source = String(plan.route?.source || "");
   if (source === "OPERATOR_EDITED") return `Operator-edited route · based on ${String(plan.route?.base_source || "existing road plan").replaceAll("_", " ")}`;
   if (source === "GOOGLE_ROUTES") return "Google Routes road optimized";
-  if (source === "MAPBOX_FALLBACK") return "Mapbox road optimized fallback";
+  if (source === "MAPBOX_FALLBACK") return "Mapbox road optimized";
   return "Road route pending";
 }
 
@@ -394,7 +394,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     </> : <>
       <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway fleets remain reserved by Fleet Master role.</p>
     </>}
-    <p style={{ margin: 0 }}>Straight-line/geographic fallback is not accepted for automatic Wayplan creation. Google Routes is primary; Mapbox may be used only as a road-based fallback. Review each active route on the whole-route map before creation.</p>
+    <p style={{ margin: 0 }}>Straight-line/geographic fallback is not accepted for automatic Wayplan creation. Temporary billing-safe mode uses Mapbox road routing first; Google Routes remains available as recovery and can be restored as primary later. Review each active route on the whole-route map before creation.</p>
 
     <div data-wayplan-selection-summary-v52="true" style={{ border: "1px solid #38566b", borderRadius: 10, padding: 10, background: "#102b45" }}>
       <strong>{rows.length} selected parcel{rows.length === 1 ? "" : "s"} · {pickupBatches.length} pickup batch{pickupBatches.length === 1 ? "" : "es"} detected</strong>
