@@ -233,7 +233,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
 
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       <button style={button} disabled={busy || !context || !rows.length || rows.length > 75} onClick={prepareRevision}>{busy ? "Optimizing…" : "Optimize revised route + assign crew"}</button>
-      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · road routing required (Google primary, Mapbox fallback)</span>
+      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · road routing required (temporary Mapbox-first billing-safe mode; Google recovery available)</span>
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
