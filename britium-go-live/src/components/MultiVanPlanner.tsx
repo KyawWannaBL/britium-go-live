@@ -29,6 +29,14 @@ type MasterMeta = {
 
 type OperationalVanPlan = VanPlan & { master?: MasterMeta };
 
+function pickupBatchId(row: any) {
+  const direct = String(row?.pickup_id || row?.pickup_way_id || row?.metadata?.pickup_id || "").trim();
+  if (direct) return direct;
+  const deliveryWayId = String(row?.delivery_way_id || "").trim();
+  const match = deliveryWayId.match(/^(P\d{4}-[A-Z0-9]+-\d+)-\d+$/i);
+  return match?.[1] || "";
+}
+
 function routeLabel(plan: VanPlan) {
   const source = String(plan.route?.source || "");
   if (source === "OPERATOR_EDITED") return `Operator-edited route · based on ${String(plan.route?.base_source || "existing road plan").replaceAll("_", " ")}`;
@@ -63,8 +71,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   const [context, setContext] = useState<any>(null);
   const [plans, setPlans] = useState<OperationalVanPlan[]>([]);
   const [pickup, setPickup] = useState("*");
-  const currentPickup = pickup;
-  const scopedRows = currentPickup === "*" ? rows : rows.filter((r) => String(r.pickup_id || "") === currentPickup);
+  const pickupBatches = Array.from(new Set(rows.map((row) => pickupBatchId(row)).filter(Boolean))).sort();
+  const currentPickup = pickupBatches.includes(pickup) ? pickup : "*";
+  const scopedRows = currentPickup === "*" ? rows : rows.filter((row) => pickupBatchId(row) === currentPickup);
   const [count, setCount] = useState("");
   const [reason, setReason] = useState("");
   const [approved, setApproved] = useState(false);
@@ -76,6 +85,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     setPlans([]);
     setApproved(false);
     setReason("");
+    setPickup((current) => current !== "*" && !rows.some((row) => pickupBatchId(row) === current) ? "*" : current);
     setContext(null);
     let alive = true;
     supabase.rpc("be_multi_van_context").then(({ data, error }) => {
@@ -379,17 +389,22 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <h2 style={{ margin: 0 }}>{isYangonMaster ? "Yangon Van Assignment Master · road optimized" : "Strategic road-based delivery van planning"}</h2>
     {isYangonMaster ? <>
-      <p style={{ margin: 0 }}>East Dagon Logistics Center balances compatible Yangon volume into the <strong>50–75 parcels per route</strong> operating band, then assigns those routes across the active delivery fleet in sequential waves. A vehicle can run another trip only in a later wave.</p>
+      <p style={{ margin: 0 }}>Yangon Head Office planning balances compatible Yangon volume into the <strong>50–75 parcels per route</strong> operating band, then assigns those routes across the active delivery fleet in sequential waves. A vehicle can run another trip only in a later wave.</p>
       <p style={{ margin: 0 }}>The Hlaing River hard fence remains isolated, Downtown is never merged with East Suburbs, and Dala/Seikkyi Kanaungto remain outside Britium van planning.</p>
     </> : <>
       <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway fleets remain reserved by Fleet Master role.</p>
     </>}
     <p style={{ margin: 0 }}>Straight-line/geographic fallback is not accepted for automatic Wayplan creation. Google Routes is primary; Mapbox may be used only as a road-based fallback. Review each active route on the whole-route map before creation.</p>
 
+    <div data-wayplan-selection-summary-v52="true" style={{ border: "1px solid #38566b", borderRadius: 10, padding: 10, background: "#102b45" }}>
+      <strong>{rows.length} selected parcel{rows.length === 1 ? "" : "s"} · {pickupBatches.length} pickup batch{pickupBatches.length === 1 ? "" : "es"} detected</strong>
+      <div style={{ marginTop: 4, fontSize: 12 }}>{rows.length ? (pickupBatches.length ? "Pickup batches are resolved from pickup_id / pickup_way_id and legacy consolidated IDs." : "No pickup batch reference is attached to the selected parcels; planning can still use All selected pickups, but the source data should be reviewed.") : "Select parcels from the Ready for Wayplan queue first."}</div>
+    </div>
+
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <label>Pickup batch <select style={field} value={currentPickup} disabled={busy} onChange={(e) => { setPickup(e.target.value); reset(); }}><option value="*">All ready pickups</option>{Array.from(new Set(rows.map((r) => String(r.pickup_id || "")))).filter(Boolean).map((id) => <option key={id} value={id}>{id}</option>)}</select></label>
+      <label>Pickup batch <select style={field} value={currentPickup} disabled={busy || !rows.length} onChange={(e) => { setPickup(e.target.value); reset(); }}><option value="*">All selected pickups ({rows.length})</option>{pickupBatches.map((id) => <option key={id} value={id}>{id} ({rows.filter((row) => pickupBatchId(row) === id).length})</option>)}</select></label>
       {!isYangonMaster && <label>Vans to use <select style={field} value={count} disabled={busy} onChange={(e) => { setCount(e.target.value); reset(); }}><option value="">Automatic - practical van count</option>{vehicles.filter((v) => v.available).map((_, i) => <option key={i} value={i + 1}>{i + 1}</option>)}</select></label>}
-      <button style={button} disabled={busy || !context || !scopedRows.length || !origin} onClick={preview}>{busy ? "Planning road routes…" : isYangonMaster ? "Generate Yangon master plan" : "Generate strategic road plan"}</button>
+      <button style={button} disabled={busy || !context || !scopedRows.length || !origin} onClick={preview}>{busy ? "Planning road routes…" : isYangonMaster ? "Generate reviewed Yangon route plan" : "Generate reviewed route plan"}</button>
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}

@@ -101,7 +101,6 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
-    if (region === "YANGON" && String(result.source || "") !== "GOOGLE_ROUTES") throw new Error("Yangon Wayplan revision requires Google Routes; fallback routing is not accepted.");
     if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("A real road-routing source is required before saving a revision.");
     const byId = new Map(inputPlan.rows.map((row) => [String(row.delivery_way_id), row]));
     const ordered = (result.ordered_stops || []).map((row: any) => byId.get(String(row.delivery_way_id))).filter(Boolean) as Stop[];
@@ -147,7 +146,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
       const preferred = preferSourceCrew(crewed[0]);
       const optimized = await optimizeOne(preferred);
       setPlan(optimized);
-      setMessage(`Revision ready for review: ${optimized.rows.length} ways · Google road optimized · Driver/Rider/Helper assigned. No dispatch has occurred.`);
+      setMessage(`Revision ready for review: ${optimized.rows.length} ways · ${optimized.route?.source || "road route"} · Driver/Rider/Helper assigned. No dispatch has occurred.`);
     } catch (e: any) {
       setPlan(null);
       setMessage(e?.message || "Revision planning failed.");
@@ -234,7 +233,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
 
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       <button style={button} disabled={busy || !context || !rows.length || rows.length > 75} onClick={prepareRevision}>{busy ? "Optimizing…" : "Optimize revised route + assign crew"}</button>
-      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · Google Routes required for Yangon</span>
+      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · road routing required (Google primary, Mapbox fallback)</span>
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}

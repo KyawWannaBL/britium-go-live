@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 type Props = {
   label: string;
@@ -26,6 +26,23 @@ const control: React.CSSProperties = {
 export default function MultiSelectQueueFilter({ label, allLabel, options, values, onChange, filterKey }: Props) {
   const selected = new Set(values);
   const summary = values.length === 0 ? allLabel : values.length === 1 ? values[0] : `${values.length} selected`;
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function outside(event: MouseEvent) {
+      if (root.current && !root.current.contains(event.target as Node)) setOpen(false);
+    }
+    function escape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, []);
 
   function toggle(value: string) {
     if (selected.has(value)) onChange(values.filter((item) => item !== value));
@@ -33,10 +50,19 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
   }
 
   return (
-    <div style={{ color: "#9cc2d9", fontSize: 11 }}>
+    <div ref={root} style={{ color: "#9cc2d9", fontSize: 11, position: "relative" }}>
       <div style={{ marginBottom: 2 }}>{label}</div>
-      <details data-wayplan-multiselect-filter={filterKey} style={{ position: "relative" }}>
-        <summary aria-label={`${label} filter: ${summary}`} style={control}>{summary}</summary>
+      <button
+        type="button"
+        data-wayplan-multiselect-filter={filterKey}
+        aria-expanded={open}
+        aria-label={`${label} filter: ${summary}`}
+        onClick={() => setOpen((value) => !value)}
+        style={{ ...control, textAlign: "left" }}
+      >
+        {summary} <span style={{ float: "right" }}>{open ? "▲" : "▼"}</span>
+      </button>
+      {open && (
         <div
           style={{
             position: "absolute",
@@ -45,7 +71,7 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
             left: 0,
             width: "100%",
             minWidth: 220,
-            maxHeight: 280,
+            maxHeight: 300,
             overflowY: "auto",
             border: "1px solid #1a3a5c",
             borderRadius: 12,
@@ -56,7 +82,7 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
         >
           <button
             type="button"
-            onClick={() => onChange([])}
+            onClick={() => { onChange([]); setOpen(false); }}
             style={{
               width: "100%",
               border: "1px solid #1a3a5c",
@@ -78,8 +104,25 @@ export default function MultiSelectQueueFilter({ label, allLabel, options, value
               <span>{option}</span>
             </label>
           ))}
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            style={{
+              width: "100%",
+              border: "1px solid #f6b84b",
+              borderRadius: 8,
+              background: "#f6b84b",
+              color: "#061524",
+              padding: "8px 10px",
+              cursor: "pointer",
+              fontWeight: 900,
+              marginTop: 6,
+            }}
+          >
+            Apply & Close
+          </button>
         </div>
-      </details>
+      )}
     </div>
   );
 }
