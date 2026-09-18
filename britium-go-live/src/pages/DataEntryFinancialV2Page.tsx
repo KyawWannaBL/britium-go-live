@@ -136,6 +136,8 @@ type ParcelRow = {
   photoRejectionReason: string;
   photoRejectionNote: string;
   photoReviewBusy: boolean;
+  photoTemporaryWaiver: boolean;
+  photoTemporaryWaiverReason: string;
   isAdditionalRegistration: boolean;
   importedFromOs: boolean;
   sourceFileName: string;
@@ -381,6 +383,8 @@ function parcelRowFromProof(
   const importedFromOs=Boolean(
     proof.source_file_name||proof.os_imported_at||proof.financial_quote?.os_softcopy_import
   );
+  const temporaryPhotoWaiver=Boolean(proof.raw_payload?.temporary_photo_waiver);
+  const temporaryPhotoWaiverReason=text(proof.raw_payload?.temporary_photo_waiver_reason);
   const photoEvidenceMode:ParcelRow["photoEvidenceMode"]=storedPhotoMode==="OS_SOFTCOPY"?"OS_SOFTCOPY":"PICKER_PHOTO";
   return {
     pickup_id:pickup.pickup_id,
@@ -415,12 +419,14 @@ function parcelRowFromProof(
       legacyOpaque?"Legacy unclassified COD was converted to Exact Collection Amount; the total amount is unchanged.":"",
       legacyAdditional>0?`Legacy additional customer charge ${money(legacyAdditional)} is retired and will be reset to 0 on the next save.`:"",
     ].filter(Boolean).join(" "),
-    photoReviewed:["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED","RIDER_VERIFIED"].includes(proofReviewStatus),
+    photoReviewed:temporaryPhotoWaiver||["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED","RIDER_VERIFIED"].includes(proofReviewStatus),
     photoUnavailableAcknowledged:photoEvidenceMode==="OS_SOFTCOPY",
-    photoReviewStatus:proofReviewStatus,
+    photoReviewStatus:temporaryPhotoWaiver?"TEMPORARY_WAIVER":proofReviewStatus,
     photoRejectionReason:text(proof.rejection_reason),
     photoRejectionNote:text(proof.review_note),
     photoReviewBusy:false,
+    photoTemporaryWaiver:temporaryPhotoWaiver,
+    photoTemporaryWaiverReason:temporaryPhotoWaiverReason||"No order picker currently available",
     isAdditionalRegistration:sequence>requestedParcelCount(pickup),
     importedFromOs,
     sourceFileName:text(proof.source_file_name||proof.financial_quote?.os_source_file_name),
@@ -572,7 +578,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -617,6 +623,13 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
           <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
         </div>
+      ) : row.photoTemporaryWaiver ? (
+        <div data-temporary-photo-waiver-v54="true" className="mb-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4 text-[11px] text-amber-100">
+          <div className="font-black uppercase tracking-wider">Temporary photo-verification waiver active</div>
+          <div className="mt-1">Data Entry may continue without a picker photo for this parcel. This exception is audit-recorded and can be revoked when order pickers are available again.</div>
+          <div className="mt-2"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
+          <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
+        </div>
       ) : row.proof_url ? (
         <>
           <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="mb-4 flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
@@ -641,7 +654,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       ) : <div className="mb-4 rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]"><ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists for this parcel."} <a href="#/data-entry-photo" className="ml-2 font-black underline">Open Photo Check</a></div>}
 
-      {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged?<div
+      {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver?<div
         data-photo-review="true"
         className="mb-4 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-4"
       >
@@ -712,9 +725,27 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
         {!row.photoReviewed ? (
           <div className="mt-3 rounded-lg border border-[#f6b84b]/25 bg-[#f6b84b]/10 px-3 py-2 text-[10px] text-[#ffd98a]">
-            Approve the photo before Save. A rejected or unavailable image must be re-uploaded by the rider.
+            Approve the photo before Save, or use the temporary operational waiver below while order pickers are unavailable.
           </div>
         ) : null}
+        <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
+          <div className="text-[10px] font-black uppercase tracking-wider text-amber-200">Temporary operational waiver</div>
+          <div className="mt-1 text-[10px] text-amber-100">Use only while no order picker is available. The parcel remains audit-traceable and normal photo verification can be restored later.</div>
+          <input
+            className="mt-2 w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white"
+            value={row.photoTemporaryWaiverReason||""}
+            onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})}
+            placeholder="Reason for temporary photo waiver"
+          />
+          <button
+            type="button"
+            disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10}
+            onClick={()=>togglePhotoWaiver(index,true)}
+            className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50"
+          >
+            Temporarily Skip Photo Verification
+          </button>
+        </div>
       </div>:null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -1188,12 +1219,13 @@ export default function DataEntryFinancialV2Page() {
       return updated;
     });
   },[]);
-  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto,toggleSkip});
-  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto,toggleSkip};});
+  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip});
+  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip};});
   const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
   const skipEditorRow=useCallback((index:number)=>rowActionsRef.current.toggleSkip(index),[]);
   const saveEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveRow(...args),[]);
   const reviewEditorPhoto=useCallback((...args:any[])=>rowActionsRef.current.reviewPhoto(...args),[]);
+  const toggleEditorPhotoWaiver=useCallback((...args:any[])=>rowActionsRef.current.togglePhotoWaiver(...args),[]);
 
   async function loadStartup(){
     setLoading(true); setMessage("");
@@ -1419,6 +1451,40 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
+  async function togglePhotoWaiver(index:number, enabled:boolean){
+    const row=rows[index]; if(!row) return;
+    const reason=String(row.photoTemporaryWaiverReason||"").trim();
+    if(enabled && reason.length<10){
+      updateRow(index,{message:"Enter a clear reason of at least 10 characters before temporarily skipping photo verification."});
+      return;
+    }
+    updateRow(index,{photoReviewBusy:true,message:""});
+    try{
+      const response=await (supabase as any).rpc("be_data_entry_photo_waiver_v54",{p_payload:{
+        action:enabled?"WAIVE":"CLEAR",
+        pickup_id:row.pickup_id,
+        parcel_sequence:row.parcel_sequence,
+        delivery_way_id:row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence),
+        reason:enabled?reason:null,
+      }});
+      if(response.error) throw response.error;
+      if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||"Temporary photo waiver failed.");
+      updateRow(index,{
+        photoReviewBusy:false,
+        photoTemporaryWaiver:enabled,
+        photoTemporaryWaiverReason:enabled?reason:"No order picker currently available",
+        photoReviewStatus:enabled?"TEMPORARY_WAIVER":"PENDING_REVIEW",
+        photoReviewed:enabled,
+        photoUnavailableAcknowledged:false,
+        message:enabled
+          ?"Temporary photo-verification waiver recorded. Save can proceed; restore normal verification when order pickers are available."
+          :"Temporary waiver revoked. Normal photo approval is required again before Save."
+      });
+    }catch(error:any){
+      updateRow(index,{photoReviewBusy:false,message:error?.message||"Temporary photo waiver failed."});
+    }
+  }
+
   async function reviewPhoto(index:number, action:"APPROVE"|"REJECT"){
     const row=rows[index]; if(!row) return;
     if(action==="REJECT" && !row.photoRejectionReason){
@@ -1444,6 +1510,7 @@ export default function DataEntryFinancialV2Page() {
         photoReviewStatus:status,
         photoReviewed:status==="APPROVED",
         photoUnavailableAcknowledged:false,
+        photoTemporaryWaiver:false,
         message:status==="APPROVED"
           ?"Photo approved. Validate Save is now available."
           :"Rejected. Re-upload request sent to the assigned rider."
@@ -1797,6 +1864,8 @@ export default function DataEntryFinancialV2Page() {
         photoReviewed:importPayload.skipPhotoReview?false:existing.photoReviewed,
         photoUnavailableAcknowledged:importPayload.skipPhotoReview,
         photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
+        photoTemporaryWaiver:false,
+        photoTemporaryWaiverReason:"No order picker currently available",
         isAdditionalRegistration:sequence>requestedParcelCount(pickup),
         importedFromOs:true,
         sourceFileName:importPayload.fileName,
@@ -2485,7 +2554,7 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
         {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
           <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">
