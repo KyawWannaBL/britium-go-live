@@ -18,8 +18,8 @@ assert.ok(!beginRevisionSource.includes("setSelected({});"), "Starting a revisio
 assert.ok(page.includes('data-wayplan-revision-actions-v47="true"'), "Revision Add/Remove controls must be visible beside Generated Wayplans");
 assert.ok(page.includes("Add Selected ("), "V47 must expose Add Selected in the visible revision actions");
 assert.ok(page.includes("Delete Generated Wayplan"), "V47 must expose a pre-dispatch delete action");
-assert.ok(page.includes("be_delete_created_wayplan_v47"), "Delete action must use the guarded V47 RPC");
-assert.ok(page.includes("Delete ${activeWayplan.wayplan_id} and return its ways to READY?"), "Delete must require explicit operator confirmation");
+assert.ok(page.includes("be_delete_created_wayplan_v55") || page.includes("be_delete_created_wayplan_v47"), "Delete action must use the guarded V47/V55 RPC chain");
+assert.ok(page.includes("Permanently delete ${activeWayplan.wayplan_id}") || page.includes("Delete ${activeWayplan.wayplan_id} and return its ways to READY?"), "Delete must require explicit operator confirmation");
 assert.ok(page.includes('activeWayplan?.wayplan_status === "CREATED"'), "Delete must be gated to CREATED Wayplans in the UI");
 
 assert.ok(fs.existsSync(migrationPath), "V47 delete migration must exist");

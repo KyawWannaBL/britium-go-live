@@ -14,7 +14,65 @@ function optimizeMatrix(durations,distances){const count=durations.length,remain
 function parseGoogleMatrix(text){try{const parsed=JSON.parse(text);return Array.isArray(parsed)?parsed:[parsed];}catch{return text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>JSON.parse(line));}}
 function googleWaypoint(p){return{waypoint:{location:{latLng:{latitude:p.latitude,longitude:p.longitude}}}};}
 async function googleMatrix(points,apiKey){const n=points.length,durations=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY)),distances=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));for(let i=0;i<n;i+=1){durations[i][i]=0;distances[i][i]=0;}let requestCount=0;for(let oi=0;oi<n;oi+=GOOGLE_BATCH){const origins=points.slice(oi,oi+GOOGLE_BATCH);for(let di=0;di<n;di+=GOOGLE_BATCH){const destinations=points.slice(di,di+GOOGLE_BATCH);requestCount+=1;const response=await fetch(GOOGLE_MATRIX_URL,{method:"POST",headers:{"Content-Type":"application/json","X-Goog-Api-Key":apiKey,"X-Goog-FieldMask":"originIndex,destinationIndex,status,condition,distanceMeters,duration"},body:JSON.stringify({origins:origins.map(googleWaypoint),destinations:destinations.map(googleWaypoint),travelMode:"DRIVE",routingPreference:"TRAFFIC_AWARE",units:"METRIC"})});const body=await response.text();if(!response.ok)throw new Error(`Google Routes matrix failed (${response.status}): ${body.slice(0,220)}`);for(const element of parseGoogleMatrix(body)){const originIndex=oi+Number(element.originIndex),destinationIndex=di+Number(element.destinationIndex);if(!Number.isInteger(originIndex)||!Number.isInteger(destinationIndex))continue;const statusCode=Number(element?.status?.code||0);if(statusCode!==0||String(element?.condition||"ROUTE_EXISTS")==="ROUTE_NOT_FOUND")continue;const duration=seconds(element.duration),distance=Number(element.distanceMeters);if(Number.isFinite(duration)&&Number.isFinite(distance)){durations[originIndex][destinationIndex]=duration;distances[originIndex][destinationIndex]=distance;}}}}return{durations,distances,requestCount};}
-async function mapboxMatrix(points,token){const n=points.length,durations=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY)),distances=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));for(let i=0;i<n;i+=1){durations[i][i]=0;distances[i][i]=0;}let requestCount=0;for(let oi=0;oi<n;oi+=MAPBOX_BATCH){const origins=points.slice(oi,oi+MAPBOX_BATCH);for(let di=0;di<n;di+=MAPBOX_BATCH){const destinations=points.slice(di,di+MAPBOX_BATCH),combined=[...origins,...destinations],sourceIndexes=origins.map((_,i)=>i).join(";"),destinationIndexes=destinations.map((_,i)=>origins.length+i).join(";"),coordinates=combined.map(p=>`${p.longitude},${p.latitude}`).join(";");requestCount+=1;const response=await fetch(`${MAPBOX_MATRIX_BASE}/${coordinates}?sources=${sourceIndexes}&destinations=${destinationIndexes}&annotations=duration,distance&access_token=${encodeURIComponent(token)}`);const body=await response.json().catch(()=>({}));if(!response.ok||body?.code!=="Ok")throw new Error(`Mapbox road matrix failed (${response.status}): ${String(body?.message||body?.code||"unknown error")}`);for(let i=0;i<origins.length;i+=1)for(let j=0;j<destinations.length;j+=1){const duration=Number(body?.durations?.[i]?.[j]),distance=Number(body?.distances?.[i]?.[j]);if(Number.isFinite(duration)&&Number.isFinite(distance)){durations[oi+i][di+j]=duration;distances[oi+i][di+j]=distance;}}}}return{durations,distances,requestCount};}
+async function mapboxMatrix(points,token){
+  const n=points.length;
+  const durations=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));
+  const distances=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));
+  for(let i=0;i<n;i+=1){durations[i][i]=0;distances[i][i]=0;}
+  let requestCount=0;
+
+  for(let oi=0;oi<n;oi+=MAPBOX_BATCH){
+    const originIndices=Array.from({length:Math.min(MAPBOX_BATCH,n-oi)},(_,i)=>oi+i);
+    for(let di=0;di<n;di+=MAPBOX_BATCH){
+      const destinationIndices=Array.from({length:Math.min(MAPBOX_BATCH,n-di)},(_,i)=>di+i);
+
+      // A 1x1 diagonal cell is already known to be zero and Mapbox rejects
+      // one-element matrices. Do not call the API for that cell.
+      if(originIndices.length===1 && destinationIndices.length===1 && originIndices[0]===destinationIndices[0]) continue;
+
+      const requestOrigins=[...originIndices];
+      const requestDestinations=[...destinationIndices];
+
+      // Mapbox Matrix requires at least two matrix elements. Large Wayplans
+      // can leave a final 1x1 batch (for example 60/72 stops + the branch
+      // origin), so pad that request with one harmless extra destination.
+      if(requestOrigins.length*requestDestinations.length<2){
+        const used=requestDestinations[0];
+        const auxiliary=Array.from({length:n},(_,index)=>index).find((index)=>index!==used);
+        if(auxiliary==null) throw new Error("Mapbox routing needs at least two distinct route points.");
+        requestDestinations.push(auxiliary);
+      }
+
+      const uniqueIndices=[];
+      for(const index of [...requestOrigins,...requestDestinations]){
+        if(!uniqueIndices.includes(index)) uniqueIndices.push(index);
+      }
+      const localIndex=(globalIndex)=>uniqueIndices.indexOf(globalIndex);
+      const sourceIndexes=requestOrigins.map(localIndex).join(";");
+      const destinationIndexes=requestDestinations.map(localIndex).join(";");
+      const coordinates=uniqueIndices.map((index)=>`${points[index].longitude},${points[index].latitude}`).join(";");
+
+      requestCount+=1;
+      const response=await fetch(`${MAPBOX_MATRIX_BASE}/${coordinates}?sources=${sourceIndexes}&destinations=${destinationIndexes}&annotations=duration,distance&access_token=${encodeURIComponent(token)}`);
+      const body=await response.json().catch(()=>({}));
+      if(!response.ok||body?.code!=="Ok") throw new Error(`Mapbox road matrix failed (${response.status}): ${String(body?.message||body?.code||"unknown error")}`);
+
+      for(let i=0;i<originIndices.length;i+=1){
+        for(let j=0;j<destinationIndices.length;j+=1){
+          const globalOrigin=originIndices[i],globalDestination=destinationIndices[j];
+          if(globalOrigin===globalDestination){durations[globalOrigin][globalDestination]=0;distances[globalOrigin][globalDestination]=0;continue;}
+          const duration=Number(body?.durations?.[i]?.[j]);
+          const distance=Number(body?.distances?.[i]?.[j]);
+          if(Number.isFinite(duration)&&Number.isFinite(distance)){
+            durations[globalOrigin][globalDestination]=duration;
+            distances[globalOrigin][globalDestination]=distance;
+          }
+        }
+      }
+    }
+  }
+  return{durations,distances,requestCount};
+}
 async function verifySupabaseUser(request){const authorization=String(request.headers.get("authorization")||"");if(!/^Bearer\s+\S+/i.test(authorization))return false;const url=env("SUPABASE_URL","VITE_SUPABASE_URL").replace(/\/+$/,"");const key=env("SUPABASE_ANON_KEY","VITE_SUPABASE_ANON_KEY");if(!url||!key)return false;try{const response=await fetch(`${url}/auth/v1/user`,{headers:{apikey:key,Authorization:authorization}});return response.ok;}catch{return false;}}
 async function googleHealthProbe(apiKey){const points=[{latitude:16.8409,longitude:96.1735},{latitude:16.8512,longitude:96.1811}];const matrix=await googleMatrix(points,apiKey),result=optimizeMatrix(matrix.durations,matrix.distances);return Number.isFinite(result.distance)&&result.distance>0;}
 
@@ -27,7 +85,7 @@ export default {
       const providerMode = (env("WAYPLAN_ROAD_PROVIDER_MODE") || DEFAULT_PROVIDER_MODE).toUpperCase();
       const mapboxPreferred = providerMode.startsWith("MAPBOX");
       const mapboxAllowed = Boolean(mapboxToken) && providerMode !== "GOOGLE_ONLY";
-      const googleAllowed = Boolean(googleKey) && providerMode !== "MAPBOX_ONLY";
+      const googleAllowed = Boolean(googleKey) && !["MAPBOX_ONLY","MAPBOX_PREFERRED_BILLING_HOLD"].includes(providerMode);
 
       if (request.method === "GET" && url.searchParams.get("health") === "1") {
         const probe = url.searchParams.get("probe") === "1";
@@ -48,7 +106,7 @@ export default {
           google_routes_verified: probe ? googleRoutesVerified : null,
           mapbox_fallback_configured: Boolean(mapboxToken),
           road_routing_available: Boolean(mapboxToken || (probe && googleRoutesVerified)),
-          normal_wayplans_skip_google_billing_hold: mapboxPreferred,
+          normal_wayplans_skip_google_billing_hold: providerMode === "MAPBOX_PREFERRED_BILLING_HOLD",
           probe_error: probeError || null,
         }, (googleKey || mapboxToken) ? 200 : 503, {
           "Cache-Control": probe ? "public, s-maxage=300, stale-while-revalidate=60" : "no-store",
