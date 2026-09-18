@@ -73,7 +73,7 @@ const filterBlock = `            <div data-wayplan-queue-filters="true" style={{
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                   <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>Choose the filters, then use Select All Filtered. The filter panel collapses automatically so it does not cover the operation table.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? `Clear Filtered (${filteredReadyRows.length})` : `Select All Filtered (${filteredReadyRows.length})`}</button>
+                    <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}</button>
                     <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
                   </div>
                 </div>
