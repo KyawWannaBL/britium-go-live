@@ -30,7 +30,7 @@ const requiredMarkers = [
   'toggleVisibleWayplanSelection(prev, filteredReadyRows)',
   'Select All Filtered',
   'Clear Filtered',
-  'const plannerRows = filteredSelectedRows;',
+  'const plannerRows = selectedRows;',
   'rows={plannerRows}',
   'groupedReadyRows.map((group)',
   'filteredReadyRows.length} filtered / {readyRows.length} ready stops',
