@@ -44,7 +44,7 @@ replaceOnce(
 replaceOnce(
   "prominent top select all",
   '<button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("plain")}>\n                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered" : "Select All Filtered"}\n              </button>',
-  '<button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}>\n                <CheckCircle2 size={15} /> {allVisibleSelected ? `Clear Filtered (${filteredReadyRows.length})` : `Select All Filtered (${filteredReadyRows.length})`}\n              </button>'
+  '<button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}>\n                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}\n              </button>'
 );
 
 const startMarker = '            <div data-wayplan-queue-filters="true"';
