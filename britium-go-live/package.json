@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-wayplan-revision-delete-v47.mjs && node scripts/apply-wayplan-multivan-entry-v50.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && node scripts/apply-data-entry-interactive-latency-v49.mjs && npm run verify:data-entry-performance-v40 && npm run verify:customer-service-parcel-voice-v41 && npm run verify:customer-service-routing-v41 && npm run verify:wayplan-queue-filters && npm run verify:wayplan-queue-filter-ui && npm run verify:wayplan-multivan-entry-v50 && npm run verify:data-entry-input-latency-v42 && npm run verify:data-entry-interactive-latency-v49 && vite build",
+    "build": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-wayplan-revision-delete-v47.mjs && node scripts/apply-wayplan-multivan-entry-v50.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && node scripts/apply-data-entry-interactive-latency-v49.mjs && npm run verify:data-entry-performance-v40 && npm run verify:customer-service-parcel-voice-v41 && npm run verify:customer-service-routing-v41 && npm run verify:wayplan-queue-filters && npm run verify:wayplan-queue-filter-ui && npm run verify:wayplan-multivan-entry-v50 && npm run verify:data-entry-input-latency-v42 && npm run verify:data-entry-interactive-latency-v49 && npm run verify:data-entry-utility-panels-v50 && vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "verify:data-entry-performance-v40": "node scripts/verify-data-entry-performance-v40.mjs",
@@ -30,7 +30,8 @@
     "verify:draft-recovery": "node scripts/verify-draft-recovery.mjs",
     "verify:warehouse-scanner": "node --experimental-strip-types scripts/verify-warehouse-scanner.mjs",
     "verify:data-entry-interactive-latency-v49": "node scripts/verify-data-entry-interactive-latency-v49.mjs",
-    "verify:wayplan-multivan-entry-v50": "node scripts/verify-wayplan-multivan-entry-v50.mjs"
+    "verify:wayplan-multivan-entry-v50": "node scripts/verify-wayplan-multivan-entry-v50.mjs",
+    "verify:data-entry-utility-panels-v50": "node scripts/verify-data-entry-utility-panels-v50.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
