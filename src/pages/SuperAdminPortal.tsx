@@ -21,6 +21,7 @@ import type {
   PlatformOverview, UserProfile, Shipment, Exception,
   Settlement, Employee,
 } from "../types";
+import WorkforceManagementView from "./WorkforceManagementView";
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV: NavItem[] = [
@@ -30,6 +31,7 @@ const NAV: NavItem[] = [
   { key: "finance",     label: "Finance Summary",     icon: "💰" },
   { key: "users",       label: "User Management",     icon: "👤" },
   { key: "employees",   label: "HR Overview",         icon: "👥" },
+  { key: "workforce",   label: "Workforce Management", icon: "🧑‍💼" },
   { key: "settings",    label: "System Settings",     icon: "⚙️" },
 ];
 
@@ -312,6 +314,7 @@ export default function SuperAdminPortal() {
     finance:    <FinanceView />,
     users:      <UsersView />,
     employees:  <EmployeesView />,
+    workforce:  <WorkforceManagementView />,
     settings:   <SettingsView />,
   };
 
