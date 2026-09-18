@@ -2,6 +2,7 @@ const GOOGLE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:compu
 const MAPBOX_MATRIX_BASE = "https://api.mapbox.com/directions-matrix/v1/mapbox/driving";
 const GOOGLE_BATCH = 10;
 const MAPBOX_BATCH = 12;
+const DEFAULT_PROVIDER_MODE = "MAPBOX_PREFERRED_BILLING_HOLD";
 
 function env(...names){for(const name of names){const value=String(process.env[name]||"").trim();if(value)return value;}return "";}
 function json(body,status=200,headers={}){return Response.json(body,{status,headers:{"Cache-Control":"no-store",...headers}});}
@@ -17,9 +18,131 @@ async function mapboxMatrix(points,token){const n=points.length,durations=Array.
 async function verifySupabaseUser(request){const authorization=String(request.headers.get("authorization")||"");if(!/^Bearer\s+\S+/i.test(authorization))return false;const url=env("SUPABASE_URL","VITE_SUPABASE_URL").replace(/\/+$/,"");const key=env("SUPABASE_ANON_KEY","VITE_SUPABASE_ANON_KEY");if(!url||!key)return false;try{const response=await fetch(`${url}/auth/v1/user`,{headers:{apikey:key,Authorization:authorization}});return response.ok;}catch{return false;}}
 async function googleHealthProbe(apiKey){const points=[{latitude:16.8409,longitude:96.1735},{latitude:16.8512,longitude:96.1811}];const matrix=await googleMatrix(points,apiKey),result=optimizeMatrix(matrix.durations,matrix.distances);return Number.isFinite(result.distance)&&result.distance>0;}
 
-export default{async fetch(request){try{const url=new URL(request.url),googleKey=env("GOOGLE_ROUTES_API_KEY","GOOGLE_MAPS_API_KEY","VITE_GOOGLE_MAPS_API_KEY"),mapboxToken=env("MAPBOX_ACCESS_TOKEN","VITE_MAPBOX_ACCESS_TOKEN","VITE_MAPBOX_TOKEN");if(request.method==="GET"&&url.searchParams.get("health")==="1"){const probe=url.searchParams.get("probe")==="1";let googleRoutesVerified=false,probeError="";if(probe&&googleKey){try{googleRoutesVerified=await googleHealthProbe(googleKey);}catch(error){probeError=String(error?.message||error).slice(0,240);}}return json({ok:Boolean(googleKey||mapboxToken),google_routes_configured:Boolean(googleKey),google_routes_verified:probe?googleRoutesVerified:null,mapbox_fallback_configured:Boolean(mapboxToken),road_routing_available:Boolean((probe&&googleRoutesVerified)||mapboxToken),probe_error:probeError||null},(googleKey||mapboxToken)?200:503,{"Cache-Control":probe?"public, s-maxage=300, stale-while-revalidate=60":"no-store"});}
-if(request.method!=="POST")return json({ok:false,error:"method_not_allowed"},405,{Allow:"POST, GET"});if(!(await verifySupabaseUser(request)))return json({ok:false,error:"authenticated_wayplan_session_required"},401);const payload=await request.json().catch(()=>({})),origin=point(payload?.origin),stops=normalizeStops(payload?.stops),points=[origin,...stops],diagnostics=[];
-if(googleKey){try{const matrix=await googleMatrix(points,googleKey),optimized=optimizeMatrix(matrix.durations,matrix.distances);return json({ok:true,source:"GOOGLE_ROUTES",route_mode:points.length>GOOGLE_BATCH?"GOOGLE_ROUTE_MATRIX_BATCHED_LOCAL_2OPT":"GOOGLE_ROUTE_MATRIX_LOCAL_2OPT",ordered_stops:optimized.order.slice(1).map((index,sequence)=>({...stops[index-1],sequence:sequence+1})),distance_m:Math.round(optimized.distance),duration_s:Math.round(optimized.duration),request_count:matrix.requestCount,fallback:false,optimized_at:new Date().toISOString()});}catch(error){diagnostics.push(`Google Routes: ${String(error?.message||error).slice(0,300)}`);}}else diagnostics.push("Google Routes: API key is not configured in the Vercel runtime.");
-if(mapboxToken){try{const matrix=await mapboxMatrix(points,mapboxToken),optimized=optimizeMatrix(matrix.durations,matrix.distances);return json({ok:true,source:"MAPBOX_FALLBACK",route_mode:"MAPBOX_BATCHED_ROAD_MATRIX_LOCAL_2OPT",ordered_stops:optimized.order.slice(1).map((index,sequence)=>({...stops[index-1],sequence:sequence+1})),distance_m:Math.round(optimized.distance),duration_s:Math.round(optimized.duration),request_count:matrix.requestCount,fallback:true,warning:"Google Routes was unavailable; Mapbox road-time/distance matrix was used. This is still road-based routing, not straight-line geographic routing.",diagnostics,optimized_at:new Date().toISOString()});}catch(error){diagnostics.push(`Mapbox: ${String(error?.message||error).slice(0,300)}`);}}
-return json({ok:false,error:"road_routing_unavailable",message:"Automatic Wayplan generation requires a real road-routing matrix. Straight-line geographic fallback is disabled.",diagnostics},503);
-}catch(error){return json({ok:false,error:String(error?.message||error)},400);}}};
+export default {
+  async fetch(request) {
+    try {
+      const url = new URL(request.url);
+      const googleKey = env("GOOGLE_ROUTES_API_KEY", "GOOGLE_MAPS_API_KEY", "VITE_GOOGLE_MAPS_API_KEY");
+      const mapboxToken = env("MAPBOX_ACCESS_TOKEN", "VITE_MAPBOX_ACCESS_TOKEN", "VITE_MAPBOX_TOKEN");
+      const providerMode = (env("WAYPLAN_ROAD_PROVIDER_MODE") || DEFAULT_PROVIDER_MODE).toUpperCase();
+      const mapboxPreferred = providerMode.startsWith("MAPBOX");
+      const mapboxAllowed = Boolean(mapboxToken) && providerMode !== "GOOGLE_ONLY";
+      const googleAllowed = Boolean(googleKey) && providerMode !== "MAPBOX_ONLY";
+
+      if (request.method === "GET" && url.searchParams.get("health") === "1") {
+        const probe = url.searchParams.get("probe") === "1";
+        let googleRoutesVerified = false;
+        let probeError = "";
+        if (probe && googleKey) {
+          try {
+            googleRoutesVerified = await googleHealthProbe(googleKey);
+          } catch (error) {
+            probeError = String(error?.message || error).slice(0, 240);
+          }
+        }
+        return json({
+          ok: Boolean(googleKey || mapboxToken),
+          provider_mode: providerMode,
+          active_preference: mapboxPreferred ? "MAPBOX" : "GOOGLE",
+          google_routes_configured: Boolean(googleKey),
+          google_routes_verified: probe ? googleRoutesVerified : null,
+          mapbox_fallback_configured: Boolean(mapboxToken),
+          road_routing_available: Boolean(mapboxToken || (probe && googleRoutesVerified)),
+          normal_wayplans_skip_google_billing_hold: mapboxPreferred,
+          probe_error: probeError || null,
+        }, (googleKey || mapboxToken) ? 200 : 503, {
+          "Cache-Control": probe ? "public, s-maxage=300, stale-while-revalidate=60" : "no-store",
+        });
+      }
+
+      if (request.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405, { Allow: "POST, GET" });
+      if (!(await verifySupabaseUser(request))) return json({ ok: false, error: "authenticated_wayplan_session_required" }, 401);
+
+      const payload = await request.json().catch(() => ({}));
+      const origin = point(payload?.origin);
+      const stops = normalizeStops(payload?.stops);
+      const points = [origin, ...stops];
+      const diagnostics = [];
+
+      async function useMapbox() {
+        if (!mapboxAllowed) {
+          diagnostics.push("Mapbox: road routing token is not configured or Mapbox is disabled by provider mode.");
+          return null;
+        }
+        try {
+          const matrix = await mapboxMatrix(points, mapboxToken);
+          const optimized = optimizeMatrix(matrix.durations, matrix.distances);
+          return json({
+            ok: true,
+            source: "MAPBOX_FALLBACK",
+            provider_mode: providerMode,
+            provider_role: mapboxPreferred ? "TEMPORARY_PRIMARY" : "FALLBACK",
+            route_mode: "MAPBOX_BATCHED_ROAD_MATRIX_LOCAL_2OPT",
+            ordered_stops: optimized.order.slice(1).map((index, sequence) => ({ ...stops[index - 1], sequence: sequence + 1 })),
+            distance_m: Math.round(optimized.distance),
+            duration_s: Math.round(optimized.duration),
+            request_count: matrix.requestCount,
+            fallback: true,
+            warning: mapboxPreferred
+              ? "Temporary billing-safe routing mode is active. Mapbox road-time/distance routing is being used without calling Google Routes for normal Wayplans."
+              : "Google Routes was unavailable; Mapbox road-time/distance matrix was used. This is still road-based routing, not straight-line geographic routing.",
+            diagnostics,
+            optimized_at: new Date().toISOString(),
+          });
+        } catch (error) {
+          diagnostics.push(`Mapbox: ${String(error?.message || error).slice(0, 300)}`);
+          return null;
+        }
+      }
+
+      async function useGoogle() {
+        if (!googleAllowed) {
+          diagnostics.push("Google Routes: API key is not configured or Google is disabled by provider mode.");
+          return null;
+        }
+        try {
+          const matrix = await googleMatrix(points, googleKey);
+          const optimized = optimizeMatrix(matrix.durations, matrix.distances);
+          return json({
+            ok: true,
+            source: "GOOGLE_ROUTES",
+            provider_mode: providerMode,
+            provider_role: mapboxPreferred ? "RECOVERY_SECONDARY" : "PRIMARY",
+            route_mode: points.length > GOOGLE_BATCH ? "GOOGLE_ROUTE_MATRIX_BATCHED_LOCAL_2OPT" : "GOOGLE_ROUTE_MATRIX_LOCAL_2OPT",
+            ordered_stops: optimized.order.slice(1).map((index, sequence) => ({ ...stops[index - 1], sequence: sequence + 1 })),
+            distance_m: Math.round(optimized.distance),
+            duration_s: Math.round(optimized.duration),
+            request_count: matrix.requestCount,
+            fallback: false,
+            optimized_at: new Date().toISOString(),
+          });
+        } catch (error) {
+          diagnostics.push(`Google Routes: ${String(error?.message || error).slice(0, 300)}`);
+          return null;
+        }
+      }
+
+      if (mapboxPreferred) {
+        const mapboxResult = await useMapbox();
+        if (mapboxResult) return mapboxResult;
+        const googleResult = await useGoogle();
+        if (googleResult) return googleResult;
+      } else {
+        const googleResult = await useGoogle();
+        if (googleResult) return googleResult;
+        const mapboxResult = await useMapbox();
+        if (mapboxResult) return mapboxResult;
+      }
+
+      return json({
+        ok: false,
+        error: "road_routing_unavailable",
+        message: "Automatic Wayplan generation requires a real road-routing matrix. Straight-line geographic fallback is disabled.",
+        provider_mode: providerMode,
+        diagnostics,
+      }, 503);
+    } catch (error) {
+      return json({ ok: false, error: String(error?.message || error) }, 400);
+    }
+  },
+};
