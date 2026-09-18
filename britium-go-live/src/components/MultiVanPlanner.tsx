@@ -170,16 +170,21 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   function patchPlan(index: number, patch: Partial<OperationalVanPlan>) {
     const next = plans.map((p, j) => j === index ? { ...p, ...patch } : p);
-    reset(repairCrewGaps(next), true);
+    // Do not auto-fill Rider after an operator explicitly selects "No rider".
+    // Crew edits preserve the reviewed route and below-minimum approval.
+    reset(next, true);
   }
 
   function autoAssignMissingCrew() {
-    const repaired = repairCrewGaps(plans);
+    const repaired = repairCrewGaps(plans).map((plan, index) => ({
+      ...plan,
+      rider_code: plans[index]?.rider_code || "",
+    }));
     reset(repaired, true);
-    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && (!plan.driver_code || !plan.rider_code));
+    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code);
     setMessage(stillMissing
-      ? "Automatic crew repair could not find an available Driver/Rider for every route. Choose an available roster member or use an approved Emergency substitution."
-      : "Missing route crew assignments were repaired automatically. Review Driver / Rider / Helper, then create the reviewed Wayplans.");
+      ? "Automatic crew repair could not find an available Driver for every route. Choose an available Driver or use an approved Emergency substitution."
+      : "Missing Driver assignments were repaired automatically. Rider and Helper are optional; review the crew, then create the reviewed Wayplans.");
   }
 
   async function roadSession() {
@@ -362,8 +367,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
       const crewed = repairCrewGaps(assignCrews(strategic, drivers, riders, helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
-      if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && (!plan.driver_code || !plan.rider_code))) {
-        throw new Error("The route plan was created, but no available Driver/Rider roster pair could be assigned. Refresh crew availability or use an approved Emergency substitution.");
+      if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
+        throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
       setBusy(false);
       await optimizePlans(crewed, "Stage 2/2: optimizing every active route on the actual road network…");
@@ -448,7 +453,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   const oversized = plans.filter((p) => p.rows.length > 75);
   const invalidCrewPlans = plans.filter((p) => p.crew_mode === "EMERGENCY_MANUAL"
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
-    : !p.driver_code || !p.rider_code);
+    : !p.driver_code);
   const invalidCrew = invalidCrewPlans.length > 0;
   const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED"].includes(String(p.route?.source || "")));
   const roadInvalid = roadInvalidPlans.length > 0;
@@ -459,7 +464,6 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     if (plan.crew_mode === "EMERGENCY_MANUAL") readinessIssues.push(`${label}: enter Emergency Driver, Emergency Rider and a substitution reason.`);
     else {
       if (!plan.driver_code) readinessIssues.push(`${label}: choose a Driver.`);
-      if (!plan.rider_code) readinessIssues.push(`${label}: choose a Rider.`);
     }
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
@@ -517,7 +521,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           <label>Crew mode <select style={field} disabled={busy} value={plan.crew_mode || "ROSTER"} onChange={(e) => patchPlan(i, { crew_mode: e.target.value as any })}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
           {!emergency && <>
             <label>Driver * <select style={field} disabled={busy} value={plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">Choose name</option>{drivers.filter((x) => x.available || x.id === plan.driver_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>Rider * <select style={field} disabled={busy} value={plan.rider_code} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">Choose name</option>{riders.filter((x) => x.available || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+            <label>Rider (optional) <select data-rider-optional-v57="true" style={field} disabled={busy} value={plan.rider_code || ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">No rider — Driver only</option>{riders.filter((x) => x.available || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
             <label>Helper (optional) <select style={field} disabled={busy} value={plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">No helper</option>{helpers.filter((x) => x.available || x.id === plan.helper_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
           </>}
         </div>
@@ -547,8 +551,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
     {plans.length > 0 && <div data-wayplan-create-readiness-v56="true" style={{ padding: 10, border: `1px solid ${readinessIssues.length ? "#8f5a2a" : "#2f855a"}`, borderRadius: 8, background: readinessIssues.length ? "rgba(143,90,42,0.12)" : "rgba(47,133,90,0.12)" }}>
       <strong>{readinessIssues.length ? "Creation blocked — complete these items:" : "Ready to create reviewed Wayplans"}</strong>
-      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route, fleet, mandatory Driver/Rider and below-minimum approval checks are complete.</div>}
-      {invalidCrew && <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={autoAssignMissingCrew}>Auto-assign missing Driver / Rider</button>}
+      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route, fleet, mandatory Driver and below-minimum approval checks are complete. Rider and Helper are optional.</div>}
+      {invalidCrew && <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={autoAssignMissingCrew}>Auto-assign missing Driver</button>}
     </div>}
     <button data-create-reviewed-wayplans-v56="true" style={{ ...button, opacity: cannotSave ? 0.55 : 1 }} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : cannotSave ? "Create reviewed Wayplans — resolve items above" : "Create reviewed Wayplans"}</button>
   </section>;
