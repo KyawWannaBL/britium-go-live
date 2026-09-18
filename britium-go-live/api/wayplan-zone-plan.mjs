@@ -299,7 +299,7 @@ export default {
         ok: true,
         plan_code: "YANGON_BALANCED_MINIMUM_LOAD_V44",
         plan_name: "Yangon Balanced Minimum-Load Wayplan V44",
-        hub: { name: "East Dagon Logistics Center", ...origin },
+        hub: { name: "Yangon Head Office", ...origin },
         scope: "BRITIUM_YANGON_ZONES_1_TO_6",
         thresholds: { floor: FLOOR, ceiling: ROUTE_CEILING },
         eligible_parcel_count: assigned.eligible.length,
