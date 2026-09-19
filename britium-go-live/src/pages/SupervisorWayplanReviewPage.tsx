@@ -37,6 +37,8 @@ export default function SupervisorWayplanReviewPage() {
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [roster,setRoster]=useState<any>({drivers:[],riders:[],helpers:[]});
+  const [crewDraft,setCrewDraft]=useState({driver_code:"",rider_code:"",helper_code:""});
 
   const wayplans: Wayplan[] = Array.isArray(data?.wayplans) ? data.wayplans : [];
   const selectedSummary = useMemo(
@@ -80,6 +82,15 @@ export default function SupervisorWayplanReviewPage() {
   };
 
   useEffect(() => { void loadData(false); }, []);
+  useEffect(()=>{
+    let alive=true;
+    (supabase as any).rpc("be_multi_van_context").then(({data,error}:any)=>{
+      if(!alive) return;
+      if(error) setError(error.message || "Failed to load workforce roster.");
+      else setRoster(data || {drivers:[],riders:[],helpers:[]});
+    });
+    return ()=>{alive=false;};
+  },[]);
   const loadDetail = async (wayplanId: string) => {
     if (!wayplanId) { setDetail(null); return; }
     setDetailLoading(true);
@@ -102,6 +113,15 @@ export default function SupervisorWayplanReviewPage() {
     void loadDetail(selectedId);
   }, [selectedId]);
 
+  useEffect(()=>{
+    if(!selected) return;
+    setCrewDraft({
+      driver_code:String(selected.driver_code||""),
+      rider_code:String(selected.rider_code||""),
+      helper_code:String(selected.helper_code||""),
+    });
+  },[selected?.wayplan_id,selected?.driver_code,selected?.rider_code,selected?.helper_code]);
+
 
   const submitForReview = async () => {
     if (!selected) return;
@@ -120,6 +140,29 @@ export default function SupervisorWayplanReviewPage() {
     } catch (err: any) {
       setError(err?.message || "Wayplan review submission failed.");
     } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveCrew = async () => {
+    if(!selected) return;
+    if(!crewDraft.driver_code){setError("Choose a Driver before saving crew.");return;}
+    setBusy(true); setError(""); setMessage("");
+    try{
+      const {data:res,error:rpcError}=await (supabase as any).rpc("be_wayplan_supervisor_assign_crew_v68",{
+        p_wayplan_id:selected.wayplan_id,
+        p_driver_code:crewDraft.driver_code,
+        p_rider_code:crewDraft.rider_code || null,
+        p_helper_code:crewDraft.helper_code || null,
+      });
+      if(rpcError) throw rpcError;
+      if(res?.ok===false) throw new Error(res?.message || "Crew update failed.");
+      setMessage(`${selected.wayplan_id} crew updated from the approved operational roster.`);
+      await loadData();
+      await loadDetail(selected.wayplan_id);
+    }catch(err:any){
+      setError(err?.message || "Crew update failed.");
+    }finally{
       setBusy(false);
     }
   };
@@ -184,6 +227,11 @@ export default function SupervisorWayplanReviewPage() {
   const included = selected?.ready_count || selected?.planned_count || 0;
   const selectedStatus = String(selected?.review_status || "DRAFT").toUpperCase();
   const stops = Array.isArray(detail?.wayplan?.stops) ? detail.wayplan.stops : [];
+  const crewEditable=Boolean(selected) && !["DISPATCH_READY","DISPATCHED"].includes(selectedStatus);
+  const branch=String(selected?.branch_code || selected?.metadata?.branch_code || "YGN");
+  const drivers=(roster?.drivers||[]).filter((x:any)=>!x.branch_code || x.branch_code===branch);
+  const riders=(roster?.riders||[]).filter((x:any)=>!x.branch_code || x.branch_code===branch);
+  const helpers=(roster?.helpers||[]).filter((x:any)=>!x.branch_code || x.branch_code===branch);
 
   return (
     <div data-supervisor-wayplan-v62="true" className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6 space-y-6">
@@ -256,6 +304,39 @@ export default function SupervisorWayplanReviewPage() {
                 <Info label="Driver" value={selected.driver_name || selected.driver_code || "—"} />
                 <Info label="Rider" value={selected.rider_name || selected.rider_code || "No rider"} />
                 <Info label="Helper" value={selected.helper_name || selected.helper_code || "No helper"} />
+              </div>
+
+              <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-3">
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <div>
+                    <div className="text-[11px] font-black text-[#eef8ff]">Delivery crew roster</div>
+                    <div className="text-[10px] text-[#4d7a9b]">Driver required · Rider optional · Helper optional · sourced from approved master spreadsheets.</div>
+                  </div>
+                  <button disabled={!crewEditable || busy || !crewDraft.driver_code} onClick={saveCrew} className="rounded-lg border border-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#f6b84b] disabled:opacity-40">
+                    Save Crew
+                  </button>
+                </div>
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+                  <label className="text-[10px] text-[#4d7a9b]">Driver *
+                    <select disabled={!crewEditable || busy} value={crewDraft.driver_code} onChange={e=>setCrewDraft(v=>({...v,driver_code:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#1a3a5c] bg-[#061524] p-2 text-[11px] text-[#eef8ff]">
+                      <option value="">Choose Driver</option>
+                      {drivers.map((x:any)=><option key={x.id} value={x.id}>{x.name}{x.mobile_auth_ready===false ? " · no mobile login" : ""}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[10px] text-[#4d7a9b]">Rider (optional)
+                    <select disabled={!crewEditable || busy} value={crewDraft.rider_code} onChange={e=>setCrewDraft(v=>({...v,rider_code:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#1a3a5c] bg-[#061524] p-2 text-[11px] text-[#eef8ff]">
+                      <option value="">No rider — Driver only</option>
+                      {riders.map((x:any)=><option key={x.id} value={x.id}>{x.name}{x.mobile_auth_ready===false ? " · no mobile login" : ""}</option>)}
+                    </select>
+                  </label>
+                  <label className="text-[10px] text-[#4d7a9b]">Helper (optional)
+                    <select disabled={!crewEditable || busy} value={crewDraft.helper_code} onChange={e=>setCrewDraft(v=>({...v,helper_code:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#1a3a5c] bg-[#061524] p-2 text-[11px] text-[#eef8ff]">
+                      <option value="">No helper</option>
+                      {helpers.map((x:any)=><option key={x.id} value={x.id}>{x.name}{x.mobile_auth_ready===false ? " · no mobile login" : ""}</option>)}
+                    </select>
+                  </label>
+                </div>
+                {!crewEditable ? <div className="mt-2 text-[10px] text-amber-300">Crew editing is locked after the Wayplan is released to Dispatch.</div> : null}
               </div>
 
               {detailLoading ? <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-4 text-[12px] text-[#4d7a9b]">Loading selected Wayplan details…</div> : null}
