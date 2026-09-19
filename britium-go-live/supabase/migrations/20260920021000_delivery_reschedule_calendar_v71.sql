@@ -3,7 +3,7 @@
 -- until its requested delivery date in Asia/Yangon.
 
 create table if not exists public.be_delivery_reschedules_v71 (
-  delivery_way_id text primary key references public.be_data_entry_parcel_details(delivery_way_id) on delete cascade,
+  delivery_way_id text primary key,
   original_way_id text,
   requested_delivery_date date not null,
   reason_code text not null default 'CUSTOMER_REQUESTED_RESCHEDULE',
