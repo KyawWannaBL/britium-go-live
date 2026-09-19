@@ -50,6 +50,9 @@ export default function WarehousePage() {
   const [reason, setReason] = useState("");
   const [remark, setRemark] = useState("");
   const [query, setQuery] = useState("");
+  const [progressFilter,setProgressFilter]=useState("ALL");
+  const [pickupFilter,setPickupFilter]=useState("ALL");
+  const [townshipFilter,setTownshipFilter]=useState("ALL");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
@@ -289,28 +292,34 @@ export default function WarehousePage() {
     }
   };
 
+  const filterOptions=useMemo(()=>({
+    pickups:Array.from(new Set(rows.map((r:any)=>String(r.pickup_id||"").trim()).filter(Boolean))).sort(),
+    townships:Array.from(new Set(rows.map((r:any)=>String(r.delivery_township||"").trim()).filter(Boolean))).sort(),
+  }),[rows]);
+
+  const progressOf=(r:any)=>{
+    if(r.rto_at || String(r.delivery_status||"").toUpperCase()==="RTO") return "RTO";
+    if(Number(r.return_attempt_count||0)>0 || r.return_scan_1_at || r.return_scan_2_at || r.return_scan_3_at) return "RETURN";
+    if(r.dispatch_scan_at) return "DISPATCH_SCANNED";
+    if(r.inbound_scan_at || ["RECEIVED","WAREHOUSE_RECEIVED","WAREHOUSE_READY"].includes(String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase())) return "RECEIVED";
+    return "PENDING";
+  };
+
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter((r: any) =>
-      [
-        r.waybill_no,
-        r.pickup_id,
-        track(r),
-        r.merchant_code,
-        r.merchant_name,
-        r.recipient_name,
-        r.phone_number,
-        r.recipient_phone,
-        r.delivery_township,
-        r.warehouse_scan_status,
-        r.return_reason_1_name,
-        r.return_reason_2_name,
-        r.return_reason_3_name,
-        r.last_exception_reason,
-      ].some((x) => String(x || "").toLowerCase().includes(q))
-    );
-  }, [rows, query]);
+    return rows.filter((r:any)=>{
+      if(progressFilter!=="ALL" && progressOf(r)!==progressFilter) return false;
+      if(pickupFilter!=="ALL" && String(r.pickup_id||"")!==pickupFilter) return false;
+      if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
+      if(!q) return true;
+      return [
+        r.waybill_no,r.pickup_id,track(r),r.merchant_code,r.merchant_name,
+        r.recipient_name,r.phone_number,r.recipient_phone,r.delivery_township,
+        r.warehouse_scan_status,r.return_reason_1_name,r.return_reason_2_name,
+        r.return_reason_3_name,r.last_exception_reason,
+      ].some((x)=>String(x||"").toLowerCase().includes(q));
+    });
+  },[rows,query,progressFilter,pickupFilter,townshipFilter]);
 
   const exportCsv = () => {
     const headers = [
@@ -563,14 +572,36 @@ export default function WarehousePage() {
               Required columns: inbound scan, dispatch scan, return scan 1/2/3, reason, priority, RTO.
             </div>
           </div>
-          <div className="relative w-full md:w-[420px]">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search waybill / delivery way / merchant / reason..."
-              className="w-full rounded-lg border border-slate-700 bg-[#071827] py-2 pl-9 pr-3 outline-none focus:border-[#C09B30]"
-            />
+          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
+            <select value={progressFilter} onChange={e=>setProgressFilter(e.target.value)} className="rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
+              <option value="ALL">All progress</option>
+              <option value="PENDING">Pending / not received</option>
+              <option value="RECEIVED">Received / waiting Dispatch</option>
+              <option value="DISPATCH_SCANNED">Dispatch scanned</option>
+              <option value="RETURN">Returned</option>
+              <option value="RTO">RTO</option>
+            </select>
+            <select value={pickupFilter} onChange={e=>setPickupFilter(e.target.value)} className="max-w-[240px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
+              <option value="ALL">All pickups</option>
+              {filterOptions.pickups.map((x:any)=><option key={x} value={x}>{x}</option>)}
+            </select>
+            <select value={townshipFilter} onChange={e=>setTownshipFilter(e.target.value)} className="max-w-[220px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
+              <option value="ALL">All townships</option>
+              {filterOptions.townships.map((x:any)=><option key={x} value={x}>{x}</option>)}
+            </select>
+            <div className="relative min-w-[300px] flex-1 md:w-[420px]">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search waybill / delivery way / merchant / reason..."
+                className="w-full rounded-lg border border-slate-700 bg-[#071827] py-2 pl-9 pr-3 outline-none focus:border-[#C09B30]"
+              />
+            </div>
+            <button type="button" onClick={()=>{setQuery("");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");}} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">
+              Clear filters
+            </button>
+            <span className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-300">{filteredRows.length} / {rows.length} rows</span>
           </div>
         </div>
 
