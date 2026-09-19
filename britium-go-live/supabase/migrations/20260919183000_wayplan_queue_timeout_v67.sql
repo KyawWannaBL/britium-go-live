@@ -1,5 +1,5 @@
 -- V67: fast Wayplan queue loading.
--- Avoids the heavy warehouse lifecycle views and per-row merchant resolver on page load.
+-- Avoid heavy warehouse lifecycle views and per-row merchant resolution during page load.
 
 create index if not exists be_data_entry_wayplan_ready_v67_idx
   on public.be_data_entry_parcel_details(delivery_region,delivery_route_mode,location_required,updated_at desc)
@@ -28,9 +28,7 @@ declare
   v_rows jsonb := '[]'::jsonb;
 begin
   if auth.uid() is null then raise exception 'Authentication is required.'; end if;
-  if v_region not in ('YANGON','MANDALAY','NAYPYITAW') then
-    raise exception 'Unsupported Wayplan region.';
-  end if;
+  if v_region not in ('YANGON','MANDALAY','NAYPYITAW') then raise exception 'Unsupported Wayplan region.'; end if;
 
   select r.is_active into v_active
   from public.be_wayplan_region_runtime_v19 r
@@ -38,8 +36,8 @@ begin
 
   if not coalesce(v_active,false) then
     return jsonb_build_object(
-      'ok',true,'enabled',false,'region_code',v_region,
-      'queue','[]'::jsonb,'count',0,'build','WAYPLAN_REGION_QUEUE_V67_FAST'
+      'ok',true,'enabled',false,'region_code',v_region,'queue','[]'::jsonb,
+      'count',0,'build','WAYPLAN_REGION_QUEUE_V67_FAST'
     );
   end if;
 
@@ -79,10 +77,8 @@ begin
           lower(regexp_replace(coalesce(d.recipient_name,''),'\s+','','g')),
           regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
         order by
-          case
-            when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
-            then 0 else 1
-          end,
+          case when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
+               then 0 else 1 end,
           d.updated_at desc nulls last,
           d.created_at desc nulls last,
           d.delivery_way_id
@@ -98,249 +94,9 @@ begin
       on a.delivery_way_id=d.delivery_way_id
     where d.delivery_region=v_region
       and (
-        d.delivery_way_id ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}
-      and coalesce(d.location_required,false)
-      and upper(coalesce(d.financial_validation_status,'')) in ('VALID','OK')
-      and upper(coalesce(r.warehouse_status,''))='WAREHOUSE_READY'
-      and coalesce(r.discrepancy_code,'')=''
-      and upper(coalesce(a.last_status,''))<>'RTO'
-      and upper(coalesce(d.parcel_status,'')) not in ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED','DUPLICATE_ARCHIVED')
-      and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
-      and upper(coalesce(w.dispatch_status,'READY_FOR_DISPATCH')) in (
-        'READY_FOR_DISPATCH','WAITING_DISPATCH','READY','WAYBILL_CREATED','WAYPLAN_CREATED'
-      )
-      and upper(coalesce(w.wayplan_status,'READY_FOR_WAYPLAN')) in (
-        'NOT_PLANNED','READY_FOR_WAYPLAN','WAYPLAN_CREATED'
-      )
-      and loc.review_status='ACCEPTED'
-      and loc.latitude between 9 and 29
-      and loc.longitude between 92 and 102
-      and upper(coalesce(loc.coordinate_source,'')) ~ '^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)'
-      and loc.coordinate_source<>'QUARANTINED_BULK_COORDINATE_V30'
-      and not (round(loc.latitude::numeric,5)=16.80000 and round(loc.longitude::numeric,5)=96.15000)
-      and (
-        loc.match_level in ('ADDRESS_EXACT','POI_EXACT')
+        d.delivery_way_id ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}$'
         or (
-          loc.match_level='MANUAL'
-          and loc.coordinate_source in (
-            'DATA_ENTRY_MANUAL_PIN_V30',
-            'DATA_ENTRY_MANUAL_COORDINATE',
-            'PASTED_TOWNSHIP_VALIDATED_COORDINATE',
-            'MANAGEMENT_POSTAL_VALIDATED_ADDRESS'
-          )
-        )
-      )
-      and not exists (
-        select 1
-        from public.be_wayplan_membership_v40 m
-        where m.delivery_way_id=d.delivery_way_id
-          and m.membership_status in ('PLANNED','READY_FOR_DISPATCH','DISPATCHED')
-      )
-  ), limited as (
-    select *
-    from candidates
-    where canonical_rank=1
-    order by created_at desc
-    limit greatest(coalesce(p_limit,200),1)
-  )
-  select coalesce(jsonb_agg(
-    jsonb_build_object(
-      'delivery_way_id',delivery_way_id,
-      'waybill_no',waybill_no,
-      'pickup_id',pickup_id,
-      'pickup_way_id',pickup_way_id,
-      'merchant_name',merchant_name,
-      'merchant_code',merchant_code,
-      'merchant_source',case when merchant_code is not null then 'SAVED' else 'UNRESOLVED' end,
-      'recipient_name',recipient_name,
-      'recipient_phone',recipient_phone,
-      'township',township,
-      'address',address,
-      'cod_amount',cod_amount,
-      'delivery_fee',delivery_fee,
-      'parcel_weight_kg',parcel_weight_kg,
-      'dispatch_status',dispatch_status,
-      'warehouse_status',warehouse_status,
-      'wayplan_status',wayplan_status,
-      'created_at',created_at,
-      'updated_at',updated_at,
-      'delivery_region',delivery_region,
-      'delivery_route_mode',delivery_route_mode,
-      'location_required',location_required,
-      'service_provider_code',service_provider_code,
-      'latitude',latitude,
-      'longitude',longitude,
-      'metadata',jsonb_build_object(
-        'source','be_dispatch_ready_queue_v19/V67_FAST',
-        'registered_data_entry',true,
-        'financial_validation_status','OK',
-        'canonical_warehouse_status',warehouse_status,
-        'delivery_attempt_status',delivery_attempt_status,
-        'dispatch_status',dispatch_status,
-        'wayplan_status',wayplan_status,
-        'location_required',location_required,
-        'location_review_status',location_review_status,
-        'location_match_level',location_match_level,
-        'location_coordinate_source',location_coordinate_source
-      )
-    )
-    order by created_at desc
-  ),'[]'::jsonb)
-  into v_rows
-  from limited;
-
-  return jsonb_build_object(
-    'ok',true,
-    'enabled',true,
-    'region_code',v_region,
-    'queue',v_rows,
-    'count',jsonb_array_length(v_rows),
-    'build','WAYPLAN_REGION_QUEUE_V67_FAST'
-  );
-end;
-$function$;
-
-create or replace function public.be_multi_van_queue(p_region text)
-returns jsonb
-language plpgsql
-stable
-security definer
-set search_path to 'public','auth','pg_temp'
-as $function$
-declare
-  v_queue jsonb;
-begin
-  if auth.uid() is null then raise exception 'Authentication is required.'; end if;
-  v_queue := public.be_dispatch_ready_queue_v19(10000,p_region);
-  return v_queue || jsonb_build_object('build','MULTI_VAN_QUEUE_V67_FAST');
-end;
-$function$;
-
-grant execute on function public.be_dispatch_ready_queue_v19(integer,text) to authenticated;
-grant execute on function public.be_multi_van_queue(text) to authenticated;
-
-        or (
-          d.delivery_way_id ~ '^P[0-9]{4}-[A-Z0-9]+-[0-9]+-[0-9]+
-      and coalesce(d.location_required,false)
-      and upper(coalesce(d.financial_validation_status,'')) in ('VALID','OK')
-      and upper(coalesce(r.warehouse_status,''))='WAREHOUSE_READY'
-      and coalesce(r.discrepancy_code,'')=''
-      and upper(coalesce(a.last_status,''))<>'RTO'
-      and upper(coalesce(d.parcel_status,'')) not in ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED','DUPLICATE_ARCHIVED')
-      and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
-      and upper(coalesce(w.dispatch_status,'READY_FOR_DISPATCH')) in (
-        'READY_FOR_DISPATCH','WAITING_DISPATCH','READY','WAYBILL_CREATED','WAYPLAN_CREATED'
-      )
-      and upper(coalesce(w.wayplan_status,'READY_FOR_WAYPLAN')) in (
-        'NOT_PLANNED','READY_FOR_WAYPLAN','WAYPLAN_CREATED'
-      )
-      and loc.review_status='ACCEPTED'
-      and loc.latitude between 9 and 29
-      and loc.longitude between 92 and 102
-      and upper(coalesce(loc.coordinate_source,'')) ~ '^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)'
-      and loc.coordinate_source<>'QUARANTINED_BULK_COORDINATE_V30'
-      and not (round(loc.latitude::numeric,5)=16.80000 and round(loc.longitude::numeric,5)=96.15000)
-      and (
-        loc.match_level in ('ADDRESS_EXACT','POI_EXACT')
-        or (
-          loc.match_level='MANUAL'
-          and loc.coordinate_source in (
-            'DATA_ENTRY_MANUAL_PIN_V30',
-            'DATA_ENTRY_MANUAL_COORDINATE',
-            'PASTED_TOWNSHIP_VALIDATED_COORDINATE',
-            'MANAGEMENT_POSTAL_VALIDATED_ADDRESS'
-          )
-        )
-      )
-      and not exists (
-        select 1
-        from public.be_wayplan_membership_v40 m
-        where m.delivery_way_id=d.delivery_way_id
-          and m.membership_status in ('PLANNED','READY_FOR_DISPATCH','DISPATCHED')
-      )
-  ), limited as (
-    select *
-    from candidates
-    where canonical_rank=1
-    order by created_at desc
-    limit greatest(coalesce(p_limit,200),1)
-  )
-  select coalesce(jsonb_agg(
-    jsonb_build_object(
-      'delivery_way_id',delivery_way_id,
-      'waybill_no',waybill_no,
-      'pickup_id',pickup_id,
-      'pickup_way_id',pickup_way_id,
-      'merchant_name',merchant_name,
-      'merchant_code',merchant_code,
-      'merchant_source',case when merchant_code is not null then 'SAVED' else 'UNRESOLVED' end,
-      'recipient_name',recipient_name,
-      'recipient_phone',recipient_phone,
-      'township',township,
-      'address',address,
-      'cod_amount',cod_amount,
-      'delivery_fee',delivery_fee,
-      'parcel_weight_kg',parcel_weight_kg,
-      'dispatch_status',dispatch_status,
-      'warehouse_status',warehouse_status,
-      'wayplan_status',wayplan_status,
-      'created_at',created_at,
-      'updated_at',updated_at,
-      'delivery_region',delivery_region,
-      'delivery_route_mode',delivery_route_mode,
-      'location_required',location_required,
-      'service_provider_code',service_provider_code,
-      'latitude',latitude,
-      'longitude',longitude,
-      'metadata',jsonb_build_object(
-        'source','be_dispatch_ready_queue_v19/V67_FAST',
-        'registered_data_entry',true,
-        'financial_validation_status','OK',
-        'canonical_warehouse_status',warehouse_status,
-        'delivery_attempt_status',delivery_attempt_status,
-        'dispatch_status',dispatch_status,
-        'wayplan_status',wayplan_status,
-        'location_required',location_required,
-        'location_review_status',location_review_status,
-        'location_match_level',location_match_level,
-        'location_coordinate_source',location_coordinate_source
-      )
-    )
-    order by created_at desc
-  ),'[]'::jsonb)
-  into v_rows
-  from limited;
-
-  return jsonb_build_object(
-    'ok',true,
-    'enabled',true,
-    'region_code',v_region,
-    'queue',v_rows,
-    'count',jsonb_array_length(v_rows),
-    'build','WAYPLAN_REGION_QUEUE_V67_FAST'
-  );
-end;
-$function$;
-
-create or replace function public.be_multi_van_queue(p_region text)
-returns jsonb
-language plpgsql
-stable
-security definer
-set search_path to 'public','auth','pg_temp'
-as $function$
-declare
-  v_queue jsonb;
-begin
-  if auth.uid() is null then raise exception 'Authentication is required.'; end if;
-  v_queue := public.be_dispatch_ready_queue_v19(10000,p_region);
-  return v_queue || jsonb_build_object('build','MULTI_VAN_QUEUE_V67_FAST');
-end;
-$function$;
-
-grant execute on function public.be_dispatch_ready_queue_v19(integer,text) to authenticated;
-grant execute on function public.be_multi_van_queue(text) to authenticated;
-
+          d.delivery_way_id ~ '^P[0-9]{4}-[A-Z0-9]+-[0-9]+-[0-9]+$'
           and d.photo_evidence_mode='OS_SOFTCOPY'
           and d.os_imported_at is not null
           and nullif(d.source_file_name,'') is not null
@@ -371,10 +127,8 @@ grant execute on function public.be_multi_van_queue(text) to authenticated;
         or (
           loc.match_level='MANUAL'
           and loc.coordinate_source in (
-            'DATA_ENTRY_MANUAL_PIN_V30',
-            'DATA_ENTRY_MANUAL_COORDINATE',
-            'PASTED_TOWNSHIP_VALIDATED_COORDINATE',
-            'MANAGEMENT_POSTAL_VALIDATED_ADDRESS'
+            'DATA_ENTRY_MANUAL_PIN_V30','DATA_ENTRY_MANUAL_COORDINATE',
+            'PASTED_TOWNSHIP_VALIDATED_COORDINATE','MANAGEMENT_POSTAL_VALIDATED_ADDRESS'
           )
         )
       )
@@ -393,57 +147,38 @@ grant execute on function public.be_multi_van_queue(text) to authenticated;
   )
   select coalesce(jsonb_agg(
     jsonb_build_object(
-      'delivery_way_id',delivery_way_id,
-      'waybill_no',waybill_no,
-      'pickup_id',pickup_id,
-      'pickup_way_id',pickup_way_id,
-      'merchant_name',merchant_name,
-      'merchant_code',merchant_code,
+      'delivery_way_id',delivery_way_id,'waybill_no',waybill_no,
+      'pickup_id',pickup_id,'pickup_way_id',pickup_way_id,
+      'merchant_name',merchant_name,'merchant_code',merchant_code,
       'merchant_source',case when merchant_code is not null then 'SAVED' else 'UNRESOLVED' end,
-      'recipient_name',recipient_name,
-      'recipient_phone',recipient_phone,
-      'township',township,
-      'address',address,
-      'cod_amount',cod_amount,
-      'delivery_fee',delivery_fee,
-      'parcel_weight_kg',parcel_weight_kg,
-      'dispatch_status',dispatch_status,
-      'warehouse_status',warehouse_status,
-      'wayplan_status',wayplan_status,
-      'created_at',created_at,
-      'updated_at',updated_at,
-      'delivery_region',delivery_region,
-      'delivery_route_mode',delivery_route_mode,
-      'location_required',location_required,
-      'service_provider_code',service_provider_code,
-      'latitude',latitude,
-      'longitude',longitude,
+      'recipient_name',recipient_name,'recipient_phone',recipient_phone,
+      'township',township,'address',address,'cod_amount',cod_amount,
+      'delivery_fee',delivery_fee,'parcel_weight_kg',parcel_weight_kg,
+      'dispatch_status',dispatch_status,'warehouse_status',warehouse_status,
+      'wayplan_status',wayplan_status,'created_at',created_at,'updated_at',updated_at,
+      'delivery_region',delivery_region,'delivery_route_mode',delivery_route_mode,
+      'location_required',location_required,'service_provider_code',service_provider_code,
+      'latitude',latitude,'longitude',longitude,
       'metadata',jsonb_build_object(
         'source','be_dispatch_ready_queue_v19/V67_FAST',
         'registered_data_entry',true,
         'financial_validation_status','OK',
         'canonical_warehouse_status',warehouse_status,
         'delivery_attempt_status',delivery_attempt_status,
-        'dispatch_status',dispatch_status,
-        'wayplan_status',wayplan_status,
+        'dispatch_status',dispatch_status,'wayplan_status',wayplan_status,
         'location_required',location_required,
         'location_review_status',location_review_status,
         'location_match_level',location_match_level,
         'location_coordinate_source',location_coordinate_source
       )
-    )
-    order by created_at desc
+    ) order by created_at desc
   ),'[]'::jsonb)
   into v_rows
   from limited;
 
   return jsonb_build_object(
-    'ok',true,
-    'enabled',true,
-    'region_code',v_region,
-    'queue',v_rows,
-    'count',jsonb_array_length(v_rows),
-    'build','WAYPLAN_REGION_QUEUE_V67_FAST'
+    'ok',true,'enabled',true,'region_code',v_region,'queue',v_rows,
+    'count',jsonb_array_length(v_rows),'build','WAYPLAN_REGION_QUEUE_V67_FAST'
   );
 end;
 $function$;
