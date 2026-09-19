@@ -384,3 +384,368 @@ end;
 $function$;
 
 grant execute on function public.be_rider_pickup_action(jsonb) to authenticated;
+
+
+-- V77 canonical-coordinate compatibility layer.
+-- The active V40/V43 Wayplan flow does not require a saved V45 route plan.
+-- Arrival therefore uses the accepted delivery-location registry directly.
+
+create or replace function public.be_field_team_delivery_arrival_snapshot_v77()
+returns jsonb
+language plpgsql
+stable security definer
+set search_path to 'public','auth','pg_temp'
+as $function$
+declare
+  v_identity jsonb:=public.be_current_field_team_identity();
+  v_code text:=upper(coalesce(v_identity->>'worker_code',''));
+  v_role text:=lower(coalesce(v_identity->>'role',''));
+  v_rows jsonb;
+begin
+  if auth.uid() is null then raise exception 'AUTHENTICATED_FIELD_SESSION_REQUIRED' using errcode='42501'; end if;
+  if v_role not in ('rider','driver','helper') then raise exception 'FIELD_ROLE_NOT_RECOGNIZED' using errcode='42501'; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'delivery_way_id',s.delivery_way_id,
+    'wayplan_id',s.wayplan_id,
+    'stop_sequence',s.stop_sequence,
+    'dispatch_stop_status',upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'')),
+    'delivery_arrival_status',
+      case
+        when upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'')) in ('DELIVERED','COMPLETED') then 'DELIVERED'
+        when upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,''))='ARRIVED_AT_CUSTOMER' then 'ARRIVED_AT_CUSTOMER'
+        when upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,''))='OUT_FOR_DELIVERY' then 'OUT_FOR_DELIVERY'
+        else upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'READY_FOR_DELIVERY'))
+      end,
+    'arrived_at',nullif(s.metadata->>'customer_arrived_at','')::timestamptz,
+    'arrival_distance_m',nullif(s.metadata->>'arrival_distance_m','')::numeric,
+    'geo_verified',coalesce((s.metadata->>'geo_verified')::boolean,false),
+    'geofence_override_used',coalesce((s.metadata->>'geofence_override_used')::boolean,false),
+    'arrival_latitude',nullif(s.metadata->>'arrival_latitude','')::numeric,
+    'arrival_longitude',nullif(s.metadata->>'arrival_longitude','')::numeric,
+    'destination_latitude',lr.latitude,
+    'destination_longitude',lr.longitude,
+    'coordinate_source',lr.coordinate_source,
+    'coordinate_review_status',lr.review_status
+  ) order by s.stop_sequence),'[]'::jsonb)
+  into v_rows
+  from public.be_wayplan_dispatch_stops s
+  join public.be_wayplan_dispatches w on w.wayplan_id=s.wayplan_id
+  left join lateral (
+    select mm.*
+    from public.be_wayplan_membership_v40 mm
+    where mm.wayplan_id=s.wayplan_id and mm.delivery_way_id=s.delivery_way_id
+    order by mm.updated_at desc nulls last
+    limit 1
+  ) m on true
+  left join lateral (
+    select l.*
+    from public.be_delivery_location_registry l
+    where upper(l.delivery_way_id)=upper(s.delivery_way_id)
+      and l.latitude is not null and l.longitude is not null
+    order by case when upper(coalesce(l.review_status,''))='ACCEPTED' then 0 else 1 end,
+             l.updated_at desc nulls last
+    limit 1
+  ) lr on true
+  where case v_role
+    when 'rider' then upper(coalesce(m.rider_code,w.rider_code,s.rider_code,''))=v_code
+    when 'driver' then upper(coalesce(m.driver_code,w.driver_code,''))=v_code
+    when 'helper' then upper(coalesce(m.helper_code,w.helper_code,''))=v_code
+    else false end;
+
+  return jsonb_build_object(
+    'ok',true,'worker_code',v_code,'worker_role',v_role,'rows',v_rows,
+    'coordinate_source','be_delivery_location_registry',
+    'build','RIDER_DELIVERY_ARRIVAL_STATE_V77_CANONICAL'
+  );
+end;
+$function$;
+
+grant execute on function public.be_field_team_delivery_arrival_snapshot_v77() to authenticated;
+
+create or replace function public.be_supervisor_approve_geofence_override_v50(
+  p_wayplan_id text,
+  p_delivery_way_id text,
+  p_reason text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_profile_role text:=lower(coalesce(public.be_current_role(),''));
+  v_registry_role text:=lower(coalesce(public.be_current_user_role(),''));
+  v_reason text:=nullif(btrim(coalesce(p_reason,'')),'');
+  v_actor text:=coalesce(nullif(auth.jwt()->>'email',''),auth.uid()::text,'unknown');
+  v_row public.be_rider_geofence_overrides_v50%rowtype;
+begin
+  if auth.uid() is null then raise exception 'AUTH_REQUIRED'; end if;
+
+  if v_profile_role not in ('superadmin','admin','supervisor','operations_manager','operation_manager','operations','ops')
+     and v_registry_role not in ('superadmin','admin','supervisor','operations_manager','operation_manager','operations','ops') then
+    raise exception 'SUPERVISOR_ROLE_REQUIRED';
+  end if;
+
+  if nullif(btrim(coalesce(p_wayplan_id,'')),'') is null
+     or nullif(btrim(coalesce(p_delivery_way_id,'')),'') is null then
+    raise exception 'WAYPLAN_AND_DELIVERY_WAY_REQUIRED';
+  end if;
+
+  if v_reason is null or length(v_reason)<5 then raise exception 'OVERRIDE_REASON_REQUIRED'; end if;
+
+  if not exists(
+    select 1 from public.be_wayplan_dispatch_stops s
+    where s.wayplan_id=btrim(p_wayplan_id)
+      and upper(s.delivery_way_id)=upper(btrim(p_delivery_way_id))
+  ) then
+    raise exception 'DELIVERY_STOP_NOT_FOUND';
+  end if;
+
+  insert into public.be_rider_geofence_overrides_v50(
+    wayplan_id,delivery_way_id,reason,approved_by,approved_role,expires_at,metadata
+  ) values (
+    btrim(p_wayplan_id),btrim(p_delivery_way_id),v_reason,v_actor,
+    coalesce(nullif(v_profile_role,''),nullif(v_registry_role,''),'supervisor'),
+    now()+interval '30 minutes',
+    jsonb_build_object('source','canonical_wayplan_geofence_v77','build','V77')
+  )
+  returning * into v_row;
+
+  return jsonb_build_object(
+    'ok',true,'override_id',v_row.id,'wayplan_id',v_row.wayplan_id,
+    'delivery_way_id',v_row.delivery_way_id,'approved_by',v_row.approved_by,
+    'expires_at',v_row.expires_at,'build','GEOFENCE_OVERRIDE_V77_CANONICAL'
+  );
+end;
+$function$;
+
+create or replace function public.be_field_team_delivery_action_v77(p_payload jsonb default '{}'::jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public','auth','pg_temp'
+as $function$
+declare
+  v_identity jsonb:=public.be_current_field_team_identity();
+  v_uid uuid:=auth.uid();
+  v_code text:=upper(coalesce(v_identity->>'worker_code',''));
+  v_role text:=lower(coalesce(v_identity->>'role',''));
+  v_action text:=lower(btrim(coalesce(p_payload->>'action',p_payload->>'source_action','')));
+  v_way text:=coalesce(
+    nullif(upper(btrim(p_payload->>'delivery_way_id')),''),
+    nullif(upper(btrim(p_payload->>'tracking_no')),''),
+    case when upper(coalesce(p_payload->>'pickup_id','')) ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}$'
+      then upper(btrim(p_payload->>'pickup_id')) end
+  );
+  v_wayplan text:=nullif(btrim(coalesce(p_payload->>'wayplan_id','')),'');
+  v_lat numeric;
+  v_lng numeric;
+  v_dest_lat numeric;
+  v_dest_lng numeric;
+  v_distance numeric;
+  v_radius numeric:=100;
+  v_override_id uuid;
+  v_status text;
+  v_rider text;
+  v_driver text;
+  v_helper text;
+  v_has_scan boolean:=false;
+  v_result jsonb;
+  v_operation text:=coalesce(
+    nullif(btrim(p_payload->>'idempotency_key'),''),
+    nullif(btrim(p_payload->>'operation_id'),''),
+    gen_random_uuid()::text
+  );
+begin
+  if v_uid is null then return jsonb_build_object('ok',false,'error','AUTHENTICATED_FIELD_SESSION_REQUIRED'); end if;
+  if v_role not in ('rider','driver','helper') then return jsonb_build_object('ok',false,'error','FIELD_ROLE_NOT_RECOGNIZED'); end if;
+  if v_way is null then raise exception 'DELIVERY_WAY_ID_REQUIRED' using errcode='22023'; end if;
+
+  select s.wayplan_id,
+         upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'')),
+         upper(coalesce(m.rider_code,w.rider_code,s.rider_code,'')),
+         upper(coalesce(m.driver_code,w.driver_code,'')),
+         upper(coalesce(m.helper_code,w.helper_code,'')),
+         exists(
+           select 1 from public.be_dispatch_scans_v39 ds
+           where ds.delivery_way_id=s.delivery_way_id and ds.scan_status='SCANNED'
+             and (ds.wayplan_code=s.wayplan_id or ds.wayplan_code is null)
+         )
+  into v_wayplan,v_status,v_rider,v_driver,v_helper,v_has_scan
+  from public.be_wayplan_dispatch_stops s
+  join public.be_wayplan_dispatches w on w.wayplan_id=s.wayplan_id
+  left join lateral (
+    select mm.* from public.be_wayplan_membership_v40 mm
+    where mm.wayplan_id=s.wayplan_id and mm.delivery_way_id=s.delivery_way_id
+    order by mm.updated_at desc nulls last limit 1
+  ) m on true
+  where upper(s.delivery_way_id)=upper(v_way)
+    and (v_wayplan is null or s.wayplan_id=v_wayplan)
+  order by s.updated_at desc nulls last
+  limit 1;
+
+  if v_wayplan is null then raise exception 'DELIVERY_NOT_FOUND_OR_NOT_REGISTERED: %',v_way using errcode='P0002'; end if;
+  if not (case v_role when 'rider' then v_rider=v_code when 'driver' then v_driver=v_code when 'helper' then v_helper=v_code else false end) then
+    raise exception 'DELIVERY_NOT_ASSIGNED_TO_SIGNED_IN_FIELD_WORKER: %',v_way using errcode='42501';
+  end if;
+
+  if v_action in ('start_delivery','out_for_delivery') then
+    return public.be_field_team_delivery_action(
+      p_payload||jsonb_build_object(
+        'delivery_way_id',v_way,'wayplan_id',v_wayplan,'operation_id',v_operation
+      )
+    )||jsonb_build_object('build','FIELD_DELIVERY_START_V77_CANONICAL');
+  end if;
+
+  if v_action in ('arrive_customer','arrived_at_customer','arrive_delivery','delivery_arrived') then
+    if v_role='helper' then
+      return jsonb_build_object('ok',false,'error','PRIMARY_WORKER_REQUIRED','message','Only assigned rider or driver can confirm customer arrival.');
+    end if;
+    if not v_has_scan then raise exception 'DISPATCH_SCAN_REQUIRED_BEFORE_CUSTOMER_ARRIVAL: %',v_way using errcode='22023'; end if;
+    if v_status in ('DELIVERED','COMPLETED') then
+      return jsonb_build_object('ok',true,'delivery_way_id',v_way,'action','arrive_customer','mobile_status','DELIVERED','already_applied',true);
+    end if;
+    if v_status<>'OUT_FOR_DELIVERY' and v_status<>'ARRIVED_AT_CUSTOMER' then
+      raise exception 'START_DELIVERY_REQUIRED_BEFORE_CUSTOMER_ARRIVAL: current status %',coalesce(v_status,'NULL') using errcode='22023';
+    end if;
+
+    begin
+      v_lat:=nullif(btrim(coalesce(p_payload->>'latitude',p_payload->>'lat','')),'')::numeric;
+      v_lng:=nullif(btrim(coalesce(p_payload->>'longitude',p_payload->>'lng','')),'')::numeric;
+    exception when others then
+      raise exception 'VALID_GPS_REQUIRED_FOR_CUSTOMER_ARRIVAL' using errcode='22023';
+    end;
+    if v_lat is null or v_lng is null then raise exception 'GPS_REQUIRED_FOR_CUSTOMER_ARRIVAL' using errcode='22023'; end if;
+
+    select l.latitude,l.longitude
+      into v_dest_lat,v_dest_lng
+    from public.be_delivery_location_registry l
+    where upper(l.delivery_way_id)=upper(v_way)
+      and l.latitude is not null and l.longitude is not null
+    order by case when upper(coalesce(l.review_status,''))='ACCEPTED' then 0 else 1 end,
+             l.updated_at desc nulls last
+    limit 1;
+
+    select coalesce(numeric_value,100) into v_radius
+    from public.be_rider_route_settings_v46
+    where setting_key='delivery_arrival_radius_m';
+    v_radius:=coalesce(v_radius,100);
+
+    if v_dest_lat is not null and v_dest_lng is not null then
+      v_distance:=public.be_rider_distance_m_v46(v_lat,v_lng,v_dest_lat,v_dest_lng);
+    end if;
+
+    if v_dest_lat is null or v_dest_lng is null or v_distance is null or v_distance>v_radius then
+      select id into v_override_id
+      from public.be_rider_geofence_overrides_v50
+      where wayplan_id=v_wayplan
+        and upper(delivery_way_id)=upper(v_way)
+        and used_at is null
+        and expires_at>now()
+      order by created_at desc
+      limit 1
+      for update skip locked;
+
+      if v_override_id is null then
+        if v_dest_lat is null or v_dest_lng is null then
+          raise exception 'DESTINATION_COORDINATES_REQUIRED|supervisor_override_required=true' using errcode='22023';
+        end if;
+        raise exception 'GEOFENCE_OUTSIDE_RADIUS|distance_m=%|radius_m=%|supervisor_override_required=true',
+          round(v_distance),round(v_radius) using errcode='22023';
+      end if;
+    end if;
+
+    if v_override_id is not null then
+      update public.be_rider_geofence_overrides_v50
+      set used_at=now(),used_by=coalesce(nullif(auth.jwt()->>'email',''),v_code,v_uid::text)
+      where id=v_override_id;
+    end if;
+
+    update public.be_wayplan_dispatch_stops
+    set stop_status='ARRIVED_AT_CUSTOMER',
+        rider_status='ARRIVED_AT_CUSTOMER',
+        dispatch_status='ARRIVED_AT_CUSTOMER',
+        rider_action_at=now(),
+        updated_at=now(),
+        metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+          'customer_arrived_at',now(),
+          'arrival_latitude',v_lat,
+          'arrival_longitude',v_lng,
+          'destination_latitude',v_dest_lat,
+          'destination_longitude',v_dest_lng,
+          'arrival_distance_m',v_distance,
+          'geofence_radius_m',v_radius,
+          'geo_verified',coalesce(v_distance<=v_radius,false),
+          'geofence_override_used',v_override_id is not null,
+          'geofence_override_id',v_override_id,
+          'worker_code',v_code,'worker_role',v_role,
+          'arrival_operation_id',v_operation,'build','V77'
+        )
+    where wayplan_id=v_wayplan and upper(delivery_way_id)=upper(v_way);
+
+    update public.be_waybill_ledger
+    set rider_status='ARRIVED_AT_CUSTOMER',updated_at=now(),
+        metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+          'customer_arrived_at',now(),'arrival_distance_m',v_distance,
+          'geo_verified',coalesce(v_distance<=v_radius,false),
+          'geofence_override_used',v_override_id is not null,'build','V77'
+        )
+    where upper(delivery_way_id)=upper(v_way) or upper(tracking_no)=upper(v_way);
+
+    return jsonb_build_object(
+      'ok',true,'action','arrive_customer','mobile_status','ARRIVED_AT_CUSTOMER',
+      'delivery_way_id',v_way,'wayplan_id',v_wayplan,
+      'distance_m',v_distance,'geofence_radius_m',v_radius,
+      'inside_geofence',coalesce(v_distance<=v_radius,false),
+      'override_used',v_override_id is not null,'override_id',v_override_id,
+      'destination_coordinates_available',v_dest_lat is not null and v_dest_lng is not null,
+      'build','FIELD_DELIVERY_ARRIVAL_V77_CANONICAL'
+    );
+  end if;
+
+  if v_action in ('deliver','delivered','verify_delivery','delivery_verified') then
+    if v_status<>'ARRIVED_AT_CUSTOMER' then
+      raise exception 'ARRIVED_AT_CUSTOMER_REQUIRED_BEFORE_DELIVERED' using errcode='22023';
+    end if;
+
+    if not exists(
+      select 1
+      from public.be_wayplan_dispatch_stops s
+      where s.wayplan_id=v_wayplan and upper(s.delivery_way_id)=upper(v_way)
+        and (
+          coalesce((s.metadata->>'geo_verified')::boolean,false)
+          or coalesce((s.metadata->>'geofence_override_used')::boolean,false)
+        )
+    ) then
+      raise exception 'ARRIVAL_GEOFENCE_REQUIRED_BEFORE_DELIVERED' using errcode='22023';
+    end if;
+
+    v_result:=public.be_field_team_delivery_action(
+      p_payload||jsonb_build_object(
+        'delivery_way_id',v_way,'wayplan_id',v_wayplan,'operation_id',v_operation
+      )
+    );
+
+    return coalesce(v_result,'{}'::jsonb)||jsonb_build_object(
+      'arrival_verified',true,'build','FIELD_DELIVERY_COMPLETE_V77_CANONICAL'
+    );
+  end if;
+
+  if v_action='exception' or v_action like '%delivery_exception%' or v_action like '%delivery_failed%' then
+    return public.be_field_team_delivery_action_v71(
+      p_payload||jsonb_build_object(
+        'delivery_way_id',v_way,'wayplan_id',v_wayplan,'operation_id',v_operation
+      )
+    )||jsonb_build_object('build','FIELD_DELIVERY_EXCEPTION_V77_CANONICAL');
+  end if;
+
+  return public.be_field_team_delivery_action(
+    p_payload||jsonb_build_object(
+      'delivery_way_id',v_way,'wayplan_id',v_wayplan,'operation_id',v_operation
+    )
+  )||jsonb_build_object('build','FIELD_DELIVERY_ACTION_V77_CANONICAL');
+end;
+$function$;
+
+grant execute on function public.be_field_team_delivery_action_v77(jsonb) to authenticated;
