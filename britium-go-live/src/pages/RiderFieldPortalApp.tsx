@@ -1992,10 +1992,10 @@ function FieldPortal() {
     setMessage("");
 
     try {
-      const deliveryAction = ["OUT_FOR_DELIVERY", "ARRIVED_AT_CUSTOMER"].includes(action);
+      const gpsRequired = action === "ARRIVED_AT_CUSTOMER";
       const deliveryWayId = text((job as any).delivery_way_id || (job as any).tracking_no || pickupId(job));
       const wayplanId = text((job as any).wayplan_id);
-      const gps = deliveryAction ? await currentGps() : null;
+      const gps = gpsRequired ? await currentGps() : null;
 
       if (isAssignmentResponse) {
         const { data: responseData, error: responseError } = await supabase.rpc("be_field_team_assignment_action", {
