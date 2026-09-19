@@ -5,7 +5,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..")
 const page = fs.readFileSync(path.join(root, "src/pages/SupervisorWayplanReviewPage.tsx"), "utf8");
 
 const checks = [
-  ["live supervisor snapshot RPC used", page.includes("be_wayplan_supervisor_snapshot_v43")],
+  ["live supervisor snapshot RPC used", page.includes("be_wayplan_supervisor_snapshot_v43") || page.includes("be_wayplan_supervisor_list_v62")],
   ["legacy empty snapshot RPC removed", !page.includes("be_supervisor_wayplan_snapshot")],
   ["wayplans render dynamically", page.includes("wayplans.map")],
   ["stops render dynamically", page.includes("stops.map")],
@@ -14,7 +14,7 @@ const checks = [
   ["dispatch preparation wired", page.includes("be_wayplan_prepare_dispatch_v43")],
   ["errors visible", page.includes("setError") && page.includes("Wayplan confirmation failed")],
   ["dispatch next step shown", page.includes("mandatory parcel scan")],
-  ["V60 marker present", page.includes('data-supervisor-wayplan-v60="true"')],
+  ["Supervisor Wayplan marker present", page.includes('data-supervisor-wayplan-v60="true"') || page.includes('data-supervisor-wayplan-v62="true"')],
 ];
 
 const failed = checks.filter(([,ok]) => !ok).map(([name]) => name);
