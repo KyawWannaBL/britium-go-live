@@ -97,7 +97,7 @@ with active_wayplans as (
     w.review_status,
     w.driver_code,w.driver_name,w.rider_code,w.rider_name,w.helper_code,w.helper_name,
     p.pickup_id,
-    p.merchant_code,p.merchant_name
+    p.merchant_id as merchant_code,null::text as merchant_name
   from public.be_wayplan_dispatch_stops s
   join plan_counts w on w.wayplan_id=s.wayplan_id
   left join public.be_wayplan_membership_v40 m
