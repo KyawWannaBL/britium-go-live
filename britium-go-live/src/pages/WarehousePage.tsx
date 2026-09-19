@@ -53,6 +53,8 @@ export default function WarehousePage() {
   const [progressFilter,setProgressFilter]=useState("ALL");
   const [pickupFilter,setPickupFilter]=useState("ALL");
   const [townshipFilter,setTownshipFilter]=useState("ALL");
+  const [merchantFilter,setMerchantFilter]=useState("ALL");
+  const [dateFilter,setDateFilter]=useState("ALL");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
@@ -292,10 +294,54 @@ export default function WarehousePage() {
     }
   };
 
+  const operationalWayId=(r:any)=>String(
+    r.display_way_id || r.waybill_no || r.tracking_no || r.delivery_way_id || r.id || ""
+  ).trim();
+
+  const isBlkCode=(value:any)=>/(^|[-_])BLK([-_]|$)/i.test(String(value||"").trim());
+
+  const rowOperationalDate=(r:any)=>{
+    const raw=r.inbound_scan_at || r.dispatch_scan_at || r.return_scan_1_at || r.return_scan_2_at ||
+      r.return_scan_3_at || r.created_at || r.saved_at || r.updated_at || "";
+    if(!raw) return "";
+    const d=new Date(raw);
+    if(Number.isNaN(d.getTime())) return "";
+    const parts=new Intl.DateTimeFormat("en-CA",{
+      timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"
+    }).formatToParts(d);
+    const y=parts.find(p=>p.type==="year")?.value;
+    const m=parts.find(p=>p.type==="month")?.value;
+    const day=parts.find(p=>p.type==="day")?.value;
+    return y&&m&&day ? `${y}-${m}-${day}` : "";
+  };
+
+  // Consolidated BLK delivery-way numbers are internal aliases only. Present one
+  // operational row per original Way ID and prefer a non-BLK canonical row when
+  // both the original and consolidated aliases are present.
+  const operationalRows=useMemo(()=>{
+    const byWay=new Map<string,any>();
+    for(const row of rows){
+      const display=operationalWayId(row);
+      if(!display || isBlkCode(display)) continue;
+      const key=display.toUpperCase();
+      const current=byWay.get(key);
+      if(!current){
+        byWay.set(key,row);
+        continue;
+      }
+      const currentInternal=isBlkCode(current.delivery_way_id || current.canonical_delivery_way_id);
+      const candidateInternal=isBlkCode(row.delivery_way_id || row.canonical_delivery_way_id);
+      if(currentInternal && !candidateInternal) byWay.set(key,row);
+    }
+    return Array.from(byWay.values());
+  },[rows]);
+
   const filterOptions=useMemo(()=>({
-    pickups:Array.from(new Set(rows.map((r:any)=>String(r.pickup_id||"").trim()).filter(Boolean))).sort(),
-    townships:Array.from(new Set(rows.map((r:any)=>String(r.delivery_township||"").trim()).filter(Boolean))).sort(),
-  }),[rows]);
+    pickups:Array.from(new Set(operationalRows.map((r:any)=>String(r.pickup_id||"").trim()).filter(Boolean))).sort(),
+    townships:Array.from(new Set(operationalRows.map((r:any)=>String(r.delivery_township||"").trim()).filter(Boolean))).sort(),
+    merchants:Array.from(new Set(operationalRows.map((r:any)=>String(r.merchant_code||r.merchant_name||"").trim()).filter(Boolean))).sort(),
+    dates:Array.from(new Set(operationalRows.map((r:any)=>rowOperationalDate(r)).filter(Boolean))).sort().reverse(),
+  }),[operationalRows]);
 
   const progressOf=(r:any)=>{
     if(r.rto_at || String(r.delivery_status||"").toUpperCase()==="RTO") return "RTO";
@@ -307,19 +353,21 @@ export default function WarehousePage() {
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return rows.filter((r:any)=>{
+    return operationalRows.filter((r:any)=>{
       if(progressFilter!=="ALL" && progressOf(r)!==progressFilter) return false;
       if(pickupFilter!=="ALL" && String(r.pickup_id||"")!==pickupFilter) return false;
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
+      if(merchantFilter!=="ALL" && String(r.merchant_code||r.merchant_name||"")!==merchantFilter) return false;
+      if(dateFilter!=="ALL" && rowOperationalDate(r)!==dateFilter) return false;
       if(!q) return true;
       return [
-        r.waybill_no,r.pickup_id,track(r),r.merchant_code,r.merchant_name,
+        r.waybill_no,r.pickup_id,operationalWayId(r),r.merchant_code,r.merchant_name,
         r.recipient_name,r.phone_number,r.recipient_phone,r.delivery_township,
         r.warehouse_scan_status,r.return_reason_1_name,r.return_reason_2_name,
         r.return_reason_3_name,r.last_exception_reason,
       ].some((x)=>String(x||"").toLowerCase().includes(q));
     });
-  },[rows,query,progressFilter,pickupFilter,townshipFilter]);
+  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFilter]);
 
   const exportCsv = () => {
     const headers = [
@@ -589,6 +637,14 @@ export default function WarehousePage() {
               <option value="ALL">All townships</option>
               {filterOptions.townships.map((x:any)=><option key={x} value={x}>{x}</option>)}
             </select>
+            <select value={merchantFilter} onChange={e=>setMerchantFilter(e.target.value)} className="max-w-[220px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
+              <option value="ALL">All merchants</option>
+              {filterOptions.merchants.map((x:any)=><option key={x} value={x}>{x}</option>)}
+            </select>
+            <select value={dateFilter} onChange={e=>setDateFilter(e.target.value)} className="max-w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
+              <option value="ALL">All dates</option>
+              {filterOptions.dates.map((x:any)=><option key={x} value={x}>{x}</option>)}
+            </select>
             <div className="relative min-w-[300px] flex-1 md:w-[420px]">
               <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
               <input
@@ -598,10 +654,10 @@ export default function WarehousePage() {
                 className="w-full rounded-lg border border-slate-700 bg-[#071827] py-2 pl-9 pr-3 outline-none focus:border-[#C09B30]"
               />
             </div>
-            <button type="button" onClick={()=>{setQuery("");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");}} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">
+            <button type="button" onClick={()=>{setQuery("");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");setMerchantFilter("ALL");setDateFilter("ALL");}} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">
               Clear filters
             </button>
-            <span className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-300">{filteredRows.length} / {rows.length} rows</span>
+            <span className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-300">{filteredRows.length} / {operationalRows.length} rows</span>
           </div>
         </div>
 
