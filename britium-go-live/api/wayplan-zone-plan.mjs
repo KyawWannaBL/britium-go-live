@@ -215,10 +215,9 @@ export function balanceYangonRouteRows(rows) {
   const routes = [...mainlandRoutes, ...westRoutes];
   if (routes.some((route) => route.rows.length > ROUTE_CEILING)) throw new Error("A balanced Yangon route exceeds 75 parcels.");
   if (routes.some((route) => violatesDowntownEastFence(route.rows))) throw new Error("Downtown and East Suburbs cannot share a Yangon route.");
-  const short = routes.filter((route) => route.rows.length < FLOOR);
-  if (short.length > 1) {
-    throw new Error("Current hard-fence volumes would require more than one route below 50 parcels. Reassign or hold one low-volume group before generating Wayplans.");
-  }
+  // Hard fences are operational constraints, not reasons to merge incompatible geography.
+  // Yangon may therefore produce more than one unavoidable sub-50 route. Creation still
+  // requires one explicit operator approval + reason for the batch in MultiVanPlanner/V77.
   return routes;
 }
 function recommendedVehicle(rows) {
@@ -312,10 +311,10 @@ export default {
           ...assigned.otherExcluded.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, reason: "OUTSIDE_YANGON_VAN_MASTER_SCOPE" })),
         ],
         hard_fences: HARD_FENCES,
-        sequencing_policy: "BALANCE_COMPATIBLE_YANGON_VOLUME_TO_50_75_THEN_GOOGLE_ROAD_TIME_OPTIMIZATION",
+        sequencing_policy: "BALANCE_COMPATIBLE_YANGON_VOLUME_TO_50_75_PRESERVE_HARD_FENCES_THEN_ROAD_OPTIMIZE",
         road_geometry_policy: "DO_NOT_CROSS_HARD_FENCES_FOR_CAPACITY_BALANCING",
         motorcycle_policy: "PROHIBITED_FROM_AUTOMATIC_YANGON_FLEET_PLANNING",
-        low_volume_policy: "AT_MOST_ONE_BELOW_50_ROUTE_AND_ONLY_WITH_EXPLICIT_OPERATOR_APPROVAL",
+        low_volume_policy: "ALLOW_UNAVOIDABLE_HARD_FENCE_BELOW_50_ROUTES_WITH_EXPLICIT_BATCH_APPROVAL",
         high_volume_policy: "BALANCE_COMPATIBLE_CORRIDORS_TO_50_75_AND_USE_SEQUENTIAL_FLEET_WAVES",
         manual_editable: true,
         generated_at: new Date().toISOString(),

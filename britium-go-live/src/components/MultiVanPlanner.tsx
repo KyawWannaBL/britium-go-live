@@ -499,9 +499,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
   if (oversized.length) readinessIssues.push("Split any route above 75 parcels before creation.");
-  if (short.length > 1) readinessIssues.push("More than one route is below 50 parcels; rebalance or hold low-volume parcels.");
-  if (short.length === 1 && !approved) readinessIssues.push("Approve the one route below 50 parcels.");
-  if (short.length === 1 && reason.trim().length < 5) readinessIssues.push("Enter an operational reason of at least 5 characters for the below-50 route.");
+  if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one route is below 50 parcels; rebalance or hold low-volume parcels.");
+  if (short.length > 0 && !approved) readinessIssues.push(isYangonMaster ? "Approve the unavoidable below-50 hard-fence route batch." : "Approve the one route below 50 parcels.");
+  if (short.length > 0 && reason.trim().length < 5) readinessIssues.push(isYangonMaster ? "Enter an operational reason of at least 5 characters for the below-50 hard-fence route batch." : "Enter an operational reason of at least 5 characters for the below-50 route.");
   const cannotSave = busy || readinessIssues.length > 0;
 
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
@@ -577,8 +577,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       </section>;
     })}
 
-    {short.length === 1 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> Approve one route below 50 parcels</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" /></div>}
-    {short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below 50 parcels. Reassign or hold low-volume parcels before creation.</p>}
+    {short.length > 0 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> {isYangonMaster ? `Approve ${short.length} unavoidable below-50 hard-fence route${short.length === 1 ? "" : "s"}` : "Approve one route below 50 parcels"}</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isYangonMaster ? "Mandatory operational reason for hard-fence low-volume route(s)" : "Mandatory operational reason"} /></div>}
+    {!isYangonMaster && short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below 50 parcels. Reassign or hold low-volume parcels before creation.</p>}
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
     {plans.length > 0 && <div data-wayplan-create-readiness-v56="true" style={{ padding: 10, border: `1px solid ${readinessIssues.length ? "#8f5a2a" : "#2f855a"}`, borderRadius: 8, background: readinessIssues.length ? "rgba(143,90,42,0.12)" : "rgba(47,133,90,0.12)" }}>
       <strong>{readinessIssues.length ? "Creation blocked — complete these items:" : "Ready to create reviewed Wayplans"}</strong>
