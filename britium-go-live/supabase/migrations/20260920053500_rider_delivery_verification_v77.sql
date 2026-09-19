@@ -250,23 +250,73 @@ begin
       raise exception 'ARRIVED_AT_CUSTOMER_STATUS_REQUIRED_BEFORE_DELIVERED' using errcode='22023';
     end if;
 
-    return public.be_field_team_delivery_action(
+    v_result:=public.be_field_team_delivery_action(
       p_payload||jsonb_build_object(
         'delivery_way_id',v_way,
         'wayplan_id',v_wayplan,
         'operation_id',v_operation
       )
-    )||jsonb_build_object('build','FIELD_DELIVERY_ACTION_V77');
+    );
+
+    update public.be_rider_route_stop_state_v46
+    set stop_status='DELIVERED',
+        updated_at=now()
+    where wayplan_id=v_wayplan and delivery_way_id=v_way;
+
+    update public.be_rider_route_runs_v46 rr
+    set current_stop_sequence=(
+          select min(rs.stop_sequence)
+          from public.be_rider_route_stop_state_v46 rs
+          where rs.wayplan_id=v_wayplan and rs.stop_status in ('PENDING','ARRIVED')
+        ),
+        run_status=case
+          when not exists(
+            select 1 from public.be_rider_route_stop_state_v46 rs
+            where rs.wayplan_id=v_wayplan and rs.stop_status in ('PENDING','ARRIVED')
+          ) then
+            case when exists(
+              select 1 from public.be_rider_route_stop_state_v46 rs
+              where rs.wayplan_id=v_wayplan and rs.stop_status in ('FAILED','RTO')
+            ) then 'COMPLETED_WITH_EXCEPTIONS' else 'COMPLETED' end
+          else rr.run_status
+        end,
+        updated_at=now()
+    where rr.wayplan_id=v_wayplan;
+
+    return coalesce(v_result,'{}'::jsonb)||jsonb_build_object('build','FIELD_DELIVERY_ACTION_V77');
   end if;
 
   if v_action='exception' or v_action like '%delivery_exception%' or v_action like '%delivery_failed%' then
-    return public.be_field_team_delivery_action_v71(
+    v_result:=public.be_field_team_delivery_action_v71(
       p_payload||jsonb_build_object(
         'delivery_way_id',v_way,
         'wayplan_id',v_wayplan,
         'operation_id',v_operation
       )
-    )||jsonb_build_object('build','FIELD_DELIVERY_EXCEPTION_V77');
+    );
+
+    update public.be_rider_route_stop_state_v46
+    set stop_status=case when upper(coalesce(v_result->>'mobile_status',v_result->>'status',''))='RTO' then 'RTO' else 'FAILED' end,
+        updated_at=now()
+    where wayplan_id=v_wayplan and delivery_way_id=v_way;
+
+    update public.be_rider_route_runs_v46 rr
+    set current_stop_sequence=(
+          select min(rs.stop_sequence)
+          from public.be_rider_route_stop_state_v46 rs
+          where rs.wayplan_id=v_wayplan and rs.stop_status in ('PENDING','ARRIVED')
+        ),
+        run_status=case
+          when not exists(
+            select 1 from public.be_rider_route_stop_state_v46 rs
+            where rs.wayplan_id=v_wayplan and rs.stop_status in ('PENDING','ARRIVED')
+          ) then 'COMPLETED_WITH_EXCEPTIONS'
+          else rr.run_status
+        end,
+        updated_at=now()
+    where rr.wayplan_id=v_wayplan;
+
+    return coalesce(v_result,'{}'::jsonb)||jsonb_build_object('build','FIELD_DELIVERY_EXCEPTION_V77');
   end if;
 
   return public.be_field_team_delivery_action(
