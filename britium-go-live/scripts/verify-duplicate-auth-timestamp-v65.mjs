@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919133000_duplicate_way_auth_timestamp_v65.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919133100_duplicate_way_timestamp_v65a.sql"), "utf8");
 
 const checks = [
   ["duplicate archive table exists", migration.includes("be_duplicate_way_archive_v65")],
@@ -11,16 +11,11 @@ const checks = [
   ["Warehouse queue canonicalization exists", migration.includes("create or replace view public.be_v_warehouse_receipt_v36") && migration.includes("canonical_rank=1")],
   ["Wayplan queue canonicalization exists", migration.includes("WAYPLAN_REGION_QUEUE_V65_CANONICAL")],
   ["dispatch timestamp trigger exists", migration.includes("be_sync_dispatch_scan_timestamp_v65") && migration.includes("dispatch_scanned_at=new.scanned_at")],
-  ["delegation table exists", migration.includes("be_superadmin_delegations_v65")],
-  ["delegation is revocable", migration.includes("SUPERADMIN_DELEGATION_REVOKED_V65")],
-  ["only permanent superadmin can manage delegation", migration.includes("Permanent SUPERADMIN authority is required")],
-  ["requested optmgr delegation included", migration.includes("optmgr_ygn_001@britiumventures.com")],
-  ["relogin is explicit", migration.includes("relogin_required")],
 ];
 
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
 if (failed.length) {
-  console.error("Duplicate/auth/timestamp V65 contract FAILED:");
+  console.error("Duplicate/timestamp V65A contract FAILED:");
   failed.forEach((name) => console.error(" - " + name));
   process.exit(1);
 }
