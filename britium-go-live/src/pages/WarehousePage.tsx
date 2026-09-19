@@ -210,8 +210,9 @@ export default function WarehousePage() {
       if(!match){
         const lookup=await supabase.rpc("be_warehouse_resolve_scan_v3",{p_scan:tracking});
         if(lookup.error) throw lookup.error;
+        if(lookup.data?.ok===false) throw new Error(lookup.data?.message || "Way ID / Waybill was not found.");
         const matches=lookup.data?.matches || [];
-        if(!matches.length) throw new Error("Waybill not found: "+tracking);
+        if(!matches.length) throw new Error("Way ID / Waybill not found: "+tracking);
         if(matches.length>1){
           setScanChoices({kind,matches});
           setMessage("This Way ID belongs to more than one pickup. Choose the parcel below before saving.");
@@ -543,7 +544,7 @@ export default function WarehousePage() {
                 else void doScan(scanMode,value);
               }
             }}
-            placeholder="Scan / enter Delivery Way ID"
+            placeholder="Scan / enter Way ID / Waybill"
             className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30]"
           />
 
