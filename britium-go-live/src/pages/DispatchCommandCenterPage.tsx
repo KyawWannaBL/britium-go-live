@@ -151,6 +151,18 @@ function buildManifestPrintHtml(jobs: any[], assets: any[], titlePrefix = "Manif
   </body></html>`;
 }
 
+const DELIVERY_FAILURE_OPTIONS = [
+  { code: "PHONE_OFF", label: "ဖုန်းစက်ပိတ်ထားသည်။" },
+  { code: "PHONE_OUT_OF_COVERAGE", label: "ဖုန်းဆက်သွယ်မှုဧရိယာပြင်ပသို့ရောက်ရှိနေသည်။" },
+  { code: "NO_ANSWER", label: "ဖုန်းမကိုင်ပါ။" },
+  { code: "CUSTOMER_NOT_AVAILABLE", label: "Customer မရှိ / မရရှိနိုင်ပါ" },
+  { code: "WRONG_ADDRESS", label: "လိပ်စာ မှားယွင်း / မပြည့်စုံပါ" },
+  { code: "CUSTOMER_REFUSED", label: "Customer မှ ပစ္စည်းကို လက်မခံပါ" },
+  { code: "NO_ACCESS_TO_BUILDING", label: "အဆောက်အဦး / ဝင်းအတွင်း ဝင်ခွင့်မရပါ" },
+  { code: "COD_NOT_READY", label: "COD ငွေ မပြင်ဆင်ရသေးပါ" },
+  { code: "WEATHER_TRAFFIC_ISSUE", label: "ရာသီဥတု / လမ်းကြောင်း ပြဿနာ" },
+];
+
 function printManifest(jobs: any[], assets: any[], title = "Manifest") {
   const win = window.open("", "_blank", "width=1200,height=800");
   if (!win) return alert("Popup blocked. Please allow popups to print manifest.");
@@ -163,6 +175,7 @@ function printManifest(jobs: any[], assets: any[], title = "Manifest") {
 export default function DispatchCommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
+  const [failureReasonByWay,setFailureReasonByWay]=useState<Record<string,string>>({});
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, jobs: [], wayplans: [], assets: [], zones: [] });
   const [query, setQuery] = useState("");
   const [selectedWayplan, setSelectedWayplan] = useState("");
@@ -319,9 +332,12 @@ export default function DispatchCommandCenterPage() {
     }
   };
 
-  const setJobStatus = async (trackingNo: string, status: string) => {
-    let note = "";
-    if (status === "ATTEMPTED_FAILED") note = prompt("Failure / return reason note") || "";
+  const setJobStatus = async (trackingNo: string, status: string, noteOverride?: string) => {
+    let note = noteOverride || "";
+    if (status === "ATTEMPTED_FAILED" && !note) {
+      setMessage("Choose a failed-delivery reason before pressing Fail.");
+      return;
+    }
     setLoading(true);
     try {
       const email = await actor();
@@ -400,11 +416,28 @@ export default function DispatchCommandCenterPage() {
       </div>
       {getRemarks(j) && <div className="mt-2 rounded bg-amber-950/30 px-2 py-1 text-xs text-amber-200">{getRemarks(j)}</div>}
       {["DISPATCHED","OUT_FOR_DELIVERY"].includes(String(j.review_status || j.dispatch_status || "").toUpperCase()) ? (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <button onClick={() => setJobStatus(getTracking(j), "OUT_FOR_DELIVERY")} className="rounded bg-blue-700 px-2 py-1 text-xs text-white">Out</button>
-          <button onClick={() => setJobStatus(getTracking(j), "DELIVERED")} className="rounded bg-emerald-700 px-2 py-1 text-xs text-white">Done</button>
-          <button onClick={() => setJobStatus(getTracking(j), "ATTEMPTED_FAILED")} className="rounded bg-amber-700 px-2 py-1 text-xs text-white">Fail</button>
-          <button onClick={() => setJobStatus(getTracking(j), "RTO")} className="rounded bg-rose-800 px-2 py-1 text-xs text-white">RTO</button>
+        <div className="mt-3 grid gap-1.5">
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={() => setJobStatus(getTracking(j), "OUT_FOR_DELIVERY")} className="rounded bg-blue-700 px-2 py-1 text-xs text-white">Out</button>
+            <button onClick={() => setJobStatus(getTracking(j), "DELIVERED")} className="rounded bg-emerald-700 px-2 py-1 text-xs text-white">Done</button>
+            <button
+              onClick={() => {
+                const code=failureReasonByWay[getTracking(j)] || "";
+                const opt=DELIVERY_FAILURE_OPTIONS.find(x=>x.code===code);
+                void setJobStatus(getTracking(j), "ATTEMPTED_FAILED", opt ? `${opt.code}: ${opt.label}` : "");
+              }}
+              className="rounded bg-amber-700 px-2 py-1 text-xs text-white"
+            >Fail</button>
+            <button onClick={() => setJobStatus(getTracking(j), "RTO")} className="rounded bg-rose-800 px-2 py-1 text-xs text-white">RTO</button>
+          </div>
+          <select
+            value={failureReasonByWay[getTracking(j)] || ""}
+            onChange={(e)=>setFailureReasonByWay(prev=>({...prev,[getTracking(j)]:e.target.value}))}
+            className="w-full rounded border border-slate-700 bg-slate-900 px-2 py-1 text-[11px] text-slate-200"
+          >
+            <option value="">Choose failed-delivery reason...</option>
+            {DELIVERY_FAILURE_OPTIONS.map(opt=><option key={opt.code} value={opt.code}>{opt.label}</option>)}
+          </select>
         </div>
       ) : (
         <div className="mt-3 text-[10px] text-amber-300">{j.review_status === "DISPATCH_READY" ? (j.dispatch_scanned ? "Scanned · waiting for full Wayplan scan completion" : "Mandatory Dispatch scan required") : "Waiting for Supervisor/Dispatch release"}</div>
