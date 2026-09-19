@@ -51,9 +51,29 @@ begin
     upper(v_raw)
   ) into v_lookup;
 
-  -- Dispatch scanning should resolve against the currently active Wayplan
-  -- before considering historical rows with the same printed Way ID.
-  with active_candidates as (
+  -- Prefer an exact canonical ID in the active Wayplan. This prevents a
+  -- historical/source alias with the same display value from forcing a choice.
+  with exact_active as (
+    select
+      d.delivery_way_id as canonical_id,
+      d.pickup_id,
+      coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id) as waybill_no
+    from public.be_wayplan_membership_v40 m
+    join public.be_data_entry_parcel_details d on d.delivery_way_id=m.delivery_way_id
+    where m.membership_status in ('READY_FOR_DISPATCH','PLANNED','DISPATCHED')
+      and upper(d.delivery_way_id)=upper(v_raw)
+    order by m.updated_at desc nulls last
+    limit 1
+  )
+  select count(*)::integer,
+         coalesce(jsonb_agg(to_jsonb(e)),'[]'::jsonb)
+    into v_count,v_matches
+  from exact_active e;
+
+  if v_count=0 then
+    -- Dispatch scanning should resolve against the currently active Wayplan
+    -- before considering historical rows with the same printed Way ID.
+    with active_candidates as (
     select distinct
       d.delivery_way_id as canonical_id,
       d.pickup_id,
@@ -70,6 +90,7 @@ begin
          coalesce(jsonb_agg(to_jsonb(c) order by c.pickup_id,c.canonical_id),'[]'::jsonb)
     into v_count,v_matches
   from active_candidates c;
+  end if;
 
   if v_count=0 then
     with candidates as (
