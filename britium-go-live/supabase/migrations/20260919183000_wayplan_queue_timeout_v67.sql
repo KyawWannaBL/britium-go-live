@@ -41,7 +41,26 @@ begin
     );
   end if;
 
-  with candidates as materialized (
+  with canonical_base as materialized (
+    select
+      d.*,
+      row_number() over (
+        partition by
+          upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)),
+          lower(regexp_replace(coalesce(d.recipient_name,''),'\s+','','g')),
+          regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
+        order by
+          case when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
+               then 0 else 1 end,
+          d.updated_at desc nulls last,
+          d.created_at desc nulls last,
+          d.delivery_way_id
+      ) as canonical_rank
+    from public.be_data_entry_parcel_details d
+    where d.delivery_region=v_region
+      and coalesce(d.parcel_status,'')<>'duplicate_archived'
+      and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
+  ), candidates as materialized (
     select
       d.delivery_way_id,
       coalesce(nullif(d.financial_quote->>'source_waybill_no',''),nullif(w.waybill_no,''),d.delivery_way_id) as waybill_no,
@@ -70,20 +89,8 @@ begin
       loc.review_status as location_review_status,
       loc.match_level as location_match_level,
       loc.coordinate_source as location_coordinate_source,
-      coalesce(a.last_status,'') as delivery_attempt_status,
-      row_number() over (
-        partition by
-          upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)),
-          lower(regexp_replace(coalesce(d.recipient_name,''),'\s+','','g')),
-          regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
-        order by
-          case when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
-               then 0 else 1 end,
-          d.updated_at desc nulls last,
-          d.created_at desc nulls last,
-          d.delivery_way_id
-      ) as canonical_rank
-    from public.be_data_entry_parcel_details d
+      coalesce(a.last_status,'') as delivery_attempt_status
+    from canonical_base d
     join public.be_warehouse_receipts_v36 r
       on r.pickup_id=d.pickup_id and r.parcel_sequence=d.parcel_sequence
     join public.be_delivery_location_registry loc
@@ -92,7 +99,7 @@ begin
       on w.delivery_way_id=d.delivery_way_id
     left join public.be_delivery_attempt_state_v39 a
       on a.delivery_way_id=d.delivery_way_id
-    where d.delivery_region=v_region
+    where d.canonical_rank=1
       and (
         d.delivery_way_id ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}$'
         or (
@@ -109,21 +116,6 @@ begin
       and coalesce(r.discrepancy_code,'')=''
       and upper(coalesce(a.last_status,''))<>'RTO'
       and upper(coalesce(d.parcel_status,'')) not in ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED','DUPLICATE_ARCHIVED')
-      and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
-      and (
-        upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
-        or not exists (
-          select 1
-          from public.be_data_entry_parcel_details canonical
-          where upper(canonical.delivery_way_id)=upper(d.financial_quote->>'source_waybill_no')
-            and lower(regexp_replace(coalesce(canonical.recipient_name,''),'\\s+','','g'))
-                = lower(regexp_replace(coalesce(d.recipient_name,''),'\\s+','','g'))
-            and regexp_replace(coalesce(canonical.contact_no_1,''),'[^0-9]','','g')
-                = regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
-            and coalesce(canonical.parcel_status,'')<>'duplicate_archived'
-            and coalesce(canonical.way_management_status,'')<>'DUPLICATE_ARCHIVED'
-        )
-      )
       and upper(coalesce(w.dispatch_status,'READY_FOR_DISPATCH')) in (
         'READY_FOR_DISPATCH','WAITING_DISPATCH','READY','WAYBILL_CREATED','WAYPLAN_CREATED'
       )
@@ -155,7 +147,6 @@ begin
   ), limited as (
     select *
     from candidates
-    where canonical_rank=1
     order by created_at desc
     limit greatest(coalesce(p_limit,200),1)
   )
