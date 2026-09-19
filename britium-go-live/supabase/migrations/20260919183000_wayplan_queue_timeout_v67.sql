@@ -110,6 +110,20 @@ begin
       and upper(coalesce(a.last_status,''))<>'RTO'
       and upper(coalesce(d.parcel_status,'')) not in ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED','DUPLICATE_ARCHIVED')
       and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
+      and (
+        upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id))
+        or not exists (
+          select 1
+          from public.be_data_entry_parcel_details canonical
+          where upper(canonical.delivery_way_id)=upper(d.financial_quote->>'source_waybill_no')
+            and lower(regexp_replace(coalesce(canonical.recipient_name,''),'\\s+','','g'))
+                = lower(regexp_replace(coalesce(d.recipient_name,''),'\\s+','','g'))
+            and regexp_replace(coalesce(canonical.contact_no_1,''),'[^0-9]','','g')
+                = regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
+            and coalesce(canonical.parcel_status,'')<>'duplicate_archived'
+            and coalesce(canonical.way_management_status,'')<>'DUPLICATE_ARCHIVED'
+        )
+      )
       and upper(coalesce(w.dispatch_status,'READY_FOR_DISPATCH')) in (
         'READY_FOR_DISPATCH','WAITING_DISPATCH','READY','WAYBILL_CREATED','WAYPLAN_CREATED'
       )
