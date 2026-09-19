@@ -429,3 +429,115 @@ end;
 $function$;
 
 grant execute on function public.be_warehouse_return_scan_v71(text,text,date,text,text,text) to authenticated;
+
+
+-- Rider/Driver delivery exception wrapper. The existing field action still owns
+-- attempt counting and proof/status rules; V71 only adds dated reschedule state.
+create or replace function public.be_field_team_delivery_action_v71(p_payload jsonb default '{}'::jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public','auth','pg_temp'
+as $function$
+declare
+  v_result jsonb;
+  v_action text:=lower(btrim(coalesce(p_payload->>'action',p_payload->>'source_action','')));
+  v_reason text:=upper(btrim(coalesce(p_payload->>'exception_code',p_payload->>'exception_reason','')));
+  v_input_way text:=coalesce(
+    nullif(upper(btrim(p_payload->>'delivery_way_id')),''),
+    nullif(upper(btrim(p_payload->>'tracking_no')),''),
+    case when upper(coalesce(p_payload->>'pickup_id','')) ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}$'
+         then upper(btrim(p_payload->>'pickup_id')) end
+  );
+  v_date date;
+  v_actor text:=coalesce(lower(auth.jwt()->>'email'),nullif(lower(btrim(p_payload->>'actor_email')),''));
+  v_schedule jsonb:='{}'::jsonb;
+begin
+  v_result:=public.be_field_team_delivery_action(p_payload);
+
+  if (v_action='exception' or v_action like '%delivery_exception%' or v_action like '%delivery_failed%')
+     and v_reason='CUSTOMER_REQUESTED_RESCHEDULE' then
+    begin
+      v_date:=nullif(btrim(coalesce(
+        p_payload->>'requested_delivery_date',
+        p_payload->>'reschedule_date',
+        p_payload->>'next_attempt_date'
+      )), '')::date;
+    exception when others then
+      raise exception 'A valid dedicated delivery date is required for customer reschedule';
+    end;
+
+    if v_date is null then
+      raise exception 'Dedicated delivery date is required for customer reschedule';
+    end if;
+    if v_input_way is null then
+      raise exception 'Delivery Way ID is required for customer reschedule';
+    end if;
+
+    v_schedule:=public.be_set_delivery_reschedule_v71(
+      v_input_way,
+      v_date,
+      v_reason,
+      v_actor,
+      coalesce(nullif(btrim(p_payload->>'remark'),''),nullif(btrim(p_payload->>'remarks'),''))
+    );
+  end if;
+
+  return coalesce(v_result,'{}'::jsonb)||jsonb_build_object(
+    'reschedule',v_schedule,
+    'build','FIELD_DELIVERY_ACTION_V71_RESCHEDULE'
+  );
+end;
+$function$;
+
+grant execute on function public.be_field_team_delivery_action_v71(jsonb) to authenticated;
+
+create or replace function public.be_rider_pickup_action(p_payload jsonb default '{}'::jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_identity jsonb:=private.be_field_primary_context_v101();
+  v_role text:=lower(v_identity->>'role');
+  v_action text:=lower(btrim(coalesce(p_payload->>'action',p_payload->>'source_action','')));
+  v_id text:=upper(btrim(coalesce(
+    p_payload->>'delivery_way_id',
+    p_payload->>'tracking_no',
+    p_payload->>'pickup_id',
+    p_payload->>'pickup_way_id',''
+  )));
+  v_process text:=lower(btrim(coalesce(p_payload->>'process_type',p_payload->>'workflow_area','')));
+begin
+  if auth.uid() is null then return jsonb_build_object('ok',false,'error','AUTHENTICATED_FIELD_SESSION_REQUIRED'); end if;
+  if v_role not in ('rider','driver','helper') then return jsonb_build_object('ok',false,'error','FIELD_ROLE_NOT_RECOGNIZED'); end if;
+
+  if v_id ~ '^D[0-9]{4}-[A-Z0-9]+-[0-9]{3}$'
+     or v_action in ('start_delivery','out_for_delivery','deliver','delivered','verify_delivery','delivery_verified')
+     or (v_action='exception' and v_process='delivery')
+     or v_action like '%delivery_exception%'
+     or v_action like '%delivery_failed%' then
+    return public.be_field_team_delivery_action_v71(p_payload);
+  end if;
+
+  if v_role='helper' and v_action in (
+    'verify_pickup','pickup_verify','pickup_verified','verify',
+    'collect','pickup_collected','collected','delivered_to_warehouse'
+  ) then
+    return jsonb_build_object(
+      'ok',false,'error','PRIMARY_WORKER_REQUIRED',
+      'message','Only assigned rider or driver can finalize pickup or delivery. Helper may upload evidence and report exceptions.'
+    );
+  end if;
+
+  return public.be_rider_pickup_action_primary_guard_legacy_v101(
+    p_payload||jsonb_build_object(
+      'authenticated_worker_code',v_identity->>'worker_code',
+      'authenticated_worker_role',v_role
+    )
+  );
+end;
+$function$;
+
+grant execute on function public.be_rider_pickup_action(jsonb) to authenticated;
