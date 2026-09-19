@@ -152,6 +152,22 @@ and membership_status in ('PLANNED','READY_FOR_DISPATCH');
 
 -- Operational warehouse view must never surface archived duplicates.
 create or replace view public.be_v_warehouse_receipt_v36 as
+with ranked_data as (
+  select d.*,
+         row_number() over (
+           partition by
+             upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)),
+             lower(regexp_replace(coalesce(d.recipient_name,''),'\\s+','','g')),
+             regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
+           order by
+             case when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)) then 0 else 1 end,
+             d.updated_at desc nulls last,
+             d.created_at desc nulls last
+         ) as canonical_rank
+  from public.be_data_entry_parcel_details d
+  where coalesce(d.parcel_status,'')<>'duplicate_archived'
+    and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
+)
 select
   d.pickup_id,
   d.parcel_sequence,
@@ -188,7 +204,7 @@ select
   r.qa_approved_at,
   r.qa_approved_by,
   coalesce(r.updated_at,d.updated_at,d.saved_at) as updated_at
-from public.be_data_entry_parcel_details d
+from ranked_data d
 left join public.be_warehouse_receipts_v36 r
   on r.pickup_id=d.pickup_id and r.parcel_sequence=d.parcel_sequence
 left join public.be_warehouse_exception_codes_v36 ec on ec.code=r.discrepancy_code
@@ -205,8 +221,83 @@ left join lateral (
   where p.tracking_code=d.delivery_way_id or p.way_id=d.delivery_way_id
   limit 1
 ) lp on true
-where coalesce(d.parcel_status,'')<>'duplicate_archived'
-  and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED';
+where d.canonical_rank=1;
+
+-- Wayplan regional queue applies the same canonical duplicate suppression.
+create or replace function public.be_dispatch_ready_queue_v19(
+  p_limit integer default 200,
+  p_region_code text default 'YANGON'
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path to 'public','auth','pg_temp'
+as $function$
+declare
+  v_region text := upper(coalesce(nullif(btrim(p_region_code),''),'YANGON'));
+  v_active boolean := false;
+  v_rows jsonb := '[]'::jsonb;
+begin
+  if auth.uid() is null then raise exception 'Authentication is required.'; end if;
+  if v_region not in ('YANGON','MANDALAY','NAYPYITAW') then raise exception 'Unsupported Wayplan region.'; end if;
+
+  select r.is_active into v_active
+  from public.be_wayplan_region_runtime_v19 r
+  where r.region_code=v_region;
+
+  if not coalesce(v_active,false) then
+    return jsonb_build_object('ok',true,'enabled',false,'region_code',v_region,'queue','[]'::jsonb,'count',0,'build','WAYPLAN_REGION_QUEUE_V65_CANONICAL');
+  end if;
+
+  select coalesce(jsonb_agg(to_jsonb(z) - 'canonical_rank' order by z.created_at desc),'[]'::jsonb)
+  into v_rows
+  from (
+    select y.*
+    from (
+      select
+        q.*,
+        d.delivery_region,
+        d.delivery_route_mode,
+        d.location_required,
+        coalesce(d.financial_quote->>'service_provider_code','BRITIUM') as service_provider_code,
+        row_number() over (
+          partition by
+            upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)),
+            lower(regexp_replace(coalesce(d.recipient_name,''),'\\s+','','g')),
+            regexp_replace(coalesce(d.contact_no_1,''),'[^0-9]','','g')
+          order by
+            case when upper(d.delivery_way_id)=upper(coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id)) then 0 else 1 end,
+            d.updated_at desc nulls last,
+            d.created_at desc nulls last
+        ) as canonical_rank
+      from public.be_v_dispatch_ready_queue q
+      join public.be_data_entry_parcel_details d on d.delivery_way_id=q.delivery_way_id
+      where d.delivery_region=v_region
+        and d.delivery_route_mode='DOORSTEP_MAP'
+        and d.location_required
+        and coalesce(d.parcel_status,'')<>'duplicate_archived'
+        and coalesce(d.way_management_status,'')<>'DUPLICATE_ARCHIVED'
+        and exists (
+          select 1 from public.be_delivery_location_registry location
+          where location.delivery_way_id=d.delivery_way_id
+            and location.review_status='ACCEPTED'
+            and upper(coalesce(location.coordinate_source,'')) ~ '^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)'
+            and location.latitude between 9 and 29
+            and location.longitude between 92 and 102
+        )
+    ) y
+    where y.canonical_rank=1
+    order by y.created_at desc
+    limit greatest(coalesce(p_limit,200),1)
+  ) z;
+
+  return jsonb_build_object(
+    'ok',true,'enabled',true,'region_code',v_region,'queue',v_rows,
+    'count',jsonb_array_length(v_rows),'build','WAYPLAN_REGION_QUEUE_V65_CANONICAL'
+  );
+end
+$function$;
 
 -- Make dispatch time authoritative and synchronized to the parcel record.
 create or replace function public.be_sync_dispatch_scan_timestamp_v65()
