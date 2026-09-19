@@ -457,8 +457,8 @@ export default function WarehousePage() {
           <p>Choose the pickup printed on this parcel:</p>
           {scanChoices.matches.map((m:any)=><button key={m.canonical_id} disabled={loading}
             className="m-1 rounded bg-sky-700 p-3"
-            onClick={()=>scanChoices.kind==="dispatch"?enqueueDispatchScan(m.canonical_id,m):void doScan(scanChoices.kind,m.canonical_id,m)}>
-            {m.waybill_no} · Pickup {m.pickup_id} · {m.canonical_id}
+            onClick={()=>scanChoices.kind==="dispatch"?enqueueDispatchScan(m.waybill_no||m.canonical_id,m):void doScan(scanChoices.kind,m.canonical_id,m)}>
+            {m.waybill_no || m.display_id || "Way ID"} · Pickup {m.pickup_id}
           </button>)}
           <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
         </div>}
