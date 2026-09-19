@@ -40,6 +40,11 @@ export default function WarehousePage() {
   const scanBusy=useRef(false);
   const scanInputRef=useRef<HTMLInputElement>(null);
   const restoreScanFocus=useRef(true);
+  const dispatchQueue=useRef<Array<{code:string; chosen?:any}>>([]);
+  const dispatchWorkerBusy=useRef(false);
+  const backgroundRefreshTimer=useRef<number|undefined>(undefined);
+  const [dispatchQueueCount,setDispatchQueueCount]=useState(0);
+  const [dispatchProcessing,setDispatchProcessing]=useState(false);
   const [scanMode,setScanMode]=useState<"inbound"|"dispatch"|"return">("inbound");
   const [scanCode, setScanCode] = useState("");
   const [reason, setReason] = useState("");
@@ -56,8 +61,8 @@ export default function WarehousePage() {
     [snapshot.reasons]
   );
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
+  const loadAll = useCallback(async (quiet=false) => {
+    if(!quiet) setLoading(true);
     try {
       const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot");
       if (error) throw error;
@@ -66,25 +71,51 @@ export default function WarehousePage() {
     } catch (e: any) {
       setMessage(e.message || "Failed to load warehouse scan data.");
     } finally {
-      setLoading(false);
+      if(!quiet) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    loadAll();
+    void loadAll(false);
   }, [loadAll]);
 
-  useEffect(() => {
-    if(loading || scanChoices || !restoreScanFocus.current) return;
-    const frame=requestAnimationFrame(()=>{
-      if(scanInputRef.current){
+  const focusScanner=useCallback(()=>{
+    requestAnimationFrame(()=>{
+      if(scanInputRef.current && !scanChoices){
         scanInputRef.current.focus({preventScroll:true});
         scanInputRef.current.select();
         restoreScanFocus.current=false;
       }
     });
-    return ()=>cancelAnimationFrame(frame);
-  },[loading,scanChoices]);
+  },[scanChoices]);
+
+  useEffect(() => {
+    if(scanChoices) return;
+    if(scanMode==="dispatch" || (!loading && restoreScanFocus.current)) focusScanner();
+  },[loading,scanChoices,scanMode,focusScanner]);
+
+  useEffect(()=>()=>{if(backgroundRefreshTimer.current) window.clearTimeout(backgroundRefreshTimer.current);},[]);
+
+  const scheduleBackgroundRefresh=useCallback(()=>{
+    if(backgroundRefreshTimer.current) window.clearTimeout(backgroundRefreshTimer.current);
+    backgroundRefreshTimer.current=window.setTimeout(()=>{void loadAll(true);},900);
+  },[loadAll]);
+
+  const applyDispatchScanLocally=useCallback((data:any)=>{
+    const canonical=String(data?.canonical_id||data?.tracking_no||"");
+    const display=String(data?.display_id||data?.waybill_no||canonical);
+    const when=data?.dispatch_scan_at||new Date().toISOString();
+    setSnapshot((prev:any)=>{
+      let increment=0;
+      const nextRows=(prev?.rows||[]).map((row:any)=>{
+        const ids=[row.delivery_way_id,row.canonical_delivery_way_id,row.tracking_no,row.waybill_no,row.display_way_id].map((x:any)=>String(x||"").toUpperCase());
+        if(!ids.includes(canonical.toUpperCase()) && !ids.includes(display.toUpperCase())) return row;
+        if(!row.dispatch_scan_at) increment=1;
+        return {...row,dispatch_scan_at:when,warehouse_scan_status:"DISPATCH_SCANNED",warehouse_status:row.warehouse_status||"WAREHOUSE_READY"};
+      });
+      return {...prev,rows:nextRows,stats:{...(prev?.stats||{}),dispatch_scanned:Number(prev?.stats?.dispatch_scanned||0)+increment}};
+    });
+  },[]);
 
   const actor = async () => {
     const { data } = await supabase.auth.getUser();
@@ -92,7 +123,69 @@ export default function WarehousePage() {
     return data.user.email;
   };
 
+  const processDispatchQueue=useCallback(async ()=>{
+    if(dispatchWorkerBusy.current) return;
+    dispatchWorkerBusy.current=true;
+    setDispatchProcessing(true);
+    try{
+      while(dispatchQueue.current.length){
+        const item=dispatchQueue.current.shift()!;
+        setDispatchQueueCount(dispatchQueue.current.length);
+        try{
+          const {data,error}=await (supabase as any).rpc("be_warehouse_dispatch_scan_fast_v64",{
+            p_scan:item.chosen?.canonical_id||item.code,
+            p_warehouse_code:"YGN-MAIN",
+          });
+          if(error) throw error;
+          if(data?.ok===false){
+            if(data?.error==="AMBIGUOUS_SCAN" && Array.isArray(data?.matches)){
+              setScanChoices({kind:"dispatch",matches:data.matches});
+              setMessage("This Way ID belongs to more than one pickup. Choose the parcel below before saving.");
+              dispatchQueue.current=[];
+              setDispatchQueueCount(0);
+              break;
+            }
+            throw new Error(data?.message||data?.reason||data?.error||"Dispatch scan rejected.");
+          }
+          applyDispatchScanLocally(data);
+          setMessage(`DISPATCH scan saved for ${data?.display_id||data?.waybill_no||item.code}. Ready for next scan.`);
+          setScanCode("");
+          focusScanner();
+        }catch(e:any){
+          setMessage(e?.message||"Dispatch scan failed. The scanner remains ready; rescan this parcel after checking status.");
+          setScanCode("");
+          focusScanner();
+        }
+      }
+    }finally{
+      dispatchWorkerBusy.current=false;
+      setDispatchProcessing(false);
+      setDispatchQueueCount(dispatchQueue.current.length);
+      scheduleBackgroundRefresh();
+      focusScanner();
+    }
+  },[applyDispatchScanLocally,focusScanner,scheduleBackgroundRefresh]);
+
+  const enqueueDispatchScan=useCallback((raw:string,chosen?:any)=>{
+    let tracking:string;
+    try{tracking=normalizeWarehouseScan(raw||"");}
+    catch(error:any){setMessage(error.message);focusScanner();return;}
+    if(!tracking){setMessage("Scan or enter Delivery Way / Tracking No first.");focusScanner();return;}
+    setScanCode("");
+    dispatchQueue.current.push({code:tracking,chosen});
+    setDispatchQueueCount(dispatchQueue.current.length);
+    setMessage(dispatchWorkerBusy.current
+      ? `Queued ${tracking}. ${dispatchQueue.current.length} scan(s) waiting.`
+      : `Read ${tracking}. Saving dispatch scan…`);
+    focusScanner();
+    void processDispatchQueue();
+  },[focusScanner,processDispatchQueue]);
+
   const doScan = async (kind: "inbound" | "dispatch" | "return", code?: string, chosen?: any) => {
+    if(kind==="dispatch"){
+      enqueueDispatchScan(chosen?.canonical_id||code||scanCode||"",chosen);
+      return;
+    }
     if(scanBusy.current) return;
     let tracking:string;
     try {tracking=normalizeWarehouseScan(code || scanCode || "");}
@@ -127,14 +220,6 @@ export default function WarehousePage() {
 
       if (kind === "inbound") {
         res = await supabase.rpc("be_warehouse_inbound_scan", {
-          p_tracking_no: tracking,
-          p_actor_email: email,
-          p_warehouse_code: "YGN-MAIN",
-        });
-      }
-
-      if (kind === "dispatch") {
-        res = await supabase.rpc("be_warehouse_dispatch_scan", {
           p_tracking_no: tracking,
           p_actor_email: email,
           p_warehouse_code: "YGN-MAIN",
@@ -311,7 +396,7 @@ export default function WarehousePage() {
 
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={loadAll}
+            onClick={()=>void loadAll(false)}
             className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500"
           >
             <RefreshCw className="mr-1 inline h-4 w-4" />
@@ -363,30 +448,39 @@ export default function WarehousePage() {
           <p>Choose the pickup printed on this parcel:</p>
           {scanChoices.matches.map((m:any)=><button key={m.canonical_id} disabled={loading}
             className="m-1 rounded bg-sky-700 p-3"
-            onClick={()=>void doScan(scanChoices.kind,m.canonical_id,m)}>
+            onClick={()=>scanChoices.kind==="dispatch"?enqueueDispatchScan(m.canonical_id,m):void doScan(scanChoices.kind,m.canonical_id,m)}>
             {m.waybill_no} · Pickup {m.pickup_id} · {m.canonical_id}
           </button>)}
           <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
         </div>}
-        <WarehouseCameraScanner disabled={loading} onDetected={code=>{setScanChoices(null);setScanCode(code);setMessage("Read "+code+". Choose Inbound, Dispatch or Return to save.");}} />
-        <p role="status" aria-live="polite" className="mb-3 font-semibold text-emerald-300">{loading ? "Processing scan — please wait…" : scanChoices ? "Choose the matching pickup to continue." : "Ready for next scan"}</p>
-        <button type="button" disabled={loading || !!scanChoices} className="mb-3 rounded bg-sky-700 px-3 py-2" onClick={()=>{scanInputRef.current?.focus({preventScroll:true});scanInputRef.current?.select();}}>Focus scanner</button>
+        <WarehouseCameraScanner disabled={loading && scanMode!=="dispatch"} onDetected={code=>{
+          setScanChoices(null);
+          if(scanMode==="dispatch") enqueueDispatchScan(code);
+          else {setScanCode(code);setMessage("Read "+code+". Choose Inbound or Return to save.");}
+        }} />
+        <p role="status" aria-live="polite" className="mb-3 font-semibold text-emerald-300">{scanChoices ? "Choose the matching pickup to continue." : scanMode==="dispatch" && dispatchProcessing ? `Continuous dispatch scanning active · ${dispatchQueueCount} queued · scanner remains ready` : loading ? "Processing scan — please wait…" : "Ready for next scan"}</p>
+        <button type="button" disabled={!!scanChoices} className="mb-3 rounded bg-sky-700 px-3 py-2" onClick={focusScanner}>Focus scanner</button>
         <label className="mb-3 block text-sm">Scanner Enter action:
           <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
             <option value="inbound">Inbound</option><option value="dispatch">Dispatch</option><option value="return">Return</option>
           </select>
         </label>
-        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: choose the action once and use an Enter suffix. After each saved scan, the cursor returns automatically. Wait until Ready before scanning the next parcel. Phone: scan, check the ID, then choose an action.</p>
+        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: choose Dispatch once and keep scanning with an Enter suffix. The field stays focused continuously; a new scan may be queued while the previous one is saving. You no longer need to click the textbox between parcels. Inbound/Return still use the normal confirmation flow.</p>
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1.5fr_1.2fr_1.4fr]">
           <input
             ref={scanInputRef}
             aria-label="Scanned waybill ID"
             autoComplete="off" autoCapitalize="off" spellCheck={false}
-            disabled={loading}
+            disabled={loading && scanMode!=="dispatch"}
             value={scanCode}
             onChange={(e) => {setScanCode(e.target.value);setScanChoices(null);}}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.repeat) {e.preventDefault();void doScan(scanMode,e.currentTarget.value);}
+              if (e.key === "Enter" && !e.repeat) {
+                e.preventDefault();
+                const value=e.currentTarget.value;
+                if(scanMode==="dispatch") enqueueDispatchScan(value);
+                else void doScan(scanMode,value);
+              }
             }}
             placeholder="Scan / enter Delivery Way ID"
             className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30]"
@@ -421,7 +515,7 @@ export default function WarehousePage() {
               Inbound
             </button>
             <button
-              disabled={loading} onClick={() => doScan("dispatch")}
+              disabled={loading && scanMode!=="dispatch"} onClick={() => doScan("dispatch")}
               className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600"
             >
               <Truck className="mr-1 inline h-4 w-4" />
