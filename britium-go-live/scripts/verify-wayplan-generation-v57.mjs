@@ -10,6 +10,8 @@ const checks = [
   ["Rider is explicitly optional", planner.includes('data-rider-optional-v57="true"') && planner.includes("Rider (optional)")],
   ["normal roster readiness requires Driver only", planner.includes(': !p.driver_code);') && !planner.includes(': !p.driver_code || !p.rider_code);')],
   ["crew edits do not auto-refill Rider", planner.includes("Do not auto-fill Rider") && planner.includes("reset(next, true)")],
+  ["route preview leaves Rider unassigned by default", planner.includes("assignCrews(strategic, drivers, [], helpers")],
+  ["crew repair preserves intentional empty Rider", planner.includes("An empty rider_code is an intentional Driver-only route") && planner.includes("if (!plan.rider_code) rider = undefined")],
   ["auto repair targets Driver", planner.includes("Auto-assign missing Driver")],
   ["readiness explains Rider optional", planner.includes("Rider and Helper are optional")],
   ["RPC ambiguity is fixed", migration.includes("#variable_conflict use_variable")],

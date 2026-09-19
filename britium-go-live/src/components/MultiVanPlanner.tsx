@@ -150,8 +150,11 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
       const requestedHelper = find(helpers, plan.helper_code);
       const requestedHelperPerson = personKey(requestedHelper);
+      // Rider is optional. An empty rider_code is an intentional Driver-only route,
+      // not a crew gap to auto-fill. Only repair a Rider that was explicitly selected.
       let rider = find(riders, plan.rider_code);
-      if (!free(used, rider)) rider = choose(riders, used, requestedHelperPerson);
+      if (!plan.rider_code) rider = undefined;
+      else if (!free(used, rider)) rider = choose(riders, used, requestedHelperPerson);
       reserve(used, rider);
 
       let helper = requestedHelper;
@@ -392,7 +395,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
-      const crewed = repairCrewGaps(assignCrews(strategic, drivers, riders, helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      // Driver is mandatory, but Rider is intentionally not auto-assigned.
+      // Start every generated route as Driver-only so the operator may explicitly add a Rider.
+      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
       if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
         throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
