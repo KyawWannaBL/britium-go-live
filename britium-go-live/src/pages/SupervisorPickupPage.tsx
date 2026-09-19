@@ -98,7 +98,7 @@ function normalizeFleet(row: any) {
 }
 function isActiveStatus(status: any) { return !["INACTIVE", "SUSPENDED", "BLACKLISTED", "MAINTENANCE", "UNAVAILABLE"].includes(txt(status).toUpperCase()); }
 function sameBranch(masterBranch?: string, pickupBranch?: string) { if (!masterBranch || !pickupBranch) return true; return masterBranch.toUpperCase() === pickupBranch.toUpperCase(); }
-function workerValue(worker: any) { return worker.email || worker.code; }
+function workerValue(worker: any) { return worker.code || worker.email; }
 
 export default function SupervisorPickupPage() {
   const [loading, setLoading] = useState(false);
@@ -181,28 +181,50 @@ export default function SupervisorPickupPage() {
   }
 
   async function loadMasters() {
-    let workforceRows: any[] = [];
+    let ridersRows: any[] = [];
+    let driversRows: any[] = [];
+    let helpersRows: any[] = [];
+
     try {
-      const { data, error } = await (supabase as any).from("be_mobile_workforce_accounts").select("*").order("role", { ascending: true }).order("workforce_code", { ascending: true });
+      const { data, error } = await (supabase as any).rpc("be_wayplan_assignment_options_v44");
       if (error) throw error;
-      workforceRows = data || [];
-    } catch { workforceRows = []; }
-    if (!workforceRows.length) {
+      const roster = data || {};
+      const normalizeRoster = (rows: any[], role: "RIDER" | "DRIVER" | "HELPER") =>
+        (rows || []).map((row: any) => ({
+          code: txt(row.id || row.record_key || row.code),
+          email: "",
+          name: txt(row.name || row.display_name || row.label || row.code || row.id),
+          role,
+          status: txt(row.status || "Active"),
+          branch_code: txt(row.branch_code),
+          phone: txt(row.phone),
+        })).filter((row: any) => row.code && row.name && isActiveStatus(row.status));
+      ridersRows = normalizeRoster(roster.riders || [], "RIDER");
+      driversRows = normalizeRoster(roster.drivers || [], "DRIVER");
+      helpersRows = normalizeRoster(roster.helpers || [], "HELPER");
+    } catch {}
+
+    if (!ridersRows.length && !driversRows.length && !helpersRows.length) {
+      let workforceRows: any[] = [];
       try {
-        const { data } = await (supabase as any).rpc("be_master_data_page_snapshot");
-        const snapshot = data || {};
-        workforceRows = [...(snapshot.workforce || []), ...(snapshot.workforce_accounts || []), ...(snapshot.riders || []).map((row: any) => ({ ...row, role: "RIDER" })), ...(snapshot.drivers || []).map((row: any) => ({ ...row, role: "DRIVER" })), ...(snapshot.helpers || []).map((row: any) => ({ ...row, role: "HELPER" }))];
+        const { data, error } = await (supabase as any).from("be_mobile_workforce_accounts").select("*").order("role", { ascending: true }).order("workforce_code", { ascending: true });
+        if (error) throw error;
+        workforceRows = data || [];
       } catch { workforceRows = []; }
+      const workers = workforceRows.map((row) => normalizeWorker(row, "RIDER")).filter(Boolean).filter((row) => isActiveStatus(row.status));
+      ridersRows = workers.filter((row) => row.role === "RIDER");
+      driversRows = workers.filter((row) => row.role === "DRIVER");
+      helpersRows = workers.filter((row) => row.role === "HELPER");
     }
+
     let fleetRows: any[] = [];
     for (const table of ["be_fleet_master", "be_fleet_vehicles", "fleet_master"]) {
       try { const { data, error } = await (supabase as any).from(table).select("*"); if (error) throw error; if (data?.length) { fleetRows = data; break; } } catch {}
     }
-    const unique = (rows: any[]) => { const seen = new Set<string>(); return rows.filter((row) => { const key = String(row.email || row.code || row.id || "").toLowerCase(); if (!key || seen.has(key)) return false; seen.add(key); return true; }); };
-    const workers = unique(workforceRows.map((row) => normalizeWorker(row, "RIDER")).filter(Boolean)).filter((row) => isActiveStatus(row.status));
-    setRiders(workers.filter((row) => row.role === "RIDER"));
-    setDrivers(workers.filter((row) => row.role === "DRIVER"));
-    setHelpers(workers.filter((row) => row.role === "HELPER"));
+    const unique = (rows: any[]) => { const seen = new Set<string>(); return rows.filter((row) => { const key = String(row.code || row.email || row.id || "").toLowerCase(); if (!key || seen.has(key)) return false; seen.add(key); return true; }); };
+    setRiders(unique(ridersRows));
+    setDrivers(unique(driversRows));
+    setHelpers(unique(helpersRows));
     setFleets(unique(fleetRows.map(normalizeFleet).filter(Boolean)).filter((row) => isActiveStatus(row.status)));
   }
 

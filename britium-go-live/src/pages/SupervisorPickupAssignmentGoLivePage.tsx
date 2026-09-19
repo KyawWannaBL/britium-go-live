@@ -13,6 +13,13 @@ import { supabase } from "@/integrations/supabase/client";
 
 type Pair = [string, string];
 
+type RosterOption = {
+  code: string;
+  name: string;
+  branchCode?: string;
+  mobileAuthReady: boolean;
+};
+
 type Pickup = {
   pickup_id: string;
   pickup_way_id?: string;
@@ -121,9 +128,9 @@ function isAssignableOrAssigned(pickup: Pickup) {
 
 export default function SupervisorPickupAssignmentGoLivePage() {
   const [pickups, setPickups] = useState<Pickup[]>([]);
-  const [riders, setRiders] = useState<Pair[]>([]);
-  const [drivers, setDrivers] = useState<Pair[]>([]);
-  const [helpers, setHelpers] = useState<Pair[]>([]);
+  const [riders, setRiders] = useState<RosterOption[]>([]);
+  const [drivers, setDrivers] = useState<RosterOption[]>([]);
+  const [helpers, setHelpers] = useState<RosterOption[]>([]);
   const [fleet, setFleet] = useState<Pair[]>([]);
   const [choice, setChoice] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState("");
@@ -177,24 +184,69 @@ export default function SupervisorPickupAssignmentGoLivePage() {
     }
   }
 
+  function normalizeRoster(rows: any[]): RosterOption[] {
+    const seen = new Set<string>();
+    return (rows || [])
+      .map((row: any) => ({
+        code: asText(row.id || row.record_key || row.code || row.workforce_code),
+        name: asText(row.name || row.display_name || row.label || row.code || row.id),
+        branchCode: asText(row.branch_code),
+        mobileAuthReady: row.mobile_auth_ready !== false,
+      }))
+      .filter((row) => {
+        const key = row.code.toUpperCase();
+        if (!key || !row.name || seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
   async function loadMasterData() {
-    const riderRows = await tryLoad(
-      "be_riders",
-      ["rider_code", "rider_id", "code", "id"],
-      ["rider_name", "name", "label", "display_name"]
-    );
+    let riderRows: RosterOption[] = [];
+    let driverRows: RosterOption[] = [];
+    let helperRows: RosterOption[] = [];
 
-    const driverRows = await tryLoad(
-      "be_drivers",
-      ["driver_code", "driver_id", "code", "id"],
-      ["driver_name", "name", "label", "display_name"]
-    );
+    // V68 is the approved operational roster sourced from the attached
+    // Rider / Driver / Helper spreadsheets. Use it first so every Supervisor
+    // assignment surface reads the same master list as Wayplan.
+    try {
+      const { data, error } = await (supabase as any).rpc("be_wayplan_assignment_options_v44");
+      if (error) throw error;
+      riderRows = normalizeRoster(data?.riders || []);
+      driverRows = normalizeRoster(data?.drivers || []);
+      helperRows = normalizeRoster(data?.helpers || []);
+    } catch (err) {
+      console.warn("Could not load approved workforce roster", err);
+    }
 
-    const helperRows = await tryLoad(
-      "be_helpers",
-      ["helper_code", "helper_id", "code", "id"],
-      ["helper_name", "name", "label", "display_name"]
-    );
+    // Compatibility fallback for older environments. Production should use
+    // the V68 roster above; importantly, there is no public be_drivers table.
+    if (!riderRows.length) {
+      const rows = await tryLoad(
+        "be_riders",
+        ["rider_code", "rider_id", "code", "id"],
+        ["rider_name", "name", "label", "display_name"]
+      );
+      riderRows = rows.map(([code, name]) => ({ code, name, mobileAuthReady: true }));
+    }
+
+    if (!driverRows.length) {
+      const rows = await tryLoad(
+        "be_v_active_drivers",
+        ["driver_code", "driver_id", "code", "id"],
+        ["driver_name", "name", "label", "display_name"]
+      );
+      driverRows = rows.map(([code, name]) => ({ code, name, mobileAuthReady: true }));
+    }
+
+    if (!helperRows.length) {
+      const rows = await tryLoad(
+        "be_helpers",
+        ["helper_code", "helper_id", "code", "id"],
+        ["helper_name", "name", "label", "display_name"]
+      );
+      helperRows = rows.map(([code, name]) => ({ code, name, mobileAuthReady: true }));
+    }
 
     const fleetRows = await tryLoad(
       "be_fleet_vehicles",
@@ -240,8 +292,14 @@ export default function SupervisorPickupAssignmentGoLivePage() {
     }));
   }
 
-  function findName(rows: Pair[], code?: string) {
-    return rows.find(([value]) => value === code)?.[1] || "";
+  function findName(rows: RosterOption[], code?: string) {
+    return rows.find((row) => row.code === code)?.name || "";
+  }
+
+  function rosterSelectionReady(rows: RosterOption[], code?: string) {
+    if (!code) return true;
+    const row = rows.find((item) => item.code === code);
+    return !row || row.mobileAuthReady;
   }
 
   async function assign(pickup: Pickup) {
@@ -255,6 +313,19 @@ export default function SupervisorPickupAssignmentGoLivePage() {
 
     if (!selected.rider && !selected.driver && !selected.helper && !selected.vehicle) {
       setMsg("Please select at least one rider, driver, helper, or vehicle.");
+      return;
+    }
+
+    if (!rosterSelectionReady(riders, selected.rider)) {
+      setMsg("Selected Rider is in the approved roster but has no active mobile login yet.");
+      return;
+    }
+    if (!rosterSelectionReady(drivers, selected.driver)) {
+      setMsg("Selected Driver is in the approved roster but has no active mobile login yet.");
+      return;
+    }
+    if (!rosterSelectionReady(helpers, selected.helper)) {
+      setMsg("Selected Helper is in the approved roster but has no active mobile login yet.");
       return;
     }
 
@@ -471,9 +542,14 @@ export default function SupervisorPickupAssignmentGoLivePage() {
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
                   >
                     <option value="">-- Select Available Rider --</option>
-                    {riders.map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code} - {name}
+                    {p.assigned_rider_code && !riders.some((row) => row.code === p.assigned_rider_code) && (
+                      <option value={p.assigned_rider_code}>
+                        {p.assigned_rider_code} - {p.assigned_rider_name || "Current assignment"} · currently assigned
+                      </option>
+                    )}
+                    {riders.map((row) => (
+                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
+                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
                       </option>
                     ))}
                   </select>
@@ -487,9 +563,14 @@ export default function SupervisorPickupAssignmentGoLivePage() {
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
                   >
                     <option value="">-- Select Driver --</option>
-                    {drivers.map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code} - {name}
+                    {p.assigned_driver_code && !drivers.some((row) => row.code === p.assigned_driver_code) && (
+                      <option value={p.assigned_driver_code}>
+                        {p.assigned_driver_code} - {p.assigned_driver_name || "Current assignment"} · currently assigned
+                      </option>
+                    )}
+                    {drivers.map((row) => (
+                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
+                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
                       </option>
                     ))}
                   </select>
@@ -503,9 +584,14 @@ export default function SupervisorPickupAssignmentGoLivePage() {
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
                   >
                     <option value="">-- Select Helper --</option>
-                    {helpers.map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code} - {name}
+                    {p.assigned_helper_code && !helpers.some((row) => row.code === p.assigned_helper_code) && (
+                      <option value={p.assigned_helper_code}>
+                        {p.assigned_helper_code} - {p.assigned_helper_name || "Current assignment"} · currently assigned
+                      </option>
+                    )}
+                    {helpers.map((row) => (
+                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
+                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
                       </option>
                     ))}
                   </select>

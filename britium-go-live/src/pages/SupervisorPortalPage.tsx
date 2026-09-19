@@ -169,7 +169,7 @@ function normalizeFleet(row: any): FleetOption {
 }
 
 function workerValue(worker: WorkforceOption) {
-  return worker.email || worker.code;
+  return worker.code || worker.email;
 }
 
 async function getActorEmail() {
@@ -178,58 +178,60 @@ async function getActorEmail() {
 }
 
 async function loadAssignmentMasters() {
-  let workforceRows: any[] = [];
-
+  let roster: any = null;
   try {
-    const { data, error } = await (supabase as any)
-      .from("be_mobile_workforce_accounts")
-      .select("*")
-      .order("role", { ascending: true })
-      .order("workforce_code", { ascending: true });
-
+    const { data, error } = await (supabase as any).rpc("be_wayplan_assignment_options_v44");
     if (error) throw error;
-    workforceRows = data || [];
+    roster = data || {};
   } catch {
-    workforceRows = [];
+    roster = null;
   }
 
-  if (!workforceRows.length) {
+  const fromRoster = (rows: any[], role: "RIDER" | "DRIVER" | "HELPER"): WorkforceOption[] =>
+    (rows || []).map((row: any) => ({
+      code: asText(row.id || row.record_key || row.code),
+      email: "",
+      name: asText(row.name || row.display_name || row.label || row.code || row.id),
+      role,
+      status: asText(row.status || "Active"),
+      branch_code: asText(row.branch_code),
+      assigned_zone: asText(row.zone),
+    })).filter((row) => row.code && row.name && isActiveStatus(row.status));
+
+  let riders = fromRoster(roster?.riders || [], "RIDER");
+  let drivers = fromRoster(roster?.drivers || [], "DRIVER");
+  let helpers = fromRoster(roster?.helpers || [], "HELPER");
+
+  // Compatibility fallback for environments older than the V68 approved roster.
+  if (!riders.length && !drivers.length && !helpers.length) {
+    let workforceRows: any[] = [];
     try {
-      const { data } = await (supabase as any).rpc("be_master_data_page_snapshot");
-      const snapshot = data || {};
-      workforceRows = [
-        ...(snapshot.workforce || []),
-        ...(snapshot.workforce_accounts || []),
-        ...(snapshot.riders || []).map((row: any) => ({ ...row, role: "RIDER" })),
-        ...(snapshot.drivers || []).map((row: any) => ({ ...row, role: "DRIVER" })),
-        ...(snapshot.helpers || []).map((row: any) => ({ ...row, role: "HELPER" })),
-        ...(snapshot.Rider_Master || []).map((row: any) => ({ ...row, role: "RIDER" })),
-        ...(snapshot.Driver_Master || []).map((row: any) => ({ ...row, role: "DRIVER" })),
-        ...(snapshot.Helper_Master || []).map((row: any) => ({ ...row, role: "HELPER" })),
-      ];
+      const { data, error } = await (supabase as any)
+        .from("be_mobile_workforce_accounts")
+        .select("*")
+        .order("role", { ascending: true })
+        .order("workforce_code", { ascending: true });
+      if (error) throw error;
+      workforceRows = data || [];
     } catch {
       workforceRows = [];
     }
+    const activeWorkers = workforceRows
+      .map((row) => normalizeWorker(row))
+      .filter((row) => (row.code || row.email) && isActiveStatus(row.status));
+    riders = activeWorkers.filter((row) => row.role === "RIDER");
+    drivers = activeWorkers.filter((row) => row.role === "DRIVER");
+    helpers = activeWorkers.filter((row) => row.role === "HELPER");
   }
 
   let fleetRows: any[] = [];
-
   for (const tableName of ["be_fleet_master", "be_fleet_vehicles", "fleet_master"]) {
     try {
       const { data, error } = await (supabase as any).from(tableName).select("*");
       if (error) throw error;
-      if (data?.length) {
-        fleetRows = data;
-        break;
-      }
-    } catch {
-      // keep trying possible fleet master table names
-    }
+      if (data?.length) { fleetRows = data; break; }
+    } catch {}
   }
-
-  const activeWorkers = workforceRows
-    .map((row) => normalizeWorker(row))
-    .filter((row) => (row.code || row.email) && isActiveStatus(row.status));
 
   const activeFleets = fleetRows
     .map((row) => normalizeFleet(row))
@@ -238,7 +240,7 @@ async function loadAssignmentMasters() {
   const dedupeWorkers = (rows: WorkforceOption[]) => {
     const seen = new Set<string>();
     return rows.filter((row) => {
-      const key = (row.email || row.code).toLowerCase();
+      const key = row.code.toLowerCase();
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
@@ -256,9 +258,9 @@ async function loadAssignmentMasters() {
   };
 
   return {
-    riders: dedupeWorkers(activeWorkers.filter((row) => row.role === "RIDER")),
-    drivers: dedupeWorkers(activeWorkers.filter((row) => row.role === "DRIVER")),
-    helpers: dedupeWorkers(activeWorkers.filter((row) => row.role === "HELPER")),
+    riders: dedupeWorkers(riders),
+    drivers: dedupeWorkers(drivers),
+    helpers: dedupeWorkers(helpers),
     fleets: dedupeFleets(activeFleets),
   };
 }
