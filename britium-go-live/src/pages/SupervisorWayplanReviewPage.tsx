@@ -58,7 +58,7 @@ export default function SupervisorWayplanReviewPage() {
     setLoading(true);
     setError("");
     try {
-      const { data: res, error: rpcError } = await supabase.rpc("be_wayplan_supervisor_list_v62");
+      const { data: res, error: rpcError } = await (supabase as any).rpc("be_wayplan_supervisor_list_v62");
       if (rpcError) throw rpcError;
       const next = res || { wayplans: [], stats: {} };
       setData(next);
@@ -85,7 +85,7 @@ export default function SupervisorWayplanReviewPage() {
     setDetailLoading(true);
     setError("");
     try {
-      const { data: res, error: rpcError } = await supabase.rpc("be_wayplan_supervisor_detail_v62", {
+      const { data: res, error: rpcError } = await (supabase as any).rpc("be_wayplan_supervisor_detail_v62", {
         p_wayplan_id: wayplanId,
       });
       if (rpcError) throw rpcError;
