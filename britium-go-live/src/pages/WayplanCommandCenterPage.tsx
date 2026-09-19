@@ -653,9 +653,35 @@ export default function WayplanCommandCenterPage() {
                 <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
                 <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
                 {!canEditCreatedWayplan && activeWayplan && <div style={{ color: C.sub, fontSize: 11 }}>Add/remove editing is locked after the Wayplan leaves CREATED status.</div>}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}><button onClick={() => updateWayplanStatus("DISPATCHED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("green")}>Dispatch</button><button onClick={() => updateWayplanStatus("COMPLETED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("blue")}>Complete</button><button onClick={() => updateWayplanStatus("ON_HOLD")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("plain")}>Hold</button><button onClick={() => updateWayplanStatus("CREATED")} disabled={loading || !activeWayplan || activeWayplan.wayplan_status === "CANCELLED" || Boolean(revisionSource)} style={btn("gold")}>Reopen</button></div>
+                <div data-wayplan-lifecycle-controls-v61="true" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  <button
+                    onClick={() => updateWayplanStatus("DISPATCHED")}
+                    disabled={loading || !activeWayplan || !["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) || Boolean(revisionSource)}
+                    style={{ ...btn("green"), opacity: activeWayplan && ["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) ? 1 : 0.45 }}
+                  >Dispatch</button>
+                  <button
+                    onClick={() => updateWayplanStatus("COMPLETED")}
+                    disabled={loading || !activeWayplan || String(activeWayplan.wayplan_status || "").toUpperCase() !== "DISPATCHED" || Boolean(revisionSource)}
+                    style={{ ...btn("blue"), opacity: activeWayplan && String(activeWayplan.wayplan_status || "").toUpperCase() === "DISPATCHED" ? 1 : 0.45 }}
+                  >Complete</button>
+                  <button
+                    onClick={() => updateWayplanStatus("ON_HOLD")}
+                    disabled={loading || !activeWayplan || !["CREATED","DISPATCHED"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) || Boolean(revisionSource)}
+                    style={{ ...btn("plain"), opacity: activeWayplan && ["CREATED","DISPATCHED"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) ? 1 : 0.45 }}
+                  >Hold</button>
+                  <button
+                    onClick={() => updateWayplanStatus("CREATED")}
+                    disabled={loading || !activeWayplan || String(activeWayplan.wayplan_status || "").toUpperCase() !== "ON_HOLD" || Boolean(revisionSource)}
+                    style={{ ...btn("gold"), opacity: activeWayplan && String(activeWayplan.wayplan_status || "").toUpperCase() === "ON_HOLD" ? 1 : 0.45 }}
+                  >Reopen</button>
+                </div>
                 {!revisionSource && <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>Generate from {selectedRows.length} selected</button>}
                 <div style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 10 }}><div style={{ color: C.sub, fontSize: 11 }}>Active Wayplan</div><div style={{ color: C.gold, fontWeight: 900 }}>{activeWayplan?.wayplan_id || "-"}</div><div style={{ color: C.green, fontSize: 12 }}>{activeWayplan?.wayplan_status || "-"} / {activeWayplan?.total_stops || 0} stops / {money(activeWayplan?.total_cod)}</div></div>
+                {activeWayplan?.wayplan_status === "CREATED" && <div data-wayplan-lifecycle-note-v61="true" style={{ border: `1px solid ${C.gold}`, background: "rgba(246,184,75,0.08)", borderRadius: 14, padding: 10, fontSize: 11, lineHeight: 1.55 }}>
+                  <strong style={{ color: C.gold }}>LIFECYCLE CONTROL</strong>
+                  <div>CREATED Wayplans must go to <strong>Supervisor Wayplan</strong> first. Dispatch remains backend-guarded until Supervisor approval and mandatory Dispatch scanning are complete.</div>
+                  <div><strong>Complete</strong> is unavailable until the Wayplan has actually been DISPATCHED and all route stops reach terminal delivery/return outcomes.</div>
+                </div>}
                 {activeWayplan?.wayplan_status === "CREATED" && <div data-wayplan-next-process-v51="true" style={{ border: `1px solid ${C.blue}`, background: "rgba(78,168,222,0.10)", borderRadius: 14, padding: 10, fontSize: 11, lineHeight: 1.55 }}>
                   <strong style={{ color: C.blue }}>NEXT PROCESS</strong>
                   <div>1. Review this generated Wayplan and its manifest.</div>
