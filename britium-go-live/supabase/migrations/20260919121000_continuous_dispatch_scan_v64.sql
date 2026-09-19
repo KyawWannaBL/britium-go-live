@@ -51,19 +51,41 @@ begin
     upper(v_raw)
   ) into v_lookup;
 
-  with candidates as (
+  -- Dispatch scanning should resolve against the currently active Wayplan
+  -- before considering historical rows with the same printed Way ID.
+  with active_candidates as (
     select distinct
       d.delivery_way_id as canonical_id,
       d.pickup_id,
       coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id) as waybill_no
-    from public.be_data_entry_parcel_details d
-    where upper(d.delivery_way_id)=upper(v_lookup)
-       or upper(coalesce(d.financial_quote->>'source_waybill_no',''))=upper(v_raw)
+    from public.be_wayplan_membership_v40 m
+    join public.be_data_entry_parcel_details d on d.delivery_way_id=m.delivery_way_id
+    where m.membership_status in ('READY_FOR_DISPATCH','PLANNED','DISPATCHED')
+      and (
+        upper(d.delivery_way_id)=upper(v_lookup)
+        or upper(coalesce(d.financial_quote->>'source_waybill_no',''))=upper(v_raw)
+      )
   )
   select count(*)::integer,
          coalesce(jsonb_agg(to_jsonb(c) order by c.pickup_id,c.canonical_id),'[]'::jsonb)
     into v_count,v_matches
-  from candidates c;
+  from active_candidates c;
+
+  if v_count=0 then
+    with candidates as (
+      select distinct
+        d.delivery_way_id as canonical_id,
+        d.pickup_id,
+        coalesce(nullif(d.financial_quote->>'source_waybill_no',''),d.delivery_way_id) as waybill_no
+      from public.be_data_entry_parcel_details d
+      where upper(d.delivery_way_id)=upper(v_lookup)
+         or upper(coalesce(d.financial_quote->>'source_waybill_no',''))=upper(v_raw)
+    )
+    select count(*)::integer,
+           coalesce(jsonb_agg(to_jsonb(c) order by c.pickup_id,c.canonical_id),'[]'::jsonb)
+      into v_count,v_matches
+    from candidates c;
+  end if;
 
   if v_count=0 then
     return jsonb_build_object(
