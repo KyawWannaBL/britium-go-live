@@ -117,7 +117,6 @@ export default function SupervisorWayplanReviewPage() {
       setMessage(`${selected.wayplan_id} submitted for Supervisor review.`);
       await loadData();
       await loadDetail(selected.wayplan_id);
-      await loadDetail(selected.wayplan_id);
     } catch (err: any) {
       setError(err?.message || "Wayplan review submission failed.");
     } finally {
@@ -170,6 +169,7 @@ export default function SupervisorWayplanReviewPage() {
           : `${selected.wayplan_id} is now ${status}.`,
       );
       await loadData();
+      await loadDetail(selected.wayplan_id);
     } catch (err: any) {
       setError(err?.message || "Wayplan confirmation failed.");
     } finally {
