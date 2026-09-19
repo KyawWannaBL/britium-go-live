@@ -31,50 +31,77 @@ export default function SupervisorWayplanReviewPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [data, setData] = useState<any>({ wayplans: [], stats: {} });
+  const [detail, setDetail] = useState<any>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [selectedId, setSelectedId] = useState("");
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
   const wayplans: Wayplan[] = Array.isArray(data?.wayplans) ? data.wayplans : [];
-  const selected = useMemo(
+  const selectedSummary = useMemo(
     () => wayplans.find((w) => w.wayplan_id === selectedId) || wayplans[0] || null,
     [wayplans, selectedId],
   );
+  const selected = detail?.wayplan?.wayplan_id === selectedId
+    ? { ...selectedSummary, ...detail.wayplan }
+    : selectedSummary;
 
   useEffect(() => {
-    if (selected && selected.wayplan_id !== selectedId) {
-      setSelectedId(selected.wayplan_id);
-      setNotes(selected.review_notes || selected.rejection_reason || "");
+    if (selectedSummary && selectedSummary.wayplan_id !== selectedId) {
+      setSelectedId(selectedSummary.wayplan_id);
+      setNotes(selectedSummary.review_notes || selectedSummary.rejection_reason || "");
     }
-  }, [selected, selectedId]);
+  }, [selectedSummary, selectedId]);
 
   const loadData = async (keepSelection = true) => {
     setLoading(true);
     setError("");
     try {
-      const { data: res, error: rpcError } = await supabase.rpc("be_wayplan_supervisor_snapshot_v43", {
-        p_wayplan_id: null,
-      });
+      const { data: res, error: rpcError } = await supabase.rpc("be_wayplan_supervisor_list_v62");
       if (rpcError) throw rpcError;
       const next = res || { wayplans: [], stats: {} };
       setData(next);
       const rows = Array.isArray(next?.wayplans) ? next.wayplans : [];
-      if (!keepSelection || !rows.some((w: any) => w.wayplan_id === selectedId)) {
-        const first = rows[0];
-        setSelectedId(first?.wayplan_id || "");
-        setNotes(first?.review_notes || first?.rejection_reason || "");
-      }
+      const target = keepSelection && rows.some((w: any) => w.wayplan_id === selectedId)
+        ? selectedId
+        : rows[0]?.wayplan_id || "";
+      setSelectedId(target);
+      const picked = rows.find((w: any) => w.wayplan_id === target) || rows[0];
+      setNotes(picked?.review_notes || picked?.rejection_reason || "");
     } catch (err: any) {
       const msg = err?.message || "Failed to load Supervisor Wayplans.";
       setError(msg);
       setData({ wayplans: [], stats: {} });
+      setDetail(null);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { void loadData(false); }, []);
+  const loadDetail = async (wayplanId: string) => {
+    if (!wayplanId) { setDetail(null); return; }
+    setDetailLoading(true);
+    setError("");
+    try {
+      const { data: res, error: rpcError } = await supabase.rpc("be_wayplan_supervisor_detail_v62", {
+        p_wayplan_id: wayplanId,
+      });
+      if (rpcError) throw rpcError;
+      setDetail(res || null);
+    } catch (err: any) {
+      setDetail(null);
+      setError(err?.message || "Failed to load selected Wayplan details.");
+    } finally {
+      setDetailLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadDetail(selectedId);
+  }, [selectedId]);
+
 
   const submitForReview = async () => {
     if (!selected) return;
@@ -89,6 +116,8 @@ export default function SupervisorWayplanReviewPage() {
       if (res?.ok === false) throw new Error(res?.message || "Wayplan review submission failed.");
       setMessage(`${selected.wayplan_id} submitted for Supervisor review.`);
       await loadData();
+      await loadDetail(selected.wayplan_id);
+      await loadDetail(selected.wayplan_id);
     } catch (err: any) {
       setError(err?.message || "Wayplan review submission failed.");
     } finally {
@@ -154,10 +183,10 @@ export default function SupervisorWayplanReviewPage() {
   const rowsInPlan = selected?.parcel_count || 0;
   const included = selected?.ready_count || selected?.planned_count || 0;
   const selectedStatus = String(selected?.review_status || "DRAFT").toUpperCase();
-  const stops = Array.isArray(selected?.stops) ? selected!.stops! : [];
+  const stops = Array.isArray(detail?.wayplan?.stops) ? detail.wayplan.stops : [];
 
   return (
-    <div data-supervisor-wayplan-v60="true" className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6 space-y-6">
+    <div data-supervisor-wayplan-v62="true" className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-6 space-y-6">
       <div className="flex justify-between items-start border-b border-[#1a3a5c] pb-4">
         <div>
           <h2 className="text-[#f6b84b] uppercase text-[11px] tracking-widest mb-1">{t("SUPERVISOR", "ကြီးကြပ်ရေးမှူး")}</h2>
@@ -228,6 +257,8 @@ export default function SupervisorWayplanReviewPage() {
                 <Info label="Rider" value={selected.rider_name || selected.rider_code || "No rider"} />
                 <Info label="Helper" value={selected.helper_name || selected.helper_code || "No helper"} />
               </div>
+
+              {detailLoading ? <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-4 text-[12px] text-[#4d7a9b]">Loading selected Wayplan details…</div> : null}
 
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Supervisor notes (optional)" className="w-full min-h-[72px] rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-3 text-[12px] text-[#eef8ff] outline-none focus:border-[#f6b84b]" />
 
