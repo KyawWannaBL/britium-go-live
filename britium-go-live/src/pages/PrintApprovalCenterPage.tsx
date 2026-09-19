@@ -39,6 +39,7 @@ export default function PrintApprovalCenterPage() {
   const [printRequests, setPrintRequests] = useState<any[]>([]);
   const [audit, setAudit] = useState<any[]>([]);
   const [query, setQuery] = useState("");
+  const [canNativeReprint,setCanNativeReprint]=useState(false);
 
   async function actorEmail() {
     try {
@@ -62,6 +63,10 @@ export default function PrintApprovalCenterPage() {
       });
 
       if (error) throw error;
+
+      const {data:reprintStatus,error:reprintError}=await (supabase as any).rpc("be_waybill_reprint_status_v2");
+      if(reprintError) throw reprintError;
+      setCanNativeReprint(Boolean(reprintStatus?.can_reprint));
 
       setSummary(data?.summary || {});
       setAmendments(Array.isArray(data?.amendments) ? data.amendments : []);
@@ -91,6 +96,10 @@ export default function PrintApprovalCenterPage() {
   }, [printRequests, query]);
 
   async function approvePrint(row: any) {
+    if(!canNativeReprint){
+      setMessage("Reprint approval is restricted to a native Superadmin account.");
+      return;
+    }
     const confirmed = window.confirm(`Approve reprint for ${row.document_type} ${row.document_no}?`);
     if (!confirmed) return;
 
@@ -277,7 +286,7 @@ export default function PrintApprovalCenterPage() {
           </div>
         </Panel>
 
-        <Panel title="Waybill / Invoice Reprint Requests">
+        {canNativeReprint ? <Panel title="Waybill / Invoice Reprint Requests">
           <div className="max-h-[60vh] overflow-auto">
             <table className="w-full min-w-[780px] border-collapse text-sm">
               <thead>
@@ -321,7 +330,7 @@ export default function PrintApprovalCenterPage() {
               </tbody>
             </table>
           </div>
-        </Panel>
+        </Panel> : <Panel title="Reprint Authority"><div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">Reprint authority is restricted to native Superadmin accounts. Delegated operational Superadmin authority does not include reprinting.</div></Panel>}
       </section>
 
       <Panel title="Governance Audit Log">
