@@ -183,10 +183,10 @@ export default function DispatchCommandCenterPage() {
   const loadAll = useCallback(async (silent = false) => {
     if (!silent) setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("be_enterprise_dispatch_snapshot");
+      const { data, error } = await (supabase as any).rpc("be_dispatch_command_snapshot_v63");
       if (error) throw error;
       setSnapshot(data || {});
-      const first = data?.wayplans?.[0]?.wayplan_code || data?.wayplans?.[0]?.wayplan_no || "";
+      const first = data?.wayplans?.[0]?.wayplan_id || data?.wayplans?.[0]?.wayplan_code || data?.wayplans?.[0]?.wayplan_no || "";
       setSelectedWayplan((prev) => prev || first);
     } catch (e: any) {
       setMessage(e.message || "Failed to load dispatch data.");
@@ -259,6 +259,12 @@ export default function DispatchCommandCenterPage() {
     };
   }, [loadAll]);
 
+  useEffect(() => {
+    if (realtimeConnected) return;
+    const timer = setInterval(() => { void loadAll(true); }, 15000);
+    return () => clearInterval(timer);
+  }, [realtimeConnected, loadAll]);
+
   const actor = async () => {
     const { data } = await supabase.auth.getUser();
     return data?.user?.email || "dispatch@britiumexpress.com";
@@ -266,16 +272,20 @@ export default function DispatchCommandCenterPage() {
 
   const publish = async (wayplanCode?: string) => {
     const code = wayplanCode || selectedWayplan;
-    if (!code) return setMessage("Select a wayplan first.");
+    if (!code) return setMessage("Select a Wayplan first.");
+    const current = wayplans.find((w: any) => (w.wayplan_id || w.wayplan_code) === code);
+    if (!current?.publish_ready) {
+      return setMessage(current?.next_step || "This Wayplan is not ready to publish yet.");
+    }
     setLoading(true);
     try {
       const email = await actor();
-      const { error } = await supabase.rpc("be_publish_wayplan_to_dispatch", {
-        p_wayplan_code: code,
-        p_actor_email: email,
+      const { data, error } = await (supabase as any).rpc("be_dispatch_start_wayplan", {
+        p_payload: { wayplan_id: code, actor_email: email },
       });
       if (error) throw error;
-      setMessage(`Published ${code} to rider/driver app.`);
+      if (data?.ok === false) throw new Error(data?.next_step || data?.error || "Dispatch publish blocked.");
+      setMessage(`Published ${code} to field operation.`);
       await loadAll();
     } catch (e: any) {
       setMessage(e.message || "Publish failed.");
@@ -285,12 +295,22 @@ export default function DispatchCommandCenterPage() {
   };
 
   const publishAll = async () => {
+    const ready = wayplans.filter((w: any) => w.publish_ready);
+    if (!ready.length) return setMessage("No Wayplans are fully approved and scanned for publishing.");
     setLoading(true);
     try {
       const email = await actor();
-      const { error } = await supabase.rpc("be_publish_all_wayplans_to_dispatch", { p_actor_email: email });
-      if (error) throw error;
-      setMessage("Published all dispatch-ready wayplans.");
+      const results: string[] = [];
+      for (const w of ready) {
+        const code = w.wayplan_id || w.wayplan_code;
+        const { data, error } = await (supabase as any).rpc("be_dispatch_start_wayplan", {
+          p_payload: { wayplan_id: code, actor_email: email },
+        });
+        if (error) throw error;
+        if (data?.ok === false) throw new Error(`${code}: ${data?.next_step || data?.error || "Dispatch publish blocked."}`);
+        results.push(code);
+      }
+      setMessage(`Published ${results.length} dispatch-ready Wayplan(s).`);
       await loadAll();
     } catch (e: any) {
       setMessage(e.message || "Publish all failed.");
@@ -350,7 +370,9 @@ export default function DispatchCommandCenterPage() {
 
   const grouped = useMemo(() => groupByAsset(filteredJobs, assets), [filteredJobs, assets]);
   const pool = filteredJobs.filter((j: any) => !j.asset_code || j.asset_code === "UNASSIGNED");
+  const selectedPlan = wayplans.find((w: any) => (w.wayplan_id || w.wayplan_code) === selectedWayplan) || null;
   const selectedJobs = selectedWayplan ? jobs.filter((j: any) => j.wayplan_code === selectedWayplan) : jobs;
+  const publishReadyCount = wayplans.filter((w: any) => w.publish_ready).length;
 
   const fleetGroups = useMemo(
     () => Object.entries(grouped),
@@ -377,12 +399,16 @@ export default function DispatchCommandCenterPage() {
         <span className="font-semibold text-emerald-300">{fmtMoney(getTotal(j))}</span>
       </div>
       {getRemarks(j) && <div className="mt-2 rounded bg-amber-950/30 px-2 py-1 text-xs text-amber-200">{getRemarks(j)}</div>}
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <button onClick={() => setJobStatus(getTracking(j), "OUT_FOR_DELIVERY")} className="rounded bg-blue-700 px-2 py-1 text-xs text-white">Out</button>
-        <button onClick={() => setJobStatus(getTracking(j), "DELIVERED")} className="rounded bg-emerald-700 px-2 py-1 text-xs text-white">Done</button>
-        <button onClick={() => setJobStatus(getTracking(j), "ATTEMPTED_FAILED")} className="rounded bg-amber-700 px-2 py-1 text-xs text-white">Fail</button>
-        <button onClick={() => setJobStatus(getTracking(j), "RTO")} className="rounded bg-rose-800 px-2 py-1 text-xs text-white">RTO</button>
-      </div>
+      {["DISPATCHED","OUT_FOR_DELIVERY"].includes(String(j.review_status || j.dispatch_status || "").toUpperCase()) ? (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          <button onClick={() => setJobStatus(getTracking(j), "OUT_FOR_DELIVERY")} className="rounded bg-blue-700 px-2 py-1 text-xs text-white">Out</button>
+          <button onClick={() => setJobStatus(getTracking(j), "DELIVERED")} className="rounded bg-emerald-700 px-2 py-1 text-xs text-white">Done</button>
+          <button onClick={() => setJobStatus(getTracking(j), "ATTEMPTED_FAILED")} className="rounded bg-amber-700 px-2 py-1 text-xs text-white">Fail</button>
+          <button onClick={() => setJobStatus(getTracking(j), "RTO")} className="rounded bg-rose-800 px-2 py-1 text-xs text-white">RTO</button>
+        </div>
+      ) : (
+        <div className="mt-3 text-[10px] text-amber-300">{j.review_status === "DISPATCH_READY" ? (j.dispatch_scanned ? "Scanned · waiting for full Wayplan scan completion" : "Mandatory Dispatch scan required") : "Waiting for Supervisor/Dispatch release"}</div>
+      )}
     </div>
   );
 
@@ -409,20 +435,42 @@ export default function DispatchCommandCenterPage() {
                 : "border-amber-700 text-amber-300"
             }`}
           >
-            {realtimeConnected ? "LIVE" : "RECONNECTING"}
+            {realtimeConnected ? "LIVE" : "POLLING"}
           </span>
           <button onClick={loadAll} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold"><RefreshCw className="mr-1 inline h-4 w-4" />Sync Fresh</button>
           <select value={selectedWayplan} onChange={(e) => setSelectedWayplan(e.target.value)} className="rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-            {wayplans.map((w: any) => <option key={w.wayplan_code} value={w.wayplan_code}>{w.wayplan_code} · {w.parcel_count} parcels</option>)}
+            {wayplans.length === 0 ? <option value="">No active Wayplans</option> : null}
+            {wayplans.map((w: any) => {
+              const code = w.wayplan_id || w.wayplan_code;
+              return <option key={code} value={code}>{code} · {w.parcel_count} parcels · {w.review_status}</option>;
+            })}
           </select>
-          <button onClick={() => publish()} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold"><Send className="mr-1 inline h-4 w-4" />Publish</button>
-          <button onClick={publishAll} className="rounded-lg bg-[#C09B30] px-3 py-2 text-sm font-semibold text-black">Publish All</button>
+          <button disabled={!selectedPlan?.publish_ready || loading} onClick={() => publish()} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"><Send className="mr-1 inline h-4 w-4" />Publish</button>
+          <button disabled={!publishReadyCount || loading} onClick={publishAll} className="rounded-lg bg-[#C09B30] px-3 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">Publish All ({publishReadyCount})</button>
           <button onClick={() => printManifest(selectedJobs, assets, "Manifest")} className="rounded-lg border border-slate-700 px-3 py-2 text-sm"><Printer className="mr-1 inline h-4 w-4" />Manifest</button>
           <button onClick={closeDayDropoff} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-300">Close Day Drop Off</button>
         </div>
       </div>
 
       {message && <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">{message}</div>}
+
+      {selectedPlan && (
+        <div data-dispatch-wayplan-progress-v63="true" className="mb-4 rounded-xl border border-slate-700 bg-[#0B2133] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-bold text-white">{selectedPlan.wayplan_id || selectedPlan.wayplan_code}</div>
+              <div className="mt-1 text-xs text-slate-400">
+                Supervisor: <span className="text-sky-300">{selectedPlan.review_status}</span>
+                {" · "}Membership ready: {selectedPlan.ready_count}/{selectedPlan.parcel_count}
+                {" · "}Dispatch scans: {selectedPlan.scanned_count}/{selectedPlan.parcel_count}
+              </div>
+            </div>
+            <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${selectedPlan.publish_ready ? "border-emerald-600 text-emerald-300" : "border-amber-700 text-amber-300"}`}>
+              {selectedPlan.publish_ready ? "READY TO PUBLISH" : selectedPlan.next_step}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-8">
         {[
