@@ -52,6 +52,7 @@ export default function WarehousePage() {
   const [remark, setRemark] = useState("");
   const [query, setQuery] = useState("");
   const [progressFilter,setProgressFilter]=useState("ALL");
+  const [dispatchOnly,setDispatchOnly]=useState(false);
   const [pickupFilter,setPickupFilter]=useState("ALL");
   const [townshipFilter,setTownshipFilter]=useState("ALL");
   const [merchantFilter,setMerchantFilter]=useState("ALL");
@@ -352,16 +353,42 @@ export default function WarehousePage() {
   }),[operationalRows]);
 
   const progressOf=(r:any)=>{
+    const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
+    if(stage==="RTO") return "RTO";
+    if(stage==="SCHEDULED_HOLD") return "SCHEDULED_HOLD";
+    if(stage==="RETURNED_WAITING_REPLAN") return "RETURNED_WAITING_REPLAN";
+    if(stage==="DISPATCH_SCAN_REQUIRED") return "DISPATCH_SCAN_REQUIRED";
+    if(stage==="DISPATCH_SCANNED") return "DISPATCH_SCANNED";
+    if(stage==="IN_WAYPLAN_AWAITING_SUPERVISOR" || stage==="SUPERVISOR_APPROVED_AWAITING_RELEASE") return "WAITING_SUPERVISOR";
+    if(stage==="READY_FOR_WAYPLAN") return "READY_FOR_WAYPLAN";
     if(r.rto_at || String(r.delivery_status||"").toUpperCase()==="RTO") return "RTO";
-    if(Number(r.return_attempt_count||0)>0 || r.return_scan_1_at || r.return_scan_2_at || r.return_scan_3_at) return "RETURN";
+    if(Number(r.return_attempt_count||0)>0 || r.return_scan_1_at || r.return_scan_2_at || r.return_scan_3_at) return "RETURNED_WAITING_REPLAN";
     if(r.dispatch_scan_at) return "DISPATCH_SCANNED";
-    if(r.inbound_scan_at || ["RECEIVED","WAREHOUSE_RECEIVED","WAREHOUSE_READY"].includes(String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase())) return "RECEIVED";
+    if(r.inbound_scan_at || ["RECEIVED","WAREHOUSE_RECEIVED","WAREHOUSE_READY","READY_FOR_DELIVERY"].includes(String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase())) return "READY_FOR_WAYPLAN";
     return "PENDING";
   };
+
+  const dispatchRequiredRows=useMemo(
+    ()=>operationalRows.filter((r:any)=>Boolean(r.dispatch_scan_required)),
+    [operationalRows]
+  );
+
+  const dispatchWayplans=useMemo(()=>{
+    const map=new Map<string,{wayplanId:string;vehicle:string;count:number}>();
+    for(const r of dispatchRequiredRows){
+      const id=String(r.active_wayplan_id||"").trim();
+      if(!id) continue;
+      const current=map.get(id)||{wayplanId:id,vehicle:String(r.assigned_vehicle_code||r.assigned_vehicle_name||"Unassigned"),count:0};
+      current.count+=1;
+      map.set(id,current);
+    }
+    return Array.from(map.values()).sort((a,b)=>a.wayplanId.localeCompare(b.wayplanId));
+  },[dispatchRequiredRows]);
 
   const filteredRows = useMemo(() => {
     const q = query.trim().toLowerCase();
     return operationalRows.filter((r:any)=>{
+      if(dispatchOnly && !r.dispatch_scan_required) return false;
       if(progressFilter!=="ALL" && progressOf(r)!==progressFilter) return false;
       if(pickupFilter!=="ALL" && String(r.pickup_id||"")!==pickupFilter) return false;
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
@@ -379,7 +406,7 @@ export default function WarehousePage() {
         operationalWayId(r),
       ].some((x)=>String(x||"").toLowerCase().includes(q));
     });
-  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFrom,dateTo]);
+  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFrom,dateTo,dispatchOnly]);
 
   const exportCsv = () => {
     const headers = [
@@ -487,21 +514,58 @@ export default function WarehousePage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-6">
+      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
         {[
           ["ROWS", stats.rows],
-          ["RECEIVED", stats.received],
-          ["DISPATCH SCAN", stats.dispatch_scanned],
-          ["RETURNS", stats.returns],
-          ["PRIORITY", stats.priority],
+          ["READY FOR WAYPLAN", stats.ready_for_wayplan],
+          ["WAIT SUPERVISOR", stats.waiting_supervisor],
+          ["DISPATCH SCAN REQUIRED", stats.dispatch_scan_required],
+          ["DISPATCH SCANNED", stats.dispatch_scanned],
+          ["SCHEDULED HOLD", stats.scheduled_hold],
+          ["RETURN / REPLAN", stats.returned_waiting_replan],
           ["RTO", stats.rto],
         ].map(([k, v]: any) => (
-          <div key={k} className="rounded-xl border border-slate-800 bg-[#0B2133] p-3">
-            <div className="text-xl font-bold text-[#C09B30]">{v ?? 0}</div>
+          <div key={k} className={`rounded-xl border p-3 ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "border-amber-500 bg-amber-950/25" : "border-slate-800 bg-[#0B2133]"}`}>
+            <div className={`text-xl font-bold ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "text-amber-300" : "text-[#C09B30]"}`}>{v ?? 0}</div>
             <div className="text-xs uppercase text-slate-400">{k}</div>
           </div>
         ))}
       </div>
+
+      <section className={`mb-4 rounded-xl border p-4 ${dispatchRequiredRows.length ? "border-amber-500 bg-amber-950/20" : "border-slate-800 bg-[#0B2133]"}`}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-amber-300">Warehouse Dispatch Scan Queue</h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Only parcels in this queue require Dispatch Scan now. They are already released by Supervisor as DISPATCH_READY.
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Draft / under-review Wayplans are not scannable. Received parcels not yet assigned to a released Wayplan remain in Ready for Wayplan.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={()=>{setDispatchOnly(true);setProgressFilter("DISPATCH_SCAN_REQUIRED");setScanMode("dispatch");setTimeout(()=>focusScanner(),0);}}
+            disabled={!dispatchRequiredRows.length}
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Show only parcels to Dispatch Scan ({dispatchRequiredRows.length})
+          </button>
+        </div>
+        {dispatchWayplans.length ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {dispatchWayplans.map(w=>(
+              <span key={w.wayplanId} className="rounded-lg border border-amber-700 bg-slate-950/40 px-3 py-2 text-xs text-slate-200">
+                <strong className="text-amber-300">{w.wayplanId}</strong> · {w.count} parcel(s) · Vehicle {w.vehicle}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/30 p-3 text-sm text-slate-400">
+            No parcels currently require Dispatch Scan. Warehouse staff should continue inbound staging / Wayplan preparation.
+          </div>
+        )}
+      </section>
 
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <h2 className="font-bold">Prepare received parcels for Wayplan</h2>
@@ -684,9 +748,12 @@ export default function WarehousePage() {
                 <select value={progressFilter} onChange={e=>setProgressFilter(e.target.value)} className="mt-1 block w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100">
                   <option value="ALL">All progress</option>
                   <option value="PENDING">Pending / not received</option>
-                  <option value="RECEIVED">Received / waiting Dispatch</option>
+                  <option value="READY_FOR_WAYPLAN">Received / ready for Wayplan</option>
+                  <option value="WAITING_SUPERVISOR">In Wayplan / waiting Supervisor release</option>
+                  <option value="DISPATCH_SCAN_REQUIRED">Dispatch Scan required now</option>
                   <option value="DISPATCH_SCANNED">Dispatch scanned</option>
-                  <option value="RETURN">Returned</option>
+                  <option value="SCHEDULED_HOLD">Scheduled hold</option>
+                  <option value="RETURNED_WAITING_REPLAN">Returned / waiting replan</option>
                   <option value="RTO">RTO</option>
                 </select>
               </label>
@@ -722,7 +789,7 @@ export default function WarehousePage() {
 
               <button
                 type="button"
-                onClick={()=>{setDateFrom("");setDateTo("");setMerchantFilter("ALL");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");setQuery("");}}
+                onClick={()=>{setDateFrom("");setDateTo("");setMerchantFilter("ALL");setProgressFilter("ALL");setDispatchOnly(false);setPickupFilter("ALL");setTownshipFilter("ALL");setQuery("");}}
                 className="shrink-0 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
               >
                 Clear
@@ -745,6 +812,8 @@ export default function WarehousePage() {
                 <th className="p-2 text-right">COD</th>
                 <th className="p-2">WH Status</th>
                 <th className="p-2">Inbound Scan</th>
+                <th className="p-2">Dispatch Stage</th>
+                <th className="p-2">Wayplan</th>
                 <th className="p-2">Dispatch Scan</th>
                 <th className="p-2">Return Scan 1</th>
                 <th className="p-2">Reason</th>
@@ -776,6 +845,20 @@ export default function WarehousePage() {
                       </span>
                     </td>
                     <td className="p-2 min-w-[150px]">{fmt(r.inbound_scan_at)}</td>
+                    <td className="p-2 min-w-[240px]">
+                      {r.dispatch_scan_required ? (
+                        <span className="inline-flex rounded-full border border-amber-500/40 bg-amber-500/15 px-2 py-1 text-xs font-bold text-amber-300">SCAN NOW</span>
+                      ) : r.dispatch_workflow_stage==="DISPATCH_SCANNED" ? (
+                        <span className="inline-flex rounded-full border border-sky-500/40 bg-sky-500/15 px-2 py-1 text-xs font-semibold text-sky-300">SCANNED</span>
+                      ) : (
+                        <span className="text-xs text-slate-400">{String(r.dispatch_workflow_stage||"").replaceAll("_"," ") || "-"}</span>
+                      )}
+                      <div className="mt-1 text-[11px] text-slate-500">{r.dispatch_scan_instruction || ""}</div>
+                    </td>
+                    <td className="p-2 min-w-[210px]">
+                      <div className="text-xs font-semibold text-slate-200">{r.active_wayplan_id || "-"}</div>
+                      {r.assigned_vehicle_code ? <div className="mt-1 text-[11px] text-slate-500">Vehicle {r.assigned_vehicle_code}</div> : null}
+                    </td>
                     <td className="p-2 min-w-[150px]">{fmt(r.dispatch_scan_at)}</td>
                     <td className="p-2 min-w-[150px]">{fmt(r.return_scan_1_at)}</td>
                     <td className="p-2 min-w-[220px]">{r.return_reason_1_name || r.return_reason_1 || "-"}</td>
@@ -806,10 +889,12 @@ export default function WarehousePage() {
                           Inbound Scan
                         </button>
                         <button
-                          disabled={loading} onClick={() => doScan("dispatch", code)}
-                          className="rounded bg-blue-700 px-2 py-1 text-xs font-semibold hover:bg-blue-600"
+                          disabled={loading || !r.dispatch_scan_allowed}
+                          title={r.dispatch_scan_allowed ? "Supervisor released this Wayplan — Dispatch Scan required." : (r.dispatch_scan_instruction || "Dispatch Scan is not currently required.")}
+                          onClick={() => doScan("dispatch", code)}
+                          className={`rounded px-2 py-1 text-xs font-semibold ${r.dispatch_scan_allowed ? "bg-blue-700 hover:bg-blue-600" : "cursor-not-allowed bg-slate-700 text-slate-500"}`}
                         >
-                          Dispatch Scan
+                          {r.dispatch_scan_required ? "Dispatch Scan Now" : "Dispatch Scan"}
                         </button>
                         <button
                           disabled={loading} onClick={() => doScan("return", code)}
