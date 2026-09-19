@@ -54,7 +54,8 @@ export default function WarehousePage() {
   const [pickupFilter,setPickupFilter]=useState("ALL");
   const [townshipFilter,setTownshipFilter]=useState("ALL");
   const [merchantFilter,setMerchantFilter]=useState("ALL");
-  const [dateFilter,setDateFilter]=useState("ALL");
+  const [dateFrom,setDateFrom]=useState("");
+  const [dateTo,setDateTo]=useState("");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
@@ -340,7 +341,6 @@ export default function WarehousePage() {
     pickups:Array.from(new Set(operationalRows.map((r:any)=>String(r.pickup_id||"").trim()).filter(Boolean))).sort(),
     townships:Array.from(new Set(operationalRows.map((r:any)=>String(r.delivery_township||"").trim()).filter(Boolean))).sort(),
     merchants:Array.from(new Set(operationalRows.map((r:any)=>String(r.merchant_code||r.merchant_name||"").trim()).filter(Boolean))).sort(),
-    dates:Array.from(new Set(operationalRows.map((r:any)=>rowOperationalDate(r)).filter(Boolean))).sort().reverse(),
   }),[operationalRows]);
 
   const progressOf=(r:any)=>{
@@ -358,16 +358,20 @@ export default function WarehousePage() {
       if(pickupFilter!=="ALL" && String(r.pickup_id||"")!==pickupFilter) return false;
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
       if(merchantFilter!=="ALL" && String(r.merchant_code||r.merchant_name||"")!==merchantFilter) return false;
-      if(dateFilter!=="ALL" && rowOperationalDate(r)!==dateFilter) return false;
+
+      const operationalDate=rowOperationalDate(r);
+      if(dateFrom && (!operationalDate || operationalDate<dateFrom)) return false;
+      if(dateTo && (!operationalDate || operationalDate>dateTo)) return false;
+
       if(!q) return true;
       return [
-        r.waybill_no,r.pickup_id,operationalWayId(r),r.merchant_code,r.merchant_name,
-        r.recipient_name,r.phone_number,r.recipient_phone,r.delivery_township,
-        r.warehouse_scan_status,r.return_reason_1_name,r.return_reason_2_name,
-        r.return_reason_3_name,r.last_exception_reason,
+        r.waybill_no,
+        r.display_way_id,
+        r.tracking_no,
+        operationalWayId(r),
       ].some((x)=>String(x||"").toLowerCase().includes(q));
     });
-  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFilter]);
+  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFrom,dateTo]);
 
   const exportCsv = () => {
     const headers = [
@@ -613,51 +617,96 @@ export default function WarehousePage() {
       </section>
 
       <section className="rounded-xl border border-slate-800 bg-[#0B2133]">
-        <div className="flex flex-col gap-3 border-b border-slate-800 p-3 md:flex-row md:items-center md:justify-between">
-          <div>
+        <div className="border-b border-slate-800 p-3">
+          <div className="mb-2">
             <div className="font-semibold">Warehouse Queue Rows</div>
             <div className="text-xs text-slate-400">
               Required columns: inbound scan, dispatch scan, return scan 1/2/3, reason, priority, RTO.
             </div>
           </div>
-          <div className="flex w-full flex-wrap items-center gap-2 md:w-auto">
-            <select value={progressFilter} onChange={e=>setProgressFilter(e.target.value)} className="rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-              <option value="ALL">All progress</option>
-              <option value="PENDING">Pending / not received</option>
-              <option value="RECEIVED">Received / waiting Dispatch</option>
-              <option value="DISPATCH_SCANNED">Dispatch scanned</option>
-              <option value="RETURN">Returned</option>
-              <option value="RTO">RTO</option>
-            </select>
-            <select value={pickupFilter} onChange={e=>setPickupFilter(e.target.value)} className="max-w-[240px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-              <option value="ALL">All pickups</option>
-              {filterOptions.pickups.map((x:any)=><option key={x} value={x}>{x}</option>)}
-            </select>
-            <select value={townshipFilter} onChange={e=>setTownshipFilter(e.target.value)} className="max-w-[220px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-              <option value="ALL">All townships</option>
-              {filterOptions.townships.map((x:any)=><option key={x} value={x}>{x}</option>)}
-            </select>
-            <select value={merchantFilter} onChange={e=>setMerchantFilter(e.target.value)} className="max-w-[220px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-              <option value="ALL">All merchants</option>
-              {filterOptions.merchants.map((x:any)=><option key={x} value={x}>{x}</option>)}
-            </select>
-            <select value={dateFilter} onChange={e=>setDateFilter(e.target.value)} className="max-w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-3 py-2 text-sm">
-              <option value="ALL">All dates</option>
-              {filterOptions.dates.map((x:any)=><option key={x} value={x}>{x}</option>)}
-            </select>
-            <div className="relative min-w-[300px] flex-1 md:w-[420px]">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search waybill / delivery way / merchant / reason..."
-                className="w-full rounded-lg border border-slate-700 bg-[#071827] py-2 pl-9 pr-3 outline-none focus:border-[#C09B30]"
-              />
+
+          <div className="w-full overflow-x-auto pb-1">
+            <div className="flex min-w-max flex-nowrap items-end gap-2">
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                From
+                <input
+                  type="date"
+                  value={dateFrom}
+                  max={dateTo || undefined}
+                  onChange={e=>setDateFrom(e.target.value)}
+                  className="mt-1 block w-[150px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100 outline-none focus:border-[#C09B30]"
+                />
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                To
+                <input
+                  type="date"
+                  value={dateTo}
+                  min={dateFrom || undefined}
+                  onChange={e=>setDateTo(e.target.value)}
+                  className="mt-1 block w-[150px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100 outline-none focus:border-[#C09B30]"
+                />
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Merchant
+                <select value={merchantFilter} onChange={e=>setMerchantFilter(e.target.value)} className="mt-1 block w-[170px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100">
+                  <option value="ALL">All merchants</option>
+                  {filterOptions.merchants.map((x:any)=><option key={x} value={x}>{x}</option>)}
+                </select>
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Progress
+                <select value={progressFilter} onChange={e=>setProgressFilter(e.target.value)} className="mt-1 block w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100">
+                  <option value="ALL">All progress</option>
+                  <option value="PENDING">Pending / not received</option>
+                  <option value="RECEIVED">Received / waiting Dispatch</option>
+                  <option value="DISPATCH_SCANNED">Dispatch scanned</option>
+                  <option value="RETURN">Returned</option>
+                  <option value="RTO">RTO</option>
+                </select>
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Pickup
+                <select value={pickupFilter} onChange={e=>setPickupFilter(e.target.value)} className="mt-1 block w-[185px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100">
+                  <option value="ALL">All pickups</option>
+                  {filterOptions.pickups.map((x:any)=><option key={x} value={x}>{x}</option>)}
+                </select>
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Township
+                <select value={townshipFilter} onChange={e=>setTownshipFilter(e.target.value)} className="mt-1 block w-[180px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100">
+                  <option value="ALL">All townships</option>
+                  {filterOptions.townships.map((x:any)=><option key={x} value={x}>{x}</option>)}
+                </select>
+              </label>
+
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Find Way ID
+                <div className="relative mt-1 w-[250px]">
+                  <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-500" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Way ID / Waybill..."
+                    className="w-full rounded-lg border border-slate-700 bg-[#071827] py-2 pl-9 pr-3 text-sm outline-none focus:border-[#C09B30]"
+                  />
+                </div>
+              </label>
+
+              <button
+                type="button"
+                onClick={()=>{setDateFrom("");setDateTo("");setMerchantFilter("ALL");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");setQuery("");}}
+                className="shrink-0 rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800"
+              >
+                Clear
+              </button>
+              <span className="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-300">{filteredRows.length} / {operationalRows.length} rows</span>
             </div>
-            <button type="button" onClick={()=>{setQuery("");setProgressFilter("ALL");setPickupFilter("ALL");setTownshipFilter("ALL");setMerchantFilter("ALL");setDateFilter("ALL");}} className="rounded-lg border border-slate-700 px-3 py-2 text-sm hover:bg-slate-800">
-              Clear filters
-            </button>
-            <span className="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-300">{filteredRows.length} / {operationalRows.length} rows</span>
           </div>
         </div>
 
