@@ -108,9 +108,11 @@ begin
   end if;
 
   select count(*)::integer into v_eligible
-  from public.be_wayplan_eligible_rows_v69(v_region) q
-  where q.delivery_way_id in (select jsonb_array_elements_text(v_selected))
-     or q.waybill_no in (select jsonb_array_elements_text(v_selected));
+  from jsonb_array_elements_text(v_selected) s(id)
+  where exists(
+    select 1 from public.be_wayplan_eligible_rows_v69(v_region) q
+    where q.delivery_way_id=s.id or q.waybill_no=s.id
+  );
 
   if v_eligible<>v_selected_count then
     return jsonb_build_object(
@@ -217,9 +219,11 @@ begin
 
   if v_selected_count>0 then
     select count(*)::integer into v_eligible_selected_count
-    from public.be_wayplan_eligible_rows_v69(v_region) q
-    where q.delivery_way_id in (select jsonb_array_elements_text(v_selected))
-       or q.waybill_no in (select jsonb_array_elements_text(v_selected));
+    from jsonb_array_elements_text(v_selected) s(id)
+    where exists(
+      select 1 from public.be_wayplan_eligible_rows_v69(v_region) q
+      where q.delivery_way_id=s.id or q.waybill_no=s.id
+    );
     if v_eligible_selected_count<>v_selected_count then
       return jsonb_build_object(
         'ok',false,
@@ -255,14 +259,22 @@ begin
     wayplan_id,stop_sequence,pickup_id,pickup_way_id,delivery_way_id,waybill_no,
     recipient_name,recipient_phone,township,address,cod_amount,delivery_fee,parcel_weight_kg,stop_status,metadata
   )
-  select v_wayplan_id,row_number() over(order by q.township,q.address,q.delivery_way_id),
-         q.pickup_id,q.pickup_way_id,q.delivery_way_id,q.waybill_no,q.recipient_name,q.recipient_phone,
-         q.township,q.address,q.cod_amount,q.delivery_fee,q.parcel_weight_kg,'READY_FOR_DISPATCH',
-         coalesce(q.metadata,'{}'::jsonb)||jsonb_build_object('wayplan_build','V69','queue_source','be_dispatch_ready_queue_v19/V67_FAST')
-  from public.be_wayplan_eligible_rows_v69(v_region) q
-  where v_selected_count=0
-     or q.delivery_way_id in (select jsonb_array_elements_text(v_selected))
-     or q.waybill_no in (select jsonb_array_elements_text(v_selected));
+  select v_wayplan_id,row_number() over(order by chosen.ord),
+         chosen.pickup_id,chosen.pickup_way_id,chosen.delivery_way_id,chosen.waybill_no,
+         chosen.recipient_name,chosen.recipient_phone,chosen.township,chosen.address,
+         chosen.cod_amount,chosen.delivery_fee,chosen.parcel_weight_kg,'READY_FOR_DISPATCH',
+         coalesce(chosen.metadata,'{}'::jsonb)||jsonb_build_object('wayplan_build','V69','queue_source','be_dispatch_ready_queue_v19/V67_FAST')
+  from (
+    select s.ord,q.*
+    from jsonb_array_elements_text(v_selected) with ordinality s(id,ord)
+    join lateral (
+      select e.*
+      from public.be_wayplan_eligible_rows_v69(v_region) e
+      where e.delivery_way_id=s.id or e.waybill_no=s.id
+      order by case when e.delivery_way_id=s.id then 0 else 1 end,e.updated_at desc nulls last,e.delivery_way_id
+      limit 1
+    ) q on true
+  ) chosen;
 
   select count(*),coalesce(sum(cod_amount),0) into v_count,v_cod
   from public.be_wayplan_dispatch_stops where wayplan_id=v_wayplan_id;
