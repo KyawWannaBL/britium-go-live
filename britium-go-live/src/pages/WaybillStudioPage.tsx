@@ -631,7 +631,7 @@ export default function BritiumUnifiedPrintStudioV33() {
   const [pdfBusy,setPdfBusy]=useState(false);
   const pdfOperation=useRef(false);
   const [reprintReason,setReprintReason]=useState("");
-  const [printAudit,setPrintAudit]=useState<any>({requests:[],logs:[],can_approve:false});
+  const [printAudit,setPrintAudit]=useState<any>({requests:[],logs:[],can_approve:false,can_reprint:false,native_superadmin_required:true});
   async function refreshPrintAudit() {
     const {data,error}=await (supabase as any).rpc("be_waybill_reprint_status_v2");
     if(error) throw error;
@@ -944,15 +944,15 @@ export default function BritiumUnifiedPrintStudioV33() {
           <p className="mt-3 rounded-xl border border-amber-700/50 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{message.length > 800 ? message.slice(0,800)+"… See the approval table below." : message} {layout.description}</p>
         </section>
 
-        {docType==="WAYBILL" && <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
-          <h2 className="text-lg font-bold text-amber-300">Reprint permission &amp; history</h2>
-          <p>First release is allowed once. Every further paper/PDF release requires a reason and explicit Superadmin approval, valid once for the requester.</p>
+        {docType==="WAYBILL" && printAudit.can_reprint && <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
+          <h2 className="text-lg font-bold text-amber-300">Superadmin reprint control &amp; history</h2>
+          <p>Reprint is restricted to a native Superadmin account. Delegated operational Superadmin authority does not grant reprint permission.</p>
           <label className="block mt-3">Reason for reprinting selected waybill numbers
             <textarea value={reprintReason} onChange={e=>setReprintReason(e.target.value)} maxLength={2000} className="block w-full rounded bg-slate-950 p-3" placeholder="For example: printer jam damaged the label" />
           </label>
           <div className="flex gap-2 mt-2">
-            <Button disabled={pdfBusy || !selectedRows.length || !reprintReason.trim()} onClick={()=>void requestReprint()}>Request reprint for selected ({selectedRows.length})</Button>
-            <Button disabled={pdfBusy} onClick={()=>void refreshPrintAudit().catch(e=>setMessage(e.message))}>Refresh approvals &amp; history</Button>
+            <Button disabled={pdfBusy || !selectedRows.length || !reprintReason.trim()} onClick={()=>void requestReprint()}>Create Superadmin reprint release ({selectedRows.length})</Button>
+            <Button disabled={pdfBusy} onClick={()=>void refreshPrintAudit().catch(e=>setMessage(e.message))}>Refresh reprint history</Button>
           </div>
           <div className="max-h-80 overflow-auto mt-3">
             <table className="w-full text-sm"><thead><tr><th>Waybill</th><th>Requester / time</th><th>Reason</th><th>Decision / approver</th><th>Use</th></tr></thead>
@@ -970,6 +970,11 @@ export default function BritiumUnifiedPrintStudioV33() {
             <div className="max-h-64 overflow-auto"><table className="w-full text-sm"><thead><tr><th>Waybill</th><th>Release #</th><th>Released by / time</th><th>Approved by</th><th>Reason</th></tr></thead>
             <tbody>{printAudit.logs.map((l:any)=><tr key={l.id}><td>{l.document_no}</td><td>{l.print_count}</td><td>{l.printed_by} / {l.created_at}</td><td>{l.approved_by||"First release"}</td><td>{l.reason}</td></tr>)}</tbody></table></div>
           </details>
+        </section>}
+
+        {docType==="WAYBILL" && !printAudit.can_reprint && <section className="rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
+          <h2 className="text-lg font-bold text-sky-200">Reprint access</h2>
+          <p className="mt-1 text-sm text-slate-300">First print remains available under your normal print permission. Reprinting an already released waybill is restricted to native Superadmin accounts only.</p>
         </section>}
         <section className="grid min-h-0 gap-4 xl:grid-cols-[330px_minmax(0,1fr)]">
           <aside className="min-h-0 rounded-3xl border border-sky-900 bg-[#0b2940] p-4">
