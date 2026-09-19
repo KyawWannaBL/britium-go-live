@@ -193,7 +193,7 @@ begin
   where delivery_way_id=v_internal;
 
   update public.be_waybill_ledger
-  set dispatch_status='DELIVERY_RESCHEDULED',
+  set dispatch_status='READY_FOR_DISPATCH',
       rider_status='DELIVERY_RESCHEDULED',
       wayplan_status='READY_FOR_WAYPLAN',
       updated_at=now(),
