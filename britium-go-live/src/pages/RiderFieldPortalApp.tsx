@@ -209,9 +209,39 @@ const DELIVERY_EXCEPTION_RULES: RiderExceptionRule[] = [
   },
   {
     processType: "DELIVERY",
+    code: "PHONE_OFF",
+    nameEn: "Phone switched off",
+    nameMm: "ဖုန်းစက်ပိတ်ထားသည်။",
+    mappedStatus: "DELIVERY_ATTEMPTED",
+    nextAction: "RETRY_OR_CS_FOLLOWUP",
+    requirePhoto: false,
+    requireRemark: true,
+  },
+  {
+    processType: "DELIVERY",
+    code: "PHONE_OUT_OF_COVERAGE",
+    nameEn: "Phone is outside coverage area",
+    nameMm: "ဖုန်းဆက်သွယ်မှုဧရိယာပြင်ပသို့ရောက်ရှိနေသည်။",
+    mappedStatus: "DELIVERY_ATTEMPTED",
+    nextAction: "RETRY_OR_CS_FOLLOWUP",
+    requirePhoto: false,
+    requireRemark: true,
+  },
+  {
+    processType: "DELIVERY",
+    code: "NO_ANSWER",
+    nameEn: "Customer did not answer phone",
+    nameMm: "ဖုန်းမကိုင်ပါ။",
+    mappedStatus: "DELIVERY_ATTEMPTED",
+    nextAction: "RETRY_OR_CS_FOLLOWUP",
+    requirePhoto: false,
+    requireRemark: true,
+  },
+  {
+    processType: "DELIVERY",
     code: "PHONE_UNREACHABLE",
-    nameEn: "Receiver phone unreachable",
-    nameMm: "လက်ခံသူ ဖုန်းဆက်မရပါ",
+    nameEn: "Other phone unreachable issue",
+    nameMm: "ဖုန်းဆက်သွယ်၍ မရပါ",
     mappedStatus: "DELIVERY_ATTEMPTED",
     nextAction: "RETRY_OR_CS_FOLLOWUP",
     requirePhoto: false,
@@ -230,8 +260,8 @@ const DELIVERY_EXCEPTION_RULES: RiderExceptionRule[] = [
   {
     processType: "DELIVERY",
     code: "CUSTOMER_REQUESTED_RESCHEDULE",
-    nameEn: "Customer requested reschedule",
-    nameMm: "Customer မှ ပြန်ချိန်းဆိုရန် တောင်းဆိုသည်",
+    nameEn: "Delivery date postponed / changed by customer",
+    nameMm: "ပို့ဆောင်ရက်အား Customer မှ သတ်မှတ်ရက်သို့ ရွှေ့ဆိုင်း/ပြောင်းလဲထားသည်။",
     mappedStatus: "DELIVERY_RESCHEDULED",
     nextAction: "SET_NEXT_ATTEMPT_DATE",
     requirePhoto: false,
@@ -1651,6 +1681,7 @@ function FieldPortal() {
     setProofApproved(false);
     setProofPreparing(false);
     setProofOperationId("");
+    setRescheduleDate("");
     setModal(null);
     modalSubmissionId.current = "";
   }
@@ -1673,6 +1704,7 @@ function FieldPortal() {
   }
   const [remark, setRemark] = useState("");
   const [exceptionReason, setExceptionReason] = useState("CUSTOMER_NOT_AVAILABLE");
+  const [rescheduleDate,setRescheduleDate]=useState("");
   const [pickupSearch, setPickupSearch] = useState("");
   const [parcelRows, setParcelRows] = useState<ParcelVerificationRow[]>([]);
 
@@ -1950,6 +1982,7 @@ function FieldPortal() {
     setProofOperationId("");
     setRemark("");
     setExceptionReason("CUSTOMER_NOT_AVAILABLE");
+    setRescheduleDate("");
     setPickupSearch("");
 
     if (mode === "pickup") {
@@ -2397,6 +2430,11 @@ function FieldPortal() {
         return;
       }
 
+      if (rule.code === "CUSTOMER_REQUESTED_RESCHEDULE" && !rescheduleDate) {
+        setError("Choose the customer-dedicated delivery date.");
+        return;
+      }
+
       if (rule.requirePhoto && !proofUrl && (!proofFile || !proofApproved)) {
         setError("Select, preview, and approve the exception proof photo before submitting.");
         return;
@@ -2406,12 +2444,16 @@ function FieldPortal() {
       payload = {
         process_type: rule.processType,
         workflow_area: rule.processType.toLowerCase(),
+        delivery_way_id: text(selectedJob.delivery_way_id || selectedJob.tracking_no || selectedJob.waybill_no),
+        tracking_no: text(selectedJob.tracking_no || selectedJob.delivery_way_id || selectedJob.waybill_no),
         exception_code: rule.code,
         exception_reason: rule.code,
         exception_name_en: rule.nameEn,
         exception_name_mm: rule.nameMm,
         mapped_status: rule.mappedStatus,
         next_action: rule.nextAction,
+        requested_delivery_date: rule.code === "CUSTOMER_REQUESTED_RESCHEDULE" ? rescheduleDate : null,
+        next_attempt_date: rule.code === "CUSTOMER_REQUESTED_RESCHEDULE" ? rescheduleDate : null,
         reason: remark.trim(),
         proof_url: proof,
       };
@@ -2937,6 +2979,21 @@ function FieldPortal() {
                         </option>
                       ))}
                     </select>
+                    {exceptionReason === "CUSTOMER_REQUESTED_RESCHEDULE" && (
+                      <div style={{ marginTop: 10 }}>
+                        <label>Customer dedicated delivery date *</label>
+                        <input
+                          type="date"
+                          value={rescheduleDate}
+                          min={new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Yangon"})}
+                          onChange={(e)=>setRescheduleDate(e.target.value)}
+                          style={inputStyle()}
+                        />
+                        <div style={{ color: C.sub, fontSize: 12, marginTop: 5 }}>
+                          The parcel will be excluded from automatic Wayplans before this date and becomes eligible on this Yangon date.
+                        </div>
+                      </div>
+                    )}
                     <div
                       style={{
                         marginTop: 10,
