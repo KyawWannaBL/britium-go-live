@@ -22,7 +22,7 @@ const fmt = (v: any) =>
 const money = (v: any) => Number(v || 0).toLocaleString("en-US");
 
 const track = (r: any) =>
-  r.tracking_no || r.delivery_way_id || r.delivery_way_no || r.id || "";
+  r.display_way_id || r.waybill_no || r.tracking_no || r.delivery_way_id || r.delivery_way_no || r.id || "";
 
 function statusClass(status?: string) {
   const s = String(status || "").toUpperCase();
@@ -712,13 +712,11 @@ export default function WarehousePage() {
         </div>
 
         <div className="max-h-[70vh] overflow-auto">
-          <table className="w-full min-w-[2200px] text-sm">
+          <table className="w-full min-w-[1980px] text-sm">
             <thead className="sticky top-0 z-10 bg-[#0B2133] text-left text-xs uppercase text-slate-400">
               <tr>
                 <th className="p-2">#</th>
-                <th className="p-2">Waybill</th>
-                <th className="p-2">Pickup</th>
-                <th className="p-2">Delivery Way</th>
+                <th className="p-2">Way ID / Waybill</th>
                 <th className="p-2">Merchant</th>
                 <th className="p-2">Recipient</th>
                 <th className="p-2">Phone</th>
@@ -745,9 +743,7 @@ export default function WarehousePage() {
                 return (
                   <tr key={`${code}-${idx}`} className="border-t border-slate-800 align-top hover:bg-slate-900/40">
                     <td className="p-2 text-slate-500">{idx + 1}</td>
-                    <td className="p-2 font-semibold text-sky-300">{r.waybill_no || "-"}</td>
-                    <td className="p-2">{r.pickup_id || "-"}</td>
-                    <td className="p-2 font-semibold text-sky-300">{code || "-"}</td>
+                    <td className="p-2 min-w-[150px] font-semibold text-sky-300">{code || "-"}</td>
                     <td className="p-2">{r.merchant_code || r.merchant_name || "-"}</td>
                     <td className="p-2 min-w-[180px]">{r.recipient_name || "-"}</td>
                     <td className="p-2">{r.phone_number || r.recipient_phone || "-"}</td>
