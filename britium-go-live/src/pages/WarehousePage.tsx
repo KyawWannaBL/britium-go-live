@@ -48,6 +48,7 @@ export default function WarehousePage() {
   const [scanMode,setScanMode]=useState<"inbound"|"dispatch"|"return">("inbound");
   const [scanCode, setScanCode] = useState("");
   const [reason, setReason] = useState("");
+  const [rescheduleDate,setRescheduleDate]=useState("");
   const [remark, setRemark] = useState("");
   const [query, setQuery] = useState("");
   const [progressFilter,setProgressFilter]=useState("ALL");
@@ -235,11 +236,16 @@ export default function WarehousePage() {
 
       if (kind === "return") {
         if (!reason) throw new Error("Please select return reason first.");
-        res = await supabase.rpc("be_warehouse_return_scan", {
+        if (reason === "CUSTOMER_REQUESTED_RESCHEDULE" && !rescheduleDate) {
+          throw new Error("Choose the customer-dedicated delivery date before saving the return scan.");
+        }
+        res = await (supabase as any).rpc("be_warehouse_return_scan_v71", {
           p_tracking_no: tracking,
           p_reason_code: reason,
+          p_delivery_date: reason === "CUSTOMER_REQUESTED_RESCHEDULE" ? rescheduleDate : null,
           p_actor_email: email,
           p_remark: remark || null,
+          p_warehouse_code: "YGN-MAIN",
         });
       }
 
@@ -254,6 +260,7 @@ export default function WarehousePage() {
       );
 
       setScanCode("");
+      if (kind === "return" && reason === "CUSTOMER_REQUESTED_RESCHEDULE") setRescheduleDate("");
       await loadAll();
     } catch (e: any) {
       setMessage(e.message || "Scan confirmation unavailable. Check the parcel status before retrying.");
@@ -560,6 +567,20 @@ export default function WarehousePage() {
               </option>
             ))}
           </select>
+
+          {scanMode === "return" && reason === "CUSTOMER_REQUESTED_RESCHEDULE" ? (
+            <label className="rounded-lg border border-amber-600/60 bg-amber-950/20 p-2 text-xs text-amber-200">
+              Customer dedicated delivery date *
+              <input
+                type="date"
+                value={rescheduleDate}
+                min={new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Yangon"})}
+                onChange={(e)=>setRescheduleDate(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-amber-700 bg-[#071827] p-2 text-slate-100 outline-none focus:border-[#C09B30]"
+              />
+              <span className="mt-1 block text-[11px] text-slate-400">This parcel stays out of normal Wayplan planning until this Yangon delivery date.</span>
+            </label>
+          ) : null}
 
           <input
             value={remark}
