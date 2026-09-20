@@ -980,6 +980,7 @@ async function fetchRiderPayload(login: string) {
         role,
       },
     });
+    let deliveryV77Available = !snapshotResult.error;
 
     if (snapshotResult.error) {
       snapshotResult = await supabase.rpc("be_field_team_mobile_snapshot", {
@@ -990,12 +991,19 @@ async function fetchRiderPayload(login: string) {
           role,
         },
       });
+      deliveryV77Available = false;
     }
 
     const { data, error } = snapshotResult;
 
     if (!error && data?.ok !== false) {
-      const baseJobs = Array.isArray(data?.jobs) ? data.jobs.map((row: any) => ({ ...row, mobile_role: role })) : [];
+      const baseJobs = Array.isArray(data?.jobs)
+        ? data.jobs.map((row: any) => ({
+            ...row,
+            mobile_role: role,
+            delivery_v77_available: deliveryV77Available,
+          }))
+        : [];
       const jobs = await enrichDeliveryArrivalState(supabase, baseJobs);
       const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
       return {
@@ -1513,6 +1521,7 @@ function JobCard({
   const exception = isException(job);
   const stage = pickupActionStage(job);
   const helperMode = inferWorkforceRole(workerRole) === "helper";
+  const deliveryV77Available = Boolean((job as any).delivery_v77_available);
 
   const deliveryMode =
     screen === "delivery" ||
@@ -1681,7 +1690,7 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+        {deliveryMode && deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1692,7 +1701,18 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
+        {deliveryMode && !deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
+          <button
+            type="button"
+            disabled={busy}
+            style={buttonStyle("green")}
+            onClick={() => onModal(job, "delivery")}
+          >
+            Verify Delivery / Delivered
+          </button>
+        )}
+
+        {deliveryMode && deliveryV77Available && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
