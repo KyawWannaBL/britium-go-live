@@ -885,14 +885,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                     <option value="DUPLICATE_IMAGE">Duplicate image</option>
                     <option value="OTHER">Other</option>
                   </select>
-                  {row.photoRejectionReason ? <BufferedDataEntryInput
-                    multiline
-                    rows={2}
-                    className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500"
-                    placeholder="Optional detail for the rider…"
-                    value={row.photoRejectionNote}
-                    onCommit={(value) => updateRow(index, { photoRejectionNote: value })}
-                  /> : null}
+                  {row.photoRejectionReason ? <BufferedDataEntryInput multiline rows={2} value={row.photoRejectionNote} onCommit={(value) => updateRow(index, { photoRejectionNote: value })} className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500" placeholder="Optional detail for the rider…" /> : null}
                   <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
                 </div>
                 <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
