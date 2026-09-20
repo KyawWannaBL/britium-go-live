@@ -36,6 +36,7 @@ export const DATA_ENTRY_FINANCE_RECONCILIATION_BUILD = "DATA_ENTRY_FINANCE_RECON
 export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK_ACTIONS_V14_20260902";
 export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_IMPORT_V16_20260903";
 export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903";
+export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -166,6 +167,20 @@ type BulkImportDraft = {
   saved: boolean;
 };
 
+type PhoneHistoryMatch = {
+  history_rank?: number;
+  recipient_name?: string;
+  recipient_phone?: string;
+  secondary_phone?: string;
+  township?: string;
+  city?: string;
+  region_state?: string;
+  recipient_address?: string;
+  merchant_id?: string;
+  delivery_way_id?: string;
+  saved_at?: string;
+};
+
 const inputClass =
   "w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-[12px] font-semibold text-black placeholder:text-slate-500 outline-none focus:border-[#f6b84b]";
 const labelClass = "mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-[#7aa7c6]";
@@ -179,6 +194,21 @@ function requestedParcelCount(pickup: Pickup): number {
 }
 function authorizedParcelCount(pickup: Pickup, observed = 0): number {
   return Math.max(requestedParcelCount(pickup),positiveInt(pickup.verified_parcels),positiveInt(pickup.registered_parcels),positiveInt(observed));
+}
+function yangonDateKey(value: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Yangon", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(value);
+  const part=(type:string)=>parts.find((item)=>item.type===type)?.value||"";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+function pickupDateKey(pickup: Pickup): string {
+  const explicit=text(pickup.pickup_date).trim();
+  if(/^\d{4}-\d{2}-\d{2}/.test(explicit)) return explicit.slice(0,10);
+  const created=text(pickup.created_at).trim();
+  if(!created) return "";
+  const date=new Date(created);
+  return Number.isNaN(date.getTime())?"":yangonDateKey(date);
 }
 function money(value: unknown): string {
   if (value === "" || value == null) return "—";
@@ -578,7 +608,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -750,7 +780,10 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
         <Field label="လက်ခံသူအမည်"><BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value) => updateRow(index,{recipient_name:value})}/></Field>
-        <Field label="လက်ခံသူဖုန်း"><BufferedDataEntryInput className={inputClass} value={row.recipient_phone} onCommit={(value) => updateRow(index,{recipient_phone:value})}/></Field>
+        <Field label="လက်ခံသူဖုန်း"><BufferedDataEntryInput className={inputClass} value={row.recipient_phone} onCommit={(value) => {
+          updateRow(index,{recipient_phone:value});
+          void lookupPhoneHistory(index,value);
+        }}/></Field>
         <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
         <Field label="အမှန်တကယ်အလေးချိန် (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
         <Field label="လက်ခံသူလိပ်စာ"><BufferedDataEntryInput multiline rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onCommit={(value)=>{
@@ -1168,6 +1201,7 @@ export default function DataEntryFinancialV2Page() {
   const [additionalReason,setAdditionalReason]=useState("");
   const [addingRegistration,setAddingRegistration]=useState(false);
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
+  const [progressDate,setProgressDate]=useState(()=>yangonDateKey());
   // Recycled editor model: render one editable parcel form at a time.
   // All other parcels stay as lightweight state/table rows instead of mounting hundreds of text inputs.
   const PAGE_SIZE=1;
@@ -1177,6 +1211,21 @@ export default function DataEntryFinancialV2Page() {
   const manualLocationCorrectionsRef=useRef(new Map<string,DeliveryLocation>());
 
   const selectedPickup=useMemo(()=>pickups.find(p=>p.pickup_id===selectedPickupId)||null,[pickups,selectedPickupId]);
+  const dailyPickupProgress=useMemo(()=>pickups
+    .filter((pickup)=>pickupDateKey(pickup)===progressDate)
+    .map((pickup)=>{
+      const requested=requestedParcelCount(pickup);
+      const authorized=authorizedParcelCount(pickup);
+      const registered=positiveInt(pickup.registered_parcels);
+      return {...pickup,requested,authorized,registered,remaining:Math.max(authorized-registered,0)};
+    })
+    .sort((a,b)=>b.remaining-a.remaining||a.pickup_id.localeCompare(b.pickup_id)),[pickups,progressDate]);
+  const dailyProgressSummary=useMemo(()=>dailyPickupProgress.reduce((summary,pickup)=>({
+    pickups:summary.pickups+1,
+    authorized:summary.authorized+pickup.authorized,
+    registered:summary.registered+pickup.registered,
+    remaining:summary.remaining+pickup.remaining,
+  }),{pickups:0,authorized:0,registered:0,remaining:0}),[dailyPickupProgress]);
   const bulkUploadSelected=selectedPickupId===BULK_UPLOAD_PICKUP_ID;
   const sequenceFloorByPickup=useMemo(()=>Object.fromEntries(pickups.map((pickup)=>{
     const draft=bulkImportDrafts[pickup.pickup_id];
@@ -1221,6 +1270,72 @@ export default function DataEntryFinancialV2Page() {
       return updated;
     });
   },[]);
+  const lookupPhoneHistory=useCallback(async(index:number,phoneValue:string)=>{
+    const phone=text(phoneValue).trim();
+    const digits=phone.replace(/\D/g,"");
+    if(digits.length<6) return;
+    try{
+      let matches:PhoneHistoryMatch[]=[];
+      const response=await (supabase as any).rpc("be_data_entry_phone_history_v81",{p_phone:phone,p_limit:3});
+      if(!response.error && Array.isArray(response.data)){
+        matches=response.data;
+      }else{
+        const fallback=await (supabase as any)
+          .from("be_data_entry_parcel_details")
+          .select("recipient_name,contact_no_1,contact_no_2,township,city,region_state,recipient_address,merchant_id,delivery_way_id,saved_at")
+          .or(`contact_no_1.eq.${phone},contact_no_2.eq.${phone}`)
+          .order("saved_at",{ascending:false})
+          .limit(3);
+        if(!fallback.error){
+          matches=(fallback.data||[]).map((item:any,index:number)=>({
+            history_rank:index+1,
+            recipient_name:text(item.recipient_name),
+            recipient_phone:text(item.contact_no_1),
+            secondary_phone:text(item.contact_no_2),
+            township:text(item.township),
+            city:text(item.city),
+            region_state:text(item.region_state),
+            recipient_address:text(item.recipient_address),
+            merchant_id:text(item.merchant_id),
+            delivery_way_id:text(item.delivery_way_id),
+            saved_at:text(item.saved_at),
+          }));
+        }else if(response.error){
+          console.warn("Phone-history lookup unavailable.",response.error.message,fallback.error.message);
+        }
+      }
+      const match=matches[0];
+      if(!match) return;
+      setRows((current)=>{
+        const row=current[index];
+        if(!row || text(row.recipient_phone).trim()!==phone) return current;
+        const recipient_name=row.recipient_name||text(match.recipient_name);
+        const delivery_address=row.delivery_address||text(match.recipient_address);
+        const township=row.township||text(match.township);
+        const candidate={...row,recipient_name,delivery_address,township};
+        const route=resolveDataEntryServiceProvider(township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+        const filled=[
+          !row.recipient_name&&Boolean(recipient_name)?"recipient name":"",
+          !row.delivery_address&&Boolean(delivery_address)?"address":"",
+          !row.township&&Boolean(township)?"township":"",
+        ].filter(Boolean);
+        if(!filled.length) return current;
+        const updated=current.slice();
+        updated[index]={
+          ...candidate,
+          ...(route.providerCode?routingPatch(route,candidate):{}),
+          saved:false,
+          calculation:{},
+          calculationFailed:false,
+          message:`Historical contact match autofilled ${filled.join(", ")} from ${text(match.delivery_way_id)||"a previous registration"}${matches.length>1?` · ${matches.length} recent matches found; latest used.`:"."}`,
+        };
+        return updated;
+      });
+    }catch(error:any){
+      console.warn("Phone-history autofill failed.",error?.message||error);
+    }
+  },[tariffOptions]);
+
   const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip});
   useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip};});
   const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
@@ -1252,7 +1367,7 @@ export default function DataEntryFinancialV2Page() {
       if(providerResponse.error) throw providerResponse.error;
       setProviderOptions(Array.isArray(providerResponse.data)?providerResponse.data:[]);
 
-      let p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16",{p_limit:200});
+      let p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16",{p_limit:500});
       if(p.error) p=await (supabase as any).rpc("be_data_entry_pickup_list_web_v16");
       if(p.error) throw p.error;
       const source=Array.isArray(p.data)?p.data:(Array.isArray(p.data?.data)?p.data.data:[]);
@@ -1750,8 +1865,8 @@ export default function DataEntryFinancialV2Page() {
       });
     }
     const newlySaved=new Set(pendingRows.map(row=>row.parcel_sequence));
-    const maximumSavedSequence=rows.filter(row=>row.saved||newlySaved.has(row.parcel_sequence)).reduce((maximum,row)=>Math.max(maximum,row.parcel_sequence),0);
-    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,maximumSavedSequence)}:pickup));
+    const savedVisibleCount=rows.filter(row=>row.saved||newlySaved.has(row.parcel_sequence)).length;
+    setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,savedVisibleCount)}:pickup));
     return {ok:true,persisted:true,saved_count:savedCount,rows:allSavedResults,batch_count:batchCount,held_count:heldCount};
   }
 
@@ -2601,7 +2716,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
         </div>:null}
 
-        {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+        {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} lookupPhoneHistory={lookupPhoneHistory} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
 
         {rows.length>1?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
           <div className="text-xs font-bold text-cyan-100">Editing parcel {pageStart+1} of {rows.length}. The same input controls are recycled for every parcel. Calculate All and Save All still process every non-skipped parcel.</div>
@@ -2642,7 +2757,12 @@ export default function DataEntryFinancialV2Page() {
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
               <select className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
                 <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
-                {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {authorizedParcelCount(p)} parcels</option>)}
+                {pickups.map(p=>{
+                  const authorized=authorizedParcelCount(p);
+                  const registered=positiveInt(p.registered_parcels);
+                  const remaining=Math.max(authorized-registered,0);
+                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
+                })}
               </select>
             </div>
             <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
@@ -2687,6 +2807,44 @@ export default function DataEntryFinancialV2Page() {
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
+
+          <div data-data-entry-daily-progress-v81="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Daily pickup registration progress</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">All Data Entry staff can see which pickup requests are completed and which still need parcel registration.</div>
+              </div>
+              <Field label="Pickup date">
+                <input type="date" className={inputClass} value={progressDate} onChange={(event)=>setProgressDate(event.target.value)}/>
+              </Field>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+              <div className={serverClass}>Pickups: <b>{dailyProgressSummary.pickups}</b></div>
+              <div className={serverClass}>Authorized parcels: <b>{dailyProgressSummary.authorized}</b></div>
+              <div className={serverClass}>Registered: <b>{dailyProgressSummary.registered}</b></div>
+              <div className={serverClass}>Still required: <b className={dailyProgressSummary.remaining?"text-amber-200":"text-emerald-200"}>{dailyProgressSummary.remaining}</b></div>
+              <div className={serverClass}>Completion: <b>{dailyProgressSummary.authorized?Math.min(100,Math.round(dailyProgressSummary.registered/dailyProgressSummary.authorized*100)):0}%</b></div>
+            </div>
+            <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-[#1a3a5c]">
+              <table className="w-full min-w-[900px] text-[10px]">
+                <thead className="sticky top-0 z-10 bg-[#12314a] text-left text-[#8fd3ff]">
+                  <tr><th className="px-3 py-2">Pickup</th><th className="px-3 py-2">Merchant</th><th className="px-3 py-2">Requested</th><th className="px-3 py-2">Authorized</th><th className="px-3 py-2">Registered</th><th className="px-3 py-2">Remaining</th><th className="px-3 py-2">Action</th></tr>
+                </thead>
+                <tbody>
+                  {dailyPickupProgress.map((pickup)=><tr key={pickup.pickup_id} className={`border-t border-[#16344f] ${pickup.remaining?"bg-amber-400/5":"bg-emerald-400/5"}`}>
+                    <td className="px-3 py-2 font-black text-sky-200">{pickup.pickup_id}</td>
+                    <td className="px-3 py-2">{pickup.merchant_id||pickup.merchant_name||"—"}</td>
+                    <td className="px-3 py-2">{pickup.requested}</td>
+                    <td className="px-3 py-2">{pickup.authorized}</td>
+                    <td className="px-3 py-2 font-black text-emerald-200">{pickup.registered}</td>
+                    <td className={`px-3 py-2 font-black ${pickup.remaining?"text-amber-200":"text-emerald-200"}`}>{pickup.remaining}</td>
+                    <td className="px-3 py-2"><button type="button" onClick={()=>setSelectedPickupId(pickup.pickup_id)} className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-1.5 font-black text-cyan-100">{pickup.remaining?"OPEN & CONTINUE":"OPEN"}</button></td>
+                  </tr>)}
+                  {!dailyPickupProgress.length?<tr><td colSpan={7} className="px-3 py-5 text-center text-[#8db4ce]">No pickup requests are available for this date in the current operational window.</td></tr>:null}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
           <div data-location-review-recovery="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
             <div className="mb-3 text-[11px] leading-5 text-amber-100">Resume location review after a crash or sign-in: upload your corrected review workbook directly. Select the original pickup date range above. Completed corrections stay saved; you do not need to repeat the original location review.</div>
