@@ -37,6 +37,12 @@ function pickupBatchId(row: any) {
   return match?.[1] || "";
 }
 
+function hasRiderAssignment(plan: VanPlan) {
+  return plan.crew_mode === "EMERGENCY_MANUAL"
+    ? Boolean(String(plan.manual_rider_name || "").trim())
+    : Boolean(String(plan.rider_code || "").trim());
+}
+
 function routeLabel(plan: VanPlan) {
   const source = String(plan.route?.source || "");
   if (source === "OPERATOR_EDITED") return `Operator-edited route · based on ${String(plan.route?.base_source || "existing road plan").replaceAll("_", " ")}`;
@@ -480,7 +486,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     }
   }
 
-  const short = plans.filter((p) => p.rows.length < 50);
+  const short = plans.filter((p) => p.rows.length < 50 && !hasRiderAssignment(p));
+  const riderMinimumExempt = plans.filter((p) => p.rows.length < 50 && hasRiderAssignment(p));
   const oversized = plans.filter((p) => p.rows.length > 75);
   const invalidCrewPlans = plans.filter((p) => p.crew_mode === "EMERGENCY_MANUAL"
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
@@ -499,9 +506,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
   if (oversized.length) readinessIssues.push("Split any route above 75 parcels before creation.");
-  if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one route is below 50 parcels; rebalance or hold low-volume parcels.");
-  if (short.length > 0 && !approved) readinessIssues.push(isYangonMaster ? "Approve the unavoidable below-50 hard-fence route batch." : "Approve the one route below 50 parcels.");
-  if (short.length > 0 && reason.trim().length < 5) readinessIssues.push(isYangonMaster ? "Enter an operational reason of at least 5 characters for the below-50 hard-fence route batch." : "Enter an operational reason of at least 5 characters for the below-50 route.");
+  if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one Driver/van-only route is below 50 parcels; rebalance, assign a Rider, or hold low-volume parcels.");
+  if (short.length > 0 && !approved) readinessIssues.push(isYangonMaster ? "Approve the unavoidable below-50 Driver/van-only hard-fence route batch." : "Approve the one Driver/van-only route below 50 parcels.");
+  if (short.length > 0 && reason.trim().length < 5) readinessIssues.push(isYangonMaster ? "Enter an operational reason of at least 5 characters for the below-50 Driver/van-only hard-fence route batch." : "Enter an operational reason of at least 5 characters for the below-50 Driver/van-only route.");
   const cannotSave = busy || readinessIssues.length > 0;
 
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
@@ -577,12 +584,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       </section>;
     })}
 
-    {short.length > 0 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> {isYangonMaster ? `Approve ${short.length} unavoidable below-50 hard-fence route${short.length === 1 ? "" : "s"}` : "Approve one route below 50 parcels"}</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isYangonMaster ? "Mandatory operational reason for hard-fence low-volume route(s)" : "Mandatory operational reason"} /></div>}
-    {!isYangonMaster && short.length > 1 && <p style={{ margin: 0 }}>More than one active route is below 50 parcels. Reassign or hold low-volume parcels before creation.</p>}
+    {riderMinimumExempt.length > 0 && <div data-rider-minimum-exempt-v84="true" style={{ padding: 10, border: "1px solid #2f855a", borderRadius: 8, background: "rgba(47,133,90,0.12)" }}><strong>Rider assignment: no minimum parcel count.</strong><div style={{ marginTop: 4 }}>{riderMinimumExempt.length} Rider-selected route{riderMinimumExempt.length === 1 ? "" : "s"} below 50 parcels can be created without below-minimum approval or reason. The 50-parcel minimum applies only to Driver/van-only routes.</div></div>}
+    {short.length > 0 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> {isYangonMaster ? `Approve ${short.length} unavoidable below-50 Driver/van-only hard-fence route${short.length === 1 ? "" : "s"}` : "Approve one Driver/van-only route below 50 parcels"}</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isYangonMaster ? "Mandatory operational reason for Driver/van-only hard-fence low-volume route(s)" : "Mandatory operational reason"} /></div>}
+    {!isYangonMaster && short.length > 1 && <p style={{ margin: 0 }}>More than one Driver/van-only route is below 50 parcels. Reassign, select a Rider, or hold low-volume parcels before creation.</p>}
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
     {plans.length > 0 && <div data-wayplan-create-readiness-v56="true" style={{ padding: 10, border: `1px solid ${readinessIssues.length ? "#8f5a2a" : "#2f855a"}`, borderRadius: 8, background: readinessIssues.length ? "rgba(143,90,42,0.12)" : "rgba(47,133,90,0.12)" }}>
       <strong>{readinessIssues.length ? "Creation blocked — complete these items:" : "Ready to create reviewed Wayplans"}</strong>
-      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route, fleet, mandatory Driver and below-minimum approval checks are complete. Rider and Helper are optional.</div>}
+      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route, fleet and mandatory Driver checks are complete. Rider-selected routes have no minimum parcel requirement; the 50-parcel minimum applies only to Driver/van-only routes. Helper remains optional.</div>}
       {invalidCrew && <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={autoAssignMissingCrew}>Auto-assign missing Driver</button>}
     </div>}
     <button data-create-reviewed-wayplans-v56="true" style={{ ...button, opacity: cannotSave ? 0.55 : 1 }} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : cannotSave ? "Create reviewed Wayplans — resolve items above" : "Create reviewed Wayplans"}</button>
