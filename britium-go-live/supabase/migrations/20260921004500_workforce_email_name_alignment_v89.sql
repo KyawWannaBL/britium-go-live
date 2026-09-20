@@ -45,7 +45,7 @@ values
 ('DRIVER','driver_ygn_0008@britiumventures.com','DRV008','myo aung',null,'YGN',null),
 ('DRIVER','driver_ygn_0009@britiumventures.com','DRV009','kyaw zin latt',null,'YGN',null);
 
--- Exact operational roster used by Wayplan assignment.
+-- Make the attached roster the exact selectable Yangon Wayplan roster.
 update public.be_wayplan_roster_allowlist_v68
 set active=false, updated_at=now()
 where branch_code='YGN' and role_code in ('DRIVER','RIDER','HELPER');
@@ -56,23 +56,27 @@ select role_code,workforce_code,display_name,phone,branch_code,employment_type,t
        'be_master_drivers_riders_helpers_rows1.csv',now()
 from tmp_workforce_email_name_v89
 on conflict (role_code,workforce_code) do update
-set display_name=excluded.display_name,
-    phone=excluded.phone,
-    branch_code=excluded.branch_code,
-    employment_type=excluded.employment_type,
-    active=true,
-    source_file=excluded.source_file,
-    updated_at=now();
+set display_name=excluded.display_name, phone=excluded.phone, branch_code=excluded.branch_code,
+    employment_type=excluded.employment_type, active=true, source_file=excluded.source_file, updated_at=now();
 
--- Role master tables.
+-- Role masters follow the attached file.
+update public.be_master_drivers d set status='inactive',updated_at=now()
+where d.branch_code='YGN'
+  and not exists (select 1 from tmp_workforce_email_name_v89 m where m.role_code='DRIVER' and m.workforce_code=d.driver_code);
+update public.be_master_riders r set status='inactive',updated_at=now()
+where r.branch_code='YGN'
+  and not exists (select 1 from tmp_workforce_email_name_v89 m where m.role_code='RIDER' and m.workforce_code=r.rider_code);
+update public.be_master_helpers h set status='inactive',updated_at=now()
+where h.branch_code='YGN'
+  and not exists (select 1 from tmp_workforce_email_name_v89 m where m.role_code='HELPER' and m.workforce_code=h.helper_code);
+
 insert into public.be_master_drivers
 (driver_id,driver_code,driver_name,name,phone_primary,phone,branch_code,status,updated_at)
 select workforce_code,workforce_code,display_name,display_name,phone,phone,branch_code,'active',now()
 from tmp_workforce_email_name_v89 where role_code='DRIVER'
 on conflict (driver_id) do update
 set driver_code=excluded.driver_code,driver_name=excluded.driver_name,name=excluded.name,
-    phone_primary=excluded.phone_primary,phone=excluded.phone,branch_code=excluded.branch_code,
-    status='active',updated_at=now();
+    phone_primary=excluded.phone_primary,phone=excluded.phone,branch_code=excluded.branch_code,status='active',updated_at=now();
 
 insert into public.be_master_riders
 (rider_id,rider_code,rider_name,name,phone_primary,phone,branch_code,employment_type,status,updated_at)
@@ -92,48 +96,57 @@ set helper_code=excluded.helper_code,helper_name=excluded.helper_name,name=exclu
     phone_primary=excluded.phone_primary,phone=excluded.phone,branch_code=excluded.branch_code,
     employment_type=excluded.employment_type,status='active',updated_at=now();
 
--- Repair existing mobile workforce rows by workforce code first.
+-- Temporarily detach stale identities/codes involved in this roster so unique indexes cannot cross-wire users.
 update public.be_mobile_workforce_accounts w
-set full_name=m.display_name,
-    display_name=m.display_name,
-    name=m.display_name,
-    role=m.role_code,
-    role_type=lower(m.role_code),
-    workforce_type=lower(m.role_code),
-    workforce_code=m.workforce_code,
-    worker_code=m.workforce_code,
-    account_code=m.workforce_code,
-    employee_code=m.workforce_code,
-    rider_code=case when m.role_code='RIDER' then m.workforce_code else null end,
-    driver_code=case when m.role_code='DRIVER' then m.workforce_code else null end,
-    helper_code=case when m.role_code='HELPER' then m.workforce_code else null end,
-    email=m.email,
-    user_email=m.email,
-    phone=coalesce(m.phone,w.phone),
-    phone_number=coalesce(m.phone,w.phone_number),
-    phone_primary=coalesce(m.phone,w.phone_primary),
-    branch_code=m.branch_code,
-    employment_type=coalesce(m.employment_type,w.employment_type),
-    status='Active',
-    active=true,
-    is_active=true,
-    auth_user_id=(select u.id from auth.users u where lower(u.email)=lower(m.email) limit 1),
-    aliases=jsonb_build_array(m.workforce_code,split_part(m.email,'@',1),m.email),
-    metadata=coalesce(w.metadata,'{}'::jsonb)||jsonb_build_object(
-      'source','be_master_drivers_riders_helpers_rows1.csv',
-      'identity_aligned_at',now()
-    ),
-    updated_at=now()
-from tmp_workforce_email_name_v89 m
-where upper(coalesce(w.workforce_code,''))=upper(m.workforce_code);
+set workforce_code='LEGACY-'||w.worker_id,
+    worker_code='LEGACY-'||w.worker_id,
+    account_code='LEGACY-'||w.worker_id,
+    rider_code=null,driver_code=null,helper_code=null,employee_code=null,
+    auth_user_id=null,active=false,is_active=false,updated_at=now()
+where upper(coalesce(w.workforce_code,'')) in (select upper(workforce_code) from tmp_workforce_email_name_v89)
+   or lower(coalesce(w.email,w.user_email,'')) in (select lower(email) from tmp_workforce_email_name_v89)
+   or w.auth_user_id in (
+     select u.id from auth.users u
+     where lower(u.email) in (select lower(email) from tmp_workforce_email_name_v89)
+   );
 
--- Add any attached identities not previously present in mobile workforce.
+-- Reuse one existing row for each email where possible.
+with ranked as (
+  select w.worker_id,m.*,
+         row_number() over (partition by lower(m.email) order by
+           case when lower(coalesce(w.email,w.user_email,''))=lower(m.email) then 0 else 1 end,
+           w.created_at asc nulls last,w.worker_id) rn
+  from tmp_workforce_email_name_v89 m
+  join public.be_mobile_workforce_accounts w
+    on lower(coalesce(w.email,w.user_email,''))=lower(m.email)
+)
+update public.be_mobile_workforce_accounts w
+set full_name=r.display_name, display_name=r.display_name, name=r.display_name,
+    role=r.role_code, role_type=lower(r.role_code), workforce_type=lower(r.role_code),
+    workforce_code=r.workforce_code, worker_code=r.workforce_code, account_code=r.workforce_code,
+    employee_code=r.workforce_code,
+    rider_code=case when r.role_code='RIDER' then r.workforce_code end,
+    driver_code=case when r.role_code='DRIVER' then r.workforce_code end,
+    helper_code=case when r.role_code='HELPER' then r.workforce_code end,
+    email=r.email,user_email=r.email,
+    phone=coalesce(r.phone,w.phone),phone_number=coalesce(r.phone,w.phone_number),phone_primary=coalesce(r.phone,w.phone_primary),
+    branch_code=r.branch_code,employment_type=coalesce(r.employment_type,w.employment_type),
+    status='Active',active=true,is_active=true,
+    auth_user_id=(select u.id from auth.users u where lower(u.email)=lower(r.email) limit 1),
+    aliases=jsonb_build_array(r.workforce_code,split_part(r.email,'@',1),r.email),
+    metadata=coalesce(w.metadata,'{}'::jsonb)||jsonb_build_object('source','be_master_drivers_riders_helpers_rows1.csv','identity_aligned_at',now()),
+    updated_at=now()
+from ranked r
+where r.rn=1 and w.worker_id=r.worker_id;
+
+-- Create mobile workforce rows only for attached emails that had no previous row.
 insert into public.be_mobile_workforce_accounts
 (worker_id,full_name,role_type,phone_number,branch_code,status,workforce_code,worker_code,email,phone,
  display_name,role,active,auth_user_id,metadata,updated_at,workforce_type,account_code,
  employment_type,is_active,aliases,rider_code,driver_code,helper_code,employee_code,name,user_email,phone_primary)
 select
- m.workforce_code,m.display_name,lower(m.role_code),m.phone,m.branch_code,'Active',
+ 'V89-'||lower(m.role_code)||'-'||m.workforce_code,
+ m.display_name,lower(m.role_code),m.phone,m.branch_code,'Active',
  m.workforce_code,m.workforce_code,m.email,m.phone,m.display_name,m.role_code,true,
  (select u.id from auth.users u where lower(u.email)=lower(m.email) limit 1),
  jsonb_build_object('source','be_master_drivers_riders_helpers_rows1.csv','identity_aligned_at',now()),
@@ -146,10 +159,11 @@ select
 from tmp_workforce_email_name_v89 m
 where not exists (
   select 1 from public.be_mobile_workforce_accounts w
-  where upper(coalesce(w.workforce_code,''))=upper(m.workforce_code)
+  where lower(coalesce(w.email,w.user_email,''))=lower(m.email)
+    and w.is_active=true
 );
 
--- Auth-linked profiles: exact name, role and workforce code.
+-- Auth-linked profiles use the attached name, role and code.
 insert into public.profiles
 (id,email,full_name,role,phone,status,updated_at,branch_name,app_role,user_role,role_code,is_approved,is_active,employee_id)
 select u.id,m.email,m.display_name,m.role_code,m.phone,'active',now(),m.branch_code,
@@ -157,31 +171,15 @@ select u.id,m.email,m.display_name,m.role_code,m.phone,'active',now(),m.branch_c
 from tmp_workforce_email_name_v89 m
 join auth.users u on lower(u.email)=lower(m.email)
 on conflict (id) do update
-set email=excluded.email,
-    full_name=excluded.full_name,
-    role=excluded.role,
-    phone=coalesce(excluded.phone,profiles.phone),
-    status='active',
-    updated_at=now(),
-    branch_name=excluded.branch_name,
-    app_role=excluded.app_role,
-    user_role=excluded.user_role,
-    role_code=excluded.role_code,
-    is_approved=true,
-    is_active=true,
-    employee_id=excluded.employee_id;
+set email=excluded.email,full_name=excluded.full_name,role=excluded.role,
+    phone=coalesce(excluded.phone,profiles.phone),status='active',updated_at=now(),
+    branch_name=excluded.branch_name,app_role=excluded.app_role,user_role=excluded.user_role,
+    role_code=excluded.role_code,is_approved=true,is_active=true,employee_id=excluded.employee_id;
 
--- Keep Auth-visible name/role metadata aligned as well.
 update auth.users u
 set raw_user_meta_data=coalesce(u.raw_user_meta_data,'{}'::jsonb) ||
-  jsonb_build_object(
-    'full_name',m.display_name,
-    'name',m.display_name,
-    'role',lower(m.role_code),
-    'role_code',m.role_code,
-    'workforce_code',m.workforce_code,
-    'branch_code',m.branch_code
-  ),
-  updated_at=now()
+  jsonb_build_object('full_name',m.display_name,'name',m.display_name,'role',lower(m.role_code),
+                     'role_code',m.role_code,'workforce_code',m.workforce_code,'branch_code',m.branch_code),
+    updated_at=now()
 from tmp_workforce_email_name_v89 m
 where lower(u.email)=lower(m.email);
