@@ -405,7 +405,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
       // Driver is mandatory. Rider and Helper are intentionally not auto-assigned.
       // Start every generated route as Driver-only; the operator may explicitly add either optional role.
-      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], [], convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
       if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
         throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
