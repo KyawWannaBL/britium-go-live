@@ -205,7 +205,12 @@ export default function Sidebar() {
       data-be-sidebar="true"
       aria-label="Enterprise navigation"
       data-be-sidebar-collapsed={collapsed?"true":"false"}
-      className={`flex h-screen shrink-0 flex-col border-r border-[#1a3a5c] bg-[#0a1628] transition-[width] duration-200 ease-out ${collapsed?"w-20":"w-64"} ${GLOBAL_FONT}`}
+      style={{
+        width: collapsed ? "64px" : "256px",
+        minWidth: collapsed ? "64px" : "256px",
+        flexBasis: collapsed ? "64px" : "256px",
+      }}
+      className={`flex h-screen shrink-0 flex-col overflow-hidden border-r border-[#1a3a5c] bg-[#0a1628] transition-[width,min-width,flex-basis] duration-200 ease-out ${GLOBAL_FONT}`}
     >
       <div className={`shrink-0 border-b border-[#1a3a5c] ${collapsed?"p-3":"p-4"}`}>
         <div className={`flex items-center gap-2 ${collapsed?"justify-center":"justify-between"}`}>
