@@ -749,3 +749,72 @@ end;
 $function$;
 
 grant execute on function public.be_field_team_delivery_action_v77(jsonb) to authenticated;
+
+
+-- Keep legacy Dispatch/Wayplan read models synchronized from the canonical stop.
+create or replace function public.be_sync_rider_delivery_compat_v77()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public','pg_temp'
+as $function$
+declare
+  v_status text:=upper(coalesce(new.stop_status,new.rider_status,new.dispatch_status,''));
+  v_public_status text;
+begin
+  v_public_status:=case
+    when v_status in ('DELIVERED','COMPLETED') then 'DELIVERED'
+    when v_status='ARRIVED_AT_CUSTOMER' then 'ARRIVED_AT_CUSTOMER'
+    when v_status='OUT_FOR_DELIVERY' then 'OUT_FOR_DELIVERY'
+    when v_status in ('FAILED_DELIVERY','DELIVERY_FAILED','ATTEMPTED_FAILED') then 'ATTEMPTED_FAILED'
+    when v_status in ('RETURN_TO_WAREHOUSE','RTO') then 'RTO'
+    else v_status
+  end;
+
+  update public.be_dispatch_job_assignments
+  set delivery_status=v_public_status,
+      dispatch_status=v_public_status,
+      failed_reason=case
+        when v_public_status in ('ATTEMPTED_FAILED','RTO') then coalesce(new.failed_reason,failed_reason)
+        else failed_reason
+      end,
+      exception_status=case
+        when v_public_status in ('ATTEMPTED_FAILED','RTO') then v_public_status
+        when v_public_status='DELIVERED' then null
+        else exception_status
+      end,
+      last_exception_reason=case
+        when v_public_status in ('ATTEMPTED_FAILED','RTO') then coalesce(new.failed_reason,last_exception_reason)
+        else last_exception_reason
+      end,
+      updated_at=now()
+  where (upper(tracking_no)=upper(new.delivery_way_id))
+     or (wayplan_code=new.wayplan_id and upper(tracking_no)=upper(coalesce(new.tracking_no,new.delivery_way_id)));
+
+  update public.be_wayplan_items
+  set delivery_status=v_public_status,
+      dispatch_status=v_public_status,
+      item_status=v_public_status,
+      delivered_at=case when v_public_status='DELIVERED' then coalesce(delivered_at,new.delivered_at,now()) else delivered_at end,
+      failed_reason=case when v_public_status in ('ATTEMPTED_FAILED','RTO') then coalesce(new.failed_reason,failed_reason) else failed_reason end,
+      exception_status=case when v_public_status in ('ATTEMPTED_FAILED','RTO') then v_public_status when v_public_status='DELIVERED' then null else exception_status end,
+      last_exception_reason=case when v_public_status in ('ATTEMPTED_FAILED','RTO') then coalesce(new.failed_reason,last_exception_reason) else last_exception_reason end,
+      proof_photo_url=coalesce(new.proof_url,new.rider_proof_url,proof_photo_url),
+      delivery_proof_photo_url=coalesce(new.rider_proof_url,new.proof_url,delivery_proof_photo_url),
+      receiver_name=coalesce(new.receiver_name,receiver_name),
+      receiver_phone=coalesce(new.receiver_phone,receiver_phone),
+      updated_at=now()
+  where (upper(coalesce(delivery_way_id,''))=upper(new.delivery_way_id))
+     or (new.wayplan_id=coalesce(wayplan_id,wayplan_code)
+         and upper(coalesce(tracking_no,''))=upper(coalesce(new.tracking_no,new.delivery_way_id)));
+
+  return new;
+end;
+$function$;
+
+drop trigger if exists be_sync_rider_delivery_compat_v77_trg on public.be_wayplan_dispatch_stops;
+create trigger be_sync_rider_delivery_compat_v77_trg
+after insert or update of stop_status,rider_status,dispatch_status,failed_reason,proof_url,rider_proof_url,receiver_name,receiver_phone
+on public.be_wayplan_dispatch_stops
+for each row
+execute function public.be_sync_rider_delivery_compat_v77();
