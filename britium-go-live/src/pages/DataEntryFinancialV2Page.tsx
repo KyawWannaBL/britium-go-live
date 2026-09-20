@@ -1282,7 +1282,7 @@ export default function DataEntryFinancialV2Page() {
     setRows(current=>{
       const row=current[index];
       if(!row) return current;
-      const editableKeys: (keyof ParcelRow)[] = ['recipient_name','recipient_phone','township','delivery_address','weight_kg','customer_tier','service_type','amount_entry_type','item_price','delivery_charges','merchant_stated_total_amount','cbm_surcharge','other_surcharge','handoffStationName','handoffStationCode','sourceWard','sourcePostalCode','service_provider_code'];
+      const editableKeys: (keyof ParcelRow)[] = ['recipient_name','recipient_phone','township','delivery_address','weight_kg','customer_tier','service_type','amount_entry_type','item_price','delivery_charges','merchant_stated_total_amount','cbm_surcharge','other_surcharge','remarks','handoffStationName','handoffStationCode','sourceWard','sourcePostalCode','service_provider_code'];
       const entryChanged = editableKeys.some(key => patch[key] !== undefined && patch[key] !== row[key]);
       const destinationChanged=(patch.township!==undefined&&patch.township!==row.township)
         ||(patch.delivery_address!==undefined&&patch.delivery_address!==row.delivery_address)
