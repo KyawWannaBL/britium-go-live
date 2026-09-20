@@ -213,17 +213,18 @@ export function balanceYangonRouteRows(rows) {
   const west = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id === "Z6");
   const mainland = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id !== "Z6");
 
-  // Low-volume van rule:
-  // Any Britium-delivery selection below 50 parcels stays on ONE van route.
-  // Township/zone fences guide normal balancing, but they must not multiply a
-  // sub-50 selection into two or more under-loaded vans. The operator still
-  // approves the below-minimum exception before creation.
-  if (eligible.length < FLOOR) {
+  // Single-van operating rule:
+  // Any operator-selected Britium delivery batch up to the 75-parcel van ceiling
+  // stays on ONE route, regardless of how many Yangon townships/zones are present.
+  // 1-49 parcels still require the existing below-minimum approval at creation;
+  // 50-75 parcels proceed as a normal single-van route. Only 76+ may be split.
+  if (eligible.length <= ROUTE_CEILING) {
     return [{
       rows: [...eligible].sort((a, b) => routeSortKey(a).localeCompare(routeSortKey(b))),
-      group_code: "LOW_VOLUME_SINGLE_VAN",
+      group_code: eligible.length < FLOOR ? "LOW_VOLUME_SINGLE_VAN" : "STANDARD_SINGLE_VAN",
       group_trip: 1,
-      low_volume_single_van: true,
+      low_volume_single_van: eligible.length < FLOOR,
+      selected_single_van: true,
     }];
   }
 
@@ -258,7 +259,9 @@ function routeFromBalancedChunk(chunk, index) {
     ? "Trans-River West (Industrial)"
     : chunk.group_code === "LOW_VOLUME_SINGLE_VAN"
       ? "Low-volume Single Van · " + townships.join(" → ")
-      : zones.map((zone) => zone.name).join(" → ");
+      : chunk.group_code === "STANDARD_SINGLE_VAN"
+        ? "Single Van · " + townships.join(" → ")
+        : zones.map((zone) => zone.name).join(" → ");
   return {
     route_code: `V44-${index + 1}`,
     zone_code: zones.map((zone) => zone.id).join("+"),
@@ -331,10 +334,10 @@ export default {
           ...assigned.otherExcluded.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.township, reason: "OUTSIDE_YANGON_VAN_MASTER_SCOPE" })),
         ],
         hard_fences: HARD_FENCES,
-        sequencing_policy: "BALANCE_COMPATIBLE_YANGON_VOLUME_TO_50_75_PRESERVE_HARD_FENCES_THEN_ROAD_OPTIMIZE",
-        road_geometry_policy: "DO_NOT_CROSS_HARD_FENCES_FOR_CAPACITY_BALANCING",
+        sequencing_policy: "SELECTED_BATCH_UP_TO_75_STAYS_ONE_VAN; ABOVE_75_BALANCE_TO_50_75_THEN_ROAD_OPTIMIZE",
+        road_geometry_policy: "SINGLE_SELECTED_BATCH_UP_TO_75_MAY_SPAN_YANGON_ZONES; HARD_FENCES_GUIDE_MULTI_VAN_BALANCING_ABOVE_75",
         motorcycle_policy: "PROHIBITED_FROM_AUTOMATIC_YANGON_FLEET_PLANNING",
-        low_volume_policy: "UNDER_50_SELECTED_BRITIUM_WAYS_USE_ONE_VAN_WITH_EXPLICIT_APPROVAL; RIDER_ROUTES_EXEMPT",
+        low_volume_policy: "1_TO_49_SELECTED_BRITIUM_WAYS_USE_ONE_VAN_WITH_EXPLICIT_APPROVAL; 50_TO_75_USE_ONE_VAN_NORMALLY; RIDER_ROUTES_EXEMPT",
         high_volume_policy: "BALANCE_COMPATIBLE_CORRIDORS_TO_50_75_AND_USE_SEQUENTIAL_FLEET_WAVES",
         manual_editable: true,
         generated_at: new Date().toISOString(),
