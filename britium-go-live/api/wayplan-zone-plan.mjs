@@ -213,14 +213,18 @@ export function balanceYangonRouteRows(rows) {
   const west = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id === "Z6");
   const mainland = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id !== "Z6");
 
-  // A low-volume van batch must never multiply into multiple under-loaded vans.
-  // If fewer than 50 compatible ways are selected, keep them on one route.
+  // Low-volume van rule:
+  // Any Britium-delivery selection below 50 parcels stays on ONE van route.
+  // Township/zone fences guide normal balancing, but they must not multiply a
+  // sub-50 selection into two or more under-loaded vans. The operator still
+  // approves the below-minimum exception before creation.
   if (eligible.length < FLOOR) {
-    const crossesRiverFence = west.length > 0 && mainland.length > 0;
-    if (crossesRiverFence || violatesDowntownEastFence(eligible)) {
-      throw new Error("Fewer than 50 van parcels cannot be split into multiple under-loaded vans. Select compatible townships for one van, wait for more volume, or assign a Rider (Rider routes have no minimum parcel count).");
-    }
-    return [{ rows: [...eligible].sort((a, b) => routeSortKey(a).localeCompare(routeSortKey(b))), group_code: west.length ? "TRANS_RIVER_WEST" : "MAINLAND", group_trip: 1 }];
+    return [{
+      rows: [...eligible].sort((a, b) => routeSortKey(a).localeCompare(routeSortKey(b))),
+      group_code: "LOW_VOLUME_SINGLE_VAN",
+      group_trip: 1,
+      low_volume_single_van: true,
+    }];
   }
 
   const mainlandRoutes = rebalanceDowntownEastFence(splitBalancedPool(mainland, "MAINLAND"));
@@ -252,13 +256,15 @@ function routeFromBalancedChunk(chunk, index) {
   const belowMinimum = rows.length < FLOOR;
   const name = chunk.group_code === "TRANS_RIVER_WEST"
     ? "Trans-River West (Industrial)"
-    : zones.map((zone) => zone.name).join(" → ");
+    : chunk.group_code === "LOW_VOLUME_SINGLE_VAN"
+      ? "Low-volume Single Van · " + townships.join(" → ")
+      : zones.map((zone) => zone.name).join(" → ");
   return {
     route_code: `V44-${index + 1}`,
     zone_code: zones.map((zone) => zone.id).join("+"),
     zone_name: name,
     name,
-    strategy: belowMinimum ? "HARD_FENCE_LOW_VOLUME_EXCEPTION" : "BALANCED_50_75",
+    strategy: belowMinimum ? "LOW_VOLUME_SINGLE_VAN_EXCEPTION" : "BALANCED_50_75",
     capacity_profile: "PRACTICAL_50_75",
     floor: FLOOR,
     ceiling: ROUTE_CEILING,
@@ -272,11 +278,11 @@ function routeFromBalancedChunk(chunk, index) {
     recommended_departure: zones.map((zone) => zone.departure).filter(Boolean).join(" / "),
     dispatch_window: zones.map((zone) => zone.departure).filter(Boolean).join(" / "),
     routing_strategy: belowMinimum
-      ? "One unavoidable below-50 hard-fence route; explicit operator approval is required before creation."
+      ? "All selected sub-50 Britium parcels stay on one delivery van; explicit operator approval is required before creation."
       : "Balanced to the 50-75 parcel operating band, then Google road-time optimized.",
     geographic_center: centroid(rows),
     divider: null,
-    note: belowMinimum ? "Hard-fence residual retained as the single operator-approved low-volume exception." : "Compatible Yangon volumes consolidated before road optimization.",
+    note: belowMinimum ? "Single operator-approved low-volume van route; do not split by township or planning zone." : "Compatible Yangon volumes consolidated before road optimization.",
   };
 }
 function assignPlan(stops) {
@@ -328,7 +334,7 @@ export default {
         sequencing_policy: "BALANCE_COMPATIBLE_YANGON_VOLUME_TO_50_75_PRESERVE_HARD_FENCES_THEN_ROAD_OPTIMIZE",
         road_geometry_policy: "DO_NOT_CROSS_HARD_FENCES_FOR_CAPACITY_BALANCING",
         motorcycle_policy: "PROHIBITED_FROM_AUTOMATIC_YANGON_FLEET_PLANNING",
-        low_volume_policy: "AT_MOST_ONE_DRIVER_VAN_ROUTE_BELOW_50_WITH_EXPLICIT_APPROVAL; RIDER_ROUTES_EXEMPT",
+        low_volume_policy: "UNDER_50_SELECTED_BRITIUM_WAYS_USE_ONE_VAN_WITH_EXPLICIT_APPROVAL; RIDER_ROUTES_EXEMPT",
         high_volume_policy: "BALANCE_COMPATIBLE_CORRIDORS_TO_50_75_AND_USE_SEQUENTIAL_FLEET_WAVES",
         manual_editable: true,
         generated_at: new Date().toISOString(),
