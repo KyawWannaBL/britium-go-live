@@ -27,10 +27,10 @@ begin
     'route_run_status',rr.run_status,
     'route_stop_status',rs.stop_status,
     'arrived_at',rs.arrived_at,
-    'arrival_distance_m',rs.arrival_distance_m,
-    'geo_verified',coalesce(rs.geo_verified,false),
-    'arrival_latitude',rs.arrival_latitude,
-    'arrival_longitude',rs.arrival_longitude,
+    'arrival_distance_m',coalesce(rs.arrival_distance_m,nullif(s.metadata->>'arrival_distance_m','')::numeric),
+    'geo_verified',coalesce(rs.geo_verified,coalesce((s.metadata->>'geo_verified')::boolean,false)),
+    'arrival_latitude',coalesce(rs.arrival_latitude,nullif(s.metadata->>'arrival_latitude','')::numeric),
+    'arrival_longitude',coalesce(rs.arrival_longitude,nullif(s.metadata->>'arrival_longitude','')::numeric),
     'delivery_arrival_status',
       case
         when upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'')) in ('DELIVERED','COMPLETED') then 'DELIVERED'
@@ -669,6 +669,10 @@ declare
   v_radius numeric:=100;
   v_override_id uuid;
   v_status text;
+  v_wayplan_status text;
+  v_membership_status text;
+  v_review_status text;
+  v_coordinate_source text;
   v_rider text;
   v_driver text;
   v_helper text;
@@ -686,6 +690,9 @@ begin
 
   select s.wayplan_id,
          upper(coalesce(s.stop_status,s.rider_status,s.dispatch_status,'')),
+         upper(coalesce(w.wayplan_status,'')),
+         upper(coalesce(m.membership_status,'')),
+         upper(coalesce(r.review_status,'')),
          upper(coalesce(m.rider_code,w.rider_code,s.rider_code,'')),
          upper(coalesce(m.driver_code,w.driver_code,'')),
          upper(coalesce(m.helper_code,w.helper_code,'')),
@@ -694,7 +701,7 @@ begin
            where ds.delivery_way_id=s.delivery_way_id and ds.scan_status='SCANNED'
              and (ds.wayplan_code=s.wayplan_id or ds.wayplan_code is null)
          )
-  into v_wayplan,v_status,v_rider,v_driver,v_helper,v_has_scan
+  into v_wayplan,v_status,v_wayplan_status,v_membership_status,v_review_status,v_rider,v_driver,v_helper,v_has_scan
   from public.be_wayplan_dispatch_stops s
   join public.be_wayplan_dispatches w on w.wayplan_id=s.wayplan_id
   left join lateral (
@@ -702,6 +709,7 @@ begin
     where mm.wayplan_id=s.wayplan_id and mm.delivery_way_id=s.delivery_way_id
     order by mm.updated_at desc nulls last limit 1
   ) m on true
+  left join public.be_wayplan_review_v43 r on r.wayplan_id=s.wayplan_id
   where upper(s.delivery_way_id)=upper(v_way)
     and (v_wayplan is null or s.wayplan_id=v_wayplan)
   order by s.updated_at desc nulls last
@@ -712,12 +720,56 @@ begin
     raise exception 'DELIVERY_NOT_ASSIGNED_TO_SIGNED_IN_FIELD_WORKER: %',v_way using errcode='42501';
   end if;
 
+  if v_action in (
+       'start_delivery','out_for_delivery',
+       'arrive_customer','arrived_at_customer','arrive_delivery','delivery_arrived',
+       'deliver','delivered','verify_delivery','delivery_verified'
+     )
+     or v_action='exception'
+     or v_action like '%delivery_exception%'
+     or v_action like '%delivery_failed%' then
+    if v_wayplan_status<>'DISPATCHED'
+       or v_membership_status<>'DISPATCHED'
+       or v_review_status<>'DISPATCHED' then
+      raise exception
+        'DELIVERY_NOT_PUBLISHED_BY_DISPATCH|wayplan_status=%|membership_status=%|review_status=%',
+        coalesce(v_wayplan_status,'NULL'),coalesce(v_membership_status,'NULL'),coalesce(v_review_status,'NULL')
+        using errcode='22023';
+    end if;
+  end if;
+
   if v_action in ('start_delivery','out_for_delivery') then
-    return public.be_field_team_delivery_action(
+    if v_role='helper' then
+      return jsonb_build_object('ok',false,'error','PRIMARY_WORKER_REQUIRED','message','Only assigned rider or driver can start delivery.');
+    end if;
+
+    begin
+      v_lat:=nullif(btrim(coalesce(p_payload->>'latitude',p_payload->>'lat','')),'')::numeric;
+      v_lng:=nullif(btrim(coalesce(p_payload->>'longitude',p_payload->>'lng','')),'')::numeric;
+    exception when others then
+      v_lat:=null; v_lng:=null;
+    end;
+
+    v_result:=public.be_field_team_delivery_action(
       p_payload||jsonb_build_object(
         'delivery_way_id',v_way,'wayplan_id',v_wayplan,'operation_id',v_operation
       )
-    )||jsonb_build_object('build','FIELD_DELIVERY_START_V77_CANONICAL');
+    );
+
+    if v_lat is not null and v_lng is not null then
+      update public.be_wayplan_dispatch_stops
+      set metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+            'delivery_start_latitude',v_lat,
+            'delivery_start_longitude',v_lng,
+            'delivery_start_gps_accuracy_m',nullif(p_payload->>'gps_accuracy_m',''),
+            'delivery_start_gps_at',now(),
+            'build','V77'
+          ),
+          updated_at=now()
+      where wayplan_id=v_wayplan and upper(delivery_way_id)=upper(v_way);
+    end if;
+
+    return coalesce(v_result,'{}'::jsonb)||jsonb_build_object('build','FIELD_DELIVERY_START_V77_CANONICAL');
   end if;
 
   if v_action in ('arrive_customer','arrived_at_customer','arrive_delivery','delivery_arrived') then
@@ -740,14 +792,25 @@ begin
     end;
     if v_lat is null or v_lng is null then raise exception 'GPS_REQUIRED_FOR_CUSTOMER_ARRIVAL' using errcode='22023'; end if;
 
-    select l.latitude,l.longitude
-      into v_dest_lat,v_dest_lng
-    from public.be_delivery_location_registry l
-    where upper(l.delivery_way_id)=upper(v_way)
-      and l.latitude is not null and l.longitude is not null
-    order by case when upper(coalesce(l.review_status,''))='ACCEPTED' then 0 else 1 end,
-             l.updated_at desc nulls last
+    select r.latitude,r.longitude,'WAYPLAN_ROUTE_VERSION_V1'
+      into v_dest_lat,v_dest_lng,v_coordinate_source
+    from public.be_wayplan_route_version_stops_v1 r
+    where r.wayplan_id=v_wayplan
+      and upper(r.delivery_way_id)=upper(v_way)
+      and r.latitude is not null and r.longitude is not null
+    order by r.route_version desc
     limit 1;
+
+    if v_dest_lat is null or v_dest_lng is null then
+      select l.latitude,l.longitude,coalesce(l.coordinate_source,'DELIVERY_LOCATION_REGISTRY')
+        into v_dest_lat,v_dest_lng,v_coordinate_source
+      from public.be_delivery_location_registry l
+      where upper(l.delivery_way_id)=upper(v_way)
+        and l.latitude is not null and l.longitude is not null
+      order by case when upper(coalesce(l.review_status,''))='ACCEPTED' then 0 else 1 end,
+               l.updated_at desc nulls last
+      limit 1;
+    end if;
 
     select coalesce(numeric_value,100) into v_radius
     from public.be_rider_route_settings_v46
@@ -796,6 +859,7 @@ begin
           'arrival_longitude',v_lng,
           'destination_latitude',v_dest_lat,
           'destination_longitude',v_dest_lng,
+          'coordinate_source',v_coordinate_source,
           'arrival_distance_m',v_distance,
           'geofence_radius_m',v_radius,
           'geo_verified',coalesce(v_distance<=v_radius,false),
@@ -810,6 +874,7 @@ begin
     set rider_status='ARRIVED_AT_CUSTOMER',updated_at=now(),
         metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
           'customer_arrived_at',now(),'arrival_distance_m',v_distance,
+          'coordinate_source',v_coordinate_source,
           'geo_verified',coalesce(v_distance<=v_radius,false),
           'geofence_override_used',v_override_id is not null,'build','V77'
         )
@@ -821,6 +886,7 @@ begin
       'distance_m',v_distance,'geofence_radius_m',v_radius,
       'inside_geofence',coalesce(v_distance<=v_radius,false),
       'override_used',v_override_id is not null,'override_id',v_override_id,
+      'coordinate_source',v_coordinate_source,
       'destination_coordinates_available',v_dest_lat is not null and v_dest_lng is not null,
       'build','FIELD_DELIVERY_ARRIVAL_V77_CANONICAL'
     );
@@ -835,6 +901,7 @@ begin
       select 1
       from public.be_wayplan_dispatch_stops s
       where s.wayplan_id=v_wayplan and upper(s.delivery_way_id)=upper(v_way)
+        and nullif(s.metadata->>'customer_arrived_at','') is not null
         and (
           coalesce((s.metadata->>'geo_verified')::boolean,false)
           or coalesce((s.metadata->>'geofence_override_used')::boolean,false)
