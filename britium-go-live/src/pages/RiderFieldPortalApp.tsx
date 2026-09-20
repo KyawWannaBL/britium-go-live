@@ -379,6 +379,33 @@ function compactDate(value?: string) {
   return d.toLocaleString();
 }
 
+function currentGps(): Promise<{ latitude: number; longitude: number; accuracy: number }> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("GPS is not available on this device/browser."));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+        }),
+      (error) => {
+        const message =
+          error.code === error.PERMISSION_DENIED
+            ? "Location permission is required for Rider delivery actions."
+            : error.code === error.TIMEOUT
+              ? "GPS timed out. Move to an open area and try again."
+              : "Current GPS location could not be obtained.";
+        reject(new Error(message));
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 },
+    );
+  });
+}
+
 function normalizeRiderLogin(value: string) {
   const raw = text(value);
   if (!raw) return "";
@@ -505,6 +532,14 @@ function isCollected(job: RiderJob) {
 
 function isOutForDelivery(job: RiderJob) {
   return hasJobStatus(job, "OUT_FOR_DELIVERY");
+}
+
+function isArrivedAtCustomer(job: RiderJob) {
+  return (
+    hasJobStatus(job, "ARRIVED_AT_CUSTOMER") ||
+    upper((job as any).delivery_arrival_status) === "ARRIVED_AT_CUSTOMER" ||
+    upper((job as any).route_stop_status) === "ARRIVED"
+  );
 }
 
 type PickupActionStage =
@@ -654,7 +689,8 @@ function isDeliveryJob(job: RiderJob) {
       "READY_FOR_DELIVERY",
       "ASSIGNED_FOR_DELIVERY",
       "DELIVERY_ASSIGNED",
-      "OUT_FOR_DELIVERY"
+      "OUT_FOR_DELIVERY",
+      "ARRIVED_AT_CUSTOMER"
     ) &&
     !isDelivered(job) &&
     !isException(job)
@@ -886,6 +922,38 @@ function visibleIdentity(session: RiderSession | null, identity: any) {
   };
 }
 
+async function enrichDeliveryArrivalState(supabase: any, jobs: RiderJob[]) {
+  try {
+    const { data, error } = await supabase.rpc("be_field_team_delivery_arrival_snapshot_v77");
+    if (error || !data?.ok || !Array.isArray(data?.rows)) return jobs;
+    const byWay = new Map<string, any>(
+      data.rows.map((row: any) => [upper(row.delivery_way_id), row]),
+    );
+    return jobs.map((job: RiderJob) => {
+      const way = upper((job as any).delivery_way_id || (job as any).tracking_no);
+      const arrival = way ? byWay.get(way) : null;
+      if (!arrival) return job;
+      const arrivalStatus = upper(arrival.delivery_arrival_status);
+      return {
+        ...job,
+        ...arrival,
+        delivery_arrival_status: arrivalStatus,
+        status: arrivalStatus || (job as any).status,
+        pickup_status: arrivalStatus || (job as any).pickup_status,
+        workflow_stage: arrivalStatus || (job as any).workflow_stage,
+        rider_app_stage: arrivalStatus || (job as any).rider_app_stage,
+        rider_status: arrivalStatus || (job as any).rider_status,
+        delivery_status: arrivalStatus || (job as any).delivery_status,
+        dispatch_status: arrivalStatus || (job as any).dispatch_status,
+        mobile_status: arrivalStatus || (job as any).mobile_status,
+      } as RiderJob;
+    });
+  } catch (error) {
+    console.warn("Delivery arrival enrichment unavailable", error);
+    return jobs;
+  }
+}
+
 async function fetchRiderPayload(login: string) {
   const supabase = getRiderSupabase();
 
@@ -913,7 +981,8 @@ async function fetchRiderPayload(login: string) {
     });
 
     if (!error && data?.ok !== false) {
-      const jobs = Array.isArray(data?.jobs) ? data.jobs.map((row: any) => ({ ...row, mobile_role: role })) : [];
+      const baseJobs = Array.isArray(data?.jobs) ? data.jobs.map((row: any) => ({ ...row, mobile_role: role })) : [];
+      const jobs = await enrichDeliveryArrivalState(supabase, baseJobs);
       const notifications = Array.isArray(data?.notifications) ? data.notifications : [];
       return {
         identity: {
@@ -1579,7 +1648,7 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && !isOutForDelivery(job) && !helperMode && (
+        {deliveryMode && !delivered && !exception && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -1590,14 +1659,25 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
+        {deliveryMode && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            disabled={busy}
+            style={buttonStyle("gold")}
+            onClick={() => onAction(job, "ARRIVED_AT_CUSTOMER", "Rider GPS-confirmed arrival at customer")}
+          >
+            <MapPin size={16} /> Arrived at Customer
+          </button>
+        )}
+
+        {deliveryMode && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
             style={buttonStyle("green")}
             onClick={() => onModal(job, "delivery")}
           >
-            Delivered
+            Verify Delivery / Delivered
           </button>
         )}
 
@@ -1901,6 +1981,7 @@ function FieldPortal() {
           PICKUP_COLLECTED: "collect",
           DELIVERED_TO_WAREHOUSE: "delivered_to_warehouse",
           OUT_FOR_DELIVERY: "start_delivery",
+          ARRIVED_AT_CUSTOMER: "arrive_customer",
           DELIVERED: "deliver",
         } as Record<string, string>
       )[action] ||
@@ -1911,6 +1992,11 @@ function FieldPortal() {
     setMessage("");
 
     try {
+      const gpsRequired = action === "ARRIVED_AT_CUSTOMER";
+      const deliveryWayId = text((job as any).delivery_way_id || (job as any).tracking_no || pickupId(job));
+      const wayplanId = text((job as any).wayplan_id);
+      const gps = gpsRequired ? await currentGps() : null;
+
       if (isAssignmentResponse) {
         const { data: responseData, error: responseError } = await supabase.rpc("be_field_team_assignment_action", {
           p_payload: {
@@ -1940,6 +2026,12 @@ function FieldPortal() {
         p_payload: {
           pickup_id: pickupId(job),
           pickup_way_id: pickupId(job),
+          delivery_way_id: deliveryWayId || null,
+          tracking_no: deliveryWayId || null,
+          wayplan_id: wayplanId || null,
+          latitude: gps?.latitude ?? null,
+          longitude: gps?.longitude ?? null,
+          gps_accuracy_m: gps?.accuracy ?? null,
           rider_code: workerCode,
           rider_id: workerCode,
           rider_name: session.display_name || identity?.display_name || identity?.rider_name || "Rider",
@@ -2718,7 +2810,7 @@ function FieldPortal() {
 
         {view === "jobs" && <><ViewTitle icon={Briefcase} title="Assigned jobs" subtitle="All backend assignments for this Rider account." />{renderJobs(jobs, "No assigned jobs", "Supervisor assignment has not reached this rider account yet, or this rider code is not assigned to any real pickup.", "jobs")}</>}
         {view === "pickup" && <><ViewTitle icon={Package} title="Pickup workflow" subtitle="Accept → Arrive → Verify Pickup → Collected → Delivered to Warehouse, or report an exception." />{renderJobs(pickupJobs, "No pickup jobs", "There are no active pickup tasks for this rider.", "pickup")}</>}
-        {view === "delivery" && <><ViewTitle icon={Truck} title="Delivery workflow" subtitle="Start delivery, verify delivered with proof, or submit exception with reason and photo." />{renderJobs(deliveryJobs, "No delivery jobs", "Warehouse-released delivery assignments will appear here.", "delivery")}</>}
+        {view === "delivery" && <><ViewTitle icon={Truck} title="Delivery workflow" subtitle="Start Delivery → Arrived at Customer (GPS/geofence) → Verify Delivery with POD/COD, or submit an exception." />{renderJobs(deliveryJobs, "No delivery jobs", "Warehouse-released delivery assignments will appear here.", "delivery")}</>}
 
         {view === "route" && (
           <div style={{ display: "grid", gap: 12 }}>
