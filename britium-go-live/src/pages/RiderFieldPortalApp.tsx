@@ -969,9 +969,10 @@ async function fetchRiderPayload(login: string) {
     ? normalizedLogin
     : defaultRiderEmail(normalizedLogin);
 
-  // Preferred v3 role-aware snapshot. It supports RID / DRV / HLP accounts.
+  // Preferred V77 role-aware snapshot. It supplements consolidated-bulk
+  // internal IDs while displaying the original operational D... Way IDs.
   try {
-    const { data, error } = await supabase.rpc("be_field_team_mobile_snapshot", {
+    let snapshotResult = await (supabase as any).rpc("be_field_team_mobile_snapshot_v77", {
       p_payload: {
         worker_code: normalizedLogin,
         login: normalizedLogin,
@@ -979,6 +980,19 @@ async function fetchRiderPayload(login: string) {
         role,
       },
     });
+
+    if (snapshotResult.error) {
+      snapshotResult = await supabase.rpc("be_field_team_mobile_snapshot", {
+        p_payload: {
+          worker_code: normalizedLogin,
+          login: normalizedLogin,
+          email: normalizedEmail,
+          role,
+        },
+      });
+    }
+
+    const { data, error } = snapshotResult;
 
     if (!error && data?.ok !== false) {
       const baseJobs = Array.isArray(data?.jobs) ? data.jobs.map((row: any) => ({ ...row, mobile_role: role })) : [];
@@ -1486,6 +1500,13 @@ function JobCard({
   workerRole: string;
 }) {
   const id = pickupId(job);
+  const displayId = text(
+    (job as any).display_way_id ||
+      (job as any).operational_way_id ||
+      (job as any).source_waybill_no ||
+      (job as any).waybill_no ||
+      id,
+  );
   const status = statusLabel(job);
   const cod = Number(job.rider_cod_amount || job.cod_amount || job.item_price || 0);
   const delivered = isDelivered(job);
@@ -1519,7 +1540,8 @@ function JobCard({
     <Card style={{ display: "grid", gap: 12 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800 }}>{id}</div>
+          <div style={{ fontSize: 18, fontWeight: 800 }}>{displayId}</div>
+          {displayId !== id ? <div style={{ color: C.dim, marginTop: 2, fontSize: 11 }}>Internal: {id}</div> : null}
           <div style={{ color: C.sub, marginTop: 4 }}>
             {text(job.merchant_name || job.customer_name || job.sender_name, "Merchant / customer")}
           </div>
