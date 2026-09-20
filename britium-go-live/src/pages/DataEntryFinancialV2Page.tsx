@@ -40,6 +40,7 @@ export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
 export const DATA_ENTRY_FULL_REGISTRATION_LAYOUT_BUILD = "DATA_ENTRY_FULL_REGISTRATION_LAYOUT_V85_20260920";
+export const DATA_ENTRY_OPERATOR_WORKFLOW_BUILD = "DATA_ENTRY_OPERATOR_WORKFLOW_V86_20260920";
 export const DATA_ENTRY_PERFORMANCE_V40 = "DATA_ENTRY_PERFORMANCE_V40";
 export const DATA_ENTRY_INPUT_LATENCY_V42 = "DATA_ENTRY_INPUT_LATENCY_V42";
 export const DATA_ENTRY_INTERACTIVE_LATENCY_V49 = "DATA_ENTRY_INTERACTIVE_LATENCY_V49";
@@ -175,6 +176,10 @@ type ParcelRow = {
   saved: boolean;
   skipped?: boolean;
   calculationFailed?: boolean;
+  historyLookupStatus?: "IDLE" | "CHECKING" | "MATCHED" | "NO_MATCH" | "ERROR";
+  historyMatchCount?: number;
+  historyMatchWayId?: string;
+  historyMatchedAt?: string;
 };
 
 type BulkImportDraft = {
@@ -631,7 +636,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -683,12 +688,34 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                     value={row.recipient_phone}
                     placeholder="Enter recipient phone number"
                     onCommit={(value) => {
-                      updateRow(index,{recipient_phone:value});
+                      updateRow(index,{recipient_phone:value,historyLookupStatus:"CHECKING",historyMatchCount:0,historyMatchWayId:""});
                       void lookupPhoneHistory(index,value);
                     }}
                   />
                 </Field>
-                <div className="mt-1 text-[9px] text-[#6f9ab8]">A matching historical phone can fill missing recipient name, address and township without overwriting manual entries.</div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={busy || text(row.recipient_phone).replace(/\D/g,"").length<6 || row.historyLookupStatus==="CHECKING"}
+                    onClick={()=>void lookupPhoneHistory(index,row.recipient_phone)}
+                    className={`rounded-lg border px-3 py-2 text-[10px] font-black disabled:opacity-40 ${fullMode?"border-[#7f6f4d] bg-[#efe9db] text-[#2b2416]":"border-cyan-300/40 bg-cyan-400/10 text-cyan-100"}`}
+                  >
+                    {row.historyLookupStatus==="CHECKING"?"CHECKING HISTORY…":"CHECK MOBILE HISTORY"}
+                  </button>
+                  <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${
+                    row.historyLookupStatus==="MATCHED"?"border-emerald-400/50 bg-emerald-400/10 text-emerald-700":
+                    row.historyLookupStatus==="NO_MATCH"?"border-slate-400/40 bg-slate-400/10 text-slate-600":
+                    row.historyLookupStatus==="ERROR"?"border-rose-400/50 bg-rose-400/10 text-rose-700":
+                    "border-cyan-300/30 bg-cyan-400/5 text-cyan-700"
+                  }`}>
+                    {row.historyLookupStatus==="MATCHED"?`HISTORY MATCHED · ${row.historyMatchCount||1}`:
+                     row.historyLookupStatus==="NO_MATCH"?"NO HISTORY MATCH":
+                     row.historyLookupStatus==="ERROR"?"HISTORY CHECK ERROR":
+                     row.historyLookupStatus==="CHECKING"?"CHECKING…":"AUTO CHECK READY"}
+                  </span>
+                  {row.historyMatchWayId?<span className="text-[9px] font-semibold text-[#5d7080]">Latest: {row.historyMatchWayId}</span>:null}
+                </div>
+                <div className={`mt-1 text-[9px] ${fullMode?"text-[#5b513a]":"text-[#6f9ab8]"}`}>When the same mobile number exists in historical records, missing recipient name, address and township are filled automatically. Manually entered values are never overwritten.</div>
               </div>
 
               <Field label="လက်ခံသူအမည် / Recipient Name">
@@ -964,17 +991,25 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       {row.message ? <div className="mx-4 mb-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
 
-      <div className="sticky bottom-0 z-10 border-t border-[#31506a] bg-[#0b2236]/95 p-3 backdrop-blur">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr_1.2fr]">
-          <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2.5 text-[10px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "RESUME" : "PENDING / SKIP"}</button>
-          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2.5 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
+      <div className={`sticky bottom-0 z-10 border-t p-3 backdrop-blur ${fullMode?"border-[#9c8d6c] bg-[#bfb6a2]/95":"border-[#31506a] bg-[#0b2236]/95"}`}>
+        {fullMode?<div data-operator-workflow-v86="true" className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <button type="button" onClick={()=>validateInput(index)} disabled={busy || row.checking || row.calculating} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">CHECK INPUT</button>
+          <button type="button" onClick={()=>void saveDraft(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">SAVE DRAFT</button>
+          <button type="button" onClick={()=>void lookupPhoneHistory(index,row.recipient_phone)} disabled={busy || text(row.recipient_phone).replace(/\D/g,"").length<6 || row.historyLookupStatus==="CHECKING"} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">CHECK MOBILE HISTORY</button>
+        </div>:null}
+        <div className={`grid grid-cols-1 gap-2 ${fullMode?"sm:grid-cols-4":"sm:grid-cols-[auto_1fr_1.2fr]"}`}>
+          <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className={`rounded-lg border px-3 py-2.5 text-[10px] font-black disabled:opacity-50 ${fullMode?"border-amber-600/50 bg-amber-100 text-amber-900":"border-amber-300/40 text-amber-200"}`}>{row.skipped ? "RESUME" : "PENDING / SKIP"}</button>
+          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-[11px] font-black disabled:opacity-50 ${fullMode?"border-sky-500 bg-sky-100 text-sky-900":"border-[#3aa7de]/50 bg-[#12314a] text-[#8fd3ff]"}`}>
             {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14}/>} CALCULATE
           </button>
-          <button type="button" onClick={() => save(index)} disabled={saveBlocked} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#21c7e8] px-3 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">
+          <button type="button" onClick={() => save(index)} disabled={saveBlocked} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[11px] font-black disabled:opacity-40 ${fullMode?"bg-emerald-600 text-white":"bg-[#21c7e8] text-[#04111d]"}`}>
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} {row.saved?"REGISTERED":"SAVE"}
           </button>
+          {fullMode?<button type="button" onClick={()=>void saveAndNext(index)} disabled={saveBlocked || row.saved} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#163c7a] px-3 py-2.5 text-[11px] font-black text-white disabled:opacity-40">
+            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} SAVE & NEXT
+          </button>:null}
         </div>
-        {!photoReady || !locationReady ? <div className="mt-2 text-[9px] text-amber-200">
+        {!photoReady || !locationReady ? <div className={`mt-2 text-[9px] ${fullMode?"text-amber-900":"text-amber-200"}`}>
           {!photoReady?"Photo verification is still required. ":""}{!locationReady?"Location synchronization is still required.":""}
         </div>:null}
       </div>
@@ -1367,7 +1402,11 @@ export default function DataEntryFinancialV2Page() {
   const lookupPhoneHistory=useCallback(async(index:number,phoneValue:string)=>{
     const phone=text(phoneValue).trim();
     const digits=phone.replace(/\D/g,"");
-    if(digits.length<6) return;
+    if(digits.length<6){
+      updateRow(index,{historyLookupStatus:"NO_MATCH",historyMatchCount:0,historyMatchWayId:"",message:"Enter at least 6 phone digits before checking historical records."});
+      return {matched:false,count:0};
+    }
+    updateRow(index,{historyLookupStatus:"CHECKING",historyMatchCount:0,historyMatchWayId:""});
     try{
       let matches:PhoneHistoryMatch[]=[];
       const response=await (supabase as any).rpc("be_data_entry_phone_history_v81",{p_phone:phone,p_limit:3});
@@ -1399,7 +1438,10 @@ export default function DataEntryFinancialV2Page() {
         }
       }
       const match=matches[0];
-      if(!match) return;
+      if(!match){
+        updateRow(index,{historyLookupStatus:"NO_MATCH",historyMatchCount:0,historyMatchWayId:"",historyMatchedAt:new Date().toISOString(),message:"No historical registration matched this mobile number. Continue with manual entry."});
+        return {matched:false,count:0};
+      }
       setRows((current)=>{
         const row=current[index];
         if(!row || text(row.recipient_phone).trim()!==phone) return current;
@@ -1413,28 +1455,39 @@ export default function DataEntryFinancialV2Page() {
           !row.delivery_address&&Boolean(delivery_address)?"address":"",
           !row.township&&Boolean(township)?"township":"",
         ].filter(Boolean);
-        if(!filled.length) return current;
         const updated=current.slice();
         updated[index]={
           ...candidate,
           ...(route.providerCode?routingPatch(route,candidate):{}),
-          saved:false,
-          calculation:{},
-          calculationFailed:false,
-          message:`Historical contact match autofilled ${filled.join(", ")} from ${text(match.delivery_way_id)||"a previous registration"}${matches.length>1?` · ${matches.length} recent matches found; latest used.`:"."}`,
+          saved:filled.length?false:row.saved,
+          calculation:filled.length?{}:row.calculation,
+          calculationFailed:filled.length?false:row.calculationFailed,
+          historyLookupStatus:"MATCHED",
+          historyMatchCount:matches.length,
+          historyMatchWayId:text(match.delivery_way_id),
+          historyMatchedAt:new Date().toISOString(),
+          message:filled.length
+            ? `Historical contact match autofilled ${filled.join(", ")} from ${text(match.delivery_way_id)||"a previous registration"}${matches.length>1?` · ${matches.length} recent matches found; latest used.`:"."}`
+            : `Historical mobile match found in ${matches.length} record(s). Current fields already contain values, so nothing was overwritten.`,
         };
         return updated;
       });
+      return {matched:true,count:matches.length,sourceWayId:text(match.delivery_way_id)};
     }catch(error:any){
       console.warn("Phone-history autofill failed.",error?.message||error);
+      updateRow(index,{historyLookupStatus:"ERROR",historyMatchCount:0,historyMatchWayId:"",historyMatchedAt:new Date().toISOString(),message:error?.message||"Historical mobile-number check failed. You can continue manual entry and retry later."});
+      return {matched:false,count:0};
     }
-  },[tariffOptions]);
+  },[tariffOptions,updateRow]);
 
-  const rowActionsRef=useRef({calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip});
-  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,reviewPhoto,togglePhotoWaiver,toggleSkip};});
+  const rowActionsRef=useRef({calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip});
+  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip};});
   const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
   const skipEditorRow=useCallback((index:number)=>rowActionsRef.current.toggleSkip(index),[]);
   const saveEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveRow(...args),[]);
+  const saveAndNextEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveAndNextRow(...args),[]);
+  const saveDraftEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveDraftRow(...args),[]);
+  const validateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.validateInputRow(...args),[]);
   const reviewEditorPhoto=useCallback((...args:any[])=>rowActionsRef.current.reviewPhoto(...args),[]);
   const toggleEditorPhotoWaiver=useCallback((...args:any[])=>rowActionsRef.current.togglePhotoWaiver(...args),[]);
 
@@ -1763,37 +1816,73 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
-  async function saveRow(index:number){
-    if(!selectedPickup) return;
-    const row=rows[index]; if(!row || row.skipped) return;
+  function validateInputRow(index:number){
+    const row=rows[index];
+    if(!row) return;
+    const obstacle=rowSaveObstacle(row);
+    updateRow(index,{
+      message:obstacle
+        ? "Input check: "+obstacle+". Correct this item before final save."
+        : "Input check passed. Required recipient, route, photo and location information is ready."
+    });
+  }
+
+  async function saveDraftRow(index:number){
+    const row=rows[index];
+    if(!row || row.saved || row.checking) return false;
+    updateRow(index,{checking:true,message:"Saving draft…"});
+    try{
+      const {data,error}=await supabase.auth.getUser();
+      if(error||!data.user) throw error||new Error("Sign in to save a draft.");
+      const snapshot={...row,saved:false,checking:false,calculating:false};
+      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert({
+        owner_id:data.user.id,
+        pickup_id:row.pickup_id,
+        parcel_sequence:row.parcel_sequence,
+        snapshot,
+        skipped:Boolean(row.skipped),
+        updated_at:new Date().toISOString(),
+      },{onConflict:"owner_id,pickup_id,parcel_sequence"});
+      if(result.error) throw result.error;
+      updateRow(index,{checking:false,message:"Draft saved. You can leave this parcel and continue later without losing the current entry."});
+      return true;
+    }catch(error:any){
+      updateRow(index,{checking:false,message:error?.message||"Draft save failed."});
+      return false;
+    }
+  }
+
+  async function saveRow(index:number):Promise<boolean>{
+    if(!selectedPickup) return false;
+    const row=rows[index]; if(!row || row.skipped) return false;
 
     if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.proof_ref) {
       updateRow(index,{message:"No stored parcel photo reference exists. Photo capture/re-upload is required before saving."});
-      return;
+      return false;
     }
     if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoReviewed) {
       updateRow(index, {
         message:
           "Approve the parcel photo before Save. Reject unavailable, wrong, unclear, or unrelated images and request re-upload.",
       });
-      return;
+      return false;
     }
     if(row.photoUnavailableAcknowledged && (!row.importedFromOs || !row.sourceFileName || row.photoBypassReason.trim().length<10)){
       updateRow(index,{message:"OS softcopy photo bypass requires an imported source file and a clear reason of at least 10 characters."});
-      return;
+      return false;
     }
     const route=routeForRow(row,tariffOptions);
     if(!route.providerCode){
       updateRow(index,{message:"Enter a recognized township before saving so the delivery route can be assigned."});
-      return;
+      return false;
     }
     if(!handoffStationReady(row,route)){
       updateRow(index,{message:"Choose the physical highway bus station before saving this no-item-price outside-core parcel."});
-      return;
+      return false;
     }
     if(route.mapRequired && row.locationStatus!=="SYNCED"){
       updateRow(index,{message:"This Yangon, Mandalay, or Naypyitaw drop point must be synchronized in Google Location Details before saving."});
-      return;
+      return false;
     }
 
     updateRow(index,{checking:true,message:""});
@@ -1810,7 +1899,20 @@ export default function DataEntryFinancialV2Page() {
         message:"Saved successfully with backend calculation and audit lineage."
       });
       setPickups((current)=>current.map((pickup)=>pickup.pickup_id===row.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,row.parcel_sequence)}:pickup));
-    }catch(error:any){updateRow(index,{checking:false,message:error?.message||"Save failed."});}
+      return true;
+    }catch(error:any){
+      updateRow(index,{checking:false,message:error?.message||"Save failed."});
+      return false;
+    }
+  }
+
+  async function saveAndNextRow(index:number){
+    const saved=await saveRow(index);
+    if(!saved) return false;
+    const nextIndex=Math.min(index+1,Math.max(0,rows.length-1));
+    setPageIndex(nextIndex);
+    if(nextIndex===index) updateRow(index,{message:"Saved successfully. This is the last parcel in the current pickup."});
+    return true;
   }
 
   async function calculateAll(){
@@ -2839,6 +2941,9 @@ export default function DataEntryFinancialV2Page() {
             updateRow={updateRow}
             calculate={calculateEditorRow}
             save={saveEditorRow}
+            saveAndNext={saveAndNextEditorRow}
+            saveDraft={saveDraftEditorRow}
+            validateInput={validateEditorRow}
             skip={skipEditorRow}
             busy={bulkSaving||locationReviewBusy||waybillBusy}
             reviewPhoto={reviewEditorPhoto}
