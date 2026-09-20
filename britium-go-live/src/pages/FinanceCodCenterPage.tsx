@@ -121,6 +121,7 @@ function Badge({ status }: { status: string }) {
 export default function FinanceCodCenterPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Row>({});
+  const [exceptionHolds, setExceptionHolds] = useState<Row[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [activeRow, setActiveRow] = useState<Row | null>(null);
   const [filter, setFilter] = useState("ALL");
@@ -166,7 +167,7 @@ export default function FinanceCodCenterPage() {
     setMessage("");
 
     try {
-      const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", {
+      const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center_v92", {
         p_limit: 500,
       });
 
@@ -175,6 +176,7 @@ export default function FinanceCodCenterPage() {
 
       setRows(Array.isArray(data?.rows) ? data.rows : []);
       setSummary(data?.summary || {});
+      setExceptionHolds(Array.isArray(data?.exception_holds) ? data.exception_holds : []);
       if (!activeRow && Array.isArray(data?.rows) && data.rows.length) {
         setActiveRow(data.rows[0]);
       }
@@ -359,13 +361,36 @@ export default function FinanceCodCenterPage() {
         {error && <div style={{ border: `1px solid ${C.red}`, background: "rgba(248,113,113,0.12)", color: C.red, borderRadius: 14, padding: 12 }}>{error}</div>}
         {message && <div style={{ border: `1px solid ${C.green}`, background: "rgba(52,211,153,0.12)", color: C.green, borderRadius: 14, padding: 12 }}>{message}</div>}
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(140px, 1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(6, minmax(140px, 1fr))", gap: 12 }}>
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Rows</div><strong style={{ color: C.gold, fontSize: 22 }}>{rows.length}</strong></Card>
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Total Expected</div><strong style={{ color: C.gold, fontSize: 16 }}>{money(summary.total_expected)}</strong></Card>
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Total Collected</div><strong style={{ color: C.green, fontSize: 16 }}>{money(summary.total_collected)}</strong></Card>
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Pending</div><strong style={{ color: C.red, fontSize: 16 }}>{money(summary.pending_settlement)}</strong></Card>
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Settled</div><strong style={{ color: C.green, fontSize: 16 }}>{money(summary.settled)}</strong></Card>
+          <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Exception Holds</div><strong style={{ color: C.red, fontSize: 16 }}>{summary.exception_hold_count || 0} / {money(summary.exception_hold_amount)}</strong></Card>
         </div>
+
+        {exceptionHolds.length > 0 && (
+          <Card>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+              <div>
+                <div style={{ color: C.red, fontWeight: 900 }}>Field Delivery Exception Holds</div>
+                <div style={{ color: C.sub, fontSize: 12, marginTop: 4 }}>Failed-way / RTO events synchronized from Rider, Driver or Helper workflows. Review before settlement.</div>
+              </div>
+              <Badge status="HOLD_EXCEPTION" />
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {exceptionHolds.slice(0, 25).map((h: any) => (
+                <div key={h.delivery_way_id} style={{ display: "grid", gridTemplateColumns: "1.1fr 1fr 1fr 1.2fr", gap: 10, borderTop: `1px solid ${C.border}`, padding: "10px 0", fontSize: 12 }}>
+                  <div><strong style={{ color: C.gold }}>{h.delivery_way_id}</strong><div style={{ color: C.sub }}>{h.pickup_id || "-"}</div></div>
+                  <div>{h.rider_code || h.driver_code || "-"}<div style={{ color: C.sub }}>Field workforce</div></div>
+                  <div>{money(h.reported_collected || h.expected_cod)}<div style={{ color: C.sub }}>{h.settlement_status}</div></div>
+                  <div><strong style={{ color: C.red }}>{h.hold_code || "DELIVERY_EXCEPTION"}</strong><div style={{ color: C.sub }}>{h.hold_note || "-"}</div></div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         <Card>
           <div style={{ display: "grid", gridTemplateColumns: "220px 1fr 260px auto auto", gap: 10, marginBottom: 12, alignItems: "center" }}>
