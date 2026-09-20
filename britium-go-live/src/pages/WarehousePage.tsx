@@ -72,7 +72,7 @@ export default function WarehousePage() {
   const loadAll = useCallback(async (quiet=false) => {
     if(!quiet) setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot");
+      const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v92");
       if (error) throw error;
       setSnapshot(data || { stats: {}, rows: [], reasons: [] });
       setReason((prev) => prev || data?.reasons?.find((r: any) => r.process_type === "DELIVERY")?.exception_code || "");
@@ -354,6 +354,7 @@ export default function WarehousePage() {
 
   const progressOf=(r:any)=>{
     const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
+    if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
     if(stage==="RTO") return "RTO";
     if(stage==="SCHEDULED_HOLD") return "SCHEDULED_HOLD";
     if(stage==="RETURNED_WAITING_REPLAN") return "RETURNED_WAITING_REPLAN";
@@ -522,6 +523,7 @@ export default function WarehousePage() {
           ["DISPATCH SCAN REQUIRED", stats.dispatch_scan_required],
           ["DISPATCH SCANNED", stats.dispatch_scanned],
           ["SCHEDULED HOLD", stats.scheduled_hold],
+          ["AWAIT RETURN SCAN", stats.awaiting_return_scan],
           ["RETURN / REPLAN", stats.returned_waiting_replan],
           ["RTO", stats.rto],
         ].map(([k, v]: any) => (
@@ -753,6 +755,7 @@ export default function WarehousePage() {
                   <option value="DISPATCH_SCAN_REQUIRED">Dispatch Scan required now</option>
                   <option value="DISPATCH_SCANNED">Dispatch scanned</option>
                   <option value="SCHEDULED_HOLD">Scheduled hold</option>
+                  <option value="AWAITING_RETURN_SCAN">Failed delivery / awaiting Return Scan</option>
                   <option value="RETURNED_WAITING_REPLAN">Returned / waiting replan</option>
                   <option value="RTO">RTO</option>
                 </select>
@@ -861,16 +864,20 @@ export default function WarehousePage() {
                     </td>
                     <td className="p-2 min-w-[150px]">{fmt(r.dispatch_scan_at)}</td>
                     <td className="p-2 min-w-[150px]">{fmt(r.return_scan_1_at)}</td>
-                    <td className="p-2 min-w-[220px]">{r.return_reason_1_name || r.return_reason_1 || "-"}</td>
+                    <td className="p-2 min-w-[220px]">{r.return_reason_1_name || r.return_reason_1 || r.pending_return_reason_name || r.pending_return_reason_code || "-"}</td>
                     <td className="p-2 min-w-[150px]">{fmt(r.return_scan_2_at)}</td>
                     <td className="p-2 min-w-[220px]">{r.return_reason_2_name || r.return_reason_2 || "-"}</td>
                     <td className="p-2 min-w-[150px]">{fmt(r.return_scan_3_at)}</td>
                     <td className="p-2 min-w-[220px]">{r.return_reason_3_name || r.return_reason_3 || "-"}</td>
                     <td className="p-2 min-w-[140px]">
-                      {r.rto_at ? (
+                      {r.rto_at || r.pending_return_is_rto ? (
                         <span className="inline-flex items-center rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-xs font-semibold text-rose-300">
                           <AlertTriangle className="mr-1 h-3 w-3" />
                           RTO
+                        </span>
+                      ) : r.field_exception_pending ? (
+                        <span className="inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/15 px-2 py-1 text-xs font-semibold text-orange-300">
+                          Return Scan required · Attempt {r.pending_return_attempt_no || "-"}
                         </span>
                       ) : r.next_attempt_priority ? (
                         <span className="inline-flex items-center rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-1 text-xs font-semibold text-amber-300">
