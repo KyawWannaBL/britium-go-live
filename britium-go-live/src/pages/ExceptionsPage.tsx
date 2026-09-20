@@ -18,7 +18,7 @@ export default function ExceptionsPage() {
       const { data: userData } = await supabase.auth.getUser();
       const email = userData?.user?.email || null;
 
-      const { data, error } = await supabase.rpc("be_exception_screen_snapshot", {
+      const { data, error } = await supabase.rpc("be_exception_screen_snapshot_v92", {
         p_actor_email: email,
         p_merchant_code: null,
       });
@@ -146,6 +146,8 @@ export default function ExceptionsPage() {
                 <th className="p-2">Reason</th>
                 <th className="p-2">Customer Notification</th>
                 <th className="p-2">Next Action</th>
+                <th className="p-2">Department Sync</th>
+                <th className="p-2">Finance</th>
                 <th className="p-2">RTO</th>
               </tr>
             </thead>
@@ -169,7 +171,26 @@ export default function ExceptionsPage() {
                     <div>{e.customer_message_en || "-"}</div>
                     {e.customer_message_mm && <div className="mt-1 text-xs text-slate-400">{e.customer_message_mm}</div>}
                   </td>
-                  <td className="p-2">{e.rule_next_action || e.next_action || "-"}</td>
+                  <td className="p-2">{e.warehouse_required_action || e.rule_next_action || e.next_action || "-"}</td>
+                  <td className="p-2 min-w-[280px]">
+                    {Object.entries(e.department_actions || {}).length ? (
+                      <div className="flex flex-wrap gap-1">
+                        {Object.entries(e.department_actions || {}).map(([team,status]: any) => (
+                          <span key={team} className="rounded-full border border-slate-600 bg-slate-800 px-2 py-1 text-[10px] font-semibold text-slate-200">
+                            {team}: {String(status)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : "-"}
+                  </td>
+                  <td className="p-2 min-w-[180px]">
+                    {e.finance_hold_status ? (
+                      <div>
+                        <div className="font-semibold text-amber-300">{e.finance_hold_status}</div>
+                        <div className="text-xs text-slate-400">{e.finance_hold_code || ""} {e.finance_hold_note || ""}</div>
+                      </div>
+                    ) : "-"}
+                  </td>
                   <td className="p-2">
                     {e.is_rto ? (
                       <span className="rounded-full border border-rose-500/30 bg-rose-500/15 px-2 py-1 text-xs font-semibold text-rose-300">
