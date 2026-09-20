@@ -300,6 +300,41 @@ export default function WayplanCommandCenterPage() {
     setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredReadyRows));
   }
 
+  async function cancelCreatedWayplan() {
+    if (!activeWayplan?.wayplan_id) {
+      setError("Select a CREATED Wayplan first.");
+      return;
+    }
+    if (String(activeWayplan.wayplan_status || "").toUpperCase() !== "CREATED") {
+      setError("Only a CREATED Wayplan can be cancelled and returned to READY.");
+      return;
+    }
+    const confirmed = window.confirm(`Cancel ${activeWayplan.wayplan_id} and return its parcels to the READY Wayplan queue?`);
+    if (!confirmed) return;
+    setLoading(true);
+    setError("");
+    setMessage("");
+    try {
+      const requestId = crypto.randomUUID();
+      const { data, error } = await supabase.rpc("be_delete_created_wayplan_v55", {
+        p_payload: {
+          wayplan_id: activeWayplan.wayplan_id,
+          request_id: requestId,
+          reason: "Cancelled from Wayplan Command Center before dispatch",
+        },
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.error || "Could not cancel the CREATED Wayplan.");
+      cancelRevision();
+      setMessage(`${activeWayplan.wayplan_id} cancelled. ${data?.released_count || 0} way(s) were returned to the READY queue.`);
+      await loadAll();
+    } catch (err: any) {
+      setError(err?.message || "Could not cancel the CREATED Wayplan.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function beginRevision() {
     if (!activeWayplan?.wayplan_id || activeWayplan.wayplan_status !== "CREATED") {
       setError("Only a CREATED Wayplan can be edited before dispatch.");
@@ -568,7 +603,7 @@ export default function WayplanCommandCenterPage() {
                 <div style={{ color: C.gold, fontWeight: 900 }}>CREATED Wayplan Membership Editor</div>
                 <div style={{ color: C.sub, fontSize: 12, marginTop: 4 }}>Editing {revisionSource.wayplan_id}. Add selected filtered READY ways below, or check current ways here and remove them. No change reaches Production data until the replacement saves transactionally.</div>
               </div>
-              <button style={btn("plain")} onClick={cancelRevision}>Cancel Edit</button>
+              <button data-wayplan-cancel-edit-v87="true" style={btn("plain")} onClick={cancelRevision}>Cancel Edit / Back</button>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <button style={btn("gold")} disabled={!filteredSelectedRows.length} onClick={addSelectedToRevision}>Add Selected ({filteredSelectedRows.length})</button>
@@ -652,7 +687,9 @@ export default function WayplanCommandCenterPage() {
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
                 <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
                 <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
-                {!canEditCreatedWayplan && activeWayplan && <div style={{ color: C.sub, fontSize: 11 }}>Add/remove editing is locked after the Wayplan leaves CREATED status.</div>}
+                {revisionSource ? <button data-wayplan-cancel-edit-v87="true" onClick={cancelRevision} disabled={loading} style={btn("plain")}>Cancel Edit / Back</button> : null}
+                <button data-wayplan-cancel-created-v87="true" onClick={()=>void cancelCreatedWayplan()} disabled={loading || !canEditCreatedWayplan || Boolean(revisionSource)} style={{ ...btn("red"), opacity: canEditCreatedWayplan && !revisionSource ? 1 : 0.45 }}>Cancel CREATED Wayplan & Return Ways to Queue</button>
+                {!canEditCreatedWayplan && activeWayplan && <div style={{ color: C.sub, fontSize: 11 }}>Add/remove editing and cancellation are locked after the Wayplan leaves CREATED status.</div>}
                 <div data-wayplan-lifecycle-controls-v61="true" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <button
                     onClick={() => updateWayplanStatus("DISPATCHED")}
