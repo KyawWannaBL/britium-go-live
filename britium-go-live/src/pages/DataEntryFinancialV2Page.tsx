@@ -38,6 +38,7 @@ export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_I
 export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903";
 export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
+export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -618,309 +619,335 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
+  const photoReady = Boolean(row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
+  const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
+  const saveBlocked = busy || row.checking || row.skipped || !photoReady || !routeReady(row,tariffOptions);
+  const statusText = row.saved ? "REGISTERED" : row.skipped ? "PENDING" : row.calculating ? "CALCULATING" : "DRAFT";
+  const statusClass = row.saved
+    ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+    : row.skipped
+      ? "border-amber-300/40 bg-amber-400/10 text-amber-200"
+      : "border-slate-400/30 bg-slate-400/10 text-slate-200";
+
   return (
-    <section id={`data-entry-parcel-${row.parcel_sequence}`} style={{contentVisibility:"auto",containIntrinsicSize:"1100px"}} className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="text-[11px] font-black uppercase tracking-[0.15em] text-[#f6b84b]">Parcel {row.parcel_sequence}</div>
-            {row.isAdditionalRegistration?<span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-1 text-[9px] font-black text-cyan-200">AUTHORIZED MERCHANT ADDITION</span>:null}
-            {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY · ROW {row.sourceRowNumber||"—"}</span>:null}
-            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>
-            {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} · {route.deliveryMode.replaceAll("_"," ")}</span>:null}
-            {row.skipped?<span className="rounded-full bg-amber-400/20 px-2 py-1 text-xs text-amber-200">SKIPPED · PENDING CLARIFICATION</span>:null}
-            {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
+    <section
+      id={`data-entry-parcel-${row.parcel_sequence}`}
+      data-compact-recycled-form-v83="true"
+      className="overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#0b2236]"
+    >
+      <div className="border-b border-[#1a3a5c] bg-[#102741] px-4 py-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Single Recycled Data Entry Form</div>
+            <div className="mt-1 truncate text-[15px] font-black text-white">{row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}</div>
+            <div className="mt-1 text-[10px] text-[#8db4ce]">Parcel {row.parcel_sequence} · {row.sourceMerchantName||"Current pickup merchant"}</div>
           </div>
-          <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
-        </div>
-        <div className="flex gap-2">
-          <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "Resume" : "Skip · Pending clarification"}</button>
-          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
-            {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />} တွက်ချက်ရန်
-          </button>
-          <button type="button" onClick={() => save(index)} disabled={
-              busy || row.checking || row.skipped ||
-              (!row.photoReviewed && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged) ||
-              !routeReady(row,tariffOptions)
-            } className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-3 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">
-            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} သိမ်းဆည်းရန်
-          </button>
+          <div className="flex flex-wrap gap-1.5">
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${statusClass}`}>{statusText}</span>
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${photoReady?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>PHOTO {photoReady?"READY":"CHECK"}</span>
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${locationReady?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {locationReady?"READY":row.locationStatus.replaceAll("_"," ")}</span>
+          </div>
         </div>
       </div>
 
-      <DeliveryAddressHistory wayId={row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}/>
       <fieldset disabled={busy || row.skipped || row.checking} className="min-w-0">
-      {row.photoUnavailableAcknowledged ? (
-        <div className="mb-4 rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
-          <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Picker-photo review is bypassed only for this imported row. Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
-        </div>
-      ) : row.photoTemporaryWaiver ? (
-        <div data-temporary-photo-waiver-v54="true" className="mb-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4 text-[11px] text-amber-100">
-          <div className="font-black uppercase tracking-wider">Temporary photo-verification waiver active</div>
-          <div className="mt-1">Data Entry may continue without a picker photo for this parcel. This exception is audit-recorded and can be revoked when order pickers are available again.</div>
-          <div className="mt-2"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
-          <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
-        </div>
-      ) : row.proof_url ? (
-        <>
-          <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="mb-4 flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
-            <img src={displayProofUrl} alt="Proof" className="h-20 w-28 rounded-lg object-cover" />
-            <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge on this screen</div></div>
-          </button>
-          {photoPreviewOpen ? (
-            <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
-              <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
-                  <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
-                  <div className="flex items-center gap-2"><button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">−</button><span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span><button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button><button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button><button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button></div>
-                </div>
-                <div className="min-h-0 flex-1 overflow-auto bg-[#020912] p-3 text-center"><img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} /></div>
+        <div className="space-y-4 p-4">
+          <div className="rounded-xl border border-[#31506a] bg-[#071b2b] p-3">
+            <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Receiver & Delivery Details</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <Field label="ဖုန်းနံပါတ် / Phone Number (Historical Autofill)">
+                  <BufferedDataEntryInput
+                    className={inputClass}
+                    value={row.recipient_phone}
+                    placeholder="Enter recipient phone number"
+                    onCommit={(value) => {
+                      updateRow(index,{recipient_phone:value});
+                      void lookupPhoneHistory(index,value);
+                    }}
+                  />
+                </Field>
+                <div className="mt-1 text-[9px] text-[#6f9ab8]">A matching historical phone can fill missing recipient name, address and township without overwriting manual entries.</div>
+              </div>
+
+              <Field label="လက်ခံသူအမည် / Recipient Name">
+                <BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value) => updateRow(index,{recipient_name:value})}/>
+              </Field>
+
+              <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
+
+              <div className="sm:col-span-2">
+                <Field label="လက်ခံသူလိပ်စာ / Full Address">
+                  <BufferedDataEntryInput
+                    multiline
+                    rows={2}
+                    className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`}
+                    value={row.delivery_address}
+                    onCommit={(value)=>{
+                      const delivery_address=value;
+                      const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+                      updateRow(index,nextRoute.providerCode?{
+                        delivery_address,
+                        ...routingPatch(nextRoute,{...row,delivery_address}),
+                        message:providerRoutingMessage(nextRoute),
+                      }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
+                    }}
+                  />
+                </Field>
+              </div>
+
+              <Field label="အလေးချိန် / Weight (kg)">
+                <BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/>
+              </Field>
+
+              <Field label="ဝန်ဆောင်မှု / Service Type">
+                <select className={`${inputClass} !bg-white !text-black`} value={row.service_type} onChange={(e)=>updateRow(index,{service_type:e.target.value})}>
+                  <option value="STANDARD">STANDARD</option>
+                  <option value="EXPRESS">EXPRESS</option>
+                  <option value="SAME_DAY">SAME DAY</option>
+                  <option value="NEXT_DAY">NEXT DAY</option>
+                  <option value="ECONOMY">ECONOMY</option>
+                </select>
+              </Field>
+
+              <Field label="ကုန်သည်အဆင့် / Merchant Tier">
+                <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
+                  const customer_tier=e.target.value;
+                  const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
+                  updateRow(index,{customer_tier,tier_override});
+                }}>
+                  <option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option>
+                </select>
+                <span className="mt-1 block text-[9px] leading-4 text-[#8db4ce]">
+                  {row.customer_tier === "STANDARD" ? `Standard · ${tierRule.included_kg ?? 3} kg included` : row.customer_tier === "ROYAL" ? `Royal · ${tierRule.included_kg ?? 5} kg included` : `Commitment · ${tierRule.included_kg ?? 5} kg included`}
+                </span>
+              </Field>
+
+              <Field label="ငွေကောက်ခံပုံ / Collection Method">
+                <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
+                  const next=e.target.value as AmountType;
+                  const patch:any={amount_entry_type:next};
+                  if(isExact(next)){patch.item_price="";patch.delivery_charges="";}
+                  else if(next==="DELIVERY_CHARGE_ONLY"){patch.item_price="";patch.merchant_stated_total_amount="";}
+                  else patch.merchant_stated_total_amount="";
+                  const nextRow={...row,...patch};
+                  const nextRoute=routeForRow(nextRow,tariffOptions);
+                  updateRow(index,{...patch,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
+                }}>
+                  {AMOUNT_TYPES.map(v=><option key={v} value={v}>{COLLECTION_METHOD_MY[v]}</option>)}
+                </select>
+              </Field>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-[#f6b84b]/30 bg-[#1d2b37] p-3">
+            <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Charges & COD Inputs</div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး / Item Price">
+                <input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
+                  const item_price=e.target.value===""?"":Number(e.target.value);
+                  const nextRow={...row,item_price};
+                  const nextRoute=routeForRow(nextRow,tariffOptions);
+                  updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
+                }}/>
+              </Field>:null}
+
+              {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ / Deli Fee (OS)">
+                <input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/>
+              </Field>:null}
+
+              {isExact(type) ? <div className="sm:col-span-2"><Field label="အတိအကျ / Final COD to Collect">
+                <input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/>
+              </Field></div>:null}
+
+              <Field label="CBM Surcharge">
+                <input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/>
+              </Field>
+
+              <Field label="Other Surcharge">
+                <input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/>
+              </Field>
+
+              <div className="sm:col-span-2">
+                <Field label="Remarks">
+                  <BufferedDataEntryInput multiline rows={2} className={inputClass} value={row.remarks} onCommit={(value)=>updateRow(index,{remarks:value})}/>
+                </Field>
               </div>
             </div>
-          ) : null}
-        </>
-      ) : row.isAdditionalRegistration ? (
-        <div className="mb-4 rounded-xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-[11px] text-cyan-100">
-          <Plus size={14} className="mr-2 inline"/>This parcel was added by an authorized Data Entry user after the merchant changed the pickup quantity. Pickup-level evidence and the audited addition reason apply.
-        </div>
-      ) : <div className="mb-4 rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]"><ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists for this parcel."} <a href="#/data-entry-photo" className="ml-2 font-black underline">Open Photo Check</a></div>}
-
-      {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver?<div
-        data-photo-review="true"
-        className="mb-4 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-4"
-      >
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">
-            <ImageIcon size={14} /> Photo Review
           </div>
-          <span className={`rounded-full border px-3 py-1 text-[10px] font-black ${
-            row.photoReviewStatus === "APPROVED"
-              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-              : row.photoReviewStatus === "REUPLOAD_REQUIRED"
-                ? "border-rose-500/40 bg-rose-500/10 text-rose-300"
-                : "border-amber-500/40 bg-amber-500/10 text-amber-300"
-          }`}>
-            {row.photoReviewStatus || "PENDING REVIEW"}
-          </span>
-        </div>
 
-        <div className="grid grid-cols-1 gap-3">
-          <button
-            type="button"
-            disabled={row.photoReviewBusy || !row.proof_url}
-            onClick={() => reviewPhoto(index, "APPROVE")}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-3 text-left text-[12px] font-black text-emerald-300 disabled:opacity-50"
-          >
-            Approve Photo
-            <span className="mt-1 block text-[10px] font-normal text-[#8db4ce]">Correct parcel and sufficiently clear.</span>
-          </button>
+          {route.stationRequired?<div data-highway-station-selection-v19="true" className="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway Bus-Station Handoff</div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Terminal / Gate Name">
+                <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationCode:"OTHER",handoffStationName:event.target.value,calculation:{}})} placeholder="Type terminal / gate name"/>
+              </Field>
+              <Field label="Delivery Charge (MMK)">
+                <input className={inputClass} type="number" min="0" step="1" value={row.delivery_charges} onChange={(event)=>updateRow(index,{delivery_charges:event.target.value===""?"":Number(event.target.value),calculation:{}})} placeholder="Enter delivery charge"/>
+              </Field>
+            </div>
+            {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Terminal name and delivery charge are required before Calculate/Save.</div>:null}
+          </div>:null}
 
-          <label className="rounded-lg border border-rose-500/40 bg-rose-500/10 p-3 text-[12px] text-rose-200">
-            <b>Reject reason</b>
-            <select
-              className="mt-2 w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white"
-              value={row.photoRejectionReason}
-              onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}
-            >
-              <option value="">Select reason…</option>
-              <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
-              <option value="WRONG_PARCEL">Wrong parcel</option>
-              <option value="UNCLEAR_OR_BLURRY">Unclear or blurry</option>
-              <option value="UNRELATED_IMAGE">Unrelated image</option>
-              <option value="PARCEL_NOT_VISIBLE">Parcel not visible</option>
-              <option value="DUPLICATE_IMAGE">Duplicate image</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </label>
-
-          <button
-            type="button"
-            disabled={row.photoReviewBusy || !row.photoRejectionReason}
-            onClick={() => reviewPhoto(index, "REJECT")}
-            className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-3 text-[12px] font-black text-white disabled:opacity-50"
-          >
-            Reject &amp; Request Re-upload
-            <span className="mt-1 block text-[10px] font-normal text-rose-100">The rider receives a re-upload requirement.</span>
-          </button>
-        </div>
-
-        {row.photoRejectionReason ? (
-          <textarea
-            rows={2}
-            className="mt-3 w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500"
-            placeholder="Optional detail for the rider…"
-            value={row.photoRejectionNote}
-            onChange={(e) => updateRow(index, { photoRejectionNote: e.target.value })}
-          />
-        ) : null}
-
-        {!row.photoReviewed ? (
-          <div className="mt-3 rounded-lg border border-[#f6b84b]/25 bg-[#f6b84b]/10 px-3 py-2 text-[10px] text-[#ffd98a]">
-            Approve the photo before Save, or use the temporary operational waiver below while order pickers are unavailable.
+          <div className="rounded-xl border border-[#f6b84b]/35 bg-[#071b2b] p-3">
+            <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Current Calculation Summary</div>
+            <div className="space-y-1 text-[11px]">
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Calculated COD</span><b>{money(c.cod_amount)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
+              <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2 text-[13px]"><span className="font-black text-[#f6b84b]">Merchant Settlement</span><b className="text-[#f6b84b]">{money(c.merchant_final_settlement_amount)}</b></div>
+            </div>
           </div>
-        ) : null}
-        <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
-          <div className="text-[10px] font-black uppercase tracking-wider text-amber-200">Temporary operational waiver</div>
-          <div className="mt-1 text-[10px] text-amber-100">Use only while no order picker is available. The parcel remains audit-traceable and normal photo verification can be restored later.</div>
-          <input
-            className="mt-2 w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white"
-            value={row.photoTemporaryWaiverReason||""}
-            onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})}
-            placeholder="Reason for temporary photo waiver"
-          />
-          <button
-            type="button"
-            disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10}
-            onClick={()=>togglePhotoWaiver(index,true)}
-            className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50"
-          >
-            Temporarily Skip Photo Verification
-          </button>
-        </div>
-      </div>:null}
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Field label="လက်ခံသူအမည်"><BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value) => updateRow(index,{recipient_name:value})}/></Field>
-        <Field label="လက်ခံသူဖုန်း"><BufferedDataEntryInput className={inputClass} value={row.recipient_phone} onCommit={(value) => {
-          updateRow(index,{recipient_phone:value});
-          void lookupPhoneHistory(index,value);
-        }}/></Field>
-        <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
-        <Field label="အမှန်တကယ်အလေးချိန် (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
-        <Field label="လက်ခံသူလိပ်စာ"><BufferedDataEntryInput multiline rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onCommit={(value)=>{
-          const delivery_address=value;
-          const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
-          const option=nextRoute.option as TariffOption|null;
-          updateRow(index,nextRoute.providerCode?{
-            delivery_address,
-            ...routingPatch(nextRoute,{...row,delivery_address}),
-            
-            message:providerRoutingMessage(nextRoute),
-          }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
-        }}/></Field>
-        <Field label="ကုန်သည်အဆင့်">
-          <select disabled={!tierAccess?.can_select_tier} className={`${inputClass} !bg-white !text-black disabled:cursor-not-allowed disabled:opacity-60`} value={row.customer_tier} onChange={(e)=>{
-            const customer_tier=e.target.value;
-            const option=(tariffOptions as TariffOption[]).find((item)=>item.destination_name===row.township&&(!row.service_provider_code||item.provider_code===row.service_provider_code));
-            const tier_override=Boolean(tierAccess?.registered && tierAccess?.profile_tier && customer_tier!==tierAccess.profile_tier);
-            updateRow(index,{customer_tier,tier_override,});
-          }}>
-            <option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option>
-          </select>
-          <span className="mt-1 block text-[9px] leading-4 text-[#8db4ce]">
-            {row.customer_tier === "STANDARD" ? `Standard · ${tierRule.included_kg ?? 3} kg included` : row.customer_tier === "ROYAL" ? `Royal · ${tierRule.included_kg ?? 5} kg included` : `Commitment · ${tierRule.included_kg ?? 5} kg included · ${tierRule.commitment_min_ways ?? 1500} ways target`}
-            {tierRule.extra_per_kg != null ? ` · ${money(tierRule.extra_per_kg)} per started extra kg` : ""}
-            {row.tier_override ? " · Authorized parcel override" : tierAccess?.registered ? " · Merchant profile" : " · Operator selection"}
-          </span>
-        </Field>
-        <Field label="ဝန်ဆောင်မှုအမျိုးအစား">
-          <select className={`${inputClass} !bg-white !text-black`} value={row.service_type} onChange={(e)=>updateRow(index,{service_type:e.target.value})}>
-            <option value="STANDARD">STANDARD</option>
-            <option value="EXPRESS">EXPRESS</option>
-            <option value="SAME_DAY">SAME DAY</option>
-            <option value="NEXT_DAY">NEXT DAY</option>
-            <option value="ECONOMY">ECONOMY</option>
-          </select>
-        </Field>
-        <Field label="ငွေကောက်ခံပုံ">
-          <select className={`${inputClass} !bg-white !text-black`} value={row.amount_entry_type} onChange={(e)=> {
-            const next=e.target.value as AmountType;
-            const patch:any={amount_entry_type:next};
-            if(isExact(next)){patch.item_price="";patch.delivery_charges="";}
-            else if(next==="DELIVERY_CHARGE_ONLY"){patch.item_price="";patch.merchant_stated_total_amount="";}
-            else patch.merchant_stated_total_amount="";
-            const nextRow={...row,...patch};
-            const nextRoute=routeForRow(nextRow,tariffOptions);
-            updateRow(index,{...patch,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
-          }}>
-            {AMOUNT_TYPES.map(v=><option key={v} value={v}>{COLLECTION_METHOD_MY[v]}</option>)}
-          </select>
-        </Field>
-      </div>
+          <details open={!photoReady} className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
+              Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
+            </summary>
+            <div className="border-t border-[#31506a] p-3">
+              {row.photoUnavailableAcknowledged ? (
+                <div className="rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
+                  <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
+                </div>
+              ) : row.photoTemporaryWaiver ? (
+                <div data-temporary-photo-waiver-v54="true" className="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-[11px] text-amber-100">
+                  <div className="font-black">Temporary photo-verification waiver active</div>
+                  <div className="mt-1"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
+                  <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
+                </div>
+              ) : row.proof_url ? (
+                <>
+                  <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
+                    <img src={displayProofUrl} alt="Proof" className="h-16 w-24 rounded-lg object-cover" />
+                    <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge</div></div>
+                  </button>
+                  {photoPreviewOpen ? (
+                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
+                      <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
+                          <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">−</button>
+                            <span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span>
+                            <button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button>
+                            <button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button>
+                            <button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button>
+                          </div>
+                        </div>
+                        <div className="min-h-0 flex-1 overflow-auto bg-[#020912] p-3 text-center"><img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} /></div>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : row.isAdditionalRegistration ? (
+                <div className="rounded-xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-[11px] text-cyan-100">
+                  <Plus size={14} className="mr-2 inline"/>Authorized merchant addition; pickup-level evidence applies.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]">
+                  <ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists."}
+                </div>
+              )}
 
-      {route.stationRequired?<div data-highway-station-selection-v19="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
-        <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway bus-station handoff / အဝေးပြေးဂိတ်ချ</div>
-        <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-          <Field label="Highway terminal name / အဝေးပြေးဂိတ်အမည်">
-            <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationCode:"OTHER",handoffStationName:event.target.value,calculation:{}})} placeholder="Type the terminal / gate name"/>
-          </Field>
-          <Field label="Delivery charges (MMK) / ပို့ဆောင်ခ">
-            <input className={inputClass} type="number" min="0" step="1" value={row.delivery_charges} onChange={(event)=>updateRow(index,{delivery_charges:event.target.value===""?"":Number(event.target.value),calculation:{}})} placeholder="Enter delivery charges"/>
-          </Field>
-        </div>
-        {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Enter a terminal name (at least 3 characters) and a non-negative whole-MMK delivery charge before Calculate/Save.</div>:null}
-      </div>:null}
+              {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver?<div data-photo-review="true" className="mt-3 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#f6b84b]">Photo Review</div>
+                  <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.photoReviewStatus === "APPROVED"?"border-emerald-500/40 bg-emerald-500/10 text-emerald-300":row.photoReviewStatus === "REUPLOAD_REQUIRED"?"border-rose-500/40 bg-rose-500/10 text-rose-300":"border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>{row.photoReviewStatus || "PENDING REVIEW"}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo</button>
+                  <select className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoRejectionReason} onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}>
+                    <option value="">Reject reason…</option>
+                    <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
+                    <option value="WRONG_PARCEL">Wrong parcel</option>
+                    <option value="UNCLEAR_OR_BLURRY">Unclear or blurry</option>
+                    <option value="UNRELATED_IMAGE">Unrelated image</option>
+                    <option value="PARCEL_NOT_VISIBLE">Parcel not visible</option>
+                    <option value="DUPLICATE_IMAGE">Duplicate image</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
+                </div>
+                <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
+                  <input className="w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoTemporaryWaiverReason||""} onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})} placeholder="Temporary waiver reason"/>
+                  <button type="button" disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10} onClick={()=>togglePhotoWaiver(index,true)} className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Temporarily Skip Photo Verification</button>
+                </div>
+              </div>:null}
+            </div>
+          </details>
 
-      <DataEntryLocationEditor
-        pickupId={row.pickup_id}
-        parcelSequence={row.parcel_sequence}
-        deliveryWayId={row.delivery_way_id}
-        address={row.delivery_address}
-        township={row.township}
-        ward={row.sourceWard}
-        postalCode={row.sourcePostalCode}
-        autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
-        deferInteractiveMap={row.importedFromOs}
-        deferAutomaticResolution={row.importedFromOs}
-        externalResolutionStatus={row.locationStatus}
-        enabled={route.mapRequired}
-        disabledReason={route.stationRequired
-          ?"Google Map is temporarily disabled for outside-core highway-terminal handoffs. Select the physical bus station instead."
-          :"Google Map is temporarily disabled for outside-core Royal Express routes. No Britium Wayplan coordinate is required."}
-        reloadToken={locationReloadToken}
-        onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
-        onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
-      />
+          <details open={route.mapRequired && row.locationStatus!=="SYNCED"} className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
+              Location & Address History · {locationReady?"READY":"ACTION REQUIRED"}
+            </summary>
+            <div className="space-y-3 border-t border-[#31506a] p-3">
+              <DeliveryAddressHistory wayId={row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}/>
+              <DataEntryLocationEditor
+                pickupId={row.pickup_id}
+                parcelSequence={row.parcel_sequence}
+                deliveryWayId={row.delivery_way_id}
+                address={row.delivery_address}
+                township={row.township}
+                ward={row.sourceWard}
+                postalCode={row.sourcePostalCode}
+                autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
+                deferInteractiveMap={row.importedFromOs}
+                deferAutomaticResolution={row.importedFromOs}
+                externalResolutionStatus={row.locationStatus}
+                enabled={route.mapRequired}
+                disabledReason={route.stationRequired
+                  ?"Google Map is disabled for outside-core highway-terminal handoffs."
+                  :"Google Map is disabled for outside-core Royal Express routes."}
+                reloadToken={locationReloadToken}
+                onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
+                onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
+              />
+            </div>
+          </details>
 
-      <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
-            const item_price=e.target.value===""?"":Number(e.target.value);
-            const nextRow={...row,item_price};
-            const nextRoute=routeForRow(nextRow,tariffOptions);
-            updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
-          }}/></Field>:null}
-          {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ"><input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          {isExact(type) ? <Field label="အတိအကျ / COD စုစုပေါင်းကောက်ခံငွေ"><input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/></Field>:null}
-          <Field label="CBM ထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
-          <Field label="အခြားထပ်ဆောင်းခ"><input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/></Field>
+          <details className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
+              Backend Settlement Details · {text(c.validation_status)||"NOT CALCULATED"}
+            </summary>
+            <div className="border-t border-[#31506a] p-3">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <MoneyBox label="Calculated COD" value={c.cod_amount} highlight />
+                <MoneyBox label="Declared Delivery" value={c.delivery_charges ?? row.delivery_charges} />
+                <MoneyBox label="Backend Surcharges" value={c.backend_calculated_delivery_surcharges} />
+                <MoneyBox label="Base Tariff" value={c.base_tariff} />
+                <MoneyBox label="Weight Surcharge" value={c.weight_surcharge} />
+                <MoneyBox label="Britium Entitlement" value={c.net_system_delivery_charge} highlight />
+                <MoneyBox label="Delivery Difference" value={c.delivery_difference} />
+                <MoneyBox label="Merchant Settlement" value={c.merchant_final_settlement_amount} highlight />
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2">
+                <div className={serverClass}>Settlement direction: <b>{text(c.settlement_direction)||"—"}</b></div>
+                <div className={serverClass}>Merchant adjustment: <b>{money(c.merchant_settlement_adjustment)}</b></div>
+                <div className={serverClass}>Validation: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
+              </div>
+            </div>
+          </details>
         </div>
-      </div>
-
-      <div className="mt-4 rounded-xl border border-[#3aa7de]/25 bg-[#071b2b] p-4">
-        <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">နောက်ခံစနစ် ငွေရှင်းတမ်း</div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <MoneyBox label="လက်ခံသူထံမှ ကောက်ခံငွေ / COD" value={c.cod_amount} highlight />
-          <MoneyBox label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ" value={c.delivery_charges ?? row.delivery_charges} />
-          <MoneyBox label="နောက်ခံစနစ် ထပ်ဆောင်းပို့ဆောင်ခ" value={c.backend_calculated_delivery_surcharges} />
-          <MoneyBox label="လက်ခံသူ၏ ပို့ဆောင်ခအစိတ်အပိုင်း" value={c.customer_payable_delivery_component ?? c.effective_declared_delivery_charge} highlight />
-          <MoneyBox label="အခြေခံပို့ဆောင်ခ" value={c.base_tariff} />
-          <MoneyBox label="အလေးချိန်ထပ်ဆောင်းခ" value={c.weight_surcharge} />
-          <MoneyBox label="Britium ရပိုင်ခွင့်" value={c.net_system_delivery_charge} highlight />
-          <MoneyBox label="ပို့ဆောင်ခကွာခြားချက်" value={c.delivery_difference} />
-          <MoneyBox label="ကုန်သည်နောက်ဆုံးရှင်းတမ်း" value={c.merchant_final_settlement_amount} highlight />
-        </div>
-        <div className="mt-3 rounded-lg border border-cyan-400/20 bg-cyan-400/5 px-3 py-2 text-[10px] leading-5 text-cyan-100">
-          {!isExact(type)&&row.item_price===""&&row.delivery_charges===""
-            ? "Prepaid to merchant: collect 0 from the recipient. The merchant pays Britium delivery charges and surcharges."
-            : isExact(type)
-            ? "Exact collection: customer COD is the entered exact total. Merchant settlement = exact total − Britium entitlement − merchant charges + merchant credits."
-            : "Receiver delivery = merchant-declared delivery + weight/CBM/other delivery surcharges. Merchant settlement = item value + (receiver delivery − Britium entitlement) − merchant charges + merchant credits. A negative difference is deducted from the merchant, never added to the receiver."}
-        </div>
-        <div className="mt-3 grid grid-cols-1 gap-3">
-          <div className={serverClass}>ငွေရှင်းတမ်းဦးတည်ချက်: <b>{text(c.settlement_direction)||"—"}</b></div>
-          <div className={serverClass}>ကုန်သည်ပြင်ဆင်ငွေ: <b>{money(c.merchant_settlement_adjustment)}</b></div>
-          <div className={serverClass}>စစ်ဆေးမှု: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
-        </div>
-      </div>
-
       </fieldset>
-      {row.message ? <div className="mt-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
+
+      {row.message ? <div className="mx-4 mb-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
+
+      <div className="sticky bottom-0 z-10 border-t border-[#31506a] bg-[#0b2236]/95 p-3 backdrop-blur">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_1fr_1.2fr]">
+          <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-amber-300/40 px-3 py-2.5 text-[10px] font-black text-amber-200 disabled:opacity-50">{row.skipped ? "RESUME" : "PENDING / SKIP"}</button>
+          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#3aa7de]/50 bg-[#12314a] px-3 py-2.5 text-[11px] font-black text-[#8fd3ff] disabled:opacity-50">
+            {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14}/>} CALCULATE
+          </button>
+          <button type="button" onClick={() => save(index)} disabled={saveBlocked} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#21c7e8] px-3 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">
+            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} {row.saved?"REGISTERED":"SAVE"}
+          </button>
+        </div>
+        {!photoReady || !locationReady ? <div className="mt-2 text-[9px] text-amber-200">
+          {!photoReady?"Photo verification is still required. ":""}{!locationReady?"Location synchronization is still required.":""}
+        </div>:null}
+      </div>
     </section>
   );
 });
-
 function BritiumQuickTools() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusText, setStatusText] = useState('');
