@@ -40,7 +40,7 @@ export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
 export const DATA_ENTRY_FULL_REGISTRATION_LAYOUT_BUILD = "DATA_ENTRY_FULL_REGISTRATION_LAYOUT_V85_20260920";
-export const DATA_ENTRY_OPERATOR_WORKFLOW_BUILD = "DATA_ENTRY_OPERATOR_WORKFLOW_V86_20260920";
+export const DATA_ENTRY_OPERATOR_WORKFLOW_BUILD = "DATA_ENTRY_OPERATOR_WORKFLOW_V86_20260920";\nexport const DATA_ENTRY_PHOTO_INLINE_ENTRY_BUILD = "DATA_ENTRY_PHOTO_INLINE_ENTRY_V88_20260920";
 export const DATA_ENTRY_PERFORMANCE_V40 = "DATA_ENTRY_PERFORMANCE_V40";
 export const DATA_ENTRY_INPUT_LATENCY_V42 = "DATA_ENTRY_INPUT_LATENCY_V42";
 export const DATA_ENTRY_INTERACTIVE_LATENCY_V49 = "DATA_ENTRY_INTERACTIVE_LATENCY_V49";
@@ -678,6 +678,122 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       <fieldset disabled={busy || row.skipped || row.checking} className="min-w-0">
         <div className="space-y-4 p-4">
+          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
+            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
+              Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
+            </summary>
+            <div className="border-t border-[#31506a] p-3">
+              {row.photoUnavailableAcknowledged ? (
+                <div className="rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
+                  <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
+                </div>
+              ) : row.photoTemporaryWaiver ? (
+                <div data-temporary-photo-waiver-v54="true" className="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-[11px] text-amber-100">
+                  <div className="font-black">Temporary photo-verification waiver active</div>
+                  <div className="mt-1"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
+                  <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
+                </div>
+              ) : row.proof_url ? (
+                <>
+                  <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
+                    <img src={displayProofUrl} alt="Proof" className="h-16 w-24 rounded-lg object-cover" />
+                    <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge</div></div>
+                  </button>
+                  {photoPreviewOpen ? (
+                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
+                      <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
+                          <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">−</button>
+                            <span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span>
+                            <button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button>
+                            <button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button>
+                            <button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button>
+                          </div>
+                        </div>
+                        <div data-photo-inline-entry-v88="true" className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
+                          <div className="min-h-0 overflow-auto bg-[#020912] p-3 text-center">
+                            <img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} />
+                          </div>
+                          <div className="min-h-0 overflow-y-auto border-l border-[#1a3a5c] bg-[#0b2236] p-4 text-left">
+                            <div className="mb-3">
+                              <div className="text-[11px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Enter Data While Checking Photo</div>
+                              <div className="mt-1 text-[10px] text-[#8db4ce]">Read the enlarged proof and enter the parcel information without closing this screen.</div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                              <Field label="ဖုန်းနံပါတ် / Phone Number">
+                                <BufferedDataEntryInput className={inputClass} value={row.recipient_phone} placeholder="Enter recipient phone number" onCommit={(value)=>{updateRow(index,{recipient_phone:value,historyLookupStatus:"CHECKING",historyMatchCount:0,historyMatchWayId:""});void lookupPhoneHistory(index,value);}}/>
+                              </Field>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button type="button" disabled={busy||text(row.recipient_phone).replace(/\D/g,"").length<6||row.historyLookupStatus==="CHECKING"} onClick={()=>void lookupPhoneHistory(index,row.recipient_phone)} className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-40">{row.historyLookupStatus==="CHECKING"?"CHECKING HISTORY…":"CHECK MOBILE HISTORY"}</button>
+                                <span className="text-[9px] font-bold text-[#8db4ce]">{row.historyLookupStatus==="MATCHED"?`MATCHED · ${row.historyMatchCount||1}`:row.historyLookupStatus==="NO_MATCH"?"NO HISTORY MATCH":row.historyLookupStatus==="ERROR"?"HISTORY ERROR":"AUTO CHECK READY"}</span>
+                              </div>
+                              <Field label="လက်ခံသူအမည် / Recipient Name">
+                                <BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value)=>updateRow(index,{recipient_name:value})}/>
+                              </Field>
+                              <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions}/>
+                              <Field label="လက်ခံသူလိပ်စာ / Full Address">
+                                <BufferedDataEntryInput multiline rows={3} className={inputClass} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
+                              </Field>
+                              <div className="grid grid-cols-2 gap-3">
+                                <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
+                                {!isExact(type)&&type!=="DELIVERY_CHARGE_ONLY"?<Field label="Item Price"><BufferedDataEntryInput type="number" className={inputClass} value={row.item_price} onCommit={(value)=>updateRow(index,{item_price:value===""?"":Number(value)})}/></Field>:<div/>}
+                              </div>
+                              {!isExact(type)?<Field label="Deli Fee (OS)"><BufferedDataEntryInput type="number" className={inputClass} value={row.delivery_charges} onCommit={(value)=>updateRow(index,{delivery_charges:value===""?"":Number(value)})}/></Field>:null}
+                              {isExact(type)?<Field label="Final COD to Collect"><BufferedDataEntryInput type="number" className={inputClass} value={row.merchant_stated_total_amount} onCommit={(value)=>updateRow(index,{merchant_stated_total_amount:value===""?"":Number(value)})}/></Field>:null}
+                              <Field label="Remarks"><BufferedDataEntryInput multiline rows={2} className={inputClass} value={row.remarks} onCommit={(value)=>updateRow(index,{remarks:value})}/></Field>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                <button type="button" onClick={()=>validateInput(index)} disabled={busy||row.checking||row.calculating} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">CHECK INPUT</button>
+                                <button type="button" onClick={()=>void saveDraft(index)} disabled={busy||row.checking||row.calculating||row.saved} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">SAVE DRAFT</button>
+                                <button type="button" onClick={()=>setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#061524]">DONE / CLOSE</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
+              ) : row.isAdditionalRegistration ? (
+                <div className="rounded-xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-[11px] text-cyan-100">
+                  <Plus size={14} className="mr-2 inline"/>Authorized merchant addition; pickup-level evidence applies.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]">
+                  <ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists."}
+                </div>
+              )}
+
+              {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver?<div data-photo-review="true" className="mt-3 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-3">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#f6b84b]">Photo Review</div>
+                  <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.photoReviewStatus === "APPROVED"?"border-emerald-500/40 bg-emerald-500/10 text-emerald-300":row.photoReviewStatus === "REUPLOAD_REQUIRED"?"border-rose-500/40 bg-rose-500/10 text-rose-300":"border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>{row.photoReviewStatus || "PENDING REVIEW"}</span>
+                </div>
+                <div className="grid grid-cols-1 gap-2">
+                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo</button>
+                  <select className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoRejectionReason} onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}>
+                    <option value="">Reject reason…</option>
+                    <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
+                    <option value="WRONG_PARCEL">Wrong parcel</option>
+                    <option value="UNCLEAR_OR_BLURRY">Unclear or blurry</option>
+                    <option value="UNRELATED_IMAGE">Unrelated image</option>
+                    <option value="PARCEL_NOT_VISIBLE">Parcel not visible</option>
+                    <option value="DUPLICATE_IMAGE">Duplicate image</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                  {row.photoRejectionReason ? <BufferedDataEntryInput multiline rows={2} value={row.photoRejectionNote} onCommit={(value) => updateRow(index, { photoRejectionNote: value })} className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500" placeholder="Optional detail for the rider…" /> : null}
+                  <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
+                </div>
+                <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
+                  <input className="w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoTemporaryWaiverReason||""} onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})} placeholder="Temporary waiver reason"/>
+                  <button type="button" disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10} onClick={()=>togglePhotoWaiver(index,true)} className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Temporarily Skip Photo Verification</button>
+                </div>
+              </div>:null}
+            </div>
+          </details>
+
+
           <div className="rounded-xl border border-[#31506a] bg-[#071b2b] p-3">
             <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Receiver & Delivery Details</div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -857,83 +973,6 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2 text-[13px]"><span className="font-black text-[#f6b84b]">Merchant Settlement</span><b className="text-[#f6b84b]">{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
           </div>}
-
-          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
-            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
-              Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
-            </summary>
-            <div className="border-t border-[#31506a] p-3">
-              {row.photoUnavailableAcknowledged ? (
-                <div className="rounded-xl border border-amber-300/35 bg-amber-400/10 p-3 text-[11px] text-amber-100">
-                  <FileSpreadsheet size={14} className="mr-2 inline"/><b>OS softcopy evidence authorized.</b> Source: {row.sourceFileName||"—"}, row {row.sourceRowNumber||"—"}. Reason: {row.photoBypassReason||"—"}
-                </div>
-              ) : row.photoTemporaryWaiver ? (
-                <div data-temporary-photo-waiver-v54="true" className="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-[11px] text-amber-100">
-                  <div className="font-black">Temporary photo-verification waiver active</div>
-                  <div className="mt-1"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
-                  <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
-                </div>
-              ) : row.proof_url ? (
-                <>
-                  <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
-                    <img src={displayProofUrl} alt="Proof" className="h-16 w-24 rounded-lg object-cover" />
-                    <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge</div></div>
-                  </button>
-                  {photoPreviewOpen ? (
-                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
-                      <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
-                          <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
-                          <div className="flex items-center gap-2">
-                            <button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">−</button>
-                            <span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span>
-                            <button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button>
-                            <button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button>
-                            <button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button>
-                          </div>
-                        </div>
-                        <div className="min-h-0 flex-1 overflow-auto bg-[#020912] p-3 text-center"><img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} /></div>
-                      </div>
-                    </div>
-                  ) : null}
-                </>
-              ) : row.isAdditionalRegistration ? (
-                <div className="rounded-xl border border-cyan-300/35 bg-cyan-400/10 p-3 text-[11px] text-cyan-100">
-                  <Plus size={14} className="mr-2 inline"/>Authorized merchant addition; pickup-level evidence applies.
-                </div>
-              ) : (
-                <div className="rounded-xl border border-[#ff4f86]/40 bg-[#ff4f86]/10 p-3 text-[11px] text-[#ff9abd]">
-                  <ImageIcon size={14} className="mr-2 inline" />{row.proof_ref?"Stored proof exists but could not be securely displayed.":"No Rider / Driver parcel photo exists."}
-                </div>
-              )}
-
-              {!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver?<div data-photo-review="true" className="mt-3 rounded-xl border border-[#f6b84b]/30 bg-[#061524] p-3">
-                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[10px] font-black uppercase tracking-[0.14em] text-[#f6b84b]">Photo Review</div>
-                  <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.photoReviewStatus === "APPROVED"?"border-emerald-500/40 bg-emerald-500/10 text-emerald-300":row.photoReviewStatus === "REUPLOAD_REQUIRED"?"border-rose-500/40 bg-rose-500/10 text-rose-300":"border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>{row.photoReviewStatus || "PENDING REVIEW"}</span>
-                </div>
-                <div className="grid grid-cols-1 gap-2">
-                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo</button>
-                  <select className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoRejectionReason} onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}>
-                    <option value="">Reject reason…</option>
-                    <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
-                    <option value="WRONG_PARCEL">Wrong parcel</option>
-                    <option value="UNCLEAR_OR_BLURRY">Unclear or blurry</option>
-                    <option value="UNRELATED_IMAGE">Unrelated image</option>
-                    <option value="PARCEL_NOT_VISIBLE">Parcel not visible</option>
-                    <option value="DUPLICATE_IMAGE">Duplicate image</option>
-                    <option value="OTHER">Other</option>
-                  </select>
-                  {row.photoRejectionReason ? <BufferedDataEntryInput multiline rows={2} value={row.photoRejectionNote} onCommit={(value) => updateRow(index, { photoRejectionNote: value })} className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500" placeholder="Optional detail for the rider…" /> : null}
-                  <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
-                </div>
-                <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
-                  <input className="w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoTemporaryWaiverReason||""} onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})} placeholder="Temporary waiver reason"/>
-                  <button type="button" disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10} onClick={()=>togglePhotoWaiver(index,true)} className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Temporarily Skip Photo Verification</button>
-                </div>
-              </div>:null}
-            </div>
-          </details>
 
           <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
