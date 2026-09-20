@@ -1168,7 +1168,9 @@ export default function DataEntryFinancialV2Page() {
   const [additionalReason,setAdditionalReason]=useState("");
   const [addingRegistration,setAddingRegistration]=useState(false);
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
-  const PAGE_SIZE=10;
+  // Recycled editor model: render one editable parcel form at a time.
+  // All other parcels stay as lightweight state/table rows instead of mounting hundreds of text inputs.
+  const PAGE_SIZE=1;
   const [pageIndex,setPageIndex]=useState(0);
   const pageStart=Math.min(pageIndex,Math.max(0,Math.ceil(rows.length/PAGE_SIZE)-1))*PAGE_SIZE;
   const locationReviewInputRef=useRef<HTMLInputElement|null>(null);
@@ -2554,12 +2556,58 @@ export default function DataEntryFinancialV2Page() {
     <div className="space-y-4">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       <>
-        {rows.slice(pageStart,pageStart+PAGE_SIZE).map((row,offset)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart+offset} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
-        {rows.length>PAGE_SIZE?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
-          <div className="text-xs font-bold text-cyan-100">Showing {pageStart+1}–{Math.min(rows.length,pageStart+PAGE_SIZE)} of {rows.length} parcels. Calculate All and Save All include every non-skipped parcel.</div>
+        {rows.length ? <div data-recycled-data-entry-v80="true" className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-3">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Recycled parcel editor</div>
+              <div className="text-[10px] text-[#8db4ce]">Only one editable form is mounted. Select any saved/draft parcel below to reuse the same input boxes.</div>
+            </div>
+            <div className="rounded-lg border border-cyan-300/30 bg-[#061524] px-3 py-2 text-[10px] font-black text-cyan-100">
+              Editing {pageStart+1} of {rows.length}
+            </div>
+          </div>
+          <div className="max-h-64 overflow-auto rounded-xl border border-[#1a3a5c]">
+            <table className="w-full min-w-[900px] text-[10px]">
+              <thead className="sticky top-0 z-10 bg-[#12314a] text-left text-[#8fd3ff]">
+                <tr>
+                  <th className="px-3 py-2">#</th>
+                  <th className="px-3 py-2">Way ID</th>
+                  <th className="px-3 py-2">Recipient</th>
+                  <th className="px-3 py-2">Township</th>
+                  <th className="px-3 py-2">Provider</th>
+                  <th className="px-3 py-2">Amount</th>
+                  <th className="px-3 py-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row,index)=>{
+                  const selected=index===pageStart;
+                  return <tr
+                    key={row.pickup_id+":"+row.parcel_sequence}
+                    onClick={()=>setPageIndex(index)}
+                    className={`cursor-pointer border-t border-[#16344f] ${selected?"bg-cyan-400/10":"hover:bg-[#102b45]"}`}
+                  >
+                    <td className="px-3 py-2 font-black text-[#f6b84b]">{row.parcel_sequence}</td>
+                    <td className="px-3 py-2 font-semibold text-sky-200">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
+                    <td className="px-3 py-2">{row.recipient_name||"—"}</td>
+                    <td className="px-3 py-2">{row.township||"—"}</td>
+                    <td className="px-3 py-2">{row.service_provider_code||"—"}</td>
+                    <td className="px-3 py-2">{row.merchant_stated_total_amount!==""?money(row.merchant_stated_total_amount):row.item_price!==""?money(row.item_price):"—"}</td>
+                    <td className="px-3 py-2">{row.saved?"SAVED":row.skipped?"PENDING":row.calculating?"CALCULATING":"DRAFT"}</td>
+                  </tr>;
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>:null}
+
+        {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
+
+        {rows.length>1?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
+          <div className="text-xs font-bold text-cyan-100">Editing parcel {pageStart+1} of {rows.length}. The same input controls are recycled for every parcel. Calculate All and Save All still process every non-skipped parcel.</div>
           <div className="mt-3 flex justify-center gap-3">
-            <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart/PAGE_SIZE-1))} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">PREVIOUS</button>
-            <button type="button" disabled={pageStart+PAGE_SIZE>=rows.length} onClick={()=>setPageIndex(pageStart/PAGE_SIZE+1)} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
+            <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart-1))} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">PREVIOUS</button>
+            <button type="button" disabled={pageStart+1>=rows.length} onClick={()=>setPageIndex(pageStart+1)} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
           </div>
         </div>:null}
       </>}
@@ -2668,7 +2716,7 @@ export default function DataEntryFinancialV2Page() {
           {rows.some(row=>row.skipped)?<div className="mt-4 rounded-xl border border-amber-300/40 p-4 text-amber-100">
             <b>{rows.filter(row=>row.skipped).length} pending drafts preserved</b>
             <p className="mt-1 text-xs">Other ready parcels can be saved. Open a parcel, select Resume, and resolve its missing details.</p>
-            <div className="mt-2 flex flex-wrap gap-2">{rows.map((row,index)=>({row,index})).filter(({row})=>row.skipped).slice(0,20).map(({row,index})=><button key={row.parcel_sequence} type="button" className="rounded-lg border border-amber-300/40 px-3 py-2 text-xs" onClick={()=>{setPageIndex(Math.floor(index/PAGE_SIZE));window.setTimeout(()=>document.getElementById(`data-entry-parcel-${row.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);}}>Open parcel {row.parcel_sequence}</button>)}</div>
+            <div className="mt-2 flex flex-wrap gap-2">{rows.map((row,index)=>({row,index})).filter(({row})=>row.skipped).slice(0,20).map(({row,index})=><button key={row.parcel_sequence} type="button" className="rounded-lg border border-amber-300/40 px-3 py-2 text-xs" onClick={()=>{setPageIndex(index);window.setTimeout(()=>document.getElementById(`data-entry-parcel-${row.parcel_sequence}`)?.scrollIntoView({behavior:"smooth",block:"start"}),0);}}>Open parcel {row.parcel_sequence}</button>)}</div>
           </div>:null}
           {selectedPickup?<div data-extra-registration-v14="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/5 p-4">
             <div className="flex flex-wrap items-end gap-3">
