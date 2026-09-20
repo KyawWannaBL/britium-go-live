@@ -163,8 +163,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       else if (!free(used, rider)) rider = choose(riders, used, requestedHelperPerson);
       reserve(used, rider);
 
+      // Helper is optional and must never be auto-filled. Preserve it only when the
+      // operator explicitly selected an available Helper; otherwise leave it blank.
       let helper = requestedHelper;
-      if (!free(used, helper)) helper = choose(helpers, used);
+      if (!plan.helper_code || !free(used, helper)) helper = undefined;
       reserve(used, helper);
 
       return {
@@ -401,9 +403,9 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
-      // Driver is mandatory, but Rider is intentionally not auto-assigned.
-      // Start every generated route as Driver-only so the operator may explicitly add a Rider.
-      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      // Driver is mandatory. Rider and Helper are intentionally not auto-assigned.
+      // Start every generated route as Driver-only; the operator may explicitly add either optional role.
+      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], [], convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
       if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
         throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
@@ -426,11 +428,34 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       return;
     }
     setBusy(true);
-    setMessage(`Creating ${plans.length} reviewed Wayplan${plans.length === 1 ? "" : "s"} for ${plans.reduce((sum, plan) => sum + plan.rows.length, 0)} parcels…`);
+
+    let plansForSave = plans;
+    const removedBusyHelpers: string[] = [];
+    try {
+      // Refresh physical crew availability immediately before creation. Helper is optional:
+      // if it became busy after preview, remove it rather than failing the whole Wayplan.
+      const fresh = await supabase.rpc("be_multi_van_context");
+      if (!fresh.error && fresh.data) {
+        const physicallyBusyCodes = new Set<string>();
+        for (const item of fresh.data.busy || []) {
+          [item?.driver_code,item?.rider_code,item?.helper_code].filter(Boolean).forEach((code:any)=>physicallyBusyCodes.add(String(code)));
+        }
+        plansForSave = plans.map((plan) => {
+          if (plan.crew_mode === "EMERGENCY_MANUAL" || !plan.helper_code || !physicallyBusyCodes.has(String(plan.helper_code))) return plan;
+          removedBusyHelpers.push(crewName(helpers, plan.helper_code) || String(plan.helper_code));
+          return {...plan,helper_code:""};
+        });
+        if (removedBusyHelpers.length) setPlans(plansForSave);
+      }
+    } catch {
+      // The backend performs the authoritative crew guard; continue if this optional refresh fails.
+    }
+
+    setMessage(`Creating ${plansForSave.length} reviewed Wayplan${plansForSave.length === 1 ? "" : "s"} for ${plansForSave.reduce((sum, plan) => sum + plan.rows.length, 0)} parcels…${removedBusyHelpers.length ? " Busy optional Helper assignment removed automatically." : ""}`);
     const payload = {
       region_code: region,
       planning_mode: isYangonMaster ? "YANGON_MASTER_MULTI_TRIP" : "STANDARD_50_75",
-      plans: plans.map((p) => ({
+      plans: plansForSave.map((p) => ({
         vehicle_code: p.vehicle_code,
         wave_no: p.wave_no,
         trip_no: p.trip_no,
@@ -474,7 +499,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
       const createdWayplans = Array.isArray(data.wayplans) ? data.wayplans : [];
       const createdIds = createdWayplans.map((wayplan: any) => String(wayplan?.wayplan_id || "")).filter(Boolean);
-      setMessage(`${createdWayplans.length} road-reviewed Wayplan${createdWayplans.length === 1 ? "" : "s"} created for ${data.parcel_count || 0} parcels across ${data.wave_count || 1} fleet wave(s). Next: review the CREATED Wayplan/manifest, complete Supervisor approval + mandatory Dispatch scan, then publish Dispatch.`);
+      setMessage(`${createdWayplans.length} road-reviewed Wayplan${createdWayplans.length === 1 ? "" : "s"} created for ${data.parcel_count || 0} parcels across ${data.wave_count || 1} fleet wave(s).${removedBusyHelpers.length ? ` Optional busy Helper removed: ${removedBusyHelpers.join(", ")}.` : ""} Next: review the CREATED Wayplan/manifest, complete Supervisor approval + mandatory Dispatch scan, then publish Dispatch.`);
       setPlans([]);
       request.current = null;
       await onSaved({ ...data, created_wayplan_ids: createdIds });
