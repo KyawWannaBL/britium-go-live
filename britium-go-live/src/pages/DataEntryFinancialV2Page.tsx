@@ -39,6 +39,9 @@ export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WA
 export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
+export const DATA_ENTRY_INPUT_LATENCY_V42 = "DATA_ENTRY_INPUT_LATENCY_V42";
+export const DATA_ENTRY_INTERACTIVE_LATENCY_V49 = "DATA_ENTRY_INTERACTIVE_LATENCY_V49";
+const TOWNSHIP_SEARCH_DEBOUNCE_MS = 180;
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -500,7 +503,12 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   useEffect(()=>{if(!open)setProviderFilter(row.service_provider_code||"ALL");},[row.service_provider_code,open]);
   const query = text(draftTownship).trim().toLowerCase();
-  const masterMatches = useMemo(() => open ? searchMasterLocations(query) : [], [open, query]);
+  const [debouncedTownshipQuery,setDebouncedTownshipQuery]=useState(query);
+  useEffect(()=>{
+    const timer=window.setTimeout(()=>setDebouncedTownshipQuery(query),TOWNSHIP_SEARCH_DEBOUNCE_MS);
+    return ()=>window.clearTimeout(timer);
+  },[query]);
+  const masterMatches = useMemo(() => open ? searchMasterLocations(debouncedTownshipQuery) : [], [open, debouncedTownshipQuery]);
   const chooseMaster = (location: MasterLocationOption) => {
     const township = location.townshipMm || location.township;
     const nextRoute = resolveDataEntryServiceProvider(township, row.delivery_address, tariffOptions, { itemPrice: row.item_price });
@@ -514,8 +522,8 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   };
   const matches = useMemo(()=>(tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
-    .filter((option) => !query || option.destination_name.toLowerCase().includes(query) || option.provider_name.toLowerCase().includes(query))
-    .slice(0, 18),[providerFilter,query,tariffOptions]);
+    .filter((option) => !debouncedTownshipQuery || option.destination_name.toLowerCase().includes(debouncedTownshipQuery) || option.provider_name.toLowerCase().includes(debouncedTownshipQuery))
+    .slice(0, 18),[providerFilter,debouncedTownshipQuery,tariffOptions]);
   const selected = useMemo(()=>(tariffOptions as TariffOption[]).find((option) =>
     option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)
   ),[row.service_provider_code,row.township,tariffOptions]);
@@ -744,8 +752,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Charges & COD Inputs</div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး / Item Price">
-                <input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
-                  const item_price=e.target.value===""?"":Number(e.target.value);
+                <BufferedDataEntryInput type="number" className={inputClass} value={row.item_price} onCommit={(value)=>{
+                  const item_price=value===""?"":Number(value);
                   const nextRow={...row,item_price};
                   const nextRoute=routeForRow(nextRow,tariffOptions);
                   updateRow(index,{item_price,...routingPatch(nextRoute,nextRow),message:providerRoutingMessage(nextRoute)});
@@ -753,19 +761,19 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               </Field>:null}
 
               {!isExact(type) ? <Field label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ / Deli Fee (OS)">
-                <input type="number" className={inputClass} value={row.delivery_charges} onChange={(e)=>updateRow(index,{delivery_charges:e.target.value===""?"":Number(e.target.value)})}/>
+                <BufferedDataEntryInput type="number" className={inputClass} value={row.delivery_charges} onCommit={(value)=>updateRow(index,{delivery_charges:value===""?"":Number(value)})}/>
               </Field>:null}
 
               {isExact(type) ? <div className="sm:col-span-2"><Field label="အတိအကျ / Final COD to Collect">
-                <input type="number" className={inputClass} value={row.merchant_stated_total_amount} onChange={(e)=>updateRow(index,{merchant_stated_total_amount:e.target.value===""?"":Number(e.target.value)})}/>
+                <BufferedDataEntryInput type="number" className={inputClass} value={row.merchant_stated_total_amount} onCommit={(value)=>updateRow(index,{merchant_stated_total_amount:value===""?"":Number(value)})}/>
               </Field></div>:null}
 
               <Field label="CBM Surcharge">
-                <input type="number" className={inputClass} value={row.cbm_surcharge} onChange={(e)=>updateRow(index,{cbm_surcharge:e.target.value===""?"":Number(e.target.value)})}/>
+                <BufferedDataEntryInput type="number" className={inputClass} value={row.cbm_surcharge} onCommit={(value)=>updateRow(index,{cbm_surcharge:value===""?"":Number(value)})}/>
               </Field>
 
               <Field label="Other Surcharge">
-                <input type="number" className={inputClass} value={row.other_surcharge} onChange={(e)=>updateRow(index,{other_surcharge:e.target.value===""?"":Number(e.target.value)})}/>
+                <BufferedDataEntryInput type="number" className={inputClass} value={row.other_surcharge} onCommit={(value)=>updateRow(index,{other_surcharge:value===""?"":Number(value)})}/>
               </Field>
 
               <div className="sm:col-span-2">
@@ -780,10 +788,10 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-amber-200">Highway Bus-Station Handoff</div>
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="Terminal / Gate Name">
-                <input className={inputClass} value={row.handoffStationName} onChange={(event)=>updateRow(index,{handoffStationCode:"OTHER",handoffStationName:event.target.value,calculation:{}})} placeholder="Type terminal / gate name"/>
+                <BufferedDataEntryInput className={inputClass} value={row.handoffStationName} onCommit={(value)=>updateRow(index,{handoffStationCode:"OTHER",handoffStationName:value,calculation:{}})} placeholder="Type terminal / gate name"/>
               </Field>
               <Field label="Delivery Charge (MMK)">
-                <input className={inputClass} type="number" min="0" step="1" value={row.delivery_charges} onChange={(event)=>updateRow(index,{delivery_charges:event.target.value===""?"":Number(event.target.value),calculation:{}})} placeholder="Enter delivery charge"/>
+                <BufferedDataEntryInput className={inputClass} type="number" min="0" step="1" value={row.delivery_charges} onCommit={(value)=>updateRow(index,{delivery_charges:value===""?"":Number(value),calculation:{}})} placeholder="Enter delivery charge"/>
               </Field>
             </div>
             {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Terminal name and delivery charge are required before Calculate/Save.</div>:null}
@@ -865,6 +873,14 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                     <option value="DUPLICATE_IMAGE">Duplicate image</option>
                     <option value="OTHER">Other</option>
                   </select>
+                  {row.photoRejectionReason ? <BufferedDataEntryInput
+                    multiline
+                    rows={2}
+                    className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white placeholder:text-slate-500"
+                    placeholder="Optional detail for the rider…"
+                    value={row.photoRejectionNote}
+                    onCommit={(value) => updateRow(index, { photoRejectionNote: value })}
+                  /> : null}
                   <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
                 </div>
                 <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
