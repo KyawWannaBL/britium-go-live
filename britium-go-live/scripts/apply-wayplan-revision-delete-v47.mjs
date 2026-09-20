@@ -7,6 +7,12 @@ const root = path.resolve(here, "..");
 const pagePath = path.join(root, "src", "pages", "WayplanCommandCenterPage.tsx");
 let source = fs.readFileSync(pagePath, "utf8");
 
+if (source.includes('data-wayplan-cancel-created-v87="true"')) {
+  console.log("Wayplan V87 cancel/edit workflow already supersedes the legacy V47 UI patch");
+  await import("./apply-wayplan-multiselect-save-v48.mjs");
+  process.exit(0);
+}
+
 const preserveSelectionBefore = `      setRevisionSource({ ...activeWayplan, ...data });\n      setRevisionRows(stops);\n      setRevisionRemoveSelected({});\n      setSelected({});\n      setMessage(`;
 const preserveSelectionAfter = `      setRevisionSource({ ...activeWayplan, ...data });\n      setRevisionRows(stops);\n      setRevisionRemoveSelected({});\n      setMessage(`;
 if (!source.includes(preserveSelectionBefore) && !source.includes(preserveSelectionAfter)) {
