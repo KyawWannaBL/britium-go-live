@@ -515,7 +515,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     <h2 style={{ margin: 0 }}>{isYangonMaster ? "Yangon Van Assignment Master · road optimized" : "Strategic road-based delivery van planning"}</h2>
     {isYangonMaster ? <>
       <p style={{ margin: 0 }}>Yangon Head Office planning balances compatible Yangon volume into the <strong>50–75 parcels per route</strong> operating band, then assigns those routes across the active delivery fleet in sequential waves. A vehicle can run another trip only in a later wave.</p>
-      <p style={{ margin: 0 }}>The Hlaing River hard fence remains isolated, Downtown is never merged with East Suburbs, and Dala/Seikkyi Kanaungto remain outside Britium van planning.</p>
+      <p style={{ margin: 0 }}>For an operator-selected batch of up to 75 Britium ways, the system keeps all selected ways on one delivery van. For larger batches above 75, Yangon zone/hard-fence rules guide multi-van balancing. Dala/Seikkyi Kanaungto remain outside Britium van planning.</p>
     </> : <>
       <p style={{ margin: 0 }}>Plan {scopedRows.length} ready parcels using the standard <strong>50–{PRACTICAL_MAX_PARCELS_PER_VAN} parcels per delivery van</strong> operating band. Pickup/highway fleets remain reserved by Fleet Master role.</p>
     </>}
