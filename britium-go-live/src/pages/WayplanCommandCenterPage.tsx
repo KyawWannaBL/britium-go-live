@@ -335,6 +335,13 @@ export default function WayplanCommandCenterPage() {
     }
   }
 
+
+  // Compatibility alias retained for the V47 build-time revision/delete patch.
+  // Both actions use the guarded V55 pre-dispatch cancellation/purge RPC.
+  async function deleteCreatedWayplan() {
+    return cancelCreatedWayplan();
+  }
+
   async function beginRevision() {
     if (!activeWayplan?.wayplan_id || activeWayplan.wayplan_status !== "CREATED") {
       setError("Only a CREATED Wayplan can be edited before dispatch.");
