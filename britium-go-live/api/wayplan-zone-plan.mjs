@@ -208,16 +208,30 @@ function rebalanceDowntownEastFence(routes) {
 }
 export function balanceYangonRouteRows(rows) {
   const eligible = rows.filter((row) => ZONE_BY_TOWNSHIP.has(row.township));
+  if (!eligible.length) return [];
+
   const west = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id === "Z6");
   const mainland = eligible.filter((row) => ZONE_BY_TOWNSHIP.get(row.township)?.id !== "Z6");
+
+  // A low-volume van batch must never multiply into multiple under-loaded vans.
+  // If fewer than 50 compatible ways are selected, keep them on one route.
+  if (eligible.length < FLOOR) {
+    const crossesRiverFence = west.length > 0 && mainland.length > 0;
+    if (crossesRiverFence || violatesDowntownEastFence(eligible)) {
+      throw new Error("Fewer than 50 van parcels cannot be split into multiple under-loaded vans. Select compatible townships for one van, wait for more volume, or assign a Rider (Rider routes have no minimum parcel count).");
+    }
+    return [{ rows: [...eligible].sort((a, b) => routeSortKey(a).localeCompare(routeSortKey(b))), group_code: west.length ? "TRANS_RIVER_WEST" : "MAINLAND", group_trip: 1 }];
+  }
+
   const mainlandRoutes = rebalanceDowntownEastFence(splitBalancedPool(mainland, "MAINLAND"));
   const westRoutes = splitBalancedPool(west, "TRANS_RIVER_WEST");
   const routes = [...mainlandRoutes, ...westRoutes];
   if (routes.some((route) => route.rows.length > ROUTE_CEILING)) throw new Error("A balanced Yangon route exceeds 75 parcels.");
   if (routes.some((route) => violatesDowntownEastFence(route.rows))) throw new Error("Downtown and East Suburbs cannot share a Yangon route.");
-  // Hard fences are operational constraints, not reasons to merge incompatible geography.
-  // Yangon may therefore produce more than one unavoidable sub-50 route. Creation still
-  // requires one explicit operator approval + reason for the batch in MultiVanPlanner/V77.
+  const shortRoutes = routes.filter((route) => route.rows.length < FLOOR);
+  if (shortRoutes.length > 1) {
+    throw new Error("Automatic van planning would create more than one route below 50 parcels. Rebalance the selection, wait for additional volume, or use Rider assignment for the low-volume route.");
+  }
   return routes;
 }
 function recommendedVehicle(rows) {
@@ -314,7 +328,7 @@ export default {
         sequencing_policy: "BALANCE_COMPATIBLE_YANGON_VOLUME_TO_50_75_PRESERVE_HARD_FENCES_THEN_ROAD_OPTIMIZE",
         road_geometry_policy: "DO_NOT_CROSS_HARD_FENCES_FOR_CAPACITY_BALANCING",
         motorcycle_policy: "PROHIBITED_FROM_AUTOMATIC_YANGON_FLEET_PLANNING",
-        low_volume_policy: "ALLOW_UNAVOIDABLE_HARD_FENCE_BELOW_50_ROUTES_WITH_EXPLICIT_BATCH_APPROVAL",
+        low_volume_policy: "AT_MOST_ONE_DRIVER_VAN_ROUTE_BELOW_50_WITH_EXPLICIT_APPROVAL; RIDER_ROUTES_EXEMPT",
         high_volume_policy: "BALANCE_COMPATIBLE_CORRIDORS_TO_50_75_AND_USE_SEQUENTIAL_FLEET_WAVES",
         manual_editable: true,
         generated_at: new Date().toISOString(),
