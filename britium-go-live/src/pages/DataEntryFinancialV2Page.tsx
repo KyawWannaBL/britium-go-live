@@ -39,9 +39,21 @@ export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WA
 export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
+export const DATA_ENTRY_PERFORMANCE_V40 = "DATA_ENTRY_PERFORMANCE_V40";
 export const DATA_ENTRY_INPUT_LATENCY_V42 = "DATA_ENTRY_INPUT_LATENCY_V42";
 export const DATA_ENTRY_INTERACTIVE_LATENCY_V49 = "DATA_ENTRY_INTERACTIVE_LATENCY_V49";
+const LOCATION_VALIDATION_BATCH_SIZE = 4;
 const TOWNSHIP_SEARCH_DEBOUNCE_MS = 180;
+
+function yieldToBrowser(): Promise<void> {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(() => resolve());
+    } else {
+      setTimeout(resolve, 0);
+    }
+  });
+}
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -1294,6 +1306,11 @@ export default function DataEntryFinancialV2Page() {
       !row.skipped&&row.locationStatus!=="SYNCED"&&routeForRow(row,tariffOptions).mapRequired
     );
   },[bulkImportDrafts,rows,tariffOptions]);
+  const pendingClarificationRows=useMemo(()=>rows.filter((row)=>{
+    if(row.saved||row.skipped) return false;
+    if(!text(row.recipient_name)||!text(row.recipient_phone)||!text(row.delivery_address)) return true;
+    return !routeForRow(row,tariffOptions).providerCode;
+  }),[rows,tariffOptions]);
   const registrationGridRows=useMemo(()=>{
     const query=gridSearch.trim().toLowerCase();
     return rows
@@ -1605,6 +1622,38 @@ export default function DataEntryFinancialV2Page() {
     }catch(error:any){
       setRows(current=>current.map(r=>r.pickup_id===row.pickup_id&&r.parcel_sequence===row.parcel_sequence
         ?{...r,checking:false,message:error?.message||"Could not save Skip state. This row has not been skipped."}:r));
+    }
+  }
+
+  async function skipPendingClarificationAll(){
+    if(!pendingClarificationRows.length||bulkSaving||bulkCalculating||locationReviewBusy||waybillBusy) return;
+    setBulkSaving(true);
+    setBulkMessage("");
+    try{
+      const {data,error}=await supabase.auth.getUser();
+      if(error||!data.user) throw error||new Error("Sign in to preserve pending clarifications.");
+      const now=new Date().toISOString();
+      const eligibleKeys=new Set(pendingClarificationRows.map((row)=>`${row.pickup_id}:${row.parcel_sequence}`));
+      const drafts=pendingClarificationRows.map((row)=>({
+        owner_id:data.user!.id,
+        pickup_id:row.pickup_id,
+        parcel_sequence:row.parcel_sequence,
+        skipped:true,
+        updated_at:now,
+        snapshot:{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when customer or merchant details are available."},
+      }));
+      const result=await (supabase as any).from("be_data_entry_pending_drafts").upsert(drafts,{onConflict:"owner_id,pickup_id,parcel_sequence"});
+      if(result.error) throw result.error;
+      const applySkipped=(row:ParcelRow)=>eligibleKeys.has(`${row.pickup_id}:${row.parcel_sequence}`)
+        ?{...row,skipped:true,saved:false,checking:false,calculating:false,calculation:{},message:"Pending clarification saved in bulk. Resume when details are available."}
+        :row;
+      setRows((current)=>current.map(applySkipped));
+      setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applySkipped)}])));
+      setBulkMessage("Skipped and preserved "+drafts.length+" pending clarification row(s). Calculate All and Save All will continue with the remaining ready parcels.");
+    }catch(error:any){
+      setBulkMessage(error?.message||"Unable to preserve pending clarification rows.");
+    }finally{
+      setBulkSaving(false);
     }
   }
 
@@ -2080,46 +2129,51 @@ export default function DataEntryFinancialV2Page() {
     patch:Partial<ParcelRow>,
     expectedStatuses?:DataEntryLocationResolution[],
   ){
-    const applyPatch=(row:ParcelRow)=>{
-      if(row.parcel_sequence!==parcelSequence) return row;
-      if(expectedStatuses&&!expectedStatuses.includes(row.locationStatus)) return row;
-      return {...row,...patch};
-    };
-    setBulkImportDrafts((current)=>{
-      const draft=current[pickupId];
-      if(!draft) return current;
-      return {...current,[pickupId]:{...draft,rows:draft.rows.map(applyPatch)}};
-    });
-    setRows((current)=>current.map((row)=>row.pickup_id===pickupId?applyPatch(row):row));
+    patchImportedLocationsBatch([{pickupId,parcelSequence,patch,expectedStatuses}]);
   }
 
-  async function validateImportedLocation(row:ParcelRow){
-    patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},["PENDING"]);
+  function patchImportedLocationsBatch(
+    updates:Array<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>,
+  ){
+    if(!updates.length) return;
+    const byKey=new Map(updates.map((update)=>[update.pickupId+":"+update.parcelSequence,update]));
+    const applyPatch=(row:ParcelRow)=>{
+      const update=byKey.get(row.pickup_id+":"+row.parcel_sequence);
+      if(!update) return row;
+      if(update.expectedStatuses&&!update.expectedStatuses.includes(row.locationStatus)) return row;
+      return {...row,...update.patch};
+    };
+    setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyPatch)}])));
+    setRows((current)=>current.map(applyPatch));
+  }
+
+  async function validateImportedLocationResult(row:ParcelRow):Promise<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>{
+    const base={pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,expectedStatuses:["PENDING","SEARCHING"] as DataEntryLocationResolution[]};
     try{
       const found=await Promise.race([
         resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township,ward:row.sourceWard,postalCode:row.sourcePostalCode,merchantId:row.pickup_id,client:supabase}),
         new Promise<never>((_,reject)=>window.setTimeout(()=>reject(new Error("Location validation timed out after 20 seconds. Retry this row; only genuinely ambiguous addresses should use Review Excel.")),20000)),
       ]);
       if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
-        return;
+        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found||null,message:"No reliable Google location was found. This row was added to the consolidated review workbook."}};
       }
       const reviewRequired=found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE";
       if(reviewRequired){
-        patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
-        return;
+        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:found,message:"The Google result is approximate or needs township/postal confirmation. This row was added to the consolidated review workbook."}};
       }
       const accepted={...found,originalAddress:row.delivery_address};
-      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)) return;
+      if(manualLocationCorrectionsRef.current.has(row.delivery_way_id)){
+        return {...base,patch:{locationStatus:"REVIEW_REQUIRED",locationCandidate:accepted,message:"A manual location correction is already pending for this parcel."}};
+      }
       await saveDeliveryLocation(supabase,accepted);
       const manualOverride=manualLocationCorrectionsRef.current.get(row.delivery_way_id);
       if(manualOverride){
         await saveDeliveryLocation(supabase,manualOverride);
-        return;
+        return {...base,patch:{locationStatus:"SYNCED",locationCandidate:manualOverride,message:"Manual location correction synchronized with Wayplan."}};
       }
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."},["PENDING","SEARCHING"]);
+      return {...base,patch:{locationStatus:"SYNCED",locationCandidate:accepted,message:"Google location validated automatically and synchronized with Wayplan."}};
     }catch(error:any){
-      patchImportedLocation(row.pickup_id,row.parcel_sequence,{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."},["PENDING","SEARCHING"]);
+      return {...base,patch:{locationStatus:"REVIEW_REQUIRED",message:error?.message||"Location validation failed. This row was added to the consolidated review workbook."}};
     }
   }
 
@@ -2127,17 +2181,19 @@ export default function DataEntryFinancialV2Page() {
     const jobs=Object.values(drafts).flatMap((draft)=>draft.rows).filter((row)=>
       !row.skipped&&routeForRow(row,tariffOptions).mapRequired&&row.locationStatus==="PENDING"
     );
-    let cursor=0;
-    const worker=async()=>{
-      while(cursor<jobs.length){
-        const job=jobs[cursor++];
-        await validateImportedLocation(job);
-      }
-    };
-    // Four rows x three forward queries keeps Google request bursts below the
-    // browser-key quota while still completing large manifests promptly.
-    await Promise.all(Array.from({length:Math.min(4,jobs.length)},()=>worker()));
-    setBulkMessage(`Background location validation completed for ${jobs.length} core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.`);
+    for(let offset=0;offset<jobs.length;offset+=LOCATION_VALIDATION_BATCH_SIZE){
+      const batch=jobs.slice(offset,offset+LOCATION_VALIDATION_BATCH_SIZE);
+      patchImportedLocationsBatch(batch.map((row)=>({
+        pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,
+        patch:{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},
+        expectedStatuses:["PENDING"],
+      })));
+      const results=await Promise.all(batch.map((row)=>validateImportedLocationResult({...row,locationStatus:"SEARCHING"})));
+      patchImportedLocationsBatch(results);
+      setBulkMessage("Location validation: "+Math.min(offset+batch.length,jobs.length)+"/"+jobs.length+" core-region row(s) checked.");
+      await yieldToBrowser();
+    }
+    setBulkMessage("Background location validation completed for "+jobs.length+" core-region row(s). Only unresolved or ambiguous results are included in Download Review Excel.");
   }
 
   async function retryImportedLocationSync(){
@@ -2922,6 +2978,7 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
             <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
             <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
+            <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
             <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
             <button
               type="button"
@@ -3100,6 +3157,7 @@ export default function DataEntryFinancialV2Page() {
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
             <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
+            <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
               <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
               <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-lg border border-[#ff6b6b]/40 bg-[#3a1e28] px-4 py-2 text-[11px] font-black text-[#ff9aa2]"><X size={14}/>CLOSE</button>
             </div>
