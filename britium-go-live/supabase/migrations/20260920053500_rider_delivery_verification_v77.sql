@@ -1018,6 +1018,16 @@ begin
 
   perform public.be_rider_prepare_route_v77(v_wayplan,v_worker);
 
+  if not exists(
+    select 1
+    from public.be_dispatch_scans_v39 ds
+    where ds.delivery_way_id=v_way
+      and ds.scan_status='SCANNED'
+      and (ds.wayplan_code=v_wayplan or ds.wayplan_code is null)
+  ) then
+    raise exception 'DISPATCH_SCAN_REQUIRED_BEFORE_CUSTOMER_ARRIVAL: %',v_way using errcode='22023';
+  end if;
+
   if exists(
     select 1 from public.be_rider_route_events_v46
     where operation_id=v_operation
