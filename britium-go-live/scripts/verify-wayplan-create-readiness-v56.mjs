@@ -14,7 +14,8 @@ const checks = [
   ["auto crew repair exists", planner.includes("Auto-assign missing Driver / Rider") || planner.includes("Auto-assign missing Driver")],
   ["driver requirement and rider role are explicit", planner.includes("Driver *") && (planner.includes("Rider *") || planner.includes("Rider (optional)"))],
   ["button is controlled by readiness issues", planner.includes("const cannotSave = busy || readinessIssues.length > 0")],
-  ["below-50 approval is explicit", planner.includes("Approve the one route below 50 parcels")],
+  ["below-50 approval is explicit for Driver/van-only routes", planner.includes("Approve one Driver/van-only route below 50 parcels")],
+  ["Rider-selected route minimum exemption is explicit", planner.includes('data-rider-minimum-exempt-v84="true"') && planner.includes("Rider assignment: no minimum parcel count")],
 ];
 
 const failed = checks.filter(([,ok]) => !ok).map(([name]) => name);
