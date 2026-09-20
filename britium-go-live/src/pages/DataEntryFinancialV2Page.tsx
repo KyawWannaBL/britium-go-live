@@ -37,6 +37,7 @@ export const DATA_ENTRY_BULK_ACTIONS_BUILD = "DATA_ENTRY_EXTRA_REGISTRATION_BULK
 export const DATA_ENTRY_OS_SOFTCOPY_IMPORT_BUILD = "DATA_ENTRY_OS_MULTI_PICKUP_IMPORT_V16_20260903";
 export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903";
 export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
+export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 
 const AMOUNT_TYPES = [
   "ITEM_PRICE_PLUS_DECLARED_DELIVERY",
@@ -703,7 +704,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           </span>
         </div>
 
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3">
           <button
             type="button"
             disabled={row.photoReviewBusy || !row.proof_url}
@@ -778,7 +779,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>:null}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field label="လက်ခံသူအမည်"><BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value) => updateRow(index,{recipient_name:value})}/></Field>
         <Field label="လက်ခံသူဖုန်း"><BufferedDataEntryInput className={inputClass} value={row.recipient_phone} onCommit={(value) => {
           updateRow(index,{recipient_phone:value});
@@ -873,7 +874,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">ငွေကောက်ခံရန် ညွှန်ကြားချက်</div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {!isExact(type) && type!=="DELIVERY_CHARGE_ONLY" ? <Field label="ပစ္စည်းတန်ဖိုး"><input type="number" className={inputClass} value={row.item_price} onChange={(e)=>{
             const item_price=e.target.value===""?"":Number(e.target.value);
             const nextRow={...row,item_price};
@@ -889,7 +890,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       <div className="mt-4 rounded-xl border border-[#3aa7de]/25 bg-[#071b2b] p-4">
         <div className="mb-3 text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">နောက်ခံစနစ် ငွေရှင်းတမ်း</div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <MoneyBox label="လက်ခံသူထံမှ ကောက်ခံငွေ / COD" value={c.cod_amount} highlight />
           <MoneyBox label="ကုန်သည်သတ်မှတ် ပို့ဆောင်ခ" value={c.delivery_charges ?? row.delivery_charges} />
           <MoneyBox label="နောက်ခံစနစ် ထပ်ဆောင်းပို့ဆောင်ခ" value={c.backend_calculated_delivery_surcharges} />
@@ -907,7 +908,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             ? "Exact collection: customer COD is the entered exact total. Merchant settlement = exact total − Britium entitlement − merchant charges + merchant credits."
             : "Receiver delivery = merchant-declared delivery + weight/CBM/other delivery surcharges. Merchant settlement = item value + (receiver delivery − Britium entitlement) − merchant charges + merchant credits. A negative difference is deducted from the merchant, never added to the receiver."}
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="mt-3 grid grid-cols-1 gap-3">
           <div className={serverClass}>ငွေရှင်းတမ်းဦးတည်ချက်: <b>{text(c.settlement_direction)||"—"}</b></div>
           <div className={serverClass}>ကုန်သည်ပြင်ဆင်ငွေ: <b>{money(c.merchant_settlement_adjustment)}</b></div>
           <div className={serverClass}>စစ်ဆေးမှု: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
@@ -1202,6 +1203,8 @@ export default function DataEntryFinancialV2Page() {
   const [addingRegistration,setAddingRegistration]=useState(false);
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
   const [progressDate,setProgressDate]=useState(()=>yangonDateKey());
+  const [gridSearch,setGridSearch]=useState("");
+  const [gridFilter,setGridFilter]=useState<"ALL"|"REGISTERED"|"PENDING">("ALL");
   // Recycled editor model: render one editable parcel form at a time.
   // All other parcels stay as lightweight state/table rows instead of mounting hundreds of text inputs.
   const PAGE_SIZE=1;
@@ -1248,6 +1251,32 @@ export default function DataEntryFinancialV2Page() {
       !row.skipped&&row.locationStatus!=="SYNCED"&&routeForRow(row,tariffOptions).mapRequired
     );
   },[bulkImportDrafts,rows,tariffOptions]);
+  const registrationGridRows=useMemo(()=>{
+    const query=gridSearch.trim().toLowerCase();
+    return rows
+      .map((row,index)=>({row,index}))
+      .filter(({row})=>gridFilter==="REGISTERED"?row.saved:gridFilter==="PENDING"?!row.saved:true)
+      .filter(({row})=>{
+        if(!query) return true;
+        return [
+          row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence),
+          row.sourceMerchantName,
+          selectedPickup?.merchant_id,
+          selectedPickup?.merchant_name,
+          row.recipient_name,
+          row.recipient_phone,
+          row.township,
+          row.delivery_address,
+          row.service_provider_code,
+          row.saved?"registered":"pending",
+        ].some((value)=>text(value).toLowerCase().includes(query));
+      })
+      .sort((a,b)=>{
+        if(a.row.saved!==b.row.saved) return a.row.saved?-1:1;
+        return a.row.parcel_sequence-b.row.parcel_sequence;
+      });
+  },[rows,gridSearch,gridFilter,selectedPickup?.merchant_id,selectedPickup?.merchant_name]);
+  const registeredRowCount=useMemo(()=>rows.filter((row)=>row.saved).length,[rows]);
 
   const updateRow=useCallback((index:number,patch:Partial<ParcelRow>)=>{
     setRows(current=>{
@@ -2668,64 +2697,146 @@ export default function DataEntryFinancialV2Page() {
   if(loading) return <div className="flex min-h-[70vh] items-center justify-center bg-[#061524] text-[#eef8ff]"><Loader2 className="mr-3 animate-spin text-[#f6b84b]"/>Loading Financial V2…</div>;
 
   const workspace=(
-    <div className="space-y-4">
+    <div data-data-entry-split-workspace-v82="true">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
-      <>
-        {rows.length ? <div data-recycled-data-entry-v80="true" className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-3">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Recycled parcel editor</div>
-              <div className="text-[10px] text-[#8db4ce]">Only one editable form is mounted. Select any saved/draft parcel below to reuse the same input boxes.</div>
+      rows.length?
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]">
+        <aside className="min-w-0 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
+          <div className="mb-3 rounded-2xl border border-[#f6b84b]/35 bg-[#0b2236] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Process Waybill · Recycled Data Entry</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">One reusable form is kept on screen. Saving a parcel updates the registration grid immediately.</div>
+              </div>
+              <div className="rounded-lg border border-cyan-300/30 bg-[#061524] px-3 py-2 text-[10px] font-black text-cyan-100">
+                {pageStart+1} / {rows.length}
+              </div>
             </div>
-            <div className="rounded-lg border border-cyan-300/30 bg-[#061524] px-3 py-2 text-[10px] font-black text-cyan-100">
-              Editing {pageStart+1} of {rows.length}
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto]">
+              <select
+                aria-label="Select parcel to edit"
+                className={inputClass}
+                value={pageStart}
+                onChange={(event)=>setPageIndex(Number(event.target.value)||0)}
+              >
+                {rows.map((row,index)=><option key={row.pickup_id+":"+row.parcel_sequence} value={index}>
+                  {row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)} · {row.saved?"REGISTERED":row.skipped?"PENDING":"DRAFT"}
+                </option>)}
+              </select>
+              <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart-1))} className="rounded-lg border border-[#31506a] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#bfe8ff] disabled:opacity-40">PREVIOUS</button>
+              <button type="button" disabled={pageStart+1>=rows.length} onClick={()=>setPageIndex(pageStart+1)} className="rounded-lg bg-[#21c7e8] px-3 py-2 text-[10px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
             </div>
           </div>
-          <div className="max-h-64 overflow-auto rounded-xl border border-[#1a3a5c]">
-            <table className="w-full min-w-[900px] text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#12314a] text-left text-[#8fd3ff]">
+
+          {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor
+            key={row.pickup_id+":"+row.parcel_sequence}
+            row={row}
+            index={pageStart}
+            updateRow={updateRow}
+            calculate={calculateEditorRow}
+            save={saveEditorRow}
+            skip={skipEditorRow}
+            busy={bulkSaving||locationReviewBusy||waybillBusy}
+            reviewPhoto={reviewEditorPhoto}
+            togglePhotoWaiver={toggleEditorPhotoWaiver}
+            lookupPhoneHistory={lookupPhoneHistory}
+            tariffOptions={tariffOptions}
+            providerOptions={providerOptions}
+            tierAccess={tierAccess}
+            locationReloadToken={locationReloadToken}
+          />)}
+        </aside>
+
+        <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#0b2236]">
+          <div className="border-b border-[#1a3a5c] bg-[#102741] p-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Registration Grid</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">
+                  Registered {registeredRowCount} of {rows.length} · Remaining {Math.max(rows.length-registeredRowCount,0)}
+                </div>
+              </div>
+              <div className="text-[9px] italic text-[#7aa7c6]">Grid auto-updates from the recycled form.</div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                className={`${inputClass} min-w-[220px] flex-1`}
+                value={gridSearch}
+                onChange={(event)=>setGridSearch(event.target.value)}
+                placeholder="Search Way ID, recipient, phone, township, address…"
+              />
+              {(["ALL","REGISTERED","PENDING"] as const).map((filter)=><button
+                key={filter}
+                type="button"
+                onClick={()=>setGridFilter(filter)}
+                className={`rounded-lg border px-3 py-2 text-[10px] font-black ${gridFilter===filter?"border-[#f6b84b] bg-[#f6b84b]/15 text-[#ffd36f]":"border-[#31506a] bg-[#071b2b] text-[#9cc2d9]"}`}
+              >
+                {filter}
+                {filter==="REGISTERED"?` (${registeredRowCount})`:filter==="PENDING"?` (${Math.max(rows.length-registeredRowCount,0)})`:""}
+              </button>)}
+            </div>
+          </div>
+
+          <div className="max-h-[calc(100vh-12rem)] min-h-[650px] overflow-auto bg-[#f7f8fa]">
+            <table className="w-full min-w-[1450px] border-collapse text-[10px] text-slate-800">
+              <thead className="sticky top-0 z-20 bg-[#102741] text-left text-[#ffd34d]">
                 <tr>
-                  <th className="px-3 py-2">#</th>
-                  <th className="px-3 py-2">Way ID</th>
-                  <th className="px-3 py-2">Recipient</th>
-                  <th className="px-3 py-2">Township</th>
-                  <th className="px-3 py-2">Provider</th>
-                  <th className="px-3 py-2">Amount</th>
-                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-3">SR.</th>
+                  <th className="px-3 py-3">WAY ID</th>
+                  <th className="px-3 py-3">MERCHANT</th>
+                  <th className="px-3 py-3">RECIPIENT</th>
+                  <th className="px-3 py-3">PHONE</th>
+                  <th className="px-3 py-3">TOWNSHIP</th>
+                  <th className="px-3 py-3">ADDRESS</th>
+                  <th className="px-3 py-3 text-right">ITEM PRICE</th>
+                  <th className="px-3 py-3 text-right">DELI (OS)</th>
+                  <th className="px-3 py-3 text-right">WEIGHT</th>
+                  <th className="px-3 py-3 text-right">SURCHARGE</th>
+                  <th className="px-3 py-3 text-right">FINAL COD</th>
+                  <th className="px-3 py-3">STATUS</th>
+                  <th className="px-3 py-3">ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row,index)=>{
+                {registrationGridRows.map(({row,index})=>{
                   const selected=index===pageStart;
+                  const surcharge=num(row.cbm_surcharge)+num(row.other_surcharge)+num(row.calculation?.weight_surcharge);
+                  const finalCod=row.calculation?.cod_amount ?? (row.amount_entry_type==="EXACT_COLLECTION_AMOUNT"?row.merchant_stated_total_amount:"");
+                  const status=row.saved?"REGISTERED":row.skipped?"PENDING":"DRAFT";
                   return <tr
                     key={row.pickup_id+":"+row.parcel_sequence}
-                    onClick={()=>setPageIndex(index)}
-                    className={`cursor-pointer border-t border-[#16344f] ${selected?"bg-cyan-400/10":"hover:bg-[#102b45]"}`}
+                    onDoubleClick={()=>setPageIndex(index)}
+                    className={`border-b border-slate-200 ${selected?"bg-sky-100":row.saved?"bg-emerald-50":"bg-white hover:bg-slate-50"}`}
                   >
-                    <td className="px-3 py-2 font-black text-[#f6b84b]">{row.parcel_sequence}</td>
-                    <td className="px-3 py-2 font-semibold text-sky-200">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
-                    <td className="px-3 py-2">{row.recipient_name||"—"}</td>
-                    <td className="px-3 py-2">{row.township||"—"}</td>
-                    <td className="px-3 py-2">{row.service_provider_code||"—"}</td>
-                    <td className="px-3 py-2">{row.merchant_stated_total_amount!==""?money(row.merchant_stated_total_amount):row.item_price!==""?money(row.item_price):"—"}</td>
-                    <td className="px-3 py-2">{row.saved?"SAVED":row.skipped?"PENDING":row.calculating?"CALCULATING":"DRAFT"}</td>
+                    <td className="px-3 py-2 font-black text-slate-500">{row.parcel_sequence}</td>
+                    <td className="whitespace-nowrap px-3 py-2 font-black text-sky-800">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2">{row.sourceMerchantName||selectedPickup?.merchant_id||selectedPickup?.merchant_name||"—"}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2 font-semibold">{row.recipient_name||"—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2">{row.recipient_phone||"—"}</td>
+                    <td className="max-w-[150px] truncate px-3 py-2">{row.township||"—"}</td>
+                    <td className="max-w-[280px] truncate px-3 py-2" title={row.delivery_address}>{row.delivery_address||"—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.item_price)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.delivery_charges)}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{row.weight_kg===""?"—":Number(row.weight_kg).toLocaleString("en-US")}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right">{surcharge?money(surcharge):"—"}</td>
+                    <td className="whitespace-nowrap px-3 py-2 text-right font-black text-slate-900">{money(finalCod)}</td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.saved?"border-emerald-300 bg-emerald-100 text-emerald-800":row.skipped?"border-amber-300 bg-amber-100 text-amber-800":"border-slate-300 bg-slate-100 text-slate-700"}`}>{status}</span>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button type="button" onClick={()=>setPageIndex(index)} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 font-black text-sky-800">
+                        {selected?"EDITING":"OPEN"}
+                      </button>
+                    </td>
                   </tr>;
                 })}
+                {!registrationGridRows.length?<tr><td colSpan={14} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No registration rows match the current search/filter.</td></tr>:null}
               </tbody>
             </table>
           </div>
-        </div>:null}
-
-        {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor key={row.pickup_id+":"+row.parcel_sequence} row={row} index={pageStart} updateRow={updateRow} calculate={calculateEditorRow} save={saveEditorRow} skip={skipEditorRow} busy={bulkSaving||locationReviewBusy||waybillBusy} reviewPhoto={reviewEditorPhoto} togglePhotoWaiver={toggleEditorPhotoWaiver} lookupPhoneHistory={lookupPhoneHistory} tariffOptions={tariffOptions} providerOptions={providerOptions} tierAccess={tierAccess} locationReloadToken={locationReloadToken}/>)}
-
-        {rows.length>1?<div className="rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4 text-center">
-          <div className="text-xs font-bold text-cyan-100">Editing parcel {pageStart+1} of {rows.length}. The same input controls are recycled for every parcel. Calculate All and Save All still process every non-skipped parcel.</div>
-          <div className="mt-3 flex justify-center gap-3">
-            <button type="button" disabled={pageStart===0} onClick={()=>setPageIndex(Math.max(0,pageStart-1))} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">PREVIOUS</button>
-            <button type="button" disabled={pageStart+1>=rows.length} onClick={()=>setPageIndex(pageStart+1)} className="rounded-lg bg-cyan-400 px-5 py-2 text-[11px] font-black text-[#04111d] disabled:opacity-40">NEXT</button>
-          </div>
-        </div>:null}
-      </>}
+        </section>
+      </div>
+      :<div className="rounded-2xl border border-dashed border-[#31506a] bg-[#0b2236] p-10 text-center text-sm text-[#8db4ce]">Select a pickup request or upload a batch to start Data Entry.</div>}
     </div>
   );
 
