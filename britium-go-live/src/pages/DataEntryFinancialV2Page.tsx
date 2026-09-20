@@ -39,6 +39,7 @@ export const DATA_ENTRY_PROVIDER_ROUTING_BUILD = "DATA_ENTRY_DELIVERY_ROUTING_WA
 export const DATA_ENTRY_PHONE_HISTORY_PROGRESS_BUILD = "DATA_ENTRY_PHONE_HISTORY_PROGRESS_V81_20260920";
 export const DATA_ENTRY_SPLIT_WORKSPACE_BUILD = "DATA_ENTRY_SPLIT_RECYCLED_EDITOR_GRID_V82_20260920";
 export const DATA_ENTRY_COMPACT_RECYCLED_FORM_BUILD = "DATA_ENTRY_COMPACT_RECYCLED_FORM_V83_20260920";
+export const DATA_ENTRY_FULL_REGISTRATION_LAYOUT_BUILD = "DATA_ENTRY_FULL_REGISTRATION_LAYOUT_V85_20260920";
 export const DATA_ENTRY_PERFORMANCE_V40 = "DATA_ENTRY_PERFORMANCE_V40";
 export const DATA_ENTRY_INPUT_LATENCY_V42 = "DATA_ENTRY_INPUT_LATENCY_V42";
 export const DATA_ENTRY_INTERACTIVE_LATENCY_V49 = "DATA_ENTRY_INTERACTIVE_LATENCY_V49";
@@ -630,7 +631,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -653,14 +654,14 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
     <section
       id={`data-entry-parcel-${row.parcel_sequence}`}
       data-compact-recycled-form-v83="true"
-      className="overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#0b2236]"
+      data-full-registration-editor={fullMode?"true":"false"}
+      className={`overflow-hidden rounded-2xl border ${fullMode?"border-[#8d7b55] bg-[#c9c1ad] text-black":"border-[#1a3a5c] bg-[#0b2236]"}`}
     >
-      <div className="border-b border-[#1a3a5c] bg-[#102741] px-4 py-3">
+      <div className={`border-b px-4 py-3 ${fullMode?"border-[#9c8d6c] bg-[#bfb6a2]":"border-[#1a3a5c] bg-[#102741]"}`}>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <div className="text-[9px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Single Recycled Data Entry Form</div>
-            <div className="mt-1 truncate text-[15px] font-black text-white">{row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}</div>
-            <div className="mt-1 text-[10px] text-[#8db4ce]">Parcel {row.parcel_sequence} · {row.sourceMerchantName||"Current pickup merchant"}</div>
+            <div className={`text-[9px] font-black uppercase tracking-[0.18em] ${fullMode?"text-[#5d4b24]":"text-[#f6b84b]"}`}>{fullMode?"PARCEL - "+row.parcel_sequence+" - "+(row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)):"Single Recycled Data Entry Form"}</div>
+            {!fullMode?<><div className="mt-1 truncate text-[15px] font-black text-white">{row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence)}</div><div className="mt-1 text-[10px] text-[#8db4ce]">Parcel {row.parcel_sequence} · {row.sourceMerchantName||"Current pickup merchant"}</div></>:<div className="mt-1 text-[10px] font-bold text-[#54492f]">{row.sourceMerchantName||"Current pickup merchant"}</div>}
           </div>
           <div className="flex flex-wrap gap-1.5">
             <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${statusClass}`}>{statusText}</span>
@@ -809,7 +810,18 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Terminal name and delivery charge are required before Calculate/Save.</div>:null}
           </div>:null}
 
-          <div className="rounded-xl border border-[#f6b84b]/35 bg-[#071b2b] p-3">
+          {fullMode ? <details data-financial-details-v85="true" className="rounded-xl border border-[#8d7b55] bg-[#bfb6a2]">
+            <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#2b2416]">Financial Calculation Details · click only when needed</summary>
+            <div className="border-t border-[#8d7b55] p-3 text-[11px]">
+              <div className="space-y-1">
+                <div className="flex justify-between gap-4"><span>Calculated COD</span><b>{money(c.cod_amount)}</b></div>
+                <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+                <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
+                <div className="flex justify-between gap-4"><span>Delivery Difference</span><b>{money(c.delivery_difference)}</b></div>
+                <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
+              </div>
+            </div>
+          </details> : <div className="rounded-xl border border-[#f6b84b]/35 bg-[#071b2b] p-3">
             <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Current Calculation Summary</div>
             <div className="space-y-1 text-[11px]">
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Calculated COD</span><b>{money(c.cod_amount)}</b></div>
@@ -817,9 +829,9 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
               <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2 text-[13px]"><span className="font-black text-[#f6b84b]">Merchant Settlement</span><b className="text-[#f6b84b]">{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
-          </div>
+          </div>}
 
-          <details open={!photoReady} className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -896,7 +908,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </details>
 
-          <details open={route.mapRequired && row.locationStatus!=="SYNCED"} className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+          <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Location & Address History · {locationReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -925,7 +937,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </details>
 
-          <details className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+          {!fullMode?<details className="rounded-xl border border-[#31506a] bg-[#071b2b]">
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Backend Settlement Details · {text(c.validation_status)||"NOT CALCULATED"}
             </summary>
@@ -946,7 +958,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <div className={serverClass}>Validation: <b>{text(c.validation_status)||"NOT CALCULATED"}</b></div>
               </div>
             </div>
-          </details>
+          </details>:null}
         </div>
       </fieldset>
 
@@ -2792,7 +2804,7 @@ export default function DataEntryFinancialV2Page() {
     <div data-data-entry-split-workspace-v82="true">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       rows.length?
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]">
+      <div className={`grid min-w-0 gap-4 ${fullRegistration?"xl:grid-cols-[minmax(520px,35%)_minmax(0,65%)]":"xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]"}`}>
         <aside className="min-w-0 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
           <div className="mb-3 rounded-2xl border border-[#f6b84b]/35 bg-[#0b2236] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2836,6 +2848,7 @@ export default function DataEntryFinancialV2Page() {
             providerOptions={providerOptions}
             tierAccess={tierAccess}
             locationReloadToken={locationReloadToken}
+            fullMode={fullRegistration}
           />)}
         </aside>
 
@@ -2843,30 +2856,15 @@ export default function DataEntryFinancialV2Page() {
           <div className="border-b border-[#1a3a5c] bg-[#102741] p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Registration Grid</div>
-                <div className="mt-1 text-[11px] text-[#8db4ce]">
-                  Registered {registeredRowCount} of {rows.length} · Remaining {Math.max(rows.length-registeredRowCount,0)}
-                </div>
+                <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">{fullRegistration?"REGISTERED DATA / စာရင်းသွင်းပြီး":"Registration Grid"}</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">Registered {registeredRowCount} of {rows.length} · Remaining {Math.max(rows.length-registeredRowCount,0)}</div>
               </div>
               <div className="text-[9px] italic text-[#7aa7c6]">Grid auto-updates from the recycled form.</div>
             </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <input
-                className={`${inputClass} min-w-[220px] flex-1`}
-                value={gridSearch}
-                onChange={(event)=>setGridSearch(event.target.value)}
-                placeholder="Search Way ID, recipient, phone, township, address…"
-              />
-              {(["ALL","REGISTERED","PENDING"] as const).map((filter)=><button
-                key={filter}
-                type="button"
-                onClick={()=>setGridFilter(filter)}
-                className={`rounded-lg border px-3 py-2 text-[10px] font-black ${gridFilter===filter?"border-[#f6b84b] bg-[#f6b84b]/15 text-[#ffd36f]":"border-[#31506a] bg-[#071b2b] text-[#9cc2d9]"}`}
-              >
-                {filter}
-                {filter==="REGISTERED"?` (${registeredRowCount})`:filter==="PENDING"?` (${Math.max(rows.length-registeredRowCount,0)})`:""}
-              </button>)}
-            </div>
+            {!fullRegistration?<div className="mt-3 flex flex-wrap items-center gap-2">
+              <input className={`${inputClass} min-w-[220px] flex-1`} value={gridSearch} onChange={(event)=>setGridSearch(event.target.value)} placeholder="Search Way ID, recipient, phone, township, address…"/>
+              {(["ALL","REGISTERED","PENDING"] as const).map((filter)=><button key={filter} type="button" onClick={()=>setGridFilter(filter)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${gridFilter===filter?"border-[#f6b84b] bg-[#f6b84b]/15 text-[#ffd36f]":"border-[#31506a] bg-[#071b2b] text-[#9cc2d9]"}`}>{filter}{filter==="REGISTERED"?` (${registeredRowCount})`:filter==="PENDING"?` (${Math.max(rows.length-registeredRowCount,0)})`:""}</button>)}
+            </div>:null}
           </div>
 
           <div className="max-h-[calc(100vh-12rem)] min-h-[650px] overflow-auto bg-[#f7f8fa]">
@@ -2883,10 +2881,7 @@ export default function DataEntryFinancialV2Page() {
                   <th className="px-3 py-3 text-right">ITEM PRICE</th>
                   <th className="px-3 py-3 text-right">DELI (OS)</th>
                   <th className="px-3 py-3 text-right">WEIGHT</th>
-                  <th className="px-3 py-3 text-right">SURCHARGE</th>
-                  <th className="px-3 py-3 text-right">FINAL COD</th>
-                  <th className="px-3 py-3">STATUS</th>
-                  <th className="px-3 py-3">ACTION</th>
+                  {!fullRegistration?<><th className="px-3 py-3 text-right">SURCHARGE</th><th className="px-3 py-3 text-right">FINAL COD</th><th className="px-3 py-3">STATUS</th><th className="px-3 py-3">ACTION</th></>:null}
                 </tr>
               </thead>
               <tbody>
@@ -2910,19 +2905,10 @@ export default function DataEntryFinancialV2Page() {
                     <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.item_price)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.delivery_charges)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{row.weight_kg===""?"—":Number(row.weight_kg).toLocaleString("en-US")}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right">{surcharge?money(surcharge):"—"}</td>
-                    <td className="whitespace-nowrap px-3 py-2 text-right font-black text-slate-900">{money(finalCod)}</td>
-                    <td className="px-3 py-2">
-                      <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.saved?"border-emerald-300 bg-emerald-100 text-emerald-800":row.skipped?"border-amber-300 bg-amber-100 text-amber-800":"border-slate-300 bg-slate-100 text-slate-700"}`}>{status}</span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button type="button" onClick={()=>setPageIndex(index)} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 font-black text-sky-800">
-                        {selected?"EDITING":"OPEN"}
-                      </button>
-                    </td>
+                    {!fullRegistration?<><td className="whitespace-nowrap px-3 py-2 text-right">{surcharge?money(surcharge):"—"}</td><td className="whitespace-nowrap px-3 py-2 text-right font-black text-slate-900">{money(finalCod)}</td><td className="px-3 py-2"><span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.saved?"border-emerald-300 bg-emerald-100 text-emerald-800":row.skipped?"border-amber-300 bg-amber-100 text-amber-800":"border-slate-300 bg-slate-100 text-slate-700"}`}>{status}</span></td><td className="px-3 py-2"><button type="button" onClick={()=>setPageIndex(index)} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 font-black text-sky-800">{selected?"EDITING":"OPEN"}</button></td></>:null}
                   </tr>;
                 })}
-                {!registrationGridRows.length?<tr><td colSpan={14} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No registration rows match the current search/filter.</td></tr>:null}
+                {!registrationGridRows.length?<tr><td colSpan={fullRegistration?10:14} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No registration rows match the current search/filter.</td></tr>:null}
               </tbody>
             </table>
           </div>
@@ -3146,17 +3132,15 @@ export default function DataEntryFinancialV2Page() {
       {fullRegistration?<div data-full-review-sheet="true" className="fixed inset-0 z-[9999] overflow-auto bg-[#04111d]">
         <div className="sticky top-0 z-10 border-b border-[#1a3a5c] bg-[#071b2b]/95 px-5 py-4 backdrop-blur">
           <div className="mx-auto flex max-w-[1900px] items-center justify-between gap-3">
-            <div><div className="text-[10px] font-black uppercase tracking-[0.2em] text-[#f6b84b]">Full Registration</div><div className="mt-1 text-lg font-black">{selectedPickupId} · {rows.length} parcels</div></div>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
-            <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
-            <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
-              <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
-              <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-lg border border-[#ff6b6b]/40 bg-[#3a1e28] px-4 py-2 text-[11px] font-black text-[#ff9aa2]"><X size={14}/>CLOSE</button>
+            <div><div className="text-[17px] font-black uppercase tracking-[0.12em] text-[#f6d74b]">FULL REGISTRATION</div><div className="mt-1 text-[13px] font-black">{selectedPickupId} · {rows.length} PARCELS</div><div className="mt-1 text-[12px] font-bold text-white">စာရင်းသွင်းမျက်နှာပြင်အပြည့်</div></div>
+            <div className="flex flex-wrap gap-5">
+              <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] shadow disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+              <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-400 px-6 py-2.5 text-[11px] font-black text-[#24101a] shadow disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
+              <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-red-500 px-6 py-2.5 text-[11px] font-black text-white shadow"><X size={14}/>CLOSE</button>
             </div>
           </div>
         </div>
-        <div className="mx-auto max-w-[1900px] p-5">{workspace}</div>
+        <div data-full-registration-layout-v85="true" className="mx-auto max-w-none p-4">{workspace}</div>
       </div>:null}
 
       <BritiumQuickTools />
