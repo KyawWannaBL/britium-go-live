@@ -91,6 +91,9 @@ declare
   v_lat numeric;
   v_lng numeric;
   v_run_status text;
+  v_wayplan_status text;
+  v_membership_status text;
+  v_review_status text;
   v_arrival jsonb;
   v_result jsonb;
   v_operation text:=coalesce(
@@ -115,6 +118,41 @@ begin
     where s.delivery_way_id=v_way
     order by s.updated_at desc nulls last
     limit 1;
+  end if;
+
+  select upper(coalesce(w.wayplan_status,'')),
+         upper(coalesce(m.membership_status,'')),
+         upper(coalesce(r.review_status,''))
+  into v_wayplan_status,v_membership_status,v_review_status
+  from public.be_wayplan_dispatches w
+  left join lateral (
+    select mm.*
+    from public.be_wayplan_membership_v40 mm
+    where mm.wayplan_id=w.wayplan_id and mm.delivery_way_id=v_way
+    order by mm.updated_at desc nulls last
+    limit 1
+  ) m on true
+  left join public.be_wayplan_review_v43 r on r.wayplan_id=w.wayplan_id
+  where w.wayplan_id=v_wayplan;
+
+  if v_action in (
+       'start_delivery','out_for_delivery',
+       'arrive_customer','arrived_at_customer','arrive_delivery','delivery_arrived',
+       'deliver','delivered','verify_delivery','delivery_verified'
+     )
+     or v_action='exception'
+     or v_action like '%delivery_exception%'
+     or v_action like '%delivery_failed%' then
+    if v_wayplan_status<>'DISPATCHED'
+       or v_membership_status<>'DISPATCHED'
+       or v_review_status<>'DISPATCHED' then
+      raise exception
+        'DELIVERY_NOT_PUBLISHED_BY_DISPATCH|wayplan_status=%|membership_status=%|review_status=%',
+        coalesce(v_wayplan_status,'NULL'),
+        coalesce(v_membership_status,'NULL'),
+        coalesce(v_review_status,'NULL')
+        using errcode='22023';
+    end if;
   end if;
 
   if v_action in ('start_delivery','out_for_delivery') then
