@@ -22,6 +22,24 @@ const makeRows = (township, count, latitude, longitude, prefix) =>
     parcel_weight_kg: 1,
   }));
 
+const selected62 = [
+  ...makeRows("Latha", 20, 16.775, 96.145, "S62A"),
+  ...makeRows("Sanchaung", 22, 16.806, 96.135, "S62B"),
+  ...makeRows("South Dagon", 20, 16.870, 96.235, "S62C"),
+];
+const selected62Routes = zoneModule.balanceYangonRouteRows(selected62);
+assert.equal(selected62Routes.length, 1, "Any selected Britium batch from 50 to 75 parcels must stay on one delivery-van route");
+assert.equal(selected62Routes[0].rows.length, 62, "The 62 selected ways must remain together on one van");
+
+const selected38 = [
+  ...makeRows("Latha", 12, 16.775, 96.145, "S38A"),
+  ...makeRows("Sanchaung", 13, 16.806, 96.135, "S38B"),
+  ...makeRows("South Dagon", 13, 16.870, 96.235, "S38C"),
+];
+const selected38Routes = zoneModule.balanceYangonRouteRows(selected38);
+assert.equal(selected38Routes.length, 1, "Any selected Britium batch below 50 parcels must stay on one delivery-van route");
+assert.equal(selected38Routes[0].rows.length, 38, "The 38 selected ways must remain together on one van");
+
 // Mirrors the live 216-parcel Yangon shape that previously produced many tiny routes.
 const rows = [
   ...makeRows("Latha", 15, 16.775, 96.145, "Z1"),
