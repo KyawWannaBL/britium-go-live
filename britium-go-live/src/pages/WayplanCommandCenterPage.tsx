@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import MultiVanPlanner from "@/components/MultiVanPlanner";
 import CreatedWayplanRevisionPlanner from "@/components/CreatedWayplanRevisionPlanner";
+import MultiSelectQueueFilter from "@/components/MultiSelectQueueFilter";
 import { guardedBrowserPrint } from "@/lib/documentPrintGuard";
 import {
   filterWayplanQueueRows,
@@ -130,25 +131,19 @@ export default function WayplanCommandCenterPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const [townshipFilter, setTownshipFilter] = useState("ALL");
-  const [merchantFilter, setMerchantFilter] = useState("ALL");
-  const [providerFilter, setProviderFilter] = useState("ALL");
-  const [statusFilter, setStatusFilter] = useState("ALL");
+  const [townshipFilters, setTownshipFilters] = useState<string[]>([]);
+  const [merchantFilters, setMerchantFilters] = useState<string[]>([]);
+  const [providerFilters, setProviderFilters] = useState<string[]>([]);
+  const [statusFilters, setStatusFilters] = useState<string[]>([]);
   const [queueSearch, setQueueSearch] = useState("");
   const [groupBy, setGroupBy] = useState<WayplanQueueGroupBy>("NONE");
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   const [revisionSource, setRevisionSource] = useState<Row | null>(null);
   const [revisionRows, setRevisionRows] = useState<Row[]>([]);
   const [revisionRemoveSelected, setRevisionRemoveSelected] = useState<Record<string, boolean>>({});
 
-  const [vehicleCode] = useState("FLT001");
-  const [vehicleName] = useState("6H-7397");
-  const [driverCode] = useState("DRV001");
-  const [driverName] = useState("U Wai Phyo Lwin");
-  const [riderCode] = useState("RID001");
-  const [riderName] = useState("Ko Kyaw Zin Khant");
-  const [helperCode] = useState("HLP001");
-  const [helperName] = useState("Ko Moe Sat Zin Tun");
+  const WAYPLAN_MULTI_VAN_ENTRY_V50 = true;
 
   const selectedRows = useMemo(
     () => readyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
@@ -161,19 +156,19 @@ export default function WayplanCommandCenterPage() {
   const queueFilterOptions = useMemo(() => getWayplanQueueFilterOptions(readyRows), [readyRows]);
   const filteredReadyRows = useMemo(
     () => filterWayplanQueueRows(readyRows, {
-      township: townshipFilter,
-      merchant: merchantFilter,
-      provider: providerFilter,
-      status: statusFilter,
+      townships: townshipFilters,
+      merchants: merchantFilters,
+      providers: providerFilters,
+      statuses: statusFilters,
       search: queueSearch,
     }),
-    [readyRows, townshipFilter, merchantFilter, providerFilter, statusFilter, queueSearch]
+    [readyRows, townshipFilters, merchantFilters, providerFilters, statusFilters, queueSearch]
   );
   const filteredSelectedRows = useMemo(
     () => filteredReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
     [filteredReadyRows, selected]
   );
-  const plannerRows = filteredSelectedRows;
+  const plannerRows = selectedRows;
   const revisionPlannerRows = revisionRows;
   const groupedReadyRows = useMemo(
     () => groupWayplanQueueRows(filteredReadyRows, groupBy),
@@ -198,12 +193,13 @@ export default function WayplanCommandCenterPage() {
   }, [activeWayplan]);
 
   function resetQueueFilters() {
-    setTownshipFilter("ALL");
-    setMerchantFilter("ALL");
-    setProviderFilter("ALL");
-    setStatusFilter("ALL");
+    setTownshipFilters([]);
+    setMerchantFilters([]);
+    setProviderFilters([]);
+    setStatusFilters([]);
     setQueueSearch("");
     setGroupBy("NONE");
+    setFiltersExpanded(true);
   }
 
   function cancelRevision() {
@@ -293,11 +289,15 @@ export default function WayplanCommandCenterPage() {
   function toggleOne(row: Row) {
     const id = text(row.delivery_way_id || row.waybill_no);
     if (!id) return;
+    const selecting = !selected[id];
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
+    if (selecting) setFiltersExpanded(false);
   }
 
   function toggleAllVisible() {
+    const selecting = !allVisibleSelected;
     setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredReadyRows));
+    if (selecting) setFiltersExpanded(false);
   }
 
   async function cancelCreatedWayplan() {
@@ -435,49 +435,6 @@ export default function WayplanCommandCenterPage() {
         : "Reviewed Wayplans created. Status is CREATED. Next: review manifest → Supervisor approval → mandatory Dispatch scan → Dispatch Wayplan."
     );
     requestAnimationFrame(() => document.getElementById("generated-wayplans")?.scrollIntoView({ behavior: "smooth", block: "start" }));
-  }
-
-  async function generateWayplan() {
-    setError("");
-    setMessage("");
-    const deliveryIds = selectedRows.map((row) => text(row.delivery_way_id || row.waybill_no)).filter(Boolean);
-    if (!deliveryIds.length) {
-      setError("Select at least one stop before generating wayplan.");
-      return;
-    }
-    if (!selectedRegionOption?.is_active) {
-      setError(`${selectedRegion} Wayplan is disabled. Activate it before generating a plan.`);
-      return;
-    }
-    setLoading(true);
-    try {
-      const { data, error } = await supabase.rpc("be_generate_wayplan", {
-        p_payload: {
-          region_code: selectedRegion,
-          branch_code: selectedRegionOption.branch_code,
-          delivery_way_ids: deliveryIds,
-          vehicle_code: vehicleCode,
-          vehicle_name: vehicleName,
-          driver_code: driverCode,
-          driver_name: driverName,
-          rider_code: riderCode,
-          rider_name: riderName,
-          helper_code: helperCode,
-          helper_name: helperName,
-          actor: "wayplan_command_center",
-        },
-      });
-      if (error) throw error;
-      if (data?.ok === false) throw new Error(data?.error || "Wayplan generation failed.");
-      setMessage(`Wayplan generated: ${data?.wayplan_id || "created"}`);
-      setSelected({});
-      await loadAll();
-    } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Could not generate wayplan.");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function updateWayplanStatus(nextStatus: string) {
@@ -646,28 +603,41 @@ export default function WayplanCommandCenterPage() {
                 <h2 style={{ margin: 0, fontSize: 16 }}>{selectedRegionOption?.display_name || selectedRegion} Ready for Wayplan Queue</h2>
                 <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>{filteredReadyRows.length} filtered / {readyRows.length} ready stops / {selectedRows.length} selected</p>
               </div>
-              <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("plain")}>
-                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered" : "Select All Filtered"}
+              <button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}>
+                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}
               </button>
             </div>
 
             <div data-wayplan-queue-filters="true" style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 12, marginBottom: 12 }}>
-              <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10, color: C.gold, fontSize: 12, fontWeight: 900 }}><SlidersHorizontal size={15} /> FILTER & GROUP WAYS</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 8 }}>
-                <label style={{ color: C.sub, fontSize: 11 }}>Township<select value={townshipFilter} onChange={(e) => setTownshipFilter(e.target.value)} style={input()}><option value="ALL">All Townships</option>{queueFilterOptions.townships.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-                <label style={{ color: C.sub, fontSize: 11 }}>Merchant<select value={merchantFilter} onChange={(e) => setMerchantFilter(e.target.value)} style={input()}><option value="ALL">All Merchants</option>{queueFilterOptions.merchants.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-                <label style={{ color: C.sub, fontSize: 11 }}>Service Provider<select value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)} style={input()}><option value="ALL">All Providers</option>{queueFilterOptions.providers.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-                <label style={{ color: C.sub, fontSize: 11 }}>Status<select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={input()}><option value="ALL">All Statuses</option>{queueFilterOptions.statuses.map((v) => <option key={v} value={v}>{v}</option>)}</select></label>
-                <label style={{ color: C.sub, fontSize: 11 }}>Group By<select value={groupBy} onChange={(e) => setGroupBy(e.target.value as WayplanQueueGroupBy)} style={input()}><option value="NONE">None</option><option value="TOWNSHIP">Township</option><option value="MERCHANT">Merchant</option><option value="PROVIDER">Service Provider</option></select></label>
-                <label style={{ color: C.sub, fontSize: 11 }}>Search<div style={{ position: "relative" }}><Search size={15} style={{ position: "absolute", left: 11, top: 13, color: C.sub }} /><input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value)} placeholder="Waybill, recipient, address..." style={{ ...input(), paddingLeft: 34 }} /></div></label>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
-                <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>{filteredSelectedRows.length} of {filteredReadyRows.length} filtered ways selected for {revisionSource ? "addition to the current revision" : "route optimization and crew assignment"}.</div>
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", color: C.gold, fontSize: 12, fontWeight: 900 }}><SlidersHorizontal size={15} /> FILTER & GROUP WAYS</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered" : "Select All Filtered"}</button>
-                  <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
+                  <span style={{ alignSelf: "center", color: C.sub, fontSize: 11 }}>{filteredReadyRows.length} filtered · {filteredSelectedRows.length} filtered selected · {selectedRows.length} total selected</span>
+                  <button type="button" onClick={() => setFiltersExpanded((value) => !value)} style={btn("plain")}>{filtersExpanded ? "Hide Filters" : "Show Filters"}</button>
                 </div>
               </div>
+              {filtersExpanded ? <>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(155px, 1fr))", gap: 8, marginTop: 10 }}>
+                  <MultiSelectQueueFilter label="Township" allLabel="All Townships" options={queueFilterOptions.townships} values={townshipFilters} onChange={setTownshipFilters} filterKey="township" />
+                  <MultiSelectQueueFilter label="Merchant" allLabel="All Merchants" options={queueFilterOptions.merchants} values={merchantFilters} onChange={setMerchantFilters} filterKey="merchant" />
+                  <MultiSelectQueueFilter label="Service Provider" allLabel="All Providers" options={queueFilterOptions.providers} values={providerFilters} onChange={setProviderFilters} filterKey="provider" />
+                  <MultiSelectQueueFilter label="Status" allLabel="All Statuses" options={queueFilterOptions.statuses} values={statusFilters} onChange={setStatusFilters} filterKey="status" />
+                  <label style={{ color: C.sub, fontSize: 11 }}>Group By<select value={groupBy} onChange={(e) => setGroupBy(e.target.value as WayplanQueueGroupBy)} style={input()}><option value="NONE">None</option><option value="TOWNSHIP">Township</option><option value="MERCHANT">Merchant</option><option value="PROVIDER">Service Provider</option></select></label>
+                  <label style={{ color: C.sub, fontSize: 11 }}>Search<div style={{ position: "relative" }}><Search size={15} style={{ position: "absolute", left: 11, top: 13, color: C.sub }} /><input value={queueSearch} onChange={(e) => setQueueSearch(e.target.value)} placeholder="Waybill, recipient, address..." style={{ ...input(), paddingLeft: 34 }} /></div></label>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
+                  <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>Choose the filters, then use Select All Filtered. The filter panel collapses automatically so it does not cover the operation table.</div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}</button>
+                    <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
+                  </div>
+                </div>
+              </> : <div data-wayplan-filter-summary-v52="true" style={{ marginTop: 8, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <div style={{ color: C.sub, fontSize: 11 }}>
+                  Filters minimized · Townships {townshipFilters.length || "All"} · Merchants {merchantFilters.length || "All"} · Providers {providerFilters.length || "All"} · Statuses {statusFilters.length || "All"} · {filteredReadyRows.length} matching ways.
+                </div>
+                <button type="button" onClick={() => setFiltersExpanded(true)} style={btn("blue")}>Edit Filters</button>
+              </div>}
             </div>
 
             <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 14 }}>
@@ -719,7 +689,7 @@ export default function WayplanCommandCenterPage() {
                     style={{ ...btn("gold"), opacity: activeWayplan && String(activeWayplan.wayplan_status || "").toUpperCase() === "ON_HOLD" ? 1 : 0.45 }}
                   >Reopen</button>
                 </div>
-                {!revisionSource && <button onClick={generateWayplan} disabled={loading || !selectedRows.length} style={btn("gold")}>Generate from {selectedRows.length} selected</button>}
+                {!revisionSource && <div data-wayplan-multivan-entry-v50="true" style={{ border: `1px solid ${C.blue}`, background: "rgba(78,168,222,0.10)", borderRadius: 12, padding: 10, color: C.sub, fontSize: 11 }}>Create new delivery Wayplans through the Multi-Van Planner above. It assigns the selected queue across available DELIVERY vans and creates separate Wayplans per van/route.</div>}
                 <div style={{ border: `1px solid ${C.border}`, background: C.panel2, borderRadius: 14, padding: 10 }}><div style={{ color: C.sub, fontSize: 11 }}>Active Wayplan</div><div style={{ color: C.gold, fontWeight: 900 }}>{activeWayplan?.wayplan_id || "-"}</div><div style={{ color: C.green, fontSize: 12 }}>{activeWayplan?.wayplan_status || "-"} / {activeWayplan?.total_stops || 0} stops / {money(activeWayplan?.total_cod)}</div></div>
                 {activeWayplan?.wayplan_status === "CREATED" && <div data-wayplan-lifecycle-note-v61="true" style={{ border: `1px solid ${C.gold}`, background: "rgba(246,184,75,0.08)", borderRadius: 14, padding: 10, fontSize: 11, lineHeight: 1.55 }}>
                   <strong style={{ color: C.gold }}>LIFECYCLE CONTROL</strong>
@@ -741,7 +711,7 @@ export default function WayplanCommandCenterPage() {
         </div>
 
         <Card id="wayplan-manifest">
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 12 }}><div><div style={{ color: C.gold, fontSize: 12, fontWeight: 900, letterSpacing: "0.22em" }}>BRITIUM EXPRESS</div><h2 style={{ margin: "6px 0", fontSize: 20 }}>Wayplan Manifest</h2><div style={{ color: C.sub }}>Wayplan: <strong style={{ color: C.text }}>{activeWayplan?.wayplan_id || "-"}</strong></div></div><div style={{ color: C.sub, fontSize: 12 }}><div>Status: {activeWayplan?.wayplan_status || "-"}</div><div>Vehicle: {activeWayplan?.vehicle_code || vehicleCode} / {activeWayplan?.vehicle_name || vehicleName}</div><div>Driver: {activeWayplan?.driver_code || driverCode} / {activeWayplan?.driver_name || driverName}</div><div>Rider: {activeWayplan?.rider_code || riderCode} / {activeWayplan?.rider_name || riderName}</div><div>Printed: {compactDate(new Date().toISOString())}</div></div></div>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: 16, flexWrap: "wrap", marginBottom: 12 }}><div><div style={{ color: C.gold, fontSize: 12, fontWeight: 900, letterSpacing: "0.22em" }}>BRITIUM EXPRESS</div><h2 style={{ margin: "6px 0", fontSize: 20 }}>Wayplan Manifest</h2><div style={{ color: C.sub }}>Wayplan: <strong style={{ color: C.text }}>{activeWayplan?.wayplan_id || "-"}</strong></div></div><div style={{ color: C.sub, fontSize: 12 }}><div>Status: {activeWayplan?.wayplan_status || "-"}</div><div>Vehicle: {activeWayplan?.vehicle_code || "-"} / {activeWayplan?.vehicle_name || "-"}</div><div>Driver: {activeWayplan?.driver_code || "-"} / {activeWayplan?.driver_name || "-"}</div><div>Rider: {activeWayplan?.rider_code || "-"} / {activeWayplan?.rider_name || "-"}</div><div>Printed: {compactDate(new Date().toISOString())}</div></div></div>
           <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1050 }}><thead><tr style={{ background: C.gold, color: C.bg, fontSize: 11, textTransform: "uppercase" }}><th style={{ padding: 8, textAlign: "left" }}>Seq</th><th style={{ padding: 8, textAlign: "left" }}>Waybill</th><th style={{ padding: 8, textAlign: "left" }}>Recipient</th><th style={{ padding: 8, textAlign: "left" }}>Phone</th><th style={{ padding: 8, textAlign: "left" }}>Township</th><th style={{ padding: 8, textAlign: "left" }}>Address</th><th style={{ padding: 8, textAlign: "right" }}>COD</th><th style={{ padding: 8, textAlign: "right" }}>Weight</th><th style={{ padding: 8, textAlign: "left" }}>Signature</th></tr></thead><tbody>{manifestStops.length ? manifestStops.map((stop: Row, i: number) => <tr key={stop.id || `${stop.delivery_way_id}-${i}`} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 8 }}>{stop.stop_sequence || i + 1}</td><td style={{ padding: 8, color: C.gold, fontWeight: 900 }}>{text(stop.waybill_no || stop.delivery_way_id)}</td><td style={{ padding: 8 }}>{text(stop.recipient_name)}</td><td style={{ padding: 8 }}>{text(stop.recipient_phone)}</td><td style={{ padding: 8 }}>{text(stop.township)}</td><td style={{ padding: 8, whiteSpace: "normal" }}><MapPin size={12} /> {text(stop.address)}</td><td style={{ padding: 8, textAlign: "right" }}>{money(stop.cod_amount)}</td><td style={{ padding: 8, textAlign: "right" }}>{Number(stop.parcel_weight_kg || 0).toLocaleString()} kg</td><td style={{ padding: 8 }}>________________</td></tr>) : <tr><td colSpan={9} style={{ padding: 24, textAlign: "center", color: C.sub }}>Select or generate a wayplan to show manifest.</td></tr>}</tbody></table></div>
         </Card>
       </div>
