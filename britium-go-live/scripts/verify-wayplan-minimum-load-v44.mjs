@@ -51,7 +51,8 @@ assert.ok(routes.every((route) => {
 
 const plannerSource = fs.readFileSync(path.join(root, "src", "components", "MultiVanPlanner.tsx"), "utf8");
 assert.ok(plannerSource.includes('const [pickup, setPickup] = useState("*");'), "Wayplan preview must default to All ready pickups");
-assert.ok(plannerSource.includes('const short = plans.filter((p) => p.rows.length < 50);'), "Yangon must enforce the same below-50 route count guard");
+assert.ok(plannerSource.includes('const short = plans.filter((p) => p.rows.length < 50 && !hasRiderAssignment(p));'), "Only Driver/van-only routes should be subject to the below-50 minimum guard");
+assert.ok(plannerSource.includes('const riderMinimumExempt = plans.filter((p) => p.rows.length < 50 && hasRiderAssignment(p));'), "Rider-selected routes below 50 must be explicitly exempt from the van minimum");
 assert.ok(plannerSource.includes('approve_below_minimum: approved'), "Yangon below-minimum creation must require explicit operator approval");
 assert.ok(!plannerSource.includes('approve_below_minimum: isYangonMaster ? true : approved'), "Yangon must not auto-approve a below-minimum route");
 
