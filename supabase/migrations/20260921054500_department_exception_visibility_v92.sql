@@ -14,7 +14,10 @@ as $$
       'name_en',r.exception_name_en,
       'name_mm',r.exception_name_mm,
       'mapped_status',r.mapped_status,
-      'priority',r.priority,
+      'severity',r.severity,
+      'require_photo',r.require_photo,
+      'require_remark',r.require_remark,
+      'next_action',r.next_action,
       'customer_message_en',r.customer_message_en,
       'customer_message_mm',r.customer_message_mm
     ) order by r.exception_code),'[]'::jsonb)
