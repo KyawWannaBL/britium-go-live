@@ -2500,6 +2500,53 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
+  async function authoritativeReadySequences(pickupId:string):Promise<number[]>{
+    const details=await (supabase as any)
+      .from("be_data_entry_parcel_details")
+      .select("parcel_sequence,delivery_way_id,financial_validation_status")
+      .eq("pickup_id",pickupId)
+      .eq("financial_validation_status","OK")
+      .order("parcel_sequence",{ascending:true});
+    if(details.error) throw new Error("Completed parcel readiness could not be refreshed: "+details.error.message);
+
+    const detailRows=Array.isArray(details.data)?details.data:[];
+    if(!detailRows.length) return [];
+
+    const wayIds=detailRows.map((item:any)=>text(item.delivery_way_id)).filter(Boolean);
+    if(!wayIds.length) return [];
+
+    const parcelRows=await (supabase as any)
+      .from("parcels")
+      .select("way_id,validation_status")
+      .in("way_id",wayIds);
+    if(parcelRows.error) throw new Error("Waybill parcel readiness could not be refreshed: "+parcelRows.error.message);
+
+    const validWays=new Set(
+      (Array.isArray(parcelRows.data)?parcelRows.data:[])
+        .filter((item:any)=>text(item.validation_status).toUpperCase()==="OK")
+        .map((item:any)=>text(item.way_id).trim().toUpperCase())
+    );
+
+    return detailRows
+      .filter((item:any)=>validWays.has(text(item.delivery_way_id).trim().toUpperCase()))
+      .map((item:any)=>positiveInt(item.parcel_sequence))
+      .filter(Boolean);
+  }
+
+  function currentReadinessSummary():string{
+    const counts=new Map<string,number>();
+    rows.forEach((row)=>{
+      if(row.saved) return;
+      const reason=rowSaveObstacle(row)||"Awaiting backend save";
+      counts.set(reason,(counts.get(reason)||0)+1);
+    });
+    return [...counts.entries()]
+      .sort((a,b)=>b[1]-a[1])
+      .slice(0,5)
+      .map(([reason,count])=>`${reason}: ${count}`)
+      .join(" · ");
+  }
+
   async function createAndGenerateWaybill(){
     if(!selectedPickupId || waybillBusy || bulkSaving || bulkCalculating) return;
 
@@ -2508,9 +2555,17 @@ export default function DataEntryFinancialV2Page() {
     setWaybillMessageKind("SUCCESS");
 
     try{
-      await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
-      const readySequences=rows.filter(row=>!rowSaveObstacle(row)).map(row=>row.parcel_sequence);
-      if(!readySequences.length) throw new Error("No completed parcels are ready yet. Pending drafts are preserved.");
+      const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
+      const readySequences=await authoritativeReadySequences(selectedPickupId);
+      if(!readySequences.length){
+        const blockers=currentReadinessSummary();
+        const held=Number(saveResult?.held_count||0);
+        throw new Error(
+          "No backend-validated completed parcels are ready yet."+
+          (held?` ${held} parcel(s) remain pending.`:"")+
+          (blockers?` Resolve: ${blockers}.`:" Refresh the pickup and retry after Save All.")
+        );
+      }
 
       const requestId =
         "WAYBILL:" +
