@@ -319,12 +319,63 @@ export default function DataEntryLocationEditor({
     return { nextLat, nextLng, next };
   }
 
+  async function autoPersistManualPin(next: DeliveryLocation, action: "dragged" | "clicked") {
+    if (!deliveryWayId) {
+      reportResolution("REVIEW_REQUIRED");
+      setMessage("Coordinates were copied from the Google pin, but a Delivery Way ID is required before they can be synchronized.");
+      return;
+    }
+
+    try {
+      const verified = verifiedAddressLocation(query || address, township);
+      if (verified) {
+        const distance = Math.hypot(
+          (Number(next.latitude) - verified.latitude) * 111_320,
+          (Number(next.longitude) - verified.longitude) * 106_000
+        );
+        if (distance > 750) {
+          reportResolution("REVIEW_REQUIRED");
+          setMessage("The selected Google pin is outside the verified address area. Coordinates remain visible for correction but were not synchronized.");
+          return;
+        }
+      }
+
+      const insideTownship = await coordinateMatchesTownship(township, next.latitude, next.longitude);
+      if (!insideTownship) {
+        reportResolution("REVIEW_REQUIRED");
+        setMessage(`The selected Google pin is outside ${township || "the selected township"}. Coordinates remain visible, but were not synchronized.`);
+        return;
+      }
+
+      const accepted: DeliveryLocation = {
+        ...next,
+        latitude: Number(next.latitude),
+        longitude: Number(next.longitude),
+        matchLevel: "MANUAL",
+        confidence: 1,
+        coordinateSource: "DATA_ENTRY_GOOGLE_PIN_CONFIRMED",
+        reviewStatus: "ACCEPTED",
+      };
+
+      await saveDeliveryLocation(supabase, accepted);
+      setCandidate(accepted);
+      candidateCallback.current?.(accepted);
+      reportResolution("SYNCED");
+      setMessage(`Google pin ${action} and synchronized automatically: ${Number(accepted.latitude).toFixed(6)}, ${Number(accepted.longitude).toFixed(6)}. This parcel location is now ready for Save/Waybill.`);
+    } catch (error:any) {
+      console.error("Automatic Google pin synchronization failed", error);
+      reportResolution("REVIEW_REQUIRED");
+      setMessage(error?.message || "Coordinates were copied from the Google pin but could not be synchronized. Use Apply coordinates to retry.");
+    }
+  }
+
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
     const synced = syncPinCoordinates(latitude, longitude, action);
     if (!synced) return;
     setManualOpen(true);
     reportResolution("REVIEW_REQUIRED");
-    setMessage(`Coordinates copied automatically from the ${action} Google Map pin: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. The Latitude and Longitude boxes now match this pin. Click Apply coordinates to save and share with Wayplan.`);
+    setMessage(`Coordinates copied automatically from the ${action} Google Map pin: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. Validating and synchronizing this pin now…`);
+    void autoPersistManualPin(synced.next, action);
   }
 
   async function openRelocationMap() {
