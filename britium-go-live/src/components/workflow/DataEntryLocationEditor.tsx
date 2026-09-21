@@ -157,8 +157,9 @@ export default function DataEntryLocationEditor({
       };
       if (requestId !== requestSequence.current) return;
       setCandidate(corrected);
-      setLat(String(corrected.latitude));
-      setLng(String(corrected.longitude));
+      setLat(Number(corrected.latitude).toFixed(6));
+      setLng(Number(corrected.longitude).toFixed(6));
+      candidateCallback.current?.(corrected);
       setMessage("Verified South Okkalapa Ward 3 location restored; stale provider coordinates were ignored.");
       try {
         await saveDeliveryLocation(supabase, corrected);
@@ -222,9 +223,11 @@ export default function DataEntryLocationEditor({
       void find(address, true);
       return;
     }
-    setCandidate({ deliveryWayId, latitude: Number(row.latitude), longitude: Number(row.longitude), label: row.provider_label || row.address_english || row.address_original, originalAddress: row.address_original || address, englishAddress: row.address_english || "", township: row.township || township, postalCode: row.postal_code || "", postalMatchLevel: row.postal_match_level || "UNRESOLVED", matchLevel: row.match_level, confidence: Number(row.confidence || 0), coordinateSource: row.coordinate_source, reviewStatus: row.review_status });
-    setLat(String(row.latitude));
-    setLng(String(row.longitude));
+    const restoredCandidate: DeliveryLocation = { deliveryWayId, latitude: Number(row.latitude), longitude: Number(row.longitude), label: row.provider_label || row.address_english || row.address_original, originalAddress: row.address_original || address, englishAddress: row.address_english || "", township: row.township || township, postalCode: row.postal_code || "", postalMatchLevel: row.postal_match_level || "UNRESOLVED", matchLevel: row.match_level, confidence: Number(row.confidence || 0), coordinateSource: row.coordinate_source, reviewStatus: row.review_status };
+    setCandidate(restoredCandidate);
+    setLat(Number(row.latitude).toFixed(6));
+    setLng(Number(row.longitude).toFixed(6));
+    candidateCallback.current?.(restoredCandidate);
     if (row.review_status === "ACCEPTED") {
       reportResolution("SYNCED");
     } else {
@@ -267,35 +270,61 @@ export default function DataEntryLocationEditor({
   }, [deliveryWayId, address, township, candidate, autoResolveDelayMs, enabled, deferAutomaticResolution]);
 
 
-  function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
+  function syncPinCoordinates(
+    latitude: number,
+    longitude: number,
+    action: "dragged" | "clicked" | "search" | "restored"
+  ) {
     if (!validMyanmarCoordinate(longitude, latitude)) {
-      setMessage("The selected map point is outside Myanmar or invalid.");
-      return;
+      setMessage("The selected Google Map point is outside Myanmar or invalid.");
+      return null;
     }
+
     const nextLat = Number(latitude.toFixed(6));
     const nextLng = Number(longitude.toFixed(6));
-    setLat(nextLat.toFixed(6));
-    setLng(nextLng.toFixed(6));
-    setManualOpen(true);
-    reportResolution("REVIEW_REQUIRED");
-    setCandidate((current) => ({
-      ...(current || {
+    const next: DeliveryLocation = {
+      ...(candidate || {
         deliveryWayId,
-        label: query || address || "Manually selected drop-off",
+        label: query || address || "Selected drop-off",
         originalAddress: address,
         englishAddress: english,
         township,
         postalCode: postal.postalCode,
         postalMatchLevel: postal.matchLevel,
       }),
+      deliveryWayId,
       latitude: nextLat,
       longitude: nextLng,
-      matchLevel: "MANUAL",
-      confidence: 1,
-      coordinateSource: "DATA_ENTRY_MANUAL_MAP_EDIT",
-      reviewStatus: "MANUAL_REVIEW",
-    }));
-    setMessage(`Coordinates copied from the ${action} Google Map point: ${nextLat.toFixed(6)}, ${nextLng.toFixed(6)}. Click Apply coordinates to save the relocation and share it with Wayplan.`);
+      matchLevel: action === "search" || action === "restored"
+        ? (candidate?.matchLevel || "MANUAL")
+        : "MANUAL",
+      confidence: candidate?.confidence || 1,
+      coordinateSource: action === "search"
+        ? (candidate?.coordinateSource || "GOOGLE_SEARCH")
+        : action === "restored"
+          ? (candidate?.coordinateSource || "SAVED_LOCATION")
+          : "DATA_ENTRY_MANUAL_MAP_EDIT",
+      reviewStatus: action === "search" || action === "restored"
+        ? (candidate?.reviewStatus || "MANUAL_REVIEW")
+        : "MANUAL_REVIEW",
+    };
+
+    // V99: write all three consumers synchronously from the same Google pin event.
+    // This prevents the marker, visible textboxes and parent Data Entry row from drifting.
+    setLat(nextLat.toFixed(6));
+    setLng(nextLng.toFixed(6));
+    setCandidate(next);
+    candidateCallback.current?.(next);
+
+    return { nextLat, nextLng, next };
+  }
+
+  function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
+    const synced = syncPinCoordinates(latitude, longitude, action);
+    if (!synced) return;
+    setManualOpen(true);
+    reportResolution("REVIEW_REQUIRED");
+    setMessage(`Coordinates copied automatically from the ${action} Google Map pin: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. The Latitude and Longitude boxes now match this pin. Click Apply coordinates to save and share with Wayplan.`);
   }
 
   async function openRelocationMap() {
@@ -427,8 +456,9 @@ export default function DataEntryLocationEditor({
         // ward/street fallback look broken. Show the candidate and prefill coordinates so
         // an operator can visually review it, then require explicit Apply coordinates.
         setCandidate(found);
-        setLat(String(found.latitude));
-        setLng(String(found.longitude));
+        setLat(Number(found.latitude).toFixed(6));
+        setLng(Number(found.longitude).toFixed(6));
+        candidateCallback.current?.(found);
         setManualOpen(true);
         reportResolution("REVIEW_REQUIRED");
         const reason=String(found.reviewReason||"");
@@ -443,8 +473,9 @@ export default function DataEntryLocationEditor({
       }
       if (deliveryWayId) await saveDeliveryLocation(supabase, found);
       setCandidate(found);
-      setLat(String(found.latitude));
-      setLng(String(found.longitude));
+      setLat(Number(found.latitude).toFixed(6));
+      setLng(Number(found.longitude).toFixed(6));
+      candidateCallback.current?.(found);
       setManualOpen(false);
       setMessage(deliveryWayId
         ? `${found.matchLevel.replaceAll("_", " ")} saved automatically and shared with Wayplan.`
@@ -600,7 +631,17 @@ export default function DataEntryLocationEditor({
           <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!candidate||candidate.reviewStatus==="ACCEPTED"||!validMyanmarCoordinate(candidate.longitude,candidate.latitude)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
-        {manualOpen && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]"><input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button></div>}
+        {enabled && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
+            <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+          </label>
+          <label className="block">
+            <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Longitude / လောင်ဂျီကျု</span>
+            <input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+          </label>
+          <button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="self-end rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button>
+        </div>}
       </div>
       <div>
         {candidate && googleMapsConfigured && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
@@ -610,9 +651,15 @@ export default function DataEntryLocationEditor({
             {validMyanmarCoordinate(lng, lat) && <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/40 bg-[#061524]/90 px-3 py-2 text-[11px] font-bold text-cyan-100">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</div>}
           </div>
           <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Click the exact gate/building or drag the pin. The Google pin automatically becomes the Latitude and Longitude textbox values immediately. Verify them, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
-        </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : addressMapUrl ? <div>
-          <iframe src={addressMapUrl} title={`Google Maps address search for ${deliveryWayId || "new parcel"}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>
-          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>Address-search preview only. Click <b>Show pin and select location on this map</b> to switch to the editable Google Map without opening another tab. Then click the exact gate/building; latitude and longitude will fill automatically.</div>
+        </div> : mapUrl ? <div><div className="relative">
+            <iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="pointer-events-none aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 opacity-90"/>
+            <button type="button" onClick={()=>void openRelocationMap()} className="absolute inset-x-4 bottom-4 rounded-xl border border-cyan-300/60 bg-[#061524]/95 px-4 py-3 text-xs font-black text-cyan-100 shadow-xl">EDIT PIN ON MAP — AUTO-FILL LATITUDE / LONGITUDE</button>
+          </div>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : addressMapUrl ? <div>
+          <div className="relative">
+            <iframe src={addressMapUrl} title={`Google Maps address search for ${deliveryWayId || "new parcel"}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="pointer-events-none aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 opacity-90"/>
+            <button type="button" onClick={()=>void openRelocationMap()} className="absolute inset-x-4 bottom-4 rounded-xl border border-cyan-300/60 bg-[#061524]/95 px-4 py-3 text-xs font-black text-cyan-100 shadow-xl">SHOW EDITABLE PIN — AUTO-FILL COORDINATES</button>
+          </div>
+          <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>Preview only — this embedded Google Maps view cannot send pin movements back to Britium. Click <b>SHOW EDITABLE PIN — AUTO-FILL COORDINATES</b>, then click/drag the Britium editable pin. Latitude and Longitude will update immediately.</div>
           {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
         </div> : <div className="grid min-h-[230px] place-items-center rounded-lg border border-dashed border-slate-600 px-6 text-center text-sm text-slate-400">{busy ? "Locating drop-off automatically..." : mapError || "Enter an address to preview it in Google Maps. No pin is shared with Wayplan until it is validated."}</div>}
       </div>
