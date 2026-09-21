@@ -112,6 +112,18 @@ export default function DataEntryLocationEditor({
     candidateCallback.current?.(candidate);
   }, [candidate]);
 
+  // V97: the Google pin is the coordinate source of truth.
+  // Any valid pin produced by search, map click, marker drag, restored location,
+  // or another location workflow is immediately mirrored into the Latitude /
+  // Longitude text boxes so operators never have to copy coordinates manually.
+  useEffect(() => {
+    if (!candidate || !validMyanmarCoordinate(candidate.longitude, candidate.latitude)) return;
+    const nextLat = Number(candidate.latitude).toFixed(6);
+    const nextLng = Number(candidate.longitude).toFixed(6);
+    setLat((current) => current === nextLat ? current : nextLat);
+    setLng((current) => current === nextLng ? current : nextLng);
+  }, [candidate?.latitude, candidate?.longitude]);
+
   function reportResolution(status: DataEntryLocationResolution) {
     resolutionCallback.current?.(status);
   }
@@ -343,6 +355,8 @@ export default function DataEntryLocationEditor({
         return;
       }
       const position = { lat: candidate.latitude, lng: candidate.longitude };
+      setLat(Number(position.lat).toFixed(6));
+      setLng(Number(position.lng).toFixed(6));
       map = new maps.Map(interactiveMapContainer.current, {
         center: position,
         zoom: 18,
@@ -595,7 +609,7 @@ export default function DataEntryLocationEditor({
             <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">CLICK THE EXACT DROP-OFF POINT — COORDINATES COPY AUTOMATICALLY</div>
             {validMyanmarCoordinate(lng, lat) && <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/40 bg-[#061524]/90 px-3 py-2 text-[11px] font-bold text-cyan-100">{Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}</div>}
           </div>
-          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Click the exact gate/building or drag the pin. Latitude and longitude are copied into the fields immediately. Verify them, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
+          <div className="mt-2 rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] font-semibold text-amber-100">Click the exact gate/building or drag the pin. The Google pin automatically becomes the Latitude and Longitude textbox values immediately. Verify them, then click <b>Apply coordinates</b>. Wayplan is updated only after Apply.</div>
         </div> : mapUrl ? <div><iframe src={mapUrl} title={`Google Maps drop-off location for ${deliveryWayId}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>{mapError && <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>{mapError}</div>}</div> : addressMapUrl ? <div>
           <iframe src={addressMapUrl} title={`Google Maps address search for ${deliveryWayId || "new parcel"}`} loading="lazy" referrerPolicy="no-referrer-when-downgrade" className="aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60"/>
           <div className="mt-2 rounded-lg border border-amber-500/40 bg-amber-950/20 px-3 py-2 text-xs font-semibold text-amber-100"><AlertTriangle size={14} className="mr-1 inline"/>Address-search preview only. Click <b>Show pin and select location on this map</b> to switch to the editable Google Map without opening another tab. Then click the exact gate/building; latitude and longitude will fill automatically.</div>
