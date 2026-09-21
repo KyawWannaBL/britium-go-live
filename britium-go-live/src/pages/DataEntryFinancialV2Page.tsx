@@ -735,7 +735,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                               </Field>
                               <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions}/>
                               <Field label="လက်ခံသူလိပ်စာ / Full Address">
-                                <BufferedDataEntryInput multiline rows={3} className={inputClass} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
+                                <BufferedDataEntryInput multiline rows={3} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black`} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
                               </Field>
                               <div className="grid grid-cols-2 gap-3">
                                 <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
@@ -1338,6 +1338,9 @@ export default function DataEntryFinancialV2Page() {
   const [addingRegistration,setAddingRegistration]=useState(false);
   const [locationReviewBusy,setLocationReviewBusy]=useState(false);
   const [progressDate,setProgressDate]=useState(()=>yangonDateKey());
+  const [staffProgress,setStaffProgress]=useState<any>({summary:{},pickups:[],merchants:[],staff:[]});
+  const [staffProgressLoading,setStaffProgressLoading]=useState(false);
+  const [staffProgressMessage,setStaffProgressMessage]=useState("");
   const [gridSearch,setGridSearch]=useState("");
   const [gridFilter,setGridFilter]=useState<"ALL"|"REGISTERED"|"PENDING">("ALL");
   // Recycled editor model: render one editable parcel form at a time.
@@ -1530,6 +1533,29 @@ export default function DataEntryFinancialV2Page() {
   const validateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.validateInputRow(...args),[]);
   const reviewEditorPhoto=useCallback((...args:any[])=>rowActionsRef.current.reviewPhoto(...args),[]);
   const toggleEditorPhotoWaiver=useCallback((...args:any[])=>rowActionsRef.current.togglePhotoWaiver(...args),[]);
+
+  async function loadStaffProgress(dateValue:string=progressDate){
+    setStaffProgressLoading(true);
+    try{
+      const response=await (supabase as any).rpc("be_data_entry_staff_progress_v96",{
+        p_pickup_date:dateValue||null,
+      });
+      if(response.error) throw response.error;
+      if(response.data?.ok===false) throw new Error(response.data?.error||"Unable to load Data Entry staff progress.");
+      setStaffProgress({
+        summary:response.data?.summary||{},
+        pickups:Array.isArray(response.data?.pickups)?response.data.pickups:[],
+        merchants:Array.isArray(response.data?.merchants)?response.data.merchants:[],
+        staff:Array.isArray(response.data?.staff)?response.data.staff:[],
+      });
+      setStaffProgressMessage("");
+    }catch(error:any){
+      console.error("Data Entry staff progress load failed",error);
+      setStaffProgressMessage(error?.message||"Unable to load Data Entry staff progress.");
+    }finally{
+      setStaffProgressLoading(false);
+    }
+  }
 
   async function loadStartup(){
     setLoading(true); setMessage("");
@@ -1885,6 +1911,7 @@ export default function DataEntryFinancialV2Page() {
       },{onConflict:"owner_id,pickup_id,parcel_sequence"});
       if(result.error) throw result.error;
       updateRow(index,{checking:false,message:"Draft saved. You can leave this parcel and continue later without losing the current entry."});
+      void loadStaffProgress(progressDate);
       return true;
     }catch(error:any){
       updateRow(index,{checking:false,message:error?.message||"Draft save failed."});
@@ -2917,6 +2944,24 @@ export default function DataEntryFinancialV2Page() {
   }
 
   useEffect(()=>{void loadStartup();},[]);
+  useEffect(()=>{void loadStaffProgress(progressDate);},[progressDate]);
+  useEffect(()=>{
+    let refreshTimer:number|undefined;
+    const scheduleProgressRefresh=()=>{
+      if(refreshTimer) window.clearTimeout(refreshTimer);
+      refreshTimer=window.setTimeout(()=>{void loadStaffProgress(progressDate);},350);
+    };
+    const channel=(supabase as any)
+      .channel("data-entry-staff-progress-v96")
+      .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_parcel_details"},scheduleProgressRefresh)
+      .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_pending_drafts"},scheduleProgressRefresh)
+      .on("postgres_changes",{event:"*",schema:"public",table:"be_portal_pickup_requests"},scheduleProgressRefresh)
+      .subscribe();
+    return ()=>{
+      if(refreshTimer) window.clearTimeout(refreshTimer);
+      (supabase as any).removeChannel(channel);
+    };
+  },[progressDate]);
   useEffect(()=>{
     setPageIndex(0);
     if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
@@ -3143,44 +3188,76 @@ export default function DataEntryFinancialV2Page() {
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
           </div>:null}
 
-          <div data-data-entry-daily-progress-v81="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
+          <div data-data-entry-staff-progress-v96="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Daily pickup registration progress</div>
-                <div className="mt-1 text-[11px] text-[#8db4ce]">All Data Entry staff can see which pickup requests are completed and which still need parcel registration.</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Data Entry Staff Progress / စာရင်းသွင်းသူများ၏ လုပ်ဆောင်ပြီးမှု</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">See which merchant/pickup is already being handled, who saved the rows, what is still in draft, and what remains. This view refreshes when another Data Entry user saves work.</div>
               </div>
-              <Field label="Pickup date">
-                <input type="date" className={inputClass} value={progressDate} onChange={(event)=>setProgressDate(event.target.value)}/>
-              </Field>
+              <div className="flex flex-wrap items-end gap-2">
+                <Field label="Pickup date">
+                  <input type="date" className={inputClass} value={progressDate} onChange={(event)=>setProgressDate(event.target.value)}/>
+                </Field>
+                <button type="button" onClick={()=>void loadStaffProgress(progressDate)} disabled={staffProgressLoading} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-40">
+                  {staffProgressLoading?<Loader2 size={13} className="animate-spin"/>:<RefreshCw size={13}/>} REFRESH TEAM PROGRESS
+                </button>
+              </div>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
-              <div className={serverClass}>Pickups: <b>{dailyProgressSummary.pickups}</b></div>
-              <div className={serverClass}>Authorized parcels: <b>{dailyProgressSummary.authorized}</b></div>
-              <div className={serverClass}>Registered: <b>{dailyProgressSummary.registered}</b></div>
-              <div className={serverClass}>Still required: <b className={dailyProgressSummary.remaining?"text-amber-200":"text-emerald-200"}>{dailyProgressSummary.remaining}</b></div>
-              <div className={serverClass}>Completion: <b>{dailyProgressSummary.authorized?Math.min(100,Math.round(dailyProgressSummary.registered/dailyProgressSummary.authorized*100)):0}%</b></div>
+            {staffProgressMessage?<div className="mt-3 rounded-lg border border-rose-300/35 bg-rose-500/10 px-3 py-2 text-[10px] font-semibold text-rose-100">{staffProgressMessage}</div>:null}
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-7">
+              <div className={serverClass}>Pickups: <b>{Number(staffProgress.summary?.pickups||0)}</b></div>
+              <div className={serverClass}>Merchants: <b>{Number(staffProgress.summary?.merchants||0)}</b></div>
+              <div className={serverClass}>Expected: <b>{Number(staffProgress.summary?.expected||0)}</b></div>
+              <div className={serverClass}>Registered: <b className="text-emerald-200">{Number(staffProgress.summary?.registered||0)}</b></div>
+              <div className={serverClass}>Remaining: <b className={Number(staffProgress.summary?.remaining||0)?"text-amber-200":"text-emerald-200"}>{Number(staffProgress.summary?.remaining||0)}</b></div>
+              <div className={serverClass}>In progress: <b>{Number(staffProgress.summary?.in_progress_pickups||0)}</b></div>
+              <div className={serverClass}>Completed: <b className="text-emerald-200">{Number(staffProgress.summary?.completed_pickups||0)}</b></div>
             </div>
-            <div className="mt-3 max-h-72 overflow-auto rounded-lg border border-[#1a3a5c]">
-              <table className="w-full min-w-[900px] text-[10px]">
-                <thead className="sticky top-0 z-10 bg-[#12314a] text-left text-[#8fd3ff]">
-                  <tr><th className="px-3 py-2">Pickup</th><th className="px-3 py-2">Merchant</th><th className="px-3 py-2">Requested</th><th className="px-3 py-2">Authorized</th><th className="px-3 py-2">Registered</th><th className="px-3 py-2">Remaining</th><th className="px-3 py-2">Action</th></tr>
-                </thead>
+            <div className="mt-4">
+              <div className="mb-2 text-[10px] font-black uppercase tracking-[0.15em] text-[#8fd3ff]">Data Entry staff / စာရင်းသွင်းဝန်ထမ်းများ</div>
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                {(staffProgress.staff||[]).map((staff:any)=>(
+                  <div key={staff.email} className={`rounded-lg border p-3 ${staff.is_current_user?"border-cyan-300/60 bg-cyan-400/10":"border-[#31506a] bg-[#0b2236]"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0"><div className="truncate text-[11px] font-black text-white">{staff.name||staff.email}</div><div className="truncate text-[9px] text-[#8db4ce]">{staff.email}</div></div>
+                      {staff.is_current_user?<span className="rounded-full bg-cyan-300 px-2 py-1 text-[8px] font-black text-[#04111d]">YOU</span>:null}
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-1 text-[9px]">
+                      <div className="rounded bg-emerald-500/10 px-2 py-1.5 text-emerald-100">Saved <b>{Number(staff.saved_rows||0)}</b></div>
+                      <div className="rounded bg-amber-400/10 px-2 py-1.5 text-amber-100">Draft <b>{Number(staff.draft_rows||0)}</b></div>
+                      <div className="rounded bg-[#12314a] px-2 py-1.5 text-[#bfe8ff]">Pickups <b>{Number(staff.pickups_saved||0)}</b></div>
+                      <div className="rounded bg-[#12314a] px-2 py-1.5 text-[#bfe8ff]">Merchants <b>{Number(staff.merchants_touched||0)}</b></div>
+                    </div>
+                    <div className="mt-2 text-[8px] text-[#6f9ab8]">Last: {staff.last_activity?new Date(staff.last_activity).toLocaleString():"No activity yet"}</div>
+                  </div>
+                ))}
+                {!(staffProgress.staff||[]).length?<div className="col-span-full rounded-lg border border-dashed border-[#31506a] px-3 py-5 text-center text-[10px] text-[#8db4ce]">No active Data Entry staff activity for this date yet.</div>:null}
+              </div>
+            </div>
+            <div className="mt-4 max-h-80 overflow-auto rounded-lg border border-[#1a3a5c]">
+              <table className="w-full min-w-[1180px] text-[10px]">
+                <thead className="sticky top-0 z-10 bg-[#12314a] text-left text-[#8fd3ff]"><tr><th className="px-3 py-2">Pickup</th><th className="px-3 py-2">Merchant</th><th className="px-3 py-2">Expected</th><th className="px-3 py-2">Registered</th><th className="px-3 py-2">Draft</th><th className="px-3 py-2">Remaining</th><th className="px-3 py-2">Status</th><th className="px-3 py-2 min-w-[280px]">Worked by / စာရင်းသွင်းသူ</th><th className="px-3 py-2">Action</th></tr></thead>
                 <tbody>
-                  {dailyPickupProgress.map((pickup)=><tr key={pickup.pickup_id} className={`border-t border-[#16344f] ${pickup.remaining?"bg-amber-400/5":"bg-emerald-400/5"}`}>
-                    <td className="px-3 py-2 font-black text-sky-200">{pickup.pickup_id}</td>
-                    <td className="px-3 py-2">{pickup.merchant_id||pickup.merchant_name||"—"}</td>
-                    <td className="px-3 py-2">{pickup.requested}</td>
-                    <td className="px-3 py-2">{pickup.authorized}</td>
-                    <td className="px-3 py-2 font-black text-emerald-200">{pickup.registered}</td>
-                    <td className={`px-3 py-2 font-black ${pickup.remaining?"text-amber-200":"text-emerald-200"}`}>{pickup.remaining}</td>
-                    <td className="px-3 py-2"><button type="button" onClick={()=>setSelectedPickupId(pickup.pickup_id)} className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-1.5 font-black text-cyan-100">{pickup.remaining?"OPEN & CONTINUE":"OPEN"}</button></td>
-                  </tr>)}
-                  {!dailyPickupProgress.length?<tr><td colSpan={7} className="px-3 py-5 text-center text-[#8db4ce]">No pickup requests are available for this date in the current operational window.</td></tr>:null}
+                  {(staffProgress.pickups||[]).map((pickup:any)=>{
+                    const contributors=Array.isArray(pickup.contributors)?pickup.contributors:[];
+                    const status=String(pickup.status||"NOT_STARTED");
+                    return <tr key={pickup.pickup_id} className={`border-t border-[#16344f] ${status==="COMPLETED"?"bg-emerald-400/5":status==="IN_PROGRESS"||status==="DRAFTING"?"bg-cyan-400/5":"bg-amber-400/5"}`}>
+                      <td className="px-3 py-2 font-black text-sky-200">{pickup.pickup_id}</td>
+                      <td className="px-3 py-2"><div className="font-black text-white">{pickup.merchant_code||"—"}</div><div className="max-w-[220px] truncate text-[9px] text-[#8db4ce]">{pickup.merchant_name||"—"}</div></td>
+                      <td className="px-3 py-2">{Number(pickup.expected||0)}</td>
+                      <td className="px-3 py-2 font-black text-emerald-200">{Number(pickup.registered||0)}</td>
+                      <td className="px-3 py-2 font-black text-amber-100">{Number(pickup.drafts||0)}</td>
+                      <td className={`px-3 py-2 font-black ${Number(pickup.remaining||0)?"text-amber-200":"text-emerald-200"}`}>{Number(pickup.remaining||0)}</td>
+                      <td className="px-3 py-2"><span className={`rounded-full border px-2 py-1 text-[8px] font-black ${status==="COMPLETED"?"border-emerald-400/40 bg-emerald-400/10 text-emerald-100":status==="IN_PROGRESS"||status==="DRAFTING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-100":"border-amber-300/40 bg-amber-400/10 text-amber-100"}`}>{status.replaceAll("_"," ")}</span></td>
+                      <td className="px-3 py-2">{contributors.length?<div className="flex flex-wrap gap-1">{contributors.map((person:any)=><span key={person.email} title={person.email} className="rounded-full border border-[#31506a] bg-[#102741] px-2 py-1 text-[8px] font-bold text-[#c8e8fa]">{person.name||person.email} · S{Number(person.saved_rows||0)} / D{Number(person.draft_rows||0)}</span>)}</div>:<span className="text-[#6f9ab8]">Not started</span>}</td>
+                      <td className="px-3 py-2"><button type="button" onClick={()=>setSelectedPickupId(pickup.pickup_id)} className="rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-1.5 font-black text-cyan-100">{Number(pickup.remaining||0)?"OPEN / CONTINUE":"OPEN"}</button></td>
+                    </tr>;
+                  })}
+                  {!(staffProgress.pickups||[]).length?<tr><td colSpan={9} className="px-3 py-6 text-center text-[#8db4ce]">No pickup requests are available for this date.</td></tr>:null}
                 </tbody>
               </table>
             </div>
           </div>
-
           <div data-location-review-recovery="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
             <div className="mb-3 text-[11px] leading-5 text-amber-100">Resume location review after a crash or sign-in: upload your corrected review workbook directly. Select the original pickup date range above. Completed corrections stay saved; you do not need to repeat the original location review.</div>
                 <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
