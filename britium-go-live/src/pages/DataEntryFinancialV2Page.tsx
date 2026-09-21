@@ -1537,8 +1537,9 @@ export default function DataEntryFinancialV2Page() {
   async function loadStaffProgress(dateValue:string=progressDate){
     setStaffProgressLoading(true);
     try{
-      const response=await (supabase as any).rpc("be_data_entry_staff_progress_v96",{
-        p_pickup_date:dateValue||null,
+      const response=await (supabase as any).rpc("be_data_entry_staff_progress_v98",{
+        p_work_date:dateValue||null,
+        p_selected_pickup_id:selectedPickupId||null,
       });
       if(response.error) throw response.error;
       if(response.data?.ok===false) throw new Error(response.data?.error||"Unable to load Data Entry staff progress.");
@@ -2944,7 +2945,7 @@ export default function DataEntryFinancialV2Page() {
   }
 
   useEffect(()=>{void loadStartup();},[]);
-  useEffect(()=>{void loadStaffProgress(progressDate);},[progressDate]);
+  useEffect(()=>{void loadStaffProgress(progressDate);},[progressDate,selectedPickupId]);
   useEffect(()=>{
     let refreshTimer:number|undefined;
     const scheduleProgressRefresh=()=>{
@@ -2952,7 +2953,7 @@ export default function DataEntryFinancialV2Page() {
       refreshTimer=window.setTimeout(()=>{void loadStaffProgress(progressDate);},350);
     };
     const channel=(supabase as any)
-      .channel("data-entry-staff-progress-v96")
+      .channel("data-entry-staff-progress-v98")
       .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_parcel_details"},scheduleProgressRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_pending_drafts"},scheduleProgressRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"be_portal_pickup_requests"},scheduleProgressRefresh)
@@ -3192,10 +3193,10 @@ export default function DataEntryFinancialV2Page() {
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.16em] text-cyan-200">Data Entry Staff Progress / စာရင်းသွင်းသူများ၏ လုပ်ဆောင်ပြီးမှု</div>
-                <div className="mt-1 text-[11px] text-[#8db4ce]">See which merchant/pickup is already being handled, who saved the rows, what is still in draft, and what remains. This view refreshes when another Data Entry user saves work.</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">See which merchant/pickup is already being handled, who saved the rows, what is still in draft, and what remains. The selected pickup is always included even if its original pickup date is earlier.</div>
               </div>
               <div className="flex flex-wrap items-end gap-2">
-                <Field label="Pickup date">
+                <Field label="Work activity date">
                   <input type="date" className={inputClass} value={progressDate} onChange={(event)=>setProgressDate(event.target.value)}/>
                 </Field>
                 <button type="button" onClick={()=>void loadStaffProgress(progressDate)} disabled={staffProgressLoading} className="inline-flex items-center gap-2 rounded-lg border border-cyan-300/40 bg-cyan-400/10 px-3 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-40">
@@ -3204,10 +3205,11 @@ export default function DataEntryFinancialV2Page() {
               </div>
             </div>
             {staffProgressMessage?<div className="mt-3 rounded-lg border border-rose-300/35 bg-rose-500/10 px-3 py-2 text-[10px] font-semibold text-rose-100">{staffProgressMessage}</div>:null}
-            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-7">
+            <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-8">
               <div className={serverClass}>Pickups: <b>{Number(staffProgress.summary?.pickups||0)}</b></div>
               <div className={serverClass}>Merchants: <b>{Number(staffProgress.summary?.merchants||0)}</b></div>
               <div className={serverClass}>Expected: <b>{Number(staffProgress.summary?.expected||0)}</b></div>
+              <div className={serverClass}>Drafts: <b className="text-amber-100">{Number(staffProgress.summary?.drafts||0)}</b></div>
               <div className={serverClass}>Registered: <b className="text-emerald-200">{Number(staffProgress.summary?.registered||0)}</b></div>
               <div className={serverClass}>Remaining: <b className={Number(staffProgress.summary?.remaining||0)?"text-amber-200":"text-emerald-200"}>{Number(staffProgress.summary?.remaining||0)}</b></div>
               <div className={serverClass}>In progress: <b>{Number(staffProgress.summary?.in_progress_pickups||0)}</b></div>
@@ -3226,7 +3228,7 @@ export default function DataEntryFinancialV2Page() {
                       <div className="rounded bg-emerald-500/10 px-2 py-1.5 text-emerald-100">Saved <b>{Number(staff.saved_rows||0)}</b></div>
                       <div className="rounded bg-amber-400/10 px-2 py-1.5 text-amber-100">Draft <b>{Number(staff.draft_rows||0)}</b></div>
                       <div className="rounded bg-[#12314a] px-2 py-1.5 text-[#bfe8ff]">Pickups <b>{Number(staff.pickups_saved||0)}</b></div>
-                      <div className="rounded bg-[#12314a] px-2 py-1.5 text-[#bfe8ff]">Merchants <b>{Number(staff.merchants_touched||0)}</b></div>
+                      <div className="rounded bg-[#12314a] px-2 py-1.5 text-[#bfe8ff]">Touched <b>{Number(staff.pickups_touched||0)}</b></div>
                     </div>
                     <div className="mt-2 text-[8px] text-[#6f9ab8]">Last: {staff.last_activity?new Date(staff.last_activity).toLocaleString():"No activity yet"}</div>
                   </div>
