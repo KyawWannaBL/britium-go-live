@@ -775,7 +775,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                   <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.photoReviewStatus === "APPROVED"?"border-emerald-500/40 bg-emerald-500/10 text-emerald-300":row.photoReviewStatus === "REUPLOAD_REQUIRED"?"border-rose-500/40 bg-rose-500/10 text-rose-300":"border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>{row.photoReviewStatus || "PENDING REVIEW"}</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo</button>
+                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} title={!row.proof_url?"No Rider / Driver parcel photo exists to approve. Use the temporary waiver only when operations explicitly need to proceed without the photo.":undefined} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo{!row.proof_url?" · NO PHOTO":""}</button>
                   <select className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoRejectionReason} onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}>
                     <option value="">Reject reason…</option>
                     <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
@@ -1398,6 +1398,14 @@ export default function DataEntryFinancialV2Page() {
     if(!text(row.recipient_name)||!text(row.recipient_phone)||!text(row.delivery_address)) return true;
     return !routeForRow(row,tariffOptions).providerCode;
   }),[rows,tariffOptions]);
+  const pendingPhotoWaiverRows=useMemo(()=>rows.filter((row)=>
+    !row.saved &&
+    !row.skipped &&
+    !row.isAdditionalRegistration &&
+    !row.photoUnavailableAcknowledged &&
+    !row.photoReviewed &&
+    !row.photoTemporaryWaiver
+  ),[rows]);
   const registrationGridRows=useMemo(()=>{
     const query=gridSearch.trim().toLowerCase();
     return rows
@@ -1781,6 +1789,39 @@ export default function DataEntryFinancialV2Page() {
       setBulkMessage("Skipped and preserved "+drafts.length+" pending clarification row(s). Calculate All and Save All will continue with the remaining ready parcels.");
     }catch(error:any){
       setBulkMessage(error?.message||"Unable to preserve pending clarification rows.");
+    }finally{
+      setBulkSaving(false);
+    }
+  }
+
+  async function skipPhotoReviewAll(){
+    if(!pendingPhotoWaiverRows.length||bulkSaving||bulkCalculating||waybillBusy) return;
+    const reason="Temporary operational waiver: Rider / Driver parcel photo is not available yet.";
+    if(!window.confirm(`Temporarily skip photo verification for ${pendingPhotoWaiverRows.length} pending parcel(s)? Each waiver will be recorded in the audit trail.`)) return;
+    setBulkSaving(true);
+    setBulkMessage("");
+    try{
+      const succeeded=new Set<string>();
+      for(const row of pendingPhotoWaiverRows){
+        const response=await (supabase as any).rpc("be_data_entry_photo_waiver_v54",{p_payload:{
+          action:"WAIVE",
+          pickup_id:row.pickup_id,
+          parcel_sequence:row.parcel_sequence,
+          delivery_way_id:row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence),
+          reason,
+        }});
+        if(response.error) throw response.error;
+        if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||`Temporary photo waiver failed for parcel ${row.parcel_sequence}.`);
+        succeeded.add(`${row.pickup_id}:${row.parcel_sequence}`);
+      }
+      const applyWaiver=(row:ParcelRow)=>succeeded.has(`${row.pickup_id}:${row.parcel_sequence}`)
+        ?{...row,photoTemporaryWaiver:true,photoTemporaryWaiverReason:reason,photoReviewStatus:"TEMPORARY_WAIVER",photoReviewed:true,photoUnavailableAcknowledged:false,message:"Temporary photo-verification waiver recorded. Calculate and Save can proceed."}
+        :row;
+      setRows((current)=>current.map(applyWaiver));
+      setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyWaiver)}])));
+      setBulkMessage(`Temporary photo-verification waiver recorded for ${succeeded.size} parcel(s). Run Calculate All, then Save All.`);
+    }catch(error:any){
+      setBulkMessage(error?.message||"Unable to record temporary photo-verification waivers.");
     }finally{
       setBulkSaving(false);
     }
@@ -3208,6 +3249,7 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
             <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
             <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
+            <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">TEMPORARILY SKIP PHOTO REVIEW FOR ALL ({pendingPhotoWaiverRows.length})</button>
             <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
             <button
               type="button"
