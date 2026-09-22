@@ -37,7 +37,12 @@ export function parseLocationReviewWorkbook(
       fail(`Pickup ${pickupId} is unavailable or the parcel is outside its authorized quantity. Check the date filter and your access.`);
     }
     const current = knownRows.get(deliveryWayId);
-    const action = (value("Action") || "APPLY_CORRECTION").toUpperCase();
+    let action = (value("Action") || "APPLY_CORRECTION").toUpperCase();
+    const blankSuggestedPin = !value("Suggested Latitude") && !value("Suggested Longitude") && !current?.locationCandidate;
+    // Backward compatibility: older operational workbooks used SKIP_REVIEW even
+    // when Google quota exhaustion left no suggested pin. That means defer, not
+    // accept a fabricated 0,0 coordinate.
+    if (action === "SKIP_REVIEW" && blankSuggestedPin) action = "DEFER_REVIEW";
     if (!["APPLY_CORRECTION", "SKIP_REVIEW", "DEFER_REVIEW"].includes(action)) {
       fail("Action must be APPLY_CORRECTION, SKIP_REVIEW, or DEFER_REVIEW.");
     }
