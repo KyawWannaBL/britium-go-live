@@ -281,8 +281,7 @@ function handoffStationReady(row: ParcelRow,route: DataEntryProviderRouting): bo
 function routeReady(row: ParcelRow, options: TariffOption[]): boolean {
   const route=routeForRow(row,options);
   return Boolean(route.providerCode)
-    && handoffStationReady(row,route)
-    && (route.mapRequired?row.locationStatus==="SYNCED":row.locationStatus==="NOT_REQUIRED");
+    && handoffStationReady(row,route);
 }
 function normalizePickup(row: any): Pickup | null {
   const pickupId = text(row?.pickup_id || row?.pickup_way_id).trim();
@@ -1054,7 +1053,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           </button>:null}
         </div>
         {!photoReady || !locationReady ? <div className={`mt-2 text-[9px] ${fullMode?"text-amber-900":"text-amber-200"}`}>
-          {!photoReady?"Photo verification is still required. ":""}{!locationReady?"Location synchronization is still required.":""}
+          {!photoReady?"Photo verification is still required. ":""}{!locationReady?"Location review is still required before Wayplan / dispatch; Data Entry save and waybill creation can proceed.":""}
         </div>:null}
       </div>
     </section>
@@ -2102,7 +2101,6 @@ export default function DataEntryFinancialV2Page() {
     const route=routeForRow(row,tariffOptions);
     if(!route.providerCode) return "Destination needs clarification";
     if(!handoffStationReady(row,route)) return "Highway terminal name and charge required";
-    if(route.mapRequired&&row.locationStatus!=="SYNCED") return "Location needs synchronization or review";
     return "";
   }
 
