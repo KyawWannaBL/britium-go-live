@@ -95,6 +95,7 @@ export default function DataEntryLocationEditor({
   const [manualOpen, setManualOpen] = useState(false);
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
+  const operatorEditedRef = useRef(false);
   const resolutionCallback = useRef(onResolutionChange);
   const candidateCallback = useRef(onCandidateChange);
   const interactiveMapContainer = useRef<HTMLDivElement | null>(null);
@@ -249,6 +250,7 @@ export default function DataEntryLocationEditor({
 
   useEffect(() => {
     requestSequence.current += 1;
+    operatorEditedRef.current = false;
     setBusy(false);
     setCandidate(null);
     setLat("");
@@ -257,25 +259,32 @@ export default function DataEntryLocationEditor({
     setMapError("");
     lastAutoKey.current = "";
     if (deferAutomaticResolution && enabled) {
-      if (externalCandidate && validMyanmarCoordinate(externalCandidate.longitude, externalCandidate.latitude)) {
-        setCandidate(externalCandidate);
-        setLat(Number(externalCandidate.latitude).toFixed(6));
-        setLng(Number(externalCandidate.longitude).toFixed(6));
-        setMessage(externalResolutionStatus==="SYNCED"
-          ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
-          :"A suggested pin is ready. You can review it, apply it, or use SKIP REVIEW to accept it immediately.");
-      } else {
-        setMessage(externalResolutionStatus==="SYNCED"
-          ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
-          :externalResolutionStatus==="REVIEW_REQUIRED"
-            ?"This result genuinely needs review. Open this parcel's map only when an on-screen correction is needed."
-            :"Location validation is running in the controlled background queue.");
-      }
+      setMessage("Location validation is running in the controlled background queue.");
       return;
     }
     reportResolution(enabled ? "PENDING" : "NOT_REQUIRED");
     void load();
-  }, [deliveryWayId, address, township, ward, postalCode, enabled, disabledReason, reloadToken, deferAutomaticResolution, externalResolutionStatus, externalCandidate]);
+  }, [deliveryWayId, address, township, ward, postalCode, enabled, disabledReason, reloadToken, deferAutomaticResolution]);
+
+  useEffect(() => {
+    if (!deferAutomaticResolution || operatorEditedRef.current) return;
+    if (externalCandidate && validMyanmarCoordinate(externalCandidate.longitude, externalCandidate.latitude)) {
+      setCandidate(externalCandidate);
+      setLat(Number(externalCandidate.latitude).toFixed(6));
+      setLng(Number(externalCandidate.longitude).toFixed(6));
+      setMessage(externalResolutionStatus==="SYNCED"
+        ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
+        :"A suggested pin is ready. You can review it, apply it, or use SKIP REVIEW to accept it immediately.");
+      return;
+    }
+    if (!candidate) {
+      setMessage(externalResolutionStatus==="SYNCED"
+        ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
+        :externalResolutionStatus==="REVIEW_REQUIRED"
+          ?"This result genuinely needs review. Open this parcel's map only when an on-screen correction is needed."
+          :"Location validation is running in the controlled background queue.");
+    }
+  }, [deferAutomaticResolution, externalResolutionStatus, externalCandidate]);
 
   useEffect(() => {
     setQuery(address || "");
@@ -389,6 +398,7 @@ export default function DataEntryLocationEditor({
   }
 
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
+    operatorEditedRef.current = true;
     const synced = syncPinCoordinates(latitude, longitude, action);
     if (!synced) return;
     setManualOpen(true);
@@ -747,11 +757,11 @@ export default function DataEntryLocationEditor({
         {enabled && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
-            <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+            <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{operatorEditedRef.current=true;setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
           </label>
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Longitude / လောင်ဂျီကျု</span>
-            <input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{setLng(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+            <input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{operatorEditedRef.current=true;setLng(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
           </label>
           <button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="self-end rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button>
         </div>}
