@@ -124,6 +124,7 @@ type Pickup = {
 
 type ParcelRow = {
   sourceMerchantName?: string;
+  sourceWayId?: string;
   pickup_id: string;
   parcel_sequence: number;
   delivery_way_id: string;
@@ -377,6 +378,7 @@ function payload(row: ParcelRow, pickup: Pickup) {
     delivery_way_id: row.delivery_way_id || canonicalWayId(row.pickup_id,row.parcel_sequence),
     merchant_id: pickup.merchant_id || null,
     source_merchant_name: row.sourceMerchantName || null,
+    source_way_id: row.sourceWayId || null,
     recipient_name: row.recipient_name || null,
     recipient_phone: row.recipient_phone || null,
     township: row.township || null,
@@ -445,6 +447,7 @@ function parcelRowFromProof(
     parcel_sequence:sequence,
     delivery_way_id:text(proof.delivery_way_id)||canonicalWayId(pickup.pickup_id,sequence),
     sourceMerchantName:text(proof.financial_quote?.source_merchant_name || proof.merchant_id),
+    sourceWayId:text(proof.financial_quote?.source_way_id || proof.raw_payload?.source_way_id),
     proof_url:text(proof.__proof_url),
     proof_ref:text(proof.__proof_ref),
     photo_status:text(proof.review_status||proof.photo_status||proof.status||"PENDING_REVIEW").toUpperCase(),
@@ -1994,11 +1997,6 @@ export default function DataEntryFinancialV2Page() {
       updateRow(index,{message:"Choose the physical highway bus station before saving this no-item-price outside-core parcel."});
       return false;
     }
-    if(route.mapRequired && row.locationStatus!=="SYNCED"){
-      updateRow(index,{message:"This Yangon, Mandalay, or Naypyitaw drop point must be synchronized in Google Location Details before saving."});
-      return false;
-    }
-
     updateRow(index,{checking:true,message:""});
     try{
       const r=await (supabase as any).rpc("be_data_entry_financial_v2_save",{p_payload:{...payload(row,selectedPickup),request_id:requestId("FINANCIAL_V2_SAVE"),dry_run:false,source_file_name:row.sourceFileName||"PORTAL_FINANCIAL_V2_LIVE",reason:row.photoUnavailableAcknowledged?row.photoBypassReason:row.isAdditionalRegistration?"AUTHORIZED_MERCHANT_ADDITION_SAVE":"PORTAL_FINANCIAL_V2_SAVE",destination:selectedPickup.city||null}});
@@ -2297,6 +2295,7 @@ export default function DataEntryFinancialV2Page() {
         parcel_sequence:sequence,
         delivery_way_id:canonicalWayId(pickup.pickup_id,sequence),
         sourceMerchantName:sourceRow.merchantName,
+        sourceWayId:sourceRow.wayId,
         recipient_name:sourceRow.recipientName,
         recipient_phone:sourceRow.recipientPhone,
         township:destination.township,
@@ -2964,7 +2963,7 @@ export default function DataEntryFinancialV2Page() {
         "Suggested Longitude":row.locationCandidate?.longitude??"",
         "Corrected Latitude":"",
         "Corrected Longitude":"",
-        "Action":"APPLY_CORRECTION",
+        "Action":row.locationCandidate?"APPLY_CORRECTION":"DEFER_REVIEW",
         "Reason":row.locationCandidate?.reviewReason||row.message||(
           row.locationCandidate
             ? "AUTOMATIC_LOCATION_REQUIRES_REVIEW"
@@ -2977,10 +2976,11 @@ export default function DataEntryFinancialV2Page() {
       const instructions=XLSX.utils.aoa_to_sheet([
         ["Britium Location Review Round-trip"],
         ["1", "For each APPLY_CORRECTION row, enter Corrected Latitude and Corrected Longitude."],
-        ["2", "To accept the suggested pin without visual review, change Action to SKIP_REVIEW."],
-        ["3", "Do not change Delivery Way ID, Pickup ID, or Parcel Sequence."],
-        ["4", "Upload the completed workbook from the same Data Entry screen."],
-        ["5", "Every change or skip is permission-checked and written to the audit trail."],
+        ["2", "To accept a high-confidence suggested pin without visual review, use SKIP_REVIEW."],
+        ["3", "If no reliable coordinate exists yet, use DEFER_REVIEW. No latitude/longitude is required; Data Entry save and waybill can continue while map review remains pending."],
+        ["4", "Do not change Delivery Way ID, Pickup ID, or Parcel Sequence."],
+        ["5", "Upload the completed workbook from the same Data Entry screen. Legacy SKIP_REVIEW rows with blank suggested coordinates are treated as DEFER_REVIEW."],
+        ["6", "Applied coordinate changes are audited; deferred rows remain visibly pending for later location correction."],
       ]);
       instructions["!cols"]=[8,100].map((wch)=>({wch}));
       const workbook=XLSX.utils.book_new();
@@ -3076,9 +3076,26 @@ export default function DataEntryFinancialV2Page() {
       if(!imported.length) throw new Error("The Location Review sheet contains no rows.");
       const knownRows=new Map([...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows].map((row)=>[row.delivery_way_id,row]));
       const payloadRows=parseLocationReviewWorkbook(imported,pickups,knownRows,file.name);
+      const deferredRows=payloadRows.filter((row)=>row.action==="DEFER_REVIEW");
+      const actionableRows=payloadRows.filter((row)=>row.action!=="DEFER_REVIEW");
+      const deferredIds=new Set(deferredRows.map((row)=>row.delivery_way_id));
+      const deferPatch=(row:ParcelRow)=>deferredIds.has(row.delivery_way_id)
+        ?{...row,locationStatus:"REVIEW_REQUIRED" as const,message:"Location review temporarily deferred. Data Entry save and waybill creation may continue; correct the map pin before Wayplan / dispatch."}
+        :row;
+      if(deferredRows.length){
+        const currentDeferred=[...knownRows.values()]
+          .filter((row:any)=>deferredIds.has(row.delivery_way_id))
+          .map((row:any)=>deferPatch(row as ParcelRow));
+        if(currentDeferred.length) await persistDataEntryDrafts(supabase,currentDeferred);
+        setRows((current)=>current.map(deferPatch));
+        setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[
+          pickupId,{...draft,rows:draft.rows.map(deferPatch)},
+        ])));
+        setBulkMessage(`Deferred ${deferredRows.length} location review row(s). No fake coordinates were stored.`);
+      }
       const allResults:any[]=[];
-      for(let offset=0;offset<payloadRows.length;offset+=200){
-        const batch=payloadRows.slice(offset,offset+200);
+      for(let offset=0;offset<actionableRows.length;offset+=200){
+        const batch=actionableRows.slice(offset,offset+200);
         const response=await (supabase as any).rpc("be_delivery_location_review_batch_v23",{p_payload:{
           request_id:requestId("LOCATION_REVIEW_XLSX"),source_file_name:file.name,rows:batch,
         }});
@@ -3089,10 +3106,10 @@ export default function DataEntryFinancialV2Page() {
         appliedCount+=completed.length;
         await applyLocationReviewResults(completed);
         setLocationReloadToken((token)=>token+1);
-        setBulkMessage(`Applied ${appliedCount}/${payloadRows.length} reviewed locations. Completed batches are saved on the server.`);
+        setBulkMessage(`Applied ${appliedCount}/${actionableRows.length} coordinate correction(s); ${deferredRows.length} review row(s) deferred.`);
       }
       setLocationReloadToken((token)=>token+1);
-      setBulkMessage(`Applied and audited ${allResults.length} reviewed location(s). Corrections are saved on the server. Open the matching pickup to continue. This location-only workbook does not restore unsaved prices or parcel details.`);
+      setBulkMessage(`Location workbook accepted: ${allResults.length} coordinate correction(s) applied and audited; ${deferredRows.length} row(s) deferred without inventing coordinates. Deferred rows remain pending for later map correction but do not block Data Entry save / waybill creation.`);
     }catch(error:any){
       setBulkMessage(`${appliedCount} correction(s) saved before interruption. ${error?.message||"Unable to apply the location-review workbook."} You can upload the corrected workbook again without repeating the original location review.`);
     }finally{
