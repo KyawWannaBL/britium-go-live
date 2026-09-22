@@ -989,6 +989,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 township={row.township}
                 ward={row.sourceWard}
                 postalCode={row.sourcePostalCode}
+                externalCandidate={row.locationCandidate}
                 autoResolveDelayMs={row.importedFromOs?Math.min(900+index*120,5000):900}
                 deferInteractiveMap={row.importedFromOs}
                 deferAutomaticResolution={row.importedFromOs}
