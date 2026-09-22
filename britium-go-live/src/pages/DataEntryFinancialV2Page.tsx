@@ -2446,10 +2446,10 @@ export default function DataEntryFinancialV2Page() {
     const nextDrafts:Record<string,BulkImportDraft>={};
     for(const batch of batches){
       const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
-      if (!pickup) throw new Error(`Pickup ${batch.targetPickupId} was not found. Select an existing pickup; mixed merchants require a BLK container.`);
+      if (!pickup) throw new Error(`Pickup ${batch.targetPickupId} was not found. Select an existing pickup; mixed merchants require a BBB consolidated container.`);
       const merchantKey=(value:unknown)=>text(value).trim().toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g,"");
-      if (merchantKey(pickup.merchant_id)!=="blk" && batch.rows.some(row=>![merchantKey(pickup.merchant_id),merchantKey(pickup.merchant_name)].includes(merchantKey(row.merchantName)))) {
-        throw new Error("Mixed merchants require a Consolidated Bulk (BLK) pickup. Original merchant names must be retained.");
+      if (!["bbb","blk"].includes(merchantKey(pickup.merchant_id)) && batch.rows.some(row=>![merchantKey(pickup.merchant_id),merchantKey(pickup.merchant_name)].includes(merchantKey(row.merchantName)))) {
+        throw new Error("Mixed merchants require a Consolidated Bulk (BBB) pickup. Legacy BLK pickups remain compatible; original merchant names must be retained.");
       }
       const pendingDraft=bulkImportDrafts[pickup.pickup_id];
       if(importPayload.mode==="BULK_UPLOAD"&&pendingDraft&&!pendingDraft.saved){
