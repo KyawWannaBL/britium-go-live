@@ -1819,7 +1819,8 @@ export default function DataEntryFinancialV2Page() {
         :row;
       setRows((current)=>current.map(applyWaiver));
       setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyWaiver)}])));
-      setBulkMessage(`Temporary photo-verification waiver recorded for ${succeeded.size} parcel(s). Run Calculate All, then Save All.`);
+      setWaybillMessage("");
+      setBulkMessage(`Temporary photo-verification waiver recorded for ${succeeded.size} parcel(s). Run Calculate All, then Save All, then Generate Completed Waybills.`);
     }catch(error:any){
       setBulkMessage(error?.message||"Unable to record temporary photo-verification waivers.");
     }finally{
@@ -3088,6 +3089,10 @@ export default function DataEntryFinancialV2Page() {
 
   if(loading) return <div className="flex min-h-[70vh] items-center justify-center bg-[#061524] text-[#eef8ff]"><Loader2 className="mr-3 animate-spin text-[#f6b84b]"/>Loading Financial V2…</div>;
 
+  const photoApprovalBlocked=waybillMessageKind==="ERROR"
+    && /Photo approval required/i.test(waybillMessage)
+    && pendingPhotoWaiverRows.length>0;
+
   const workspace=(
     <div data-data-entry-split-workspace-v82="true">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
@@ -3227,7 +3232,21 @@ export default function DataEntryFinancialV2Page() {
 
         {waybillMessage?
           <div role={waybillMessageKind==="ERROR"?"alert":"status"} className={`rounded-xl border p-3 text-[12px] font-semibold ${waybillMessageKind==="ERROR"?"border-rose-300/60 bg-rose-950/70 text-rose-100":"border-emerald-300/60 bg-emerald-950/60 text-emerald-100"}`}>
-            {waybillMessageKind==="ERROR"?<AlertTriangle size={15} className="mr-2 inline"/>:null}{waybillMessage}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                {waybillMessageKind==="ERROR"?<AlertTriangle size={15} className="mr-2 inline"/>:null}{waybillMessage}
+              </div>
+              {photoApprovalBlocked?
+                <button
+                  type="button"
+                  onClick={()=>void skipPhotoReviewAll()}
+                  disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy}
+                  className="rounded-lg border border-orange-200/70 bg-orange-400 px-3 py-2 text-[10px] font-black text-[#2b1600] disabled:opacity-50"
+                >
+                  TEMPORARILY SKIP PHOTO REVIEW FOR ALL ({pendingPhotoWaiverRows.length})
+                </button>
+              :null}
+            </div>
           </div>
         :null}
 
