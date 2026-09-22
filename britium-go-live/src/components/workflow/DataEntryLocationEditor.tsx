@@ -43,6 +43,9 @@ type DataEntryLocationEditorProps = {
   deliveryWayId: string;
   address: string;
   township: string;
+  ward?: string;
+  postalCode?: string;
+  externalCandidate?: DeliveryLocation | null;
   autoResolveDelayMs?: number;
   deferInteractiveMap?: boolean;
   deferAutomaticResolution?: boolean;
@@ -69,6 +72,9 @@ export default function DataEntryLocationEditor({
   deliveryWayId,
   address,
   township,
+  ward = "",
+  postalCode = "",
+  externalCandidate = null,
   autoResolveDelayMs = 900,
   deferInteractiveMap = false,
   deferAutomaticResolution = false,
@@ -187,8 +193,12 @@ export default function DataEntryLocationEditor({
     }
     const row = data?.location;
     if (!row) {
-      setMessage("No saved location exists yet. Check the address to create Location Details.");
-      reportResolution("PENDING");
+      setManualOpen(true);
+      setMessage("No saved location exists yet. Creating the first Location Details candidate from the current address…");
+      reportResolution("SEARCHING");
+      const key = `${deliveryWayId}|${address}|${township}`;
+      lastAutoKey.current = key;
+      void find(address, true);
       return;
     }
     if (row.address_original && addressKey(row.address_original) !== addressKey(address)) {
@@ -247,16 +257,25 @@ export default function DataEntryLocationEditor({
     setMapError("");
     lastAutoKey.current = "";
     if (deferAutomaticResolution && enabled) {
-      setMessage(externalResolutionStatus==="SYNCED"
-        ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
-        :externalResolutionStatus==="REVIEW_REQUIRED"
-          ?"This result genuinely needs review. Open this parcel's map only when an on-screen correction is needed."
-          :"Location validation is running in the controlled background queue.");
+      if (externalCandidate && validMyanmarCoordinate(externalCandidate.longitude, externalCandidate.latitude)) {
+        setCandidate(externalCandidate);
+        setLat(Number(externalCandidate.latitude).toFixed(6));
+        setLng(Number(externalCandidate.longitude).toFixed(6));
+        setMessage(externalResolutionStatus==="SYNCED"
+          ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
+          :"A suggested pin is ready. You can review it, apply it, or use SKIP REVIEW to accept it immediately.");
+      } else {
+        setMessage(externalResolutionStatus==="SYNCED"
+          ?"Coordinates were validated automatically or applied through the consolidated location-review workbook."
+          :externalResolutionStatus==="REVIEW_REQUIRED"
+            ?"This result genuinely needs review. Open this parcel's map only when an on-screen correction is needed."
+            :"Location validation is running in the controlled background queue.");
+      }
       return;
     }
     reportResolution(enabled ? "PENDING" : "NOT_REQUIRED");
     void load();
-  }, [deliveryWayId, address, township, enabled, disabledReason, reloadToken, deferAutomaticResolution, externalResolutionStatus]);
+  }, [deliveryWayId, address, township, ward, postalCode, enabled, disabledReason, reloadToken, deferAutomaticResolution, externalResolutionStatus, externalCandidate]);
 
   useEffect(() => {
     setQuery(address || "");
@@ -491,7 +510,14 @@ export default function DataEntryLocationEditor({
     reportResolution("SEARCHING");
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
-      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township },supabase);
+      const resolve = () => resolveDeliveryLocation({
+        deliveryWayId,
+        address: value || address,
+        township,
+        ward,
+        postalCode,
+        client: supabase,
+      });
       const resolved = automatic ? await withAutomaticLocationSlot(resolve) : await resolve();
       const found = resolved ? { ...resolved, originalAddress: address } : null;
       if (requestId !== requestSequence.current) return;
@@ -605,12 +631,24 @@ export default function DataEntryLocationEditor({
     setMessage("Preparing the current location pin for the authorized review skip…");
     try {
       let pin = candidate;
+      if ((!pin || !validMyanmarCoordinate(pin.longitude, pin.latitude))
+          && externalCandidate
+          && validMyanmarCoordinate(externalCandidate.longitude, externalCandidate.latitude)) {
+        pin = externalCandidate;
+        setCandidate(externalCandidate);
+        setLat(Number(externalCandidate.latitude).toFixed(6));
+        setLng(Number(externalCandidate.longitude).toFixed(6));
+        candidateCallback.current?.(externalCandidate);
+      }
       if (!pin || !validMyanmarCoordinate(pin.longitude, pin.latitude)) {
         const resolved = await resolveDeliveryLocation({
           deliveryWayId,
           address: query || address,
           township,
-        }, supabase);
+          ward,
+          postalCode,
+          client: supabase,
+        });
         if (!resolved || !validMyanmarCoordinate(resolved.longitude, resolved.latitude)) {
           throw new Error("No valid suggested Google pin is available yet. Retry location sync or select a pin on the map first.");
         }
