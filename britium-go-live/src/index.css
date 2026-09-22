@@ -943,6 +943,14 @@ html body datalist option {
   font-weight: 700 !important;
 }
 
+html body select[data-pickup-review-select="true"] {
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+  border-color: #6b8aa3 !important;
+  color-scheme: light !important;
+}
+
 html body input:focus,
 html body textarea:focus,
 html body select:focus,
