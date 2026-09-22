@@ -645,6 +645,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
   const [photoZoom, setPhotoZoom] = useState(1);
+  const [photoRotation, setPhotoRotation] = useState(0);
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
   const photoReady = Boolean(row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
   const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
@@ -696,12 +697,12 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 </div>
               ) : row.proof_url ? (
                 <>
-                  <button type="button" onClick={() => { setPhotoZoom(1); setPhotoPreviewOpen(true); }} className="flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
+                  <button type="button" onClick={() => { setPhotoZoom(1); setPhotoRotation(0); setPhotoPreviewOpen(true); }} className="flex w-full items-center gap-3 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-left hover:border-[#f6b84b]" aria-label="Enlarge parcel proof on this screen">
                     <img src={displayProofUrl} alt="Proof" className="h-16 w-24 rounded-lg object-cover" />
                     <div><div className="text-[11px] font-black text-[#68e8bd]"><ImageIcon size={14} className="mr-2 inline" />FIELD PROOF RECEIVED</div><div className="mt-1 text-[10px] text-[#8db4ce]">Click to enlarge</div></div>
                   </button>
                   {photoPreviewOpen ? (
-                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => setPhotoPreviewOpen(false)}>
+                    <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 p-3 md:p-6" role="dialog" aria-modal="true" aria-label="Parcel proof preview" onClick={() => { setPhotoPreviewOpen(false); setPhotoRotation(0); }}>
                       <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl border border-[#2a5272] bg-[#071b2c] shadow-2xl" onClick={(event) => event.stopPropagation()}>
                         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#1a3a5c] px-4 py-3">
                           <div><div className="text-[11px] font-black uppercase tracking-widest text-[#f6b84b]">Parcel {row.parcel_sequence} photo verification</div><div className="mt-1 text-[10px] text-[#8db4ce]">{row.delivery_way_id || row.pickup_id}</div></div>
@@ -709,13 +710,15 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                             <button type="button" onClick={() => setPhotoZoom((v) => Math.max(0.5, v - 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">−</button>
                             <span className="min-w-14 text-center text-xs font-bold text-[#9cc2d9]">{Math.round(photoZoom * 100)}%</span>
                             <button type="button" onClick={() => setPhotoZoom((v) => Math.min(3, v + 0.25))} className="rounded-lg border border-[#2a5272] px-3 py-2 text-sm font-black text-white">+</button>
-                            <button type="button" onClick={() => setPhotoZoom(1)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button>
-                            <button type="button" onClick={() => setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button>
+                            <button type="button" aria-label="Rotate Left" onClick={() => setPhotoRotation((v) => v - 90)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-black text-white">↺ 90°</button>
+                            <button type="button" aria-label="Rotate Right" onClick={() => setPhotoRotation((v) => v + 90)} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-black text-white">90° ↻</button>
+                            <button type="button" onClick={() => { setPhotoZoom(1); setPhotoRotation(0); }} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[11px] font-bold text-white">Reset</button>
+                            <button type="button" onClick={() => { setPhotoPreviewOpen(false); setPhotoRotation(0); }} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#061524]">Close</button>
                           </div>
                         </div>
                         <div data-photo-inline-entry-v88="true" className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1.45fr)_minmax(360px,0.75fr)]">
                           <div className="min-h-0 overflow-auto bg-[#020912] p-3 text-center">
-                            <img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none" }} />
+                            <img src={displayProofUrl} alt={"Parcel " + row.parcel_sequence + " full proof"} className="mx-auto max-w-none rounded-lg object-contain transition-transform" style={{ width: String(photoZoom * 100) + "%", maxHeight: photoZoom <= 1 ? "78vh" : "none", transform: `rotate(${photoRotation}deg)` }} />
                           </div>
                           <div className="min-h-0 overflow-y-auto border-l border-[#1a3a5c] bg-[#0b2236] p-4 text-left">
                             <div className="mb-3">
@@ -747,7 +750,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                                 <button type="button" onClick={()=>validateInput(index)} disabled={busy||row.checking||row.calculating} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">CHECK INPUT</button>
                                 <button type="button" onClick={()=>void saveDraft(index)} disabled={busy||row.checking||row.calculating||row.saved} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">SAVE DRAFT</button>
-                                <button type="button" onClick={()=>setPhotoPreviewOpen(false)} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#061524]">DONE / CLOSE</button>
+                                <button type="button" onClick={()=>{setPhotoPreviewOpen(false);setPhotoRotation(0);}} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#061524]">DONE / CLOSE</button>
                               </div>
                             </div>
                           </div>
