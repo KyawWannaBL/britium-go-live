@@ -6,7 +6,7 @@ const editor = fs.readFileSync(path.join(root, "src/components/workflow/DataEntr
 
 const checks = [
   ["operator edit guard exists", /const operatorEditedRef\s*=\s*useRef\(false\)/],
-  ["identity reset does not depend on external candidate", /\], \[deliveryWayId, address, township, ward, postalCode, enabled, disabledReason, reloadToken, deferAutomaticResolution\]\);/],
+  ["identity reset does not depend on external candidate", /\}, \[deliveryWayId, address, township, ward, postalCode, enabled, disabledReason, reloadToken, deferAutomaticResolution\]\);/],
   ["external candidate hydration has its own guarded effect", /useEffect\(\(\) => \{[\s\S]{0,900}if \(!deferAutomaticResolution \|\| operatorEditedRef\.current\)/],
   ["manual latitude input marks operator edit", /aria-label="Latitude"[\s\S]{0,300}operatorEditedRef\.current=true/],
   ["manual longitude input marks operator edit", /aria-label="Longitude"[\s\S]{0,300}operatorEditedRef\.current=true/],
