@@ -595,15 +595,39 @@ export default function DataEntryLocationEditor({
   }
 
   async function skipReview() {
-    if (!candidate || !deliveryWayId || !validMyanmarCoordinate(candidate.longitude,candidate.latitude)) {
-      setMessage("A valid suggested pin is required before location review can be skipped.");
+    if (!deliveryWayId) {
+      setMessage("The Delivery Way ID must be allocated before location review can be skipped.");
       reportResolution("REVIEW_REQUIRED");
       return;
     }
-    if (!window.confirm("Accept the currently displayed pin without further visual review? This decision will be recorded in the audit trail.")) return;
+
     setBusy(true);
-    setMessage("Recording the authorized location-review skip…");
+    setMessage("Preparing the current location pin for the authorized review skip…");
     try {
+      let pin = candidate;
+      if (!pin || !validMyanmarCoordinate(pin.longitude, pin.latitude)) {
+        const resolved = await resolveDeliveryLocation({
+          deliveryWayId,
+          address: query || address,
+          township,
+        }, supabase);
+        if (!resolved || !validMyanmarCoordinate(resolved.longitude, resolved.latitude)) {
+          throw new Error("No valid suggested Google pin is available yet. Retry location sync or select a pin on the map first.");
+        }
+        pin = { ...resolved, originalAddress: address };
+        setCandidate(pin);
+        setLat(Number(pin.latitude).toFixed(6));
+        setLng(Number(pin.longitude).toFixed(6));
+        candidateCallback.current?.(pin);
+      }
+
+      if (!window.confirm("Accept the currently displayed pin without further visual review? This decision will be recorded in the audit trail.")) {
+        setMessage("Review skip cancelled. The suggested pin remains available for normal review.");
+        reportResolution("REVIEW_REQUIRED");
+        return;
+      }
+
+      setMessage("Recording the authorized location-review skip…");
       const response=await (supabase as any).rpc("be_delivery_location_review_batch_v29",{p_payload:{
         request_id:`LOCATION_REVIEW_SKIP:${deliveryWayId}:${Date.now()}`,
         rows:[{
@@ -611,8 +635,8 @@ export default function DataEntryLocationEditor({
           pickup_id:pickupId,
           parcel_sequence:parcelSequence,
           action:"SKIP_REVIEW",
-          latitude:candidate.latitude,
-          longitude:candidate.longitude,
+          latitude:pin.latitude,
+          longitude:pin.longitude,
           township,
           delivery_address:query||address,
           reason:"Operator explicitly accepted the suggested pin without further visual map review.",
@@ -620,7 +644,7 @@ export default function DataEntryLocationEditor({
       }});
       if(response.error) throw response.error;
       if(!response.data?.ok) throw new Error(response.data?.errors?.[0]?.message||"Location review could not be skipped.");
-      const accepted={...candidate,reviewStatus:"ACCEPTED" as const,matchLevel:"MANUAL" as const,coordinateSource:"DATA_ENTRY_MANUAL_REVIEW_SKIPPED"};
+      const accepted={...pin,reviewStatus:"ACCEPTED" as const,matchLevel:"MANUAL" as const,coordinateSource:"DATA_ENTRY_MANUAL_REVIEW_SKIPPED"};
       setCandidate(accepted);
       setManualOpen(false);
       setMessage("Suggested pin accepted without further review. The skip decision was audited and the coordinates are ready for Wayplan.");
@@ -680,7 +704,7 @@ export default function DataEntryLocationEditor({
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
           <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
-          <button type="button" onClick={()=>void skipReview()} disabled={busy||!candidate||candidate.reviewStatus==="ACCEPTED"||!validMyanmarCoordinate(candidate.longitude,candidate.latitude)} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
+          <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         {enabled && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
