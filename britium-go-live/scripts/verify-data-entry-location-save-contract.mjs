@@ -21,6 +21,8 @@ const checks=[
   ["manual corrections remain supported",/v_match <> 'MANUAL'/.test(migration)&&/DATA_ENTRY_MANUAL_COORDINATE/.test(editor)],
   ["embedded coordinates accept Myanmar and full-width commas",/\[,၊，\\s\]/.test(service)&&/Treat Myanmar\/full-width commas/.test(service)],
   ["review export reports the actual pending reason",/NO_RELIABLE_COORDINATE_FOUND/.test(page)&&/AUTOMATIC_LOCATION_REQUIRES_REVIEW/.test(page)&&/locationCandidate\?\.reviewReason/.test(page)],
+  ["skip review remains clickable before candidate hydration",/onClick=\{\(\)=>void skipReview\(\)\} disabled=\{busy\|\|!deliveryWayId\|\|candidate\?\.reviewStatus==="ACCEPTED"\}/.test(editor)],
+  ["skip review safely resolves a missing pin before audit",/let pin = candidate;[\s\S]*resolveDeliveryLocation\(\{[\s\S]*deliveryWayId,[\s\S]*address: query \|\| address,[\s\S]*township,[\s\S]*\}, supabase\)/.test(editor)&&/be_delivery_location_review_batch_v29/.test(editor)],
   ["RPC remains invoker-security and role restricted",/security invoker[\s\S]*set search_path = public, pg_temp/.test(migration)&&/revoke all on function public\.be_delivery_location_upsert_v11\(jsonb\) from public, anon/.test(migration)&&/grant execute[\s\S]*authenticated, service_role/.test(migration)],
   ["bulk screen separates synchronized and map-not-required rows",/data-bulk-location-readiness-v19/.test(page)&&/map not required/.test(page)&&/RETRY LOCATION SYNC/.test(page)],
   ["retry token restarts unresolved editor checks",/reloadToken\?: number/.test(editor)&&/deliveryWayId, address, township,[^\]]*reloadToken/.test(editor)&&/locationReloadToken/.test(page)],

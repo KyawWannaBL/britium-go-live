@@ -59,6 +59,13 @@ export async function withRiderUploadTimeout<T>(request: PromiseLike<T>, timeout
   }
 }
 
+function isDuplicateStorageObjectError(error: unknown) {
+  const candidate = error as { status?: number | string; statusCode?: number | string; message?: string } | null | undefined;
+  const status = Number(candidate?.statusCode ?? candidate?.status ?? 0);
+  const message = String(candidate?.message ?? error ?? "").toLowerCase();
+  return status === 409 || message.includes("already exists") || message.includes("duplicate");
+}
+
 export async function confirmRiderStorageUpload<T extends { error?: unknown }>(options: {
   path: string;
   pending: Map<string, PromiseLike<T>>;
@@ -66,7 +73,17 @@ export async function confirmRiderStorageUpload<T extends { error?: unknown }>(o
   upload: () => PromiseLike<T>;
   timeoutMs?: number;
 }) {
-  if (await options.objectExists()) return;
+  // Rider storage policy grants INSERT but intentionally does not grant bucket listing.
+  // Never make list()/SELECT a prerequisite for a valid upload. Existence checks are
+  // best-effort reconciliation only after an upload error or timeout.
+  const objectExistsIfReadable = async () => {
+    try {
+      return await options.objectExists();
+    } catch {
+      return false;
+    }
+  };
+
   let request = options.pending.get(options.path);
   if (!request) {
     request = options.upload();
@@ -76,10 +93,15 @@ export async function confirmRiderStorageUpload<T extends { error?: unknown }>(o
       () => { if (options.pending.get(options.path) === request) options.pending.delete(options.path); },
     );
   }
+
   try {
     const result = await withRiderUploadTimeout(request, options.timeoutMs);
-    if (result.error && !(await options.objectExists())) throw result.error;
+    if (result.error) {
+      if (isDuplicateStorageObjectError(result.error) || await objectExistsIfReadable()) return;
+      throw result.error;
+    }
   } catch (error) {
-    if (!(await options.objectExists())) throw error;
+    if (isDuplicateStorageObjectError(error) || await objectExistsIfReadable()) return;
+    throw error;
   }
 }
