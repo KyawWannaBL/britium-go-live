@@ -13,6 +13,7 @@ import {
 import { POSTAL_CODE_REGIONS, POSTAL_CODE_ROWS, POSTAL_CODE_TOWNSHIPS } from "@/lib/postalCodeData";
 import { resolvePostalCode } from "@/lib/postalCodeResolver";
 import { resolveDataEntryServiceProvider } from "@/lib/dataEntryServiceProviderRouting";
+import { isConsolidatedBulkPickup, OS_BULK_REASON_FIELD_STYLE } from "@/lib/consolidatedBulkV115";
 
 export type OsBulkPickup = {
   pickup_id: string;
@@ -497,7 +498,7 @@ export function buildOsImportPlan(
   // Consolidated OS sheets contain delivery references (DMMDD-merchant-sequence), not pickup IDs.
   // When exactly one pickup is eligible for that date and has enough authorized capacity, keep
   // those references as source evidence and allocate safe pickup-local parcel sequences.
-  if (solePickup && isConsolidatedDeliverySheet && (["bbb", "blk"].includes(routingKey(solePickup.merchant_id)) || rows.every(row => [routingKey(solePickup.merchant_id), routingKey(solePickup.merchant_name)].includes(routingKey(row.merchantName))))) {
+  if (solePickup && isConsolidatedDeliverySheet && (isConsolidatedBulkPickup(solePickup) || rows.every(row => [routingKey(solePickup.merchant_id), routingKey(solePickup.merchant_name)].includes(routingKey(row.merchantName))))) {
     const batchRows = rows.map((row, index) => ({ ...row, targetSequence: solePickupFloor + index + 1 }));
     return {
       batches: [{ targetPickupId: solePickup.pickup_id, rows: batchRows }],
@@ -548,7 +549,7 @@ export function buildOsImportPlan(
     const merchant = routingKey(row.merchantName);
     const merchantKeys = new Set([routingKey(pickup.merchant_id), routingKey(pickup.merchant_name)].filter(Boolean));
     if (!merchant) return { row, pickup, explicitSequence, issue: "Merchant Name / Merchant ID is missing" };
-    if (!["bbb", "blk"].includes(routingKey(pickup.merchant_id)) && !merchantKeys.has(merchant)) {
+    if (!isConsolidatedBulkPickup(pickup) && !merchantKeys.has(merchant)) {
       return {
         row,
         pickup,
@@ -1019,7 +1020,7 @@ export default function DataEntryOsBulkImport({ pickups, selectedPickupId, seque
 
               <section className="rounded-xl border border-amber-400/35 bg-amber-400/5 p-4">
                 <label className="flex cursor-pointer items-start gap-3"><input type="checkbox" className="mt-1 h-4 w-4" checked={skipPhotoReview} onChange={(event) => setSkipPhotoReview(event.target.checked)}/><span><b className="text-xs text-amber-200">Use OS softcopy as the source evidence and skip mandatory picker photos</b><span className="mt-1 block text-[10px] leading-4 text-[#b8cbd8]">This does not silently disable evidence controls. Upload permission, source filename, operator identity, row number, and reason are recorded by the backend for every saved row.</span></span></label>
-                {skipPhotoReview ? <textarea rows={2} className="mt-3 w-full rounded-lg border border-amber-400/35 bg-white px-3 py-2 text-xs font-semibold text-black" value={photoBypassReason} onChange={(event) => setPhotoBypassReason(event.target.value)} placeholder="Reason, e.g. Complete order data received directly from the OS spreadsheet; picker photos are not required."/> : null}
+                {skipPhotoReview ? <textarea data-os-bulk-reason="true" rows={2} style={OS_BULK_REASON_FIELD_STYLE} className="mt-3 w-full rounded-lg border border-amber-400/35 bg-white px-3 py-2 text-xs font-semibold text-black" value={photoBypassReason} onChange={(event) => setPhotoBypassReason(event.target.value)} placeholder="Reason, e.g. Complete order data received directly from the OS spreadsheet; picker photos are not required."/> : null}
               </section>
 
               {message ? <div className="rounded-lg border border-[#31506a] bg-[#061524] px-3 py-2 text-xs font-semibold text-[#bfe8ff]">{fileBusy ? <Loader2 size={14} className="mr-2 inline animate-spin"/> : null}{message}</div> : null}
