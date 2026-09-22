@@ -5,21 +5,19 @@ returns boolean
 language sql
 immutable
 set search_path=public,pg_temp
-as $
-  select upper(btrim(coalesce(p_status,''))) in (
-    'ACCEPTED',
-    'STARTED',
-    'EN_ROUTE',
-    'ARRIVED',
-    'VERIFIED',
-    'COLLECTED',
-    'TO_WAREHOUSE',
-    'PICKUP_VERIFIED',
-    'PICKUP_COLLECTED',
-    'DELIVERED_TO_WAREHOUSE',
-    'WAREHOUSE_ACCEPTED'
-  );
-$;
+as 'select upper(btrim(coalesce(p_status, ''''))) in (
+  ''ACCEPTED'',
+  ''STARTED'',
+  ''EN_ROUTE'',
+  ''ARRIVED'',
+  ''VERIFIED'',
+  ''COLLECTED'',
+  ''TO_WAREHOUSE'',
+  ''PICKUP_VERIFIED'',
+  ''PICKUP_COLLECTED'',
+  ''DELIVERED_TO_WAREHOUSE'',
+  ''WAREHOUSE_ACCEPTED''
+);';
 
 revoke all on function public.be_field_assignment_progressed_v103(text) from public,anon;
 grant execute on function public.be_field_assignment_progressed_v103(text) to authenticated,service_role;
