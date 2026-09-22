@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import DataEntryLocationEditor, { type DataEntryLocationResolution } from "@/components/workflow/DataEntryLocationEditor";
 import { resolveDeliveryLocation, saveDeliveryLocation, validMyanmarCoordinate, type DeliveryLocation } from "@/lib/deliveryLocationService";
 import DataEntryOsBulkImport, { BULK_UPLOAD_PICKUP_ID, SAFE_TRANSACTION_ROWS, type OsBulkPickup, type OsImportApplyPayload, type OsImportRow } from "@/components/workflow/DataEntryOsBulkImport";
+import { isConsolidatedBulkPickup } from "@/lib/consolidatedBulkV115";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
   providerRoutingMessage,
@@ -2448,7 +2449,7 @@ export default function DataEntryFinancialV2Page() {
       const pickup=pickups.find((candidate)=>candidate.pickup_id===batch.targetPickupId);
       if (!pickup) throw new Error(`Pickup ${batch.targetPickupId} was not found. Select an existing pickup; mixed merchants require a BBB consolidated container.`);
       const merchantKey=(value:unknown)=>text(value).trim().toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g,"");
-      if (!["bbb","blk"].includes(merchantKey(pickup.merchant_id)) && batch.rows.some(row=>![merchantKey(pickup.merchant_id),merchantKey(pickup.merchant_name)].includes(merchantKey(row.merchantName)))) {
+      if (!isConsolidatedBulkPickup(pickup) && batch.rows.some(row=>![merchantKey(pickup.merchant_id),merchantKey(pickup.merchant_name)].includes(merchantKey(row.merchantName)))) {
         throw new Error("Mixed merchants require a Consolidated Bulk (BBB) pickup. Legacy BLK pickups remain compatible; original merchant names must be retained.");
       }
       const pendingDraft=bulkImportDrafts[pickup.pickup_id];
