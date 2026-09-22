@@ -52,8 +52,9 @@ export function parseLocationReviewWorkbook(
     const longitude = action === "DEFER_REVIEW" ? null : Number(action === "SKIP_REVIEW"
       ? value("Suggested Longitude") || current?.locationCandidate?.longitude
       : value("Corrected Longitude"));
-    if (action !== "DEFER_REVIEW" && (!Number.isFinite(latitude) || !Number.isFinite(longitude)
-        || Number(latitude) < 9 || Number(latitude) > 29 || Number(longitude) < 92 || Number(longitude) > 102)) {
+    if (action !== "DEFER_REVIEW" && (latitude === null || longitude === null
+        || !Number.isFinite(latitude) || !Number.isFinite(longitude)
+        || latitude < 9 || latitude > 29 || longitude < 92 || longitude > 102)) {
       fail(`Enter valid Myanmar latitude and longitude for ${deliveryWayId}.`);
     }
     const reason = value("Reason") || (action === "DEFER_REVIEW"
