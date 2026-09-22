@@ -283,7 +283,7 @@ table td {
 ========================================================================== */
 @layer utilities {
   button:not([class*="w-8"]):not([class*="w-9"]):not([class*="h-8"]):not([class*="h-9"]):not([class*="p-1"]):not([class*="p-2"]) {
-    @apply transition-all duration-300 shadow-md active:scale-95;
+    @apply transition-transform duration-150 shadow-md active:scale-95;
   }
 
   button[class*="bg-[#f6b84b]"], button[class*="bg-yellow"], button[class*="bg-amber"] {
@@ -322,10 +322,10 @@ table td {
   }
 
   button:disabled {
-    @apply !opacity-50 !cursor-not-allowed !scale-100 !shadow-none !border-gray-600 !text-gray-400 !bg-gray-800;
+    @apply !opacity-50 !cursor-not-allowed !scale-100 !shadow-none;
   }
   button:disabled:hover {
-    @apply !scale-100 !shadow-none !border-gray-600 !text-gray-400 !bg-gray-800;
+    @apply !scale-100 !shadow-none;
   }
 }
 
