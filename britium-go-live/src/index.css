@@ -1106,3 +1106,19 @@ button, input, textarea, select {
 small, .text-xs {
   font-size: 0.75rem;
 }
+
+
+/* DATA_ENTRY_BBB_BULK_V115: keep OS bulk evidence/reason field readable over legacy dark form rules. */
+html body textarea[data-os-bulk-reason="true"] {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+  caret-color: #061524 !important;
+  color-scheme: light !important;
+}
+html body textarea[data-os-bulk-reason="true"]::placeholder {
+  color: #64748b !important;
+  -webkit-text-fill-color: #64748b !important;
+  opacity: 1 !important;
+}
