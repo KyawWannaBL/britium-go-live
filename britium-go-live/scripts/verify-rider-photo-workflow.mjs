@@ -59,6 +59,24 @@ finishLateUpload();
 await retry;
 assert.equal(uploadCalls, 1, "timeout + late success + retry must reuse one stable-path upload");
 
+let deniedListCalls = 0;
+let insertOnlyUploadCalls = 0;
+await confirmRiderStorageUpload({
+  path: "proofs/insert-without-list-permission.jpg",
+  pending: new Map(),
+  objectExists: async () => {
+    deniedListCalls += 1;
+    throw new Error("permission denied for relation objects");
+  },
+  upload: () => {
+    insertOnlyUploadCalls += 1;
+    return Promise.resolve({ error: null });
+  },
+  timeoutMs: 100,
+});
+assert.equal(insertOnlyUploadCalls, 1, "authenticated INSERT permission must be enough to upload rider proof");
+assert.equal(deniedListCalls, 0, "successful rider upload must not require storage list/SELECT permission");
+
 let failedCalls = 0;
 const failedOptions = {
   path: "proofs/confirmed-failure.jpg",
