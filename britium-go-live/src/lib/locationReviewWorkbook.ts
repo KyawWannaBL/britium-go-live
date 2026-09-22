@@ -38,18 +38,22 @@ export function parseLocationReviewWorkbook(
     }
     const current = knownRows.get(deliveryWayId);
     const action = (value("Action") || "APPLY_CORRECTION").toUpperCase();
-    if (!["APPLY_CORRECTION", "SKIP_REVIEW"].includes(action)) fail("Action must be APPLY_CORRECTION or SKIP_REVIEW.");
-    const latitude = Number(action === "SKIP_REVIEW"
+    if (!["APPLY_CORRECTION", "SKIP_REVIEW", "DEFER_REVIEW"].includes(action)) {
+      fail("Action must be APPLY_CORRECTION, SKIP_REVIEW, or DEFER_REVIEW.");
+    }
+    const latitude = action === "DEFER_REVIEW" ? null : Number(action === "SKIP_REVIEW"
       ? value("Suggested Latitude") || current?.locationCandidate?.latitude
       : value("Corrected Latitude"));
-    const longitude = Number(action === "SKIP_REVIEW"
+    const longitude = action === "DEFER_REVIEW" ? null : Number(action === "SKIP_REVIEW"
       ? value("Suggested Longitude") || current?.locationCandidate?.longitude
       : value("Corrected Longitude"));
-    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)
-        || latitude < 9 || latitude > 29 || longitude < 92 || longitude > 102) {
+    if (action !== "DEFER_REVIEW" && (!Number.isFinite(latitude) || !Number.isFinite(longitude)
+        || Number(latitude) < 9 || Number(latitude) > 29 || Number(longitude) < 92 || Number(longitude) > 102)) {
       fail(`Enter valid Myanmar latitude and longitude for ${deliveryWayId}.`);
     }
-    const reason = value("Reason") || "Location corrected through consolidated review workbook";
+    const reason = value("Reason") || (action === "DEFER_REVIEW"
+      ? "Location review temporarily deferred; parcel details remain pending for later map correction."
+      : "Location corrected through consolidated review workbook");
     if (reason.length < 10) fail("Reason must contain at least 10 characters.");
     const township = value("Township") || current?.township || "";
     const address = value("Delivery Address") || current?.delivery_address || "";
