@@ -11,7 +11,7 @@ const checks = [
   ["manual latitude input marks operator edit", /aria-label="Latitude"[\s\S]{0,300}operatorEditedRef\.current=true/],
   ["manual longitude input marks operator edit", /aria-label="Longitude"[\s\S]{0,300}operatorEditedRef\.current=true/],
   ["map click or drag marks operator edit before syncing", /function setManualMapCoordinate[\s\S]{0,300}operatorEditedRef\.current = true/],
-  ["operator edits are not cleared by parent location status echoes", !/externalResolutionStatus, externalCandidate\]/.test(editor)],
+  ["operator edits are protected from parent echoes", /if \(!deferAutomaticResolution \|\| operatorEditedRef\.current\) return;/.test(editor)],
 ];
 
 const failures = checks.filter(([, ok]) => !ok).map(([name]) => name);
