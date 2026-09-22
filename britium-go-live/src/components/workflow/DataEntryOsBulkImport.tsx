@@ -497,7 +497,7 @@ export function buildOsImportPlan(
   // Consolidated OS sheets contain delivery references (DMMDD-merchant-sequence), not pickup IDs.
   // When exactly one pickup is eligible for that date and has enough authorized capacity, keep
   // those references as source evidence and allocate safe pickup-local parcel sequences.
-  if (solePickup && isConsolidatedDeliverySheet && (routingKey(solePickup.merchant_id) === "blk" || rows.every(row => [routingKey(solePickup.merchant_id), routingKey(solePickup.merchant_name)].includes(routingKey(row.merchantName))))) {
+  if (solePickup && isConsolidatedDeliverySheet && (["bbb", "blk"].includes(routingKey(solePickup.merchant_id)) || rows.every(row => [routingKey(solePickup.merchant_id), routingKey(solePickup.merchant_name)].includes(routingKey(row.merchantName))))) {
     const batchRows = rows.map((row, index) => ({ ...row, targetSequence: solePickupFloor + index + 1 }));
     return {
       batches: [{ targetPickupId: solePickup.pickup_id, rows: batchRows }],
@@ -548,7 +548,7 @@ export function buildOsImportPlan(
     const merchant = routingKey(row.merchantName);
     const merchantKeys = new Set([routingKey(pickup.merchant_id), routingKey(pickup.merchant_name)].filter(Boolean));
     if (!merchant) return { row, pickup, explicitSequence, issue: "Merchant Name / Merchant ID is missing" };
-    if (routingKey(pickup.merchant_id) !== "blk" && !merchantKeys.has(merchant)) {
+    if (!["bbb", "blk"].includes(routingKey(pickup.merchant_id)) && !merchantKeys.has(merchant)) {
       return {
         row,
         pickup,
