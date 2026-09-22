@@ -2140,13 +2140,13 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
-  async function persistAllRows(reason:string){
-    if(!selectedPickup||!rows.length) throw new Error("Select a pickup first.");
-    if(rows.some(row=>row.checking)) throw new Error("Wait for the current save or Skip action to finish.");
-    const blocked=rows.filter(row=>!row.saved&&!row.skipped&&Boolean(rowSaveObstacle(row)));
+  async function persistAllRows(reason:string,sourceRows:ParcelRow[]=rows){
+    if(!selectedPickup||!sourceRows.length) throw new Error("Select a pickup first.");
+    if(sourceRows.some(row=>row.checking)) throw new Error("Wait for the current save or Skip action to finish.");
+    const blocked=sourceRows.filter(row=>!row.saved&&!row.skipped&&Boolean(rowSaveObstacle(row)));
     await preserveBlockedDrafts(blocked);
-    const heldCount=rows.filter(row=>row.skipped).length+blocked.length;
-    const pendingRows=rows.filter((row)=>!row.saved&&!rowSaveObstacle(row));
+    const heldCount=sourceRows.filter(row=>row.skipped).length+blocked.length;
+    const pendingRows=sourceRows.filter((row)=>!row.saved&&!rowSaveObstacle(row));
     if(!pendingRows.length) return {ok:true,persisted:true,saved_count:0,rows:[],batch_count:0,held_count:heldCount};
     const batches=consecutivePendingBatches(pendingRows,Math.min(5,SAFE_TRANSACTION_ROWS));
     let batchCount=batches.length;
@@ -2207,7 +2207,7 @@ export default function DataEntryFinancialV2Page() {
       });
     }
     const newlySaved=new Set(pendingRows.map(row=>row.parcel_sequence));
-    const savedVisibleCount=rows.filter(row=>row.saved||newlySaved.has(row.parcel_sequence)).length;
+    const savedVisibleCount=sourceRows.filter(row=>row.saved||newlySaved.has(row.parcel_sequence)).length;
     setPickups((current)=>current.map((pickup)=>pickup.pickup_id===selectedPickup.pickup_id?{...pickup,registered_parcels:Math.max(pickup.registered_parcels,savedVisibleCount)}:pickup));
     return {ok:true,persisted:true,saved_count:savedCount,rows:allSavedResults,batch_count:batchCount,held_count:heldCount};
   }
@@ -2579,9 +2579,9 @@ export default function DataEntryFinancialV2Page() {
       .filter(Boolean);
   }
 
-  function currentReadinessSummary():string{
+  function currentReadinessSummary(sourceRows:ParcelRow[]=rows):string{
     const counts=new Map<string,number>();
-    rows.forEach((row)=>{
+    sourceRows.forEach((row)=>{
       if(row.saved) return;
       const reason=rowSaveObstacle(row)||"Awaiting backend save";
       counts.set(reason,(counts.get(reason)||0)+1);
@@ -2593,6 +2593,62 @@ export default function DataEntryFinancialV2Page() {
       .join(" · ");
   }
 
+  async function synchronizePendingLocationsForWaybill(sourceRows:ParcelRow[]):Promise<ParcelRow[]>{
+    const nextRows=[...sourceRows];
+    const jobs=sourceRows
+      .map((row,index)=>({row,index,route:routeForRow(row,tariffOptions)}))
+      .filter(({row,route})=>!row.saved&&!row.skipped&&route.mapRequired&&row.locationStatus!=="SYNCED");
+
+    if(!jobs.length) return nextRows;
+
+    setBulkMessage(`Synchronizing ${jobs.length} map-required location(s) before waybill generation…`);
+
+    for(let offset=0;offset<jobs.length;offset+=LOCATION_VALIDATION_BATCH_SIZE){
+      const batch=jobs.slice(offset,offset+LOCATION_VALIDATION_BATCH_SIZE);
+      const results=await Promise.all(batch.map(async ({row,index})=>{
+        try{
+          let found=row.locationCandidate;
+          if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
+            found=await resolveDeliveryLocation({
+              deliveryWayId:row.delivery_way_id,
+              address:row.delivery_address,
+              township:row.township,
+              ward:row.sourceWard,
+              postalCode:row.sourcePostalCode,
+              merchantId:row.pickup_id,
+              client:supabase,
+            });
+          }
+
+          if(!found||!validMyanmarCoordinate(found.longitude,found.latitude)){
+            return {index,row:{...row,locationStatus:"REVIEW_REQUIRED" as const,locationCandidate:found||null,message:"No reliable Google location was found. Open this parcel to set the pin or use the consolidated review workflow."}};
+          }
+
+          if(found.reviewStatus==="MANUAL_REVIEW"||found.matchLevel==="WARD_APPROXIMATE"){
+            return {index,row:{...row,locationStatus:"REVIEW_REQUIRED" as const,locationCandidate:found,message:"Google found a possible location, but it still needs review before waybill generation."}};
+          }
+
+          const accepted={...found,originalAddress:row.delivery_address,reviewStatus:"ACCEPTED" as const};
+          await saveDeliveryLocation(supabase,accepted);
+          return {index,row:{...row,locationStatus:"SYNCED" as const,locationCandidate:accepted,message:"Location synchronized automatically before waybill generation."}};
+        }catch(error:any){
+          return {index,row:{...row,locationStatus:"REVIEW_REQUIRED" as const,message:error?.message||"Location synchronization failed. Open this parcel and review its Google pin."}};
+        }
+      }));
+
+      for(const result of results) nextRows[result.index]=result.row;
+      setBulkMessage(`Location preflight: ${Math.min(offset+batch.length,jobs.length)}/${jobs.length} checked.`);
+      await yieldToBrowser();
+    }
+
+    setRows(nextRows);
+    setBulkImportDrafts((current)=>{
+      if(!selectedPickupId||!current[selectedPickupId]) return current;
+      return {...current,[selectedPickupId]:{...current[selectedPickupId],rows:nextRows}};
+    });
+    return nextRows;
+  }
+
   async function createAndGenerateWaybill(){
     if(!selectedPickupId || waybillBusy || bulkSaving || bulkCalculating) return;
 
@@ -2601,10 +2657,11 @@ export default function DataEntryFinancialV2Page() {
     setWaybillMessageKind("SUCCESS");
 
     try{
-      const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL");
+      const workingRows=await synchronizePendingLocationsForWaybill(rows);
+      const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL",workingRows);
       const readySequences=await authoritativeReadySequences(selectedPickupId);
       if(!readySequences.length){
-        const blockers=currentReadinessSummary();
+        const blockers=currentReadinessSummary(workingRows);
         const held=Number(saveResult?.held_count||0);
         throw new Error(
           "No backend-validated completed parcels are ready yet."+
@@ -3254,7 +3311,7 @@ export default function DataEntryFinancialV2Page() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[320px] flex-1">
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
-              <select className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
+              <select data-pickup-review-select="true" className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
                 <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
                 {pickups.map(p=>{
                   const authorized=authorizedParcelCount(p);
