@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const files=fs.readdirSync(path.join(root,"supabase/migrations")).filter(n=>n.includes("deferred_route_supervisor_review_v135"));
+assert.equal(files.length,1);
+const sql=fs.readFileSync(path.join(root,"supabase/migrations",files[0]),"utf8");
+assert.match(sql,/DEFERRED_PROVIDER/);
+assert.match(sql,/DEFERRED_LOCATION/);
+assert.match(sql,/assignment_ready/i);
+assert.match(sql,/road_route_deferred/i);
+assert.match(sql,/route_stop_count/i);
+assert.match(sql,/v_route_count\s*=\s*v_count/);
+console.log("deferred route supervisor review V135 contract PASS");
