@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && vite build",
+    "build": "npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && npm run verify:wayplan-location-recovery-v128 && vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "verify:data-entry-performance-v40": "node scripts/verify-data-entry-performance-v40.mjs",
@@ -55,7 +55,8 @@
     "verify:waybill-location-decoupling-v113": "node scripts/verify-waybill-location-decoupling-v113.mjs",
     "verify:supervisor-workforce-rosters-v69": "node scripts/verify-supervisor-workforce-rosters-v69.mjs",
     "build:verify": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-wayplan-revision-delete-v47.mjs && node scripts/apply-wayplan-multivan-entry-v50.mjs && node scripts/apply-wayplan-chain-v52.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && node scripts/apply-data-entry-interactive-latency-v49.mjs && npm run verify:data-entry-performance-v40 && npm run verify:customer-service-parcel-voice-v41 && npm run verify:customer-service-routing-v41 && npm run verify:wayplan-queue-filters && npm run verify:wayplan-queue-filter-ui && npm run verify:wayplan-multivan-entry-v50 && npm run verify:wayplan-post-create-v51 && npm run verify:wayplan-chain-v52 && npm run verify:wayplan-billing-safe-routing-v53 && npm run verify:wayplan-delete-route-v55 && npm run verify:wayplan-create-readiness-v56 && npm run verify:wayplan-generation-v57 && npm run verify:wayplan-fetch-recovery-v58 && npm run verify:supervisor-wayplan-v60 && npm run verify:wayplan-lifecycle-v61 && npm run verify:supervisor-wayplan-v62 && npm run verify:dispatch-command-v63 && npm run verify:continuous-dispatch-scan-v64 && npm run verify:duplicate-auth-timestamp-v65 && npm run verify:data-entry-input-latency-v42 && npm run verify:data-entry-interactive-latency-v49 && npm run verify:data-entry-utility-panels-v50 && npm run verify:data-entry-photo-waiver-v54 && npm run verify:supervisor-workforce-rosters-v69 && vite build",
-    "build:patched": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-wayplan-revision-delete-v47.mjs && node scripts/apply-wayplan-multivan-entry-v50.mjs && node scripts/apply-wayplan-chain-v52.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && node scripts/apply-data-entry-interactive-latency-v49.mjs && vite build"
+    "build:patched": "node scripts/apply-data-entry-performance-v40.mjs && node scripts/apply-wayplan-revision-delete-v47.mjs && node scripts/apply-wayplan-multivan-entry-v50.mjs && node scripts/apply-wayplan-chain-v52.mjs && node scripts/apply-data-entry-input-latency-v42.mjs && node scripts/apply-data-entry-interactive-latency-v49.mjs && vite build",
+    "verify:wayplan-location-recovery-v128": "node --experimental-strip-types scripts/verify-wayplan-location-recovery-v128.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
