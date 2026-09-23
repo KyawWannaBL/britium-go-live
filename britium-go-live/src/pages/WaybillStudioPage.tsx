@@ -4,7 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import React, { useEffect, useMemo, useState, useRef } from "react";
 export const WAYBILL_TOWNSHIP_ONLY_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_ONLY_V3_20260826";
 export const WAYBILL_DESTINATION_RAIL_BUILD = "BRITIUM_WAYBILL_DESTINATION_RAIL_V1_20260826";
-import { authorizePrintV33, waybillStudioSnapshotV125 } from "@/lib/britiumCompleteWireupApiV33";
+import { authorizePrintV33, waybillStudioSnapshotPickupV121, waybillStudioSnapshotV125 } from "@/lib/britiumCompleteWireupApiV33";
 
 export const WAYBILL_DATA_ENTRY_LIVE_BUILD = "BRITIUM_WAYBILL_DATA_ENTRY_LIVE_V12_5_20260901";
 export const WAYBILL_TOWNSHIP_PRINT_BUILD = "BRITIUM_WAYBILL_TOWNSHIP_MM_V12_5_20260901";
@@ -710,12 +710,14 @@ export default function BritiumUnifiedPrintStudioV33() {
   async function loadRows(preferredPickupId = "") {
     setLoading(true);
     try {
-      const data = await waybillStudioSnapshotV125(500);
-      const allRows = Array.isArray(data) ? data : [];
       const contextPickupId = preferredPickupId || readWaybillPickupContext() || activePickupId;
+      const data = contextPickupId
+        ? await waybillStudioSnapshotPickupV121(contextPickupId, 5000)
+        : await waybillStudioSnapshotV125(500);
+      const allRows = Array.isArray(data) ? data : [];
       const scopedRows = contextPickupId ? allRows.filter((row: PrintRow) => text(row, "pickup_id") === contextPickupId) : [];
-      const next = scopedRows.length ? scopedRows : allRows;
-      const resolvedPickupId = scopedRows.length ? contextPickupId : text(next[0] || {}, "pickup_id");
+      const next = contextPickupId ? scopedRows : allRows;
+      const resolvedPickupId = contextPickupId || text(next[0] || {}, "pickup_id");
       setActivePickupId(resolvedPickupId || "");
       setRows(next);
       setSelected(next.map((row: PrintRow) => docNo(row, docType)));
