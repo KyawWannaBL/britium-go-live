@@ -169,8 +169,8 @@ export default function WayplanCommandCenterPage() {
     [filteredReadyRows]
   );
   const filteredSelectedRows = useMemo(
-    () => filteredRouteReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
-    [filteredRouteReadyRows, selected]
+    () => filteredReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
+    [filteredReadyRows, selected]
   );
   const locationPendingCount = useMemo(
     () => readyRows.filter((row) => row.route_ready === false).length,
@@ -183,7 +183,7 @@ export default function WayplanCommandCenterPage() {
     () => groupWayplanQueueRows(filteredReadyRows, groupBy),
     [filteredReadyRows, groupBy]
   );
-  const allVisibleSelected = filteredRouteReadyRows.length > 0 && filteredSelectedRows.length === filteredRouteReadyRows.length;
+  const allVisibleSelected = filteredReadyRows.length > 0 && filteredSelectedRows.length === filteredReadyRows.length;
   const canEditCreatedWayplan = activeWayplan?.wayplan_status === "CREATED";
   const removeCount = Object.values(revisionRemoveSelected).filter(Boolean).length;
 
@@ -296,10 +296,6 @@ export default function WayplanCommandCenterPage() {
   }
 
   function toggleOne(row: Row) {
-    if (row.route_ready === false) {
-      setError("This way is visible but not route-ready yet. Resolve its delivery pin before selecting it for automatic Wayplan creation.");
-      return;
-    }
     const id = text(row.delivery_way_id || row.waybill_no);
     if (!id) return;
     const selecting = !selected[id];
@@ -309,7 +305,7 @@ export default function WayplanCommandCenterPage() {
 
   function toggleAllVisible() {
     const selecting = !allVisibleSelected;
-    setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredRouteReadyRows));
+    setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredReadyRows));
     if (selecting) setFiltersExpanded(false);
   }
 
@@ -617,8 +613,8 @@ export default function WayplanCommandCenterPage() {
                   {filteredReadyRows.length} filtered / {readyRows.length} warehouse-ready · {routeReadyCount} route-ready · {locationPendingCount} location pending · {selectedRows.length} selected
                 </p>
               </div>
-              <button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredRouteReadyRows.length} style={btn("gold")}>
-                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Route-Ready (" + filteredRouteReadyRows.length + ")" : "Select Route-Ready (" + filteredRouteReadyRows.length + ")"}
+              <button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}>
+                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}
               </button>
             </div>
 
@@ -642,7 +638,7 @@ export default function WayplanCommandCenterPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                   <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>Choose the filters, then use Select All Filtered. The filter panel collapses automatically so it does not cover the operation table.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={toggleAllVisible} disabled={!filteredRouteReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Route-Ready (" + filteredRouteReadyRows.length + ")" : "Select Route-Ready (" + filteredRouteReadyRows.length + ")"}</button>
+                    <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}</button>
                     <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
                   </div>
                 </div>
@@ -664,7 +660,7 @@ export default function WayplanCommandCenterPage() {
                       {group.rows.map((row) => {
                         const id = text(row.delivery_way_id || row.waybill_no);
                         const routeReady = row.route_ready !== false;
-                        return <tr key={id} style={{ borderTop: `1px solid ${C.border}`, opacity: routeReady ? 1 : 0.72 }}><td style={{ padding: 10 }}><input type="checkbox" disabled={!routeReady} checked={Boolean(selected[id])} onChange={() => toggleOne(row)} title={routeReady ? "Route-ready" : "Location pending"} /></td><td style={{ padding: 10 }}><div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no, id)}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>{!routeReady && <div style={{ color: C.red, fontSize: 10, marginTop: 3 }}>LOCATION PENDING — visible, not selectable for automatic routing</div>}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div><div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div><div style={{ color: C.blue, fontSize: 10, marginTop: 3 }}>{text(row.merchant_name, "Unknown Merchant")}</div></td><td style={{ padding: 10 }}>{text(row.township, "-")}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code, "-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode, "DOORSTEP_MAP")}</div></td><td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td><td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td></tr>;
+                        return <tr key={id} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 10 }}><input type="checkbox" checked={Boolean(selected[id])} onChange={() => toggleOne(row)} title={routeReady ? "Road-route ready" : "Location pending — Wayplan assignment allowed; road optimization deferred"} /></td><td style={{ padding: 10 }}><div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no, id)}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>{!routeReady && <div style={{ color: C.red, fontSize: 10, marginTop: 3 }}>LOCATION PENDING — selectable for Wayplan; road optimization deferred until pin is available</div>}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div><div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div><div style={{ color: C.blue, fontSize: 10, marginTop: 3 }}>{text(row.merchant_name, "Unknown Merchant")}</div></td><td style={{ padding: 10 }}>{text(row.township, "-")}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code, "-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode, "DOORSTEP_MAP")}</div></td><td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td><td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td></tr>;
                       })}
                     </React.Fragment>
                   )) : <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>{readyRows.length ? "No ways match the current filters. Reset or change the filters to continue." : selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. In Warehouse, mark received parcels ready for Wayplan, then click Open queue again." : "This regional Wayplan queue is disabled."}</td></tr>}
