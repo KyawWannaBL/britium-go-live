@@ -48,6 +48,7 @@ function routeLabel(plan: VanPlan) {
   if (source === "OPERATOR_EDITED") return `Operator-edited route · based on ${String(plan.route?.base_source || "existing road plan").replaceAll("_", " ")}`;
   if (source === "GOOGLE_ROUTES") return "Google Routes road optimized";
   if (source === "MAPBOX_FALLBACK") return "Mapbox road optimized";
+  if (source === "DEFERRED_LOCATION") return "Wayplan assigned · road optimization deferred until location is available";
   return "Road route pending";
 }
 
@@ -272,11 +273,28 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     setMessage(note || "Calculating actual road routes for the affected vans…");
     try {
       const optimized: OperationalVanPlan[] = [];
-      for (const plan of next) optimized.push(await optimizeOne(plan));
+      for (const plan of next) {
+        if (plan.rows.some((row) => !coord(row))) {
+          optimized.push({
+            ...plan,
+            route: {
+              ...(plan.route || {}),
+              source: "DEFERRED_LOCATION",
+              route_mode: "TOWNSHIP_ADDRESS_SEQUENCE_PENDING_COORDINATES",
+              manual: true,
+              fallback: false,
+              warning: "Wayplan assignment is allowed. Road optimization remains deferred until all stops on this route have valid coordinates.",
+              optimized_at: new Date().toISOString(),
+            },
+          });
+        } else {
+          optimized.push(await optimizeOne(plan));
+        }
+      }
       reset(optimized);
       const sources = Array.from(new Set(optimized.map((p) => routeLabel(p))));
       const waveCount = Math.max(1, ...optimized.map((p) => Number(p.wave_no || 1)));
-      setMessage(`Review ${optimized.length} active route(s) across ${waveCount} fleet wave(s). Road source: ${sources.join(" / ")}. Warehouse loading is the exact reverse of each reviewed road route.`);
+      setMessage(`Review ${optimized.length} active route(s) across ${waveCount} fleet wave(s). Route state: ${sources.join(" / ")}. Location-pending routes can be assigned now and optimized later when pins are available.`);
     } catch (e: any) {
       setPlans([]);
       setMessage(`No automatic Wayplan was generated. ${e?.message || "Road routing is unavailable."}`);
@@ -402,12 +420,75 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     return allocateVans(scopedRows, usableVehicles, requested, origin) as OperationalVanPlan[];
   }
 
+  function deferredLocationAllocation(): OperationalVanPlan[] {
+    const usableVehicles = vehicles.filter((v) => v.available !== false);
+    if (!usableVehicles.length) throw new Error("No delivery van is currently available.");
+    if (!scopedRows.length) throw new Error("No parcels selected.");
+
+    const ordered = [...scopedRows].sort((a,b) =>
+      String(a.township || "").localeCompare(String(b.township || "")) ||
+      String((a as any).address || "").localeCompare(String((b as any).address || "")) ||
+      a.delivery_way_id.localeCompare(b.delivery_way_id)
+    );
+    const routeCount = Math.max(1, Math.ceil(ordered.length / PRACTICAL_MAX_PARCELS_PER_VAN));
+    const sizes = Array.from({ length: routeCount }, () => Math.floor(ordered.length / routeCount));
+    for (let i=0;i<ordered.length % routeCount;i+=1) sizes[i] += 1;
+
+    const jobs: any[] = [];
+    let offset = 0;
+    sizes.forEach((size,index) => {
+      const routeRows = ordered.slice(offset, offset + size);
+      offset += size;
+      jobs.push({
+        routeRows,
+        route: {
+          route_code: `DEFERRED-${index+1}`,
+          name: `Deferred location route ${index+1}`,
+          configured_townships: Array.from(new Set(routeRows.map((r) => String(r.township || "")).filter(Boolean))),
+          routing_strategy: "Assignment created from warehouse-ready rows. Road optimization is deferred until missing delivery coordinates are supplied.",
+        },
+        weight_kg: routeRows.reduce((sum,row) => sum + Number((row as any).parcel_weight_kg || 0),0),
+      });
+    });
+
+    const scheduled = scheduleSequentialRouteWaves(jobs, usableVehicles);
+    return scheduled.map((assignment:any) => ({
+      vehicle_code: assignment.vehicle_code,
+      driver_code: "",
+      rider_code: "",
+      helper_code: "",
+      crew_mode: "ROSTER",
+      wave_no: assignment.wave_no,
+      trip_no: assignment.trip_no,
+      rows: assignment.routeRows,
+      master: {
+        planCode: "DEFERRED_LOCATION_ASSIGNMENT_V126",
+        planName: "Location-pending Wayplan assignment",
+        routeCode: assignment.route.route_code,
+        zoneName: assignment.route.name,
+        configuredTownships: assignment.route.configured_townships,
+        routingStrategy: assignment.route.routing_strategy,
+      },
+      route: {
+        source: "DEFERRED_LOCATION",
+        route_mode: "TOWNSHIP_ADDRESS_SEQUENCE_PENDING_COORDINATES",
+        fallback: false,
+        manual: true,
+        warning: assignment.route.routing_strategy,
+        optimized_at: new Date().toISOString(),
+      },
+    } as OperationalVanPlan));
+  }
+
   async function preview() {
     setBusy(true);
     setMessage(isYangonMaster ? "Stage 1/2: balancing compatible Yangon volumes to 50–75 parcels and assigning sequential fleet waves…" : "Stage 1/2: allocating parcels to practical delivery vans…");
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
-      const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
+      const hasLocationPending = scopedRows.some((row) => !coord(row));
+      const strategic = hasLocationPending
+        ? deferredLocationAllocation()
+        : (isYangonMaster ? await yangonMasterAllocation() : standardAllocation());
       // Driver is mandatory. Rider/Helper remain optional.
       // For sub-50 routes, assign an available Rider automatically when possible so the route
       // uses the approved Rider minimum exemption instead of forcing an unnecessary exception approval.
@@ -431,7 +512,12 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
         throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
       setBusy(false);
-      await optimizePlans(crewed, "Stage 2/2: optimizing every active route on the actual road network…");
+      await optimizePlans(
+        crewed,
+        crewed.some((plan) => plan.rows.some((row) => !coord(row)))
+          ? "Stage 2/2: saving assignment-ready routes. Road optimization will run only for routes with complete coordinates…"
+          : "Stage 2/2: optimizing every active route on the actual road network…"
+      );
     } catch (e: any) {
       setPlans([]);
       setMessage(`No automatic Wayplan was generated. ${e?.message || "Strategic road planning failed."} The selected parcels remain selected; you do not need to restart the queue workflow.`);
@@ -444,8 +530,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   }
 
   async function save() {
-    if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED"].includes(String(p.route?.source || "")))) {
-      setMessage("Cannot create Wayplans: every active route must have a reviewed road-based route.");
+    if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION"].includes(String(p.route?.source || "")))) {
+      setMessage("Cannot create Wayplans: every active route must be road-reviewed or explicitly marked as deferred-location assignment.");
       return;
     }
     setBusy(true);
@@ -539,10 +625,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
     : !p.driver_code);
   const invalidCrew = invalidCrewPlans.length > 0;
-  const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED"].includes(String(p.route?.source || "")));
+  const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION"].includes(String(p.route?.source || "")));
   const roadInvalid = roadInvalidPlans.length > 0;
   const readinessIssues: string[] = [];
-  if (!plans.length) readinessIssues.push("Generate and review at least one road route.");
+  if (!plans.length) readinessIssues.push("Generate and review at least one Wayplan assignment.");
   invalidCrewPlans.forEach((plan, index) => {
     const label = plan.master?.routeCode || `route ${index + 1}`;
     if (plan.crew_mode === "EMERGENCY_MANUAL") readinessIssues.push(`${label}: enter Emergency Driver, Emergency Rider and a substitution reason.`);
