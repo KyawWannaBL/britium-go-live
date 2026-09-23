@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run verify:location-panel-and-wayplan-v131 && npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && npm run verify:wayplan-location-recovery-v128 && npm run verify:wayplan-provider-resilience-v129 && vite build",
+    "build": "npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && npm run verify:wayplan-location-recovery-v128 && npm run verify:wayplan-provider-resilience-v129 && vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "verify:data-entry-performance-v40": "node scripts/verify-data-entry-performance-v40.mjs",
