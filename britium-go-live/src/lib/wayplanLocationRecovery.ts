@@ -1,5 +1,3 @@
-import { acceptedMapboxRoutingSource } from "./mapboxLocationPolicy.ts";
-
 export type RecoverableWayplanRow = {
   delivery_way_id: string;
   latitude?: number;
@@ -31,7 +29,8 @@ function acceptedLocation(location: RecoveredLocation | null): location is Recov
   if (!location || String(location.reviewStatus || "").toUpperCase() !== "ACCEPTED") return false;
   const source = String(location.coordinateSource || "").toUpperCase();
   const routingSource = /^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)/.test(source)
-    || acceptedMapboxRoutingSource(source, location.matchLevel, location.reviewStatus);
+    || (/^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)_(?:ADDRESS_EXACT|POI_EXACT)$/.test(source)
+      && ["ADDRESS_EXACT", "POI_EXACT"].includes(String(location.matchLevel || "").toUpperCase()));
   if (!routingSource) return false;
   return Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
 }
