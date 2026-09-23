@@ -1,4 +1,4 @@
-import { acceptedMapboxRoutingSource } from "@/lib/mapboxLocationPolicy";
+import { acceptedMapboxRoutingSource } from "./mapboxLocationPolicy.ts";
 
 export type RecoverableWayplanRow = {
   delivery_way_id: string;
