@@ -411,7 +411,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       // Driver is mandatory. Rider/Helper remain optional.
       // For sub-50 routes, assign an available Rider automatically when possible so the route
       // uses the approved Rider minimum exemption instead of forcing an unnecessary exception approval.
-      let crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      let crewed = repairCrewGaps(assignCrews(strategic, drivers, [], [], convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
       const riderPool = riders.filter((r) => r.available !== false);
       const riderUsedByWave = new Map<number, Set<string>>();
       crewed = crewed.map((plan) => {
