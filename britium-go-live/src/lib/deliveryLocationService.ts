@@ -26,6 +26,20 @@ export type DeliveryLocation = {
 };
 
 const googleKey = () => String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+let GOOGLE_LOCATION_CIRCUIT_OPEN_UNTIL = 0;
+const GOOGLE_LOCATION_CIRCUIT_MS = 5 * 60 * 1000;
+
+function googleLocationCircuitOpen(now = Date.now()) {
+  return now < GOOGLE_LOCATION_CIRCUIT_OPEN_UNTIL;
+}
+
+function noteGoogleLocationFailure(error: unknown, now = Date.now()) {
+  const detail = providerErrorText(error);
+  if (/RESOURCE_EXHAUSTED|quota|rate.?limit|429/i.test(detail)) {
+    GOOGLE_LOCATION_CIRCUIT_OPEN_UNTIL = Math.max(GOOGLE_LOCATION_CIRCUIT_OPEN_UNTIL, now + GOOGLE_LOCATION_CIRCUIT_MS);
+  }
+}
+
 function classifyMapboxFeature(feature: any): { matchLevel: "ADDRESS_EXACT" | "POI_EXACT" | "STREET_APPROXIMATE" | "WARD_APPROXIMATE"; confidence: number } | null {
   const type = String(feature?.properties?.feature_type || feature?.place_type?.[0] || feature?.type || "").toLowerCase();
   if (type === "address") return { matchLevel: "ADDRESS_EXACT", confidence: 0.96 };
@@ -747,13 +761,15 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   // the browser bundle.
   const queryResults = await Promise.allSettled(queries.map(async (query) => {
     const [googleOutcome, mapboxOutcome] = await Promise.allSettled([
-      Promise.race([
-        googleGeocode(query),
-        new Promise<never>((_, reject) => globalThis.setTimeout(
-          () => reject(new Error("Google location query timed out")),
-          6500,
-        )),
-      ]),
+      googleLocationCircuitOpen()
+        ? Promise.resolve([])
+        : Promise.race([
+            googleGeocode(query),
+            new Promise<never>((_, reject) => globalThis.setTimeout(
+              () => reject(new Error("Google location query timed out")),
+              6500,
+            )),
+          ]),
       Promise.race([
         mapboxGeocode(query, mapboxAccessToken),
         new Promise<never>((_, reject) => globalThis.setTimeout(
@@ -771,6 +787,7 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     if (googleOutcome.status === "fulfilled") {
       for (const result of googleOutcome.value) candidates.push({ ...result, query });
     } else {
+      noteGoogleLocationFailure(googleOutcome.reason);
       providerFailure ||= googleOutcome.reason instanceof Error
         ? googleOutcome.reason
         : googleLocationError(googleOutcome.reason, "Google location search");
