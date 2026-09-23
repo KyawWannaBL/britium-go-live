@@ -17,6 +17,12 @@ import FullVanRouteMap from "@/components/FullVanRouteMap";
 const field: React.CSSProperties = { padding: 10, borderRadius: 8, color: "#102b45", background: "white", border: "1px solid #9cc2d9" };
 const button: React.CSSProperties = { ...field, background: "#f6b84b", fontWeight: 800, cursor: "pointer" };
 const secondary: React.CSSProperties = { ...field, background: "#173a55", color: "white", fontWeight: 700, cursor: "pointer" };
+const LOCATION_RECOVERY_INTERACTIVE_LIMIT = 8;
+const LOCATION_RECOVERY_TIMEOUT_MS = 4500;
+
+function isProviderQuotaError(error: unknown) {
+  return /RESOURCE_EXHAUSTED|quota|rate.?limit|too many requests/i.test(String((error as any)?.message || error || ""));
+}
 
 type MasterMeta = {
   planCode?: string;
@@ -509,25 +515,51 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       let planningRows = scopedRows;
       const pendingBefore = scopedRows.filter((row) => !coord(row)).length;
       if (pendingBefore) {
-        setMessage(`Stage 0/2: recovering ${pendingBefore} missing delivery location${pendingBefore === 1 ? "" : "s"} from the saved address data…`);
-        const recovery = await recoverWayplanLocations(scopedRows, {
-          resolve: async (row) => resolveDeliveryLocation({
-            deliveryWayId: row.delivery_way_id,
-            address: String((row as any).address || (row as any).recipient_address || ""),
-            township: String(row.township || ""),
-            merchantId: String((row as any).merchant_code || (row as any).merchant_id || ""),
-            client: supabase,
-          }),
-          persist: async (location) => {
-            await saveDeliveryLocation(supabase, location as any);
-          },
-          concurrency: 3,
-        });
-        planningRows = recovery.rows as Stop[];
-        if (recovery.recovered) {
-          setMessage(`Recovered and synchronized ${recovery.recovered} of ${recovery.attempted} missing delivery location${recovery.attempted === 1 ? "" : "s"}. Continuing Wayplan preparation…`);
-        } else if (recovery.unresolved) {
-          setMessage(`No missing location could be safely auto-accepted. ${recovery.unresolved} parcel${recovery.unresolved === 1 ? "" : "s"} will stay selectable with deferred road optimization until the pin is reviewed.`);
+        if (pendingBefore > LOCATION_RECOVERY_INTERACTIVE_LIMIT) {
+          setMessage(`${pendingBefore} selected parcel locations are still pending. Wayplan generation will continue immediately with deferred road optimization instead of waiting on map providers.`);
+        } else {
+          setMessage(`Stage 0/2: trying a short location recovery for ${pendingBefore} parcel${pendingBefore === 1 ? "" : "s"}; provider quota/errors will not block Wayplan generation…`);
+          try {
+            const recoveryTask = recoverWayplanLocations(scopedRows, {
+              resolve: async (row) => {
+                try {
+                  return await resolveDeliveryLocation({
+                    deliveryWayId: row.delivery_way_id,
+                    address: String((row as any).address || (row as any).recipient_address || ""),
+                    township: String(row.township || ""),
+                    merchantId: String((row as any).merchant_code || (row as any).merchant_id || ""),
+                    client: supabase,
+                  });
+                } catch (error) {
+                  if (isProviderQuotaError(error)) return null;
+                  throw error;
+                }
+              },
+              persist: async (location) => {
+                await saveDeliveryLocation(supabase, location as any);
+              },
+              concurrency: 3,
+            });
+            const recovery = await Promise.race([
+              recoveryTask,
+              new Promise<never>((_, reject) => window.setTimeout(
+                () => reject(new Error("Location recovery timed out; continue with deferred road optimization.")),
+                LOCATION_RECOVERY_TIMEOUT_MS,
+              )),
+            ]);
+            planningRows = recovery.rows as Stop[];
+            if (recovery.recovered) {
+              setMessage(`Recovered and synchronized ${recovery.recovered} of ${recovery.attempted} missing delivery location${recovery.attempted === 1 ? "" : "s"}. Continuing Wayplan preparation…`);
+            } else if (recovery.unresolved) {
+              setMessage(`No missing location could be safely auto-accepted. ${recovery.unresolved} parcel${recovery.unresolved === 1 ? "" : "s"} will stay selectable with deferred road optimization until the pin is reviewed.`);
+            }
+          } catch (error) {
+            planningRows = scopedRows;
+            const quota = isProviderQuotaError(error);
+            setMessage(quota
+              ? "Map provider quota is exhausted. Selected parcels remain available and Wayplan generation is continuing with deferred road optimization."
+              : "Location recovery is unavailable or timed out. Selected parcels remain available and Wayplan generation is continuing with deferred road optimization.");
+          }
         }
       }
 
