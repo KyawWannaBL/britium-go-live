@@ -251,7 +251,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       }, "Wayplan road optimizer");
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
-      if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("Automatic Wayplan rejected: a real road-routing source was not available.");
+      if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "DEFERRED_PROVIDER"].includes(String(result.source || ""))) throw new Error("Automatic Wayplan rejected: the routing service returned an unsupported route state.");
       const byId = new Map(plan.rows.map((row) => [row.delivery_way_id, row]));
       const ordered = (result.ordered_stops || []).map((row: any) => byId.get(String(row.delivery_way_id))).filter(Boolean) as Stop[];
       if (ordered.length !== plan.rows.length) throw new Error("Road optimizer did not return every selected parcel exactly once.");

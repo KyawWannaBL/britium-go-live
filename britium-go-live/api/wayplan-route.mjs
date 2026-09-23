@@ -85,7 +85,7 @@ export default {
       const providerMode = (env("WAYPLAN_ROAD_PROVIDER_MODE") || DEFAULT_PROVIDER_MODE).toUpperCase();
       const mapboxPreferred = providerMode.startsWith("MAPBOX");
       const mapboxAllowed = Boolean(mapboxToken) && providerMode !== "GOOGLE_ONLY";
-      const googleAllowed = Boolean(googleKey) && !["MAPBOX_ONLY","MAPBOX_PREFERRED_BILLING_HOLD"].includes(providerMode);
+      const googleAllowed = Boolean(googleKey) && providerMode !== "MAPBOX_ONLY";
 
       if (request.method === "GET" && url.searchParams.get("health") === "1") {
         const probe = url.searchParams.get("probe") === "1";
@@ -193,12 +193,20 @@ export default {
       }
 
       return json({
-        ok: false,
-        error: "road_routing_unavailable",
-        message: "Automatic Wayplan generation requires a real road-routing matrix. Straight-line geographic fallback is disabled.",
+        ok: true,
+        source: "DEFERRED_PROVIDER",
         provider_mode: providerMode,
+        provider_role: "OUTAGE_DEFERRED",
+        route_mode: "PROVIDER_OUTAGE_OPERATOR_REVIEW",
+        ordered_stops: stops.map((stop, sequence) => ({ ...stop, sequence: sequence + 1 })),
+        distance_m: 0,
+        duration_s: 0,
+        request_count: 0,
+        fallback: true,
+        warning: "Road-routing providers are temporarily unavailable. The selected parcel set and current sequence are preserved for Wayplan creation; re-optimize when a road provider recovers.",
         diagnostics,
-      }, 503);
+        optimized_at: new Date().toISOString(),
+      }, 200);
     } catch (error) {
       return json({ ok: false, error: String(error?.message || error) }, 400);
     }
