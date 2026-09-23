@@ -217,9 +217,14 @@ export default function DataEntryLocationEditor({
     }
     const savedMatchLevel = String(row.match_level || "").toUpperCase();
     const savedSource = String(row.coordinate_source || "").toUpperCase();
+    const savedMapboxExact = row.review_status === "ACCEPTED"
+      && ["ADDRESS_EXACT", "POI_EXACT"].includes(savedMatchLevel)
+      && /^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)_(?:ADDRESS_EXACT|POI_EXACT)$/.test(savedSource);
     const savedIsApproximate = ["WARD_APPROXIMATE", "STREET_APPROXIMATE"].includes(savedMatchLevel)
-      || /MAPBOX|WARD_APPROXIMATE|STREET_APPROXIMATE/.test(savedSource);
-    const savedCoordinateMatches = await withAutomaticLocationSlot(() => coordinateMatchesTownship(township, row.latitude, row.longitude));
+      || /WARD_APPROXIMATE|STREET_APPROXIMATE/.test(savedSource);
+    const savedCoordinateMatches = savedMapboxExact
+      ? validMyanmarCoordinate(row.longitude, row.latitude)
+      : await withAutomaticLocationSlot(() => coordinateMatchesTownship(township, row.latitude, row.longitude));
     if (requestId !== requestSequence.current) return;
     if (!savedCoordinateMatches || savedIsApproximate) {
       setCandidate(null);
@@ -227,7 +232,7 @@ export default function DataEntryLocationEditor({
       setLng("");
       setManualOpen(true);
       setMessage(savedIsApproximate
-        ? "The previously saved Mapbox/approximate pin has been rejected. Searching again with Google Places…"
+        ? "The previously saved approximate pin has been rejected. Searching again with Google/Mapbox location providers…"
         : `The previously saved pin is outside ${township || "the selected township"} and has been rejected. Searching again with Google Places…`);
       reportResolution("SEARCHING");
       const key = `${deliveryWayId}|${address}|${township}`;
