@@ -98,6 +98,20 @@ async function overlayLiveDataEntryWaybillRows(rows: AnyRow[]) {
   });
 }
 
+export async function waybillStudioSnapshotPickupV121(pickupId: string, limit = 5000) {
+  const data = await rpcV33("be_waybill_studio_snapshot_pickup_v121", {
+    p_pickup_id: pickupId,
+    p_limit: limit,
+  });
+  if (!data?.ok) throw new Error(data?.error || "Pickup-scoped Waybill Studio snapshot failed.");
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  try { return await overlayLiveDataEntryWaybillRows(rows); }
+  catch (overlayError) {
+    console.warn("Waybill Studio pickup-scoped live Data Entry overlay unavailable; using backend snapshot.", overlayError);
+    return rows;
+  }
+}
+
 export async function waybillStudioSnapshotV125(limit = 500) {
   let rows: AnyRow[] = [];
   try {
