@@ -62,6 +62,10 @@ try {
   assert.match(resolver, /provider:\s*"MAPBOX"/);
   assert.match(resolver, /Promise\.allSettled\(queries\.map/);
 
+  const recovery = fs.readFileSync(path.join(root, "src/lib/wayplanLocationRecovery.ts"), "utf8");
+  assert.match(recovery, /acceptedMapboxRoutingSource/);
+  assert.match(recovery, /location\.matchLevel/);
+
   const migrationFiles = fs.readdirSync(path.join(root, "supabase/migrations")).filter((name) => name.includes("mapbox_location_recovery_v130"));
   assert.equal(migrationFiles.length, 1, "V130 Mapbox location migration must be committed.");
   const migration = fs.readFileSync(path.join(root, "supabase/migrations", migrationFiles[0]), "utf8");
