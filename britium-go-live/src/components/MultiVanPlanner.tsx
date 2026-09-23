@@ -51,6 +51,7 @@ function routeLabel(plan: VanPlan) {
   if (source === "GOOGLE_ROUTES") return "Google Routes road optimized";
   if (source === "MAPBOX_FALLBACK") return "Mapbox road optimized";
   if (source === "DEFERRED_LOCATION") return "Wayplan assigned · road optimization deferred until location is available";
+  if (source === "DEFERRED_PROVIDER") return "Wayplan assigned · routing provider temporarily unavailable";
   return "Road route pending";
 }
 
@@ -241,33 +242,51 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   async function optimizeOne(plan: OperationalVanPlan): Promise<OperationalVanPlan> {
     if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
     if (plan.rows.length > 75) throw new Error(`${plan.master?.zoneName || "This route"} has ${plan.rows.length} stops. Split the zone operationally before road optimization because one route is limited to 75 stops.`);
-    const token = await roadSession();
-    const response = await fetchWayplanApi("/api/wayplan-route", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ origin, stops: plan.rows }),
-    }, "Wayplan road optimizer");
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
-    if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("Automatic Wayplan rejected: a real road-routing source was not available.");
-    const byId = new Map(plan.rows.map((row) => [row.delivery_way_id, row]));
-    const ordered = (result.ordered_stops || []).map((row: any) => byId.get(String(row.delivery_way_id))).filter(Boolean) as Stop[];
-    if (ordered.length !== plan.rows.length) throw new Error("Road optimizer did not return every selected parcel exactly once.");
-    return {
-      ...plan,
-      rows: ordered,
-      route: {
-        ...(plan.route || {}),
-        source: result.source,
-        route_mode: result.route_mode,
-        distance_m: Number(result.distance_m || 0),
-        duration_s: Number(result.duration_s || 0),
-        request_count: Number(result.request_count || 0),
-        fallback: Boolean(result.fallback),
-        warning: [plan.master?.routingStrategy, result.warning].filter(Boolean).join(" "),
-        optimized_at: result.optimized_at,
-      },
-    };
+    try {
+      const token = await roadSession();
+      const response = await fetchWayplanApi("/api/wayplan-route", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ origin, stops: plan.rows }),
+      }, "Wayplan road optimizer");
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
+      if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("Automatic Wayplan rejected: a real road-routing source was not available.");
+      const byId = new Map(plan.rows.map((row) => [row.delivery_way_id, row]));
+      const ordered = (result.ordered_stops || []).map((row: any) => byId.get(String(row.delivery_way_id))).filter(Boolean) as Stop[];
+      if (ordered.length !== plan.rows.length) throw new Error("Road optimizer did not return every selected parcel exactly once.");
+      return {
+        ...plan,
+        rows: ordered,
+        route: {
+          ...(plan.route || {}),
+          source: result.source,
+          route_mode: result.route_mode,
+          distance_m: Number(result.distance_m || 0),
+          duration_s: Number(result.duration_s || 0),
+          request_count: Number(result.request_count || 0),
+          fallback: Boolean(result.fallback),
+          warning: [plan.master?.routingStrategy, result.warning].filter(Boolean).join(" "),
+          optimized_at: result.optimized_at,
+        },
+      };
+    } catch (error: any) {
+      const message = String(error?.message || error || "");
+      const providerOutage = /temporarily unavailable|HTTP 50[234]|timed out|failed to fetch|road_routing_unavailable|Mapbox road matrix failed|Google Routes matrix failed/i.test(message);
+      if (!providerOutage) throw error;
+      return {
+        ...plan,
+        route: {
+          ...(plan.route || {}),
+          source: "DEFERRED_PROVIDER",
+          route_mode: "PROVIDER_OUTAGE_OPERATOR_REVIEW",
+          manual: true,
+          fallback: true,
+          warning: `Road-routing provider is temporarily unavailable. The selected parcel set, van assignment, and current reviewed sequence were preserved. Review the sequence before dispatch and use Re-optimize road route when the provider recovers. ${message}`,
+          optimized_at: new Date().toISOString(),
+        },
+      };
+    }
   }
 
   async function optimizePlans(next: OperationalVanPlan[], note?: string) {
@@ -296,7 +315,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       reset(optimized);
       const sources = Array.from(new Set(optimized.map((p) => routeLabel(p))));
       const waveCount = Math.max(1, ...optimized.map((p) => Number(p.wave_no || 1)));
-      setMessage(`Review ${optimized.length} active route(s) across ${waveCount} fleet wave(s). Route state: ${sources.join(" / ")}. Location-pending routes can be assigned now and optimized later when pins are available.`);
+      setMessage(`Review ${optimized.length} active route(s) across ${waveCount} fleet wave(s). Route state: ${sources.join(" / ")}. Location-pending or provider-deferred routes can be assigned now and re-optimized later.`);
     } catch (e: any) {
       setPlans([]);
       setMessage(`No automatic Wayplan was generated. ${e?.message || "Road routing is unavailable."}`);
@@ -557,8 +576,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   }
 
   async function save() {
-    if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION"].includes(String(p.route?.source || "")))) {
-      setMessage("Cannot create Wayplans: every active route must be road-reviewed or explicitly marked as deferred-location assignment.");
+    if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")))) {
+      setMessage("Cannot create Wayplans: every active route must be road-reviewed or explicitly marked as a deferred assignment.");
       return;
     }
     setBusy(true);
@@ -652,7 +671,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
     : !p.driver_code);
   const invalidCrew = invalidCrewPlans.length > 0;
-  const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION"].includes(String(p.route?.source || "")));
+  const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")));
   const roadInvalid = roadInvalidPlans.length > 0;
   const readinessIssues: string[] = [];
   if (!plans.length) readinessIssues.push("Generate and review at least one Wayplan assignment.");
