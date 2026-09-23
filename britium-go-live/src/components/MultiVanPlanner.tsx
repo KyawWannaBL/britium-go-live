@@ -10,6 +10,8 @@ import {
   type VanPlan,
 } from "@/lib/multiVanPlanner";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
+import { resolveDeliveryLocation, saveDeliveryLocation } from "@/lib/deliveryLocationService";
+import { recoverWayplanLocations } from "@/lib/wayplanLocationRecovery";
 import FullVanRouteMap from "@/components/FullVanRouteMap";
 
 const field: React.CSSProperties = { padding: 10, borderRadius: 8, color: "#102b45", background: "white", border: "1px solid #9cc2d9" };
@@ -356,7 +358,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     });
   }
 
-  async function yangonMasterAllocation(): Promise<OperationalVanPlan[]> {
+  async function yangonMasterAllocation(planningRows: Stop[] = scopedRows): Promise<OperationalVanPlan[]> {
     if (!origin) throw new Error("Yangon branch route origin is unavailable.");
     const usableVehicles = vehicles.filter((v) => v.available !== false);
     if (!usableVehicles.length) throw new Error("No delivery van is currently available.");
@@ -364,13 +366,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     const response = await fetchWayplanApi("/api/wayplan-zone-plan", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ origin, stops: scopedRows }),
+      body: JSON.stringify({ origin, stops: planningRows }),
     }, "Yangon master route planner");
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.ok) throw new Error(result?.message || result?.error || `Yangon master planning failed (${response.status}).`);
     const activeRoutes = (result.routes || []).filter((route: any) => Number(route.parcel_count || 0) > 0);
     if (!activeRoutes.length) throw new Error("No route-ready parcel remains inside the Yangon urban master scope.");
-    const byId = new Map(scopedRows.map((row) => [row.delivery_way_id, row]));
+    const byId = new Map(planningRows.map((row) => [row.delivery_way_id, row]));
     const routeJobs = activeRoutes.map((route: any) => {
       const routeRows = (route.delivery_way_ids || []).map((id: string) => byId.get(String(id))).filter(Boolean) as Stop[];
       if (routeRows.length !== Number(route.parcel_count || 0)) throw new Error(`${route.name} contains an incomplete parcel assignment.`);
@@ -414,18 +416,18 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     });
   }
 
-  function standardAllocation(): OperationalVanPlan[] {
+  function standardAllocation(planningRows: Stop[] = scopedRows): OperationalVanPlan[] {
     const usableVehicles = vehicles.filter((v) => v.available !== false);
     const requested = count ? Number(count) : undefined;
-    return allocateVans(scopedRows, usableVehicles, requested, origin) as OperationalVanPlan[];
+    return allocateVans(planningRows, usableVehicles, requested, origin) as OperationalVanPlan[];
   }
 
-  function deferredLocationAllocation(): OperationalVanPlan[] {
+  function deferredLocationAllocation(planningRows: Stop[] = scopedRows): OperationalVanPlan[] {
     const usableVehicles = vehicles.filter((v) => v.available !== false);
     if (!usableVehicles.length) throw new Error("No delivery van is currently available.");
-    if (!scopedRows.length) throw new Error("No parcels selected.");
+    if (!planningRows.length) throw new Error("No parcels selected.");
 
-    const ordered = [...scopedRows].sort((a,b) =>
+    const ordered = [...planningRows].sort((a,b) =>
       String(a.township || "").localeCompare(String(b.township || "")) ||
       String((a as any).address || "").localeCompare(String((b as any).address || "")) ||
       a.delivery_way_id.localeCompare(b.delivery_way_id)
@@ -485,10 +487,35 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     setMessage(isYangonMaster ? "Stage 1/2: balancing compatible Yangon volumes to 50–75 parcels and assigning sequential fleet waves…" : "Stage 1/2: allocating parcels to practical delivery vans…");
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
-      const hasLocationPending = scopedRows.some((row) => !coord(row));
+      let planningRows = scopedRows;
+      const pendingBefore = scopedRows.filter((row) => !coord(row)).length;
+      if (pendingBefore) {
+        setMessage(`Stage 0/2: recovering ${pendingBefore} missing delivery location${pendingBefore === 1 ? "" : "s"} from the saved address data…`);
+        const recovery = await recoverWayplanLocations(scopedRows, {
+          resolve: async (row) => resolveDeliveryLocation({
+            deliveryWayId: row.delivery_way_id,
+            address: String((row as any).address || (row as any).recipient_address || ""),
+            township: String(row.township || ""),
+            merchantId: String((row as any).merchant_code || (row as any).merchant_id || ""),
+            client: supabase,
+          }),
+          persist: async (location) => {
+            await saveDeliveryLocation(supabase, location as any);
+          },
+          concurrency: 3,
+        });
+        planningRows = recovery.rows as Stop[];
+        if (recovery.recovered) {
+          setMessage(`Recovered and synchronized ${recovery.recovered} of ${recovery.attempted} missing delivery location${recovery.attempted === 1 ? "" : "s"}. Continuing Wayplan preparation…`);
+        } else if (recovery.unresolved) {
+          setMessage(`No missing location could be safely auto-accepted. ${recovery.unresolved} parcel${recovery.unresolved === 1 ? "" : "s"} will stay selectable with deferred road optimization until the pin is reviewed.`);
+        }
+      }
+
+      const hasLocationPending = planningRows.some((row) => !coord(row));
       const strategic = hasLocationPending
-        ? deferredLocationAllocation()
-        : (isYangonMaster ? await yangonMasterAllocation() : standardAllocation());
+        ? deferredLocationAllocation(planningRows)
+        : (isYangonMaster ? await yangonMasterAllocation(planningRows) : standardAllocation(planningRows));
       // Driver is mandatory. Rider/Helper remain optional.
       // For sub-50 routes, assign an available Rider automatically when possible so the route
       // uses the approved Rider minimum exemption instead of forcing an unnecessary exception approval.
