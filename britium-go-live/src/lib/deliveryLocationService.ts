@@ -7,6 +7,7 @@ import {
 } from "@/lib/myanmarAddressConverter";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
 import { pointInYangonTownship } from "@/lib/yangonTownshipBoundaries";
+import { classifyMapboxFeature } from "@/lib/mapboxLocationPolicy";
 
 export type DeliveryLocation = {
   deliveryWayId: string;
@@ -408,6 +409,80 @@ async function googleGeocode(query: string) {
   return combined;
 }
 
+
+async function mapboxSessionToken(client: any) {
+  if (!client?.auth?.getSession) return "";
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (error) return "";
+    return String(data?.session?.access_token || "").trim();
+  } catch {
+    return "";
+  }
+}
+
+function mapboxFeatureText(feature: any) {
+  const properties = feature?.properties || {};
+  const context = properties?.context || feature?.context || {};
+  const contextValues = Array.isArray(context)
+    ? context.flatMap((item: any) => [item?.text, item?.text_en, item?.name])
+    : Object.values(context || {}).flatMap((item: any) => {
+        if (!item || typeof item !== "object") return [];
+        const record = item as Record<string, any>;
+        return [record.name, record.text, record.text_en, record.region_code, record.country_code];
+      });
+  return [
+    properties?.full_address,
+    properties?.name,
+    properties?.place_formatted,
+    feature?.place_name,
+    feature?.text,
+    ...contextValues,
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
+async function mapboxGeocode(query: string, accessToken: string) {
+  if (!accessToken) return [];
+  let response: Response;
+  try {
+    const parameters = new URLSearchParams({ q: query });
+    response = await fetch(`/api/mapbox-geocode?${parameters.toString()}`, {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+  } catch {
+    return [];
+  }
+  if (!response.ok) return [];
+  const payload = await response.json().catch(() => ({}));
+  return (Array.isArray(payload?.features) ? payload.features : [])
+    .map((feature: any, providerRank: number) => {
+      const classification = classifyMapboxFeature(feature);
+      const coordinates = feature?.geometry?.coordinates
+        || (feature?.properties?.coordinates
+          ? [feature.properties.coordinates.longitude, feature.properties.coordinates.latitude]
+          : null);
+      if (!classification || !Array.isArray(coordinates) || !validMyanmarCoordinate(coordinates[0], coordinates[1])) return null;
+      const text = mapboxFeatureText(feature);
+      return {
+        ...classification,
+        latitude: Number(coordinates[1]),
+        longitude: Number(coordinates[0]),
+        label: feature?.properties?.full_address
+          || feature?.properties?.name
+          || feature?.place_name
+          || query,
+        text,
+        feature,
+        provider: "MAPBOX",
+        providerRank,
+      };
+    })
+    .filter(Boolean);
+}
+
 function addressNumbers(value: string) {
   const normalized = normalizeEnglishAddressForGeocoding(value);
   const house = (normalized.match(/\bno\.?\s*([0-9]+[a-z]?)/i)?.[1]
@@ -656,32 +731,49 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   ).slice(0, 3);
   const candidates: any[] = [];
   let providerFailure: Error | null = null;
+  const mapboxAccessToken = await mapboxSessionToken(input.client);
 
-  // Run the independent Google searches together. The former sequential loop
-  // could spend the entire Data Entry row timeout on an early weak query and
-  // incorrectly send an otherwise resolvable address to manual review.
-  const queryResults = await Promise.allSettled(queries.map(async (query) => ({
-    query,
-    results: await Promise.race([
-      googleGeocode(query),
-      new Promise<never>((_, reject) => globalThis.setTimeout(
-        () => reject(new Error("Google location query timed out")),
-        6500,
-      )),
-    ]),
+  // V130: run Google and Mapbox independently. A provider outage must not turn
+  // an otherwise resolvable parcel into LOCATION_PENDING. Mapbox goes through
+  // an authenticated same-origin server proxy so its server token never enters
+  // the browser bundle.
+  const queryResults = await Promise.allSettled(queries.map(async (query) => {
+    const [googleOutcome, mapboxOutcome] = await Promise.allSettled([
+      Promise.race([
+        googleGeocode(query),
+        new Promise<never>((_, reject) => globalThis.setTimeout(
+          () => reject(new Error("Google location query timed out")),
+          6500,
+        )),
+      ]),
+      Promise.race([
+        mapboxGeocode(query, mapboxAccessToken),
+        new Promise<never>((_, reject) => globalThis.setTimeout(
+          () => reject(new Error("Mapbox location query timed out")),
+          6500,
+        )),
+      ]),
+    ]);
+    return { query, googleOutcome, mapboxOutcome };
   })));
+
   for (const outcome of queryResults) {
-    if (outcome.status === "fulfilled") {
-      for (const result of outcome.value.results) candidates.push({ ...result, query: outcome.value.query });
+    if (outcome.status !== "fulfilled") continue;
+    const { query, googleOutcome, mapboxOutcome } = outcome.value;
+    if (googleOutcome.status === "fulfilled") {
+      for (const result of googleOutcome.value) candidates.push({ ...result, query });
     } else {
-      providerFailure ||= outcome.reason instanceof Error
-        ? outcome.reason
-        : googleLocationError(outcome.reason, "Google location search");
+      providerFailure ||= googleOutcome.reason instanceof Error
+        ? googleOutcome.reason
+        : googleLocationError(googleOutcome.reason, "Google location search");
+    }
+    if (mapboxOutcome.status === "fulfilled") {
+      for (const result of mapboxOutcome.value) candidates.push({ ...result, query });
     }
   }
 
   if (!candidates.length) {
-    if (providerFailure) throw providerFailure;
+    if (providerFailure && !mapboxAccessToken) throw providerFailure;
     return null;
   }
   const initiallyEvaluated = candidates
@@ -700,22 +792,23 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
 
   if (!evaluated.length) return null;
 
-  // A forward Places result is never trusted by label alone. Google must also
-  // reverse-resolve the returned coordinate back to the requested township.
-  // This closes the North Dagon/North Okkalapa overlap where coarse rectangles
-  // cannot distinguish neighboring administrative boundaries.
+  // Google forward results are reverse-validated. Mapbox candidates use the
+  // provider's administrative context plus the same township evidence and
+  // audited Yangon polygon checks above, so Mapbox remains useful when Google
+  // is unavailable without accepting township-centre/ward-centre guesses.
   let best: any = null;
   const finalists = evaluated.slice(0, 3);
   const reverseChecks = await Promise.allSettled(finalists.map((candidate) =>
-    coordinateMatchesTownship(input.township, candidate.latitude, candidate.longitude),
+    candidate.provider === "MAPBOX" && candidate.townshipMatch && candidate.areaMatch
+      ? Promise.resolve(true)
+      : coordinateMatchesTownship(input.township, candidate.latitude, candidate.longitude),
   ));
   const bestIndex = reverseChecks.findIndex((result) => result.status === "fulfilled" && result.value);
   if (bestIndex >= 0) best = finalists[bestIndex];
   if (!best) return null;
-  // The database accepts exact Google results after either postal evidence or
-  // the independent township boundary + reverse-geocode check above. Keep the
-  // stronger exact-township lineage explicit so it cannot be confused with a
-  // review-only ward/street candidate.
+  // Keep exact validation lineage explicit for both providers so Wayplan can
+  // accept exact Mapbox/Google coordinates while approximate candidates stay
+  // review-only.
   const exactGoogleMatch = ["ADDRESS_EXACT", "POI_EXACT"].includes(best.matchLevel)
     && best.reviewStatus === "ACCEPTED";
   const validationSource = best.postalValidated
