@@ -7,7 +7,6 @@ import {
 } from "@/lib/myanmarAddressConverter";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
 import { pointInYangonTownship } from "@/lib/yangonTownshipBoundaries";
-import { classifyMapboxFeature } from "@/lib/mapboxLocationPolicy";
 
 export type DeliveryLocation = {
   deliveryWayId: string;
@@ -27,6 +26,15 @@ export type DeliveryLocation = {
 };
 
 const googleKey = () => String(import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "").trim();
+function classifyMapboxFeature(feature: any): { matchLevel: "ADDRESS_EXACT" | "POI_EXACT" | "STREET_APPROXIMATE" | "WARD_APPROXIMATE"; confidence: number } | null {
+  const type = String(feature?.properties?.feature_type || feature?.place_type?.[0] || feature?.type || "").toLowerCase();
+  if (type === "address") return { matchLevel: "ADDRESS_EXACT", confidence: 0.96 };
+  if (type === "poi") return { matchLevel: "POI_EXACT", confidence: 0.90 };
+  if (type === "street") return { matchLevel: "STREET_APPROXIMATE", confidence: 0.78 };
+  if (type === "neighborhood" || type === "locality") return { matchLevel: "WARD_APPROXIMATE", confidence: 0.67 };
+  return null;
+}
+
 
 const GOOGLE_BROWSER_KEY_GUIDANCE = "Google Maps rejected the browser key. In Google Cloud, set the key's Application restriction to Websites, allow https://www.britiumexpress.com/*, and enable Maps JavaScript API, Places API (New), and Geocoding API. No coordinates were saved.";
 
