@@ -93,6 +93,7 @@ export default function DataEntryLocationEditor({
   const [message, setMessage] = useState("");
   const [mapError, setMapError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
+  const [mapExpanded, setMapExpanded] = useState(false);
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
   const operatorEditedRef = useRef(false);
@@ -257,6 +258,7 @@ export default function DataEntryLocationEditor({
     setLng("");
     setMessage("");
     setMapError("");
+    setMapExpanded(false);
     lastAutoKey.current = "";
     if (deferAutomaticResolution && enabled) {
       setMessage("Location validation is running in the controlled background queue.");
@@ -409,6 +411,7 @@ export default function DataEntryLocationEditor({
 
   async function openRelocationMap() {
     setManualOpen(true);
+    setMapExpanded(true);
     setMapError("");
     if (candidate && validMyanmarCoordinate(candidate.longitude,candidate.latitude)) return;
     if (validMyanmarCoordinate(lng,lat)) {
@@ -737,7 +740,7 @@ export default function DataEntryLocationEditor({
       <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-300"><MapPin size={15}/> Location Details / တည်နေရာအသေးစိတ်</div>
       {candidate && <span className={`rounded-full px-3 py-1 text-[11px] font-black ${candidate.reviewStatus === "ACCEPTED" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"}`}>{candidate.matchLevel.replaceAll("_", " ")}{candidate.reviewStatus === "MANUAL_REVIEW" ? " · REVIEW" : ""}</span>}
     </div>
-    <div className="grid gap-3 xl:grid-cols-[.9fr_1.1fr]">
+    <div className="grid min-w-0 gap-3">
       <div>
         <div className="grid gap-2 lg:grid-cols-[1fr_auto]"><input value={query} onChange={(event)=>setQuery(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"){event.preventDefault();void find();}}} placeholder="Myanmar/English address, landmark, street, or coordinates" className="rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm text-black"/><button type="button" onClick={()=>void find()} disabled={busy} className="rounded-lg bg-cyan-500 px-4 py-2 text-xs font-black text-[#061524] disabled:opacity-50">{busy?<Loader2 className="mr-1 inline animate-spin" size={14}/>:<Search className="mr-1 inline" size={14}/>} Check location</button></div>
         <div className="mt-2 rounded-lg border border-fuchsia-700/40 bg-fuchsia-950/20 p-2 text-xs text-fuchsia-100"><b>English:</b> {english || "—"}</div>
@@ -754,6 +757,12 @@ export default function DataEntryLocationEditor({
           <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" onClick={()=>setMapExpanded((value)=>!value)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
+            {mapExpanded ? "MINIMIZE MAP" : "SHOW MAP"}
+          </button>
+          {mapExpanded ? <span className="self-center text-[10px] font-semibold text-slate-400">Map is expanded only for location review and cannot cover the registration table.</span> : null}
+        </div>
         {enabled && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
@@ -766,8 +775,8 @@ export default function DataEntryLocationEditor({
           <button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="self-end rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button>
         </div>}
       </div>
-      <div>
-        {candidate && googleMapsConfigured && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
+      <div data-location-map-panel-v131="true" className="min-w-0 overflow-hidden">
+        {!mapExpanded ? <div className="grid min-h-[72px] place-items-center rounded-lg border border-dashed border-slate-600 px-4 text-center text-xs font-semibold text-slate-400">Map minimized. Click SHOW MAP only when you need to inspect or move the pin.</div> : candidate && googleMapsConfigured && !mapError && (!deferInteractiveMap || manualOpen) ? <div>
           <div className="relative">
             <div ref={interactiveMapContainer} className="h-[320px] min-h-[230px] w-full overflow-hidden rounded-lg border border-cyan-600/60"/>
             <div className="pointer-events-none absolute left-3 top-3 rounded-lg border border-amber-400/60 bg-[#061524]/90 px-3 py-2 text-[11px] font-black text-amber-200 shadow-xl">CLICK THE EXACT DROP-OFF POINT — COORDINATES COPY AUTOMATICALLY</div>
