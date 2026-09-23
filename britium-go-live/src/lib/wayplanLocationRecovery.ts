@@ -1,3 +1,5 @@
+import { acceptedMapboxRoutingSource } from "@/lib/mapboxLocationPolicy";
+
 export type RecoverableWayplanRow = {
   delivery_way_id: string;
   latitude?: number;
@@ -28,7 +30,8 @@ function hasCoordinate(row: RecoverableWayplanRow) {
 function acceptedLocation(location: RecoveredLocation | null): location is RecoveredLocation {
   if (!location || String(location.reviewStatus || "").toUpperCase() !== "ACCEPTED") return false;
   const source = String(location.coordinateSource || "").toUpperCase();
-  const routingSource = /^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)/.test(source);
+  const routingSource = /^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)/.test(source)
+    || acceptedMapboxRoutingSource(source, location.matchLevel, location.reviewStatus);
   if (!routingSource) return false;
   return Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
 }
