@@ -177,7 +177,7 @@ export default function WayplanCommandCenterPage() {
     [readyRows]
   );
   const routeReadyCount = readyRows.length - locationPendingCount;
-  const plannerRows = selectedRows.filter((row) => row.route_ready !== false);
+  const plannerRows = selectedRows;
   const revisionPlannerRows = revisionRows;
   const groupedReadyRows = useMemo(
     () => groupWayplanQueueRows(filteredReadyRows, groupBy),
