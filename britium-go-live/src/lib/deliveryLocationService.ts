@@ -763,7 +763,7 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
       ]),
     ]);
     return { query, googleOutcome, mapboxOutcome };
-  })));
+  }));
 
   for (const outcome of queryResults) {
     if (outcome.status !== "fulfilled") continue;
