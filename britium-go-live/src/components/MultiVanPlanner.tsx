@@ -110,8 +110,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     ...x,
     available: !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
-  const vehicles = available((context?.vehicles || []).filter((v: any) => v.operation_type === "DELIVERY"), "vehicle_code");
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
+  const vehicles = available(
+    (context?.vehicles || []).filter((v: any) =>
+      v.operation_type === "DELIVERY" && (!v.branch_code || v.branch_code === branch)
+    ),
+    "vehicle_code"
+  );
   const drivers = available((context?.drivers || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "driver_code");
   const riders = available((context?.riders || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "rider_code");
   const helpers = available((context?.helpers || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "helper_code");
@@ -403,9 +408,25 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     try {
       if (!origin) throw new Error(`${region} branch route origin is unavailable.`);
       const strategic = isYangonMaster ? await yangonMasterAllocation() : standardAllocation();
-      // Driver is mandatory. Rider and Helper are intentionally not auto-assigned.
-      // Start every generated route as Driver-only; the operator may explicitly add either optional role.
-      const crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      // Driver is mandatory. Rider/Helper remain optional.
+      // For sub-50 routes, assign an available Rider automatically when possible so the route
+      // uses the approved Rider minimum exemption instead of forcing an unnecessary exception approval.
+      let crewed = repairCrewGaps(assignCrews(strategic, drivers, [], helpers, convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
+      const riderPool = riders.filter((r) => r.available !== false);
+      const riderUsedByWave = new Map<number, Set<string>>();
+      crewed = crewed.map((plan) => {
+        if (plan.crew_mode === "EMERGENCY_MANUAL" || plan.rows.length >= 50 || plan.rider_code) return plan;
+        const wave = Math.max(1, Number(plan.wave_no || 1));
+        const used = riderUsedByWave.get(wave) || new Set<string>();
+        riderUsedByWave.set(wave, used);
+        const rider = riderPool.find((candidate) =>
+          !used.has(candidate.id) &&
+          personKey(candidate) !== personKey(drivers.find((d) => d.id === plan.driver_code))
+        );
+        if (!rider) return plan;
+        used.add(rider.id);
+        return { ...plan, rider_code: rider.id };
+      });
       if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
         throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
       }
