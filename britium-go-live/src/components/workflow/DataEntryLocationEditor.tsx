@@ -460,7 +460,7 @@ export default function DataEntryLocationEditor({
   }
 
   useEffect(() => {
-    if (!enabled || !googleMapsConfigured || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
+    if ((!enabled && !manualOpen) || !googleMapsConfigured || !candidate || (deferInteractiveMap && !manualOpen) || !interactiveMapContainer.current) return;
 
     let disposed = false;
     let map: any = null;
@@ -522,7 +522,7 @@ export default function DataEntryLocationEditor({
   }, [lat, lng]);
 
   async function find(value = query, automatic = false) {
-    if (!enabled) {
+    if (!enabled && !manualOpen) {
       setMessage(disabledReason);
       reportResolution("NOT_REQUIRED");
       return;
@@ -594,7 +594,7 @@ export default function DataEntryLocationEditor({
   }
 
   async function apply() {
-    if (!enabled) {
+    if (!enabled && !manualOpen) {
       setMessage(disabledReason);
       reportResolution("NOT_REQUIRED");
       return;
@@ -718,15 +718,20 @@ export default function DataEntryLocationEditor({
     }
   }
 
-  if (!enabled) {
+  if (!enabled && !manualOpen) {
     return <div data-location-details="true" data-location-not-required-v19="true" className="mt-4 rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-4">
-      <div className="flex items-start gap-3">
-        <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-300" size={18}/>
-        <div>
-          <div className="text-xs font-black uppercase tracking-[0.14em] text-emerald-200">Location Details · Map not required</div>
-          <div className="mt-1 text-xs leading-5 text-emerald-100">{disabledReason}</div>
-          <div className="mt-1 text-[11px] text-slate-300">Township: {township||"—"} · No coordinates will be searched, saved, or sent to the current Wayplan queue.</div>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <CheckCircle2 className="mt-0.5 shrink-0 text-emerald-300" size={18}/>
+          <div>
+            <div className="text-xs font-black uppercase tracking-[0.14em] text-emerald-200">Location Details · Map not required for routing</div>
+            <div className="mt-1 text-xs leading-5 text-emerald-100">{disabledReason}</div>
+            <div className="mt-1 text-[11px] text-slate-300">Township: {township||"—"} · Automatic routing does not require a pin, but an operator may still set or correct the exact location manually.</div>
+          </div>
         </div>
+        <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/60 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-50">
+          OPEN MANUAL MAP / SET PIN
+        </button>
       </div>
     </div>;
   }
@@ -775,7 +780,7 @@ export default function DataEntryLocationEditor({
           </button>
           {mapExpanded ? <span className="self-center text-[10px] font-semibold text-slate-400">Map is expanded only for location review and cannot cover the registration table.</span> : null}
         </div>
-        {enabled && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
+        {(enabled || manualOpen) && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
             <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{operatorEditedRef.current=true;setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
