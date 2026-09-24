@@ -1574,6 +1574,23 @@ function JobCard({
         <span>{text(job.pickup_address || job.delivery_address || job.address, "No address in backend record")}</span>
       </div>
 
+      {pickupMode && stage === "collected" && (
+        <div
+          style={{
+            border: `1px solid ${C.green}`,
+            background: "rgba(52,211,153,0.10)",
+            color: C.green,
+            borderRadius: 14,
+            padding: 12,
+          }}
+        >
+          <strong style={{ color: C.green }}>WAYBILL READY</strong>
+          <div style={{ marginTop: 4 }}>
+            Pickup is verified and collected. Data Entry waybill generation is unlocked.
+          </div>
+        </div>
+      )}
+
       {pickupMode && isDeliveredToWarehouse(job) && (
         <div
           style={{
@@ -1647,7 +1664,7 @@ function JobCard({
             style={buttonStyle("green")}
             onClick={() => onAction(job, "PICKUP_COLLECTED", "Pickup collected after parcel verification")}
           >
-            Collected
+            RELEASE TO DATA ENTRY
           </button>
         )}
 
@@ -1753,6 +1770,8 @@ function FieldPortal() {
   const [view, setView] = useState<View>(viewFromHash());
   const [identity, setIdentity] = useState<any>(null);
   const [jobs, setJobs] = useState<RiderJob[]>([]);
+  const [availablePickups, setAvailablePickups] = useState<RiderJob[]>([]);
+  const [claimingPickupId, setClaimingPickupId] = useState("");
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [source, setSource] = useState("not synced");
   const [loading, setLoading] = useState(false);
@@ -1952,6 +1971,33 @@ function FieldPortal() {
       setJobs(payload.jobs || []);
       setNotifications(payload.notifications || []);
       setSource(payload.source || "backend");
+
+      const client = getRiderSupabase();
+      const activeRole = inferWorkforceRole(
+        payload.identity?.role ||
+        nextSession.role ||
+        nextSession.worker_code ||
+        nextSession.normalizedLogin ||
+        nextSession.login
+      );
+      if (client && activeRole === "rider") {
+        const { data: availableData, error: availableError } = await client.rpc(
+          "be_rider_available_pickups_v139",
+          { p_limit: 50 }
+        );
+        if (availableError) {
+          console.warn("Available pickup queue unavailable", availableError);
+          setAvailablePickups([]);
+        } else {
+          setAvailablePickups(
+            Array.isArray((availableData as any)?.pickups)
+              ? (availableData as any).pickups
+              : []
+          );
+        }
+      } else {
+        setAvailablePickups([]);
+      }
       if (payload.identity) {
         const refreshed = makeSession(nextSession.login || nextSession.normalizedLogin, payload.identity);
         setSession(refreshed);
@@ -1994,6 +2040,39 @@ function FieldPortal() {
     setNotifications([]);
     setSource("signed out");
     window.location.hash = "#/login";
+  }
+
+  async function claimPickup(job: RiderJob) {
+    const client = getRiderSupabase();
+    if (!client || !session) {
+      setError("Supabase/session is missing.");
+      return;
+    }
+
+    const id = pickupId(job);
+    setClaimingPickupId(id);
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const { data, error } = await client.rpc("be_rider_claim_pickup_v139", {
+        p_pickup_id: id,
+      });
+      if (error) throw error;
+      if ((data as any)?.ok === false) {
+        throw new Error((data as any)?.error || (data as any)?.message || `Could not claim ${id}.`);
+      }
+      setMessage(
+        `${id} claimed. Continue with Arrived at Pickup → Verify Pickup → RELEASE TO DATA ENTRY.`
+      );
+      await load(session, true);
+    } catch (err: any) {
+      setError(err?.message || `Could not claim ${id}.`);
+    } finally {
+      setClaimingPickupId("");
+      setBusy(false);
+    }
   }
 
   async function runAction(job: RiderJob, action: string, actionRemark = "") {
@@ -2851,7 +2930,70 @@ function FieldPortal() {
         )}
 
         {view === "jobs" && <><ViewTitle icon={Briefcase} title="Assigned jobs" subtitle="All backend assignments for this Rider account." />{renderJobs(jobs, "No assigned jobs", "Supervisor assignment has not reached this rider account yet, or this rider code is not assigned to any real pickup.", "jobs")}</>}
-        {view === "pickup" && <><ViewTitle icon={Package} title="Pickup workflow" subtitle="Accept → Arrive → Verify Pickup → Collected → Delivered to Warehouse, or report an exception." />{renderJobs(pickupJobs, "No pickup jobs", "There are no active pickup tasks for this rider.", "pickup")}</>}
+        {view === "pickup" && (
+          <div style={{ display: "grid", gap: 12 }}>
+            <ViewTitle
+              icon={Package}
+              title="Pickup workflow"
+              subtitle="Claim/Accept → Arrive → Verify Pickup → RELEASE TO DATA ENTRY → Waybill Ready → Delivered to Warehouse."
+            />
+            {inferWorkforceRole(session?.role || identity?.role || session?.worker_code || session?.normalizedLogin) === "rider" && (
+              <Card>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <div>
+                    <div style={{ color: C.gold, fontWeight: 900, fontSize: 13, letterSpacing: "0.08em" }}>
+                      AVAILABLE PICKUP REQUESTS
+                    </div>
+                    <div style={{ color: C.sub, fontSize: 12, marginTop: 4 }}>
+                      Unassigned pickups for your branch. Claim one before starting field verification.
+                    </div>
+                  </div>
+                  <Badge color={C.blue}>{availablePickups.length}</Badge>
+                </div>
+                <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                  {availablePickups.length ? availablePickups.map((job) => (
+                    <div
+                      key={pickupId(job)}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(180px, 1fr) minmax(180px, 1.5fr) auto",
+                        gap: 10,
+                        alignItems: "center",
+                        border: `1px solid ${C.border}`,
+                        borderRadius: 12,
+                        padding: 10,
+                      }}
+                      className="be-three-grid"
+                    >
+                      <div>
+                        <strong>{pickupId(job)}</strong>
+                        <div style={{ color: C.sub, fontSize: 12 }}>
+                          {text(job.merchant_name || job.merchant_id, "Merchant")}
+                        </div>
+                      </div>
+                      <div style={{ color: C.sub, fontSize: 12 }}>
+                        {text(job.pickup_address || job.township, "No pickup address")}
+                      </div>
+                      <button
+                        type="button"
+                        disabled={busy || claimingPickupId === pickupId(job)}
+                        onClick={() => void claimPickup(job)}
+                        style={buttonStyle("gold")}
+                      >
+                        {claimingPickupId === pickupId(job) ? "CLAIMING..." : "CLAIM PICKUP"}
+                      </button>
+                    </div>
+                  )) : (
+                    <div style={{ color: C.sub, fontSize: 12 }}>
+                      No unassigned pickup requests are currently available for your branch.
+                    </div>
+                  )}
+                </div>
+              </Card>
+            )}
+            {renderJobs(pickupJobs, "No pickup jobs", "There are no active pickup tasks for this rider.", "pickup")}
+          </div>
+        )}
         {view === "delivery" && <><ViewTitle icon={Truck} title="Delivery workflow" subtitle="Start Delivery → Arrived at Customer (GPS/geofence) → Verify Delivery with POD/COD, or submit an exception." />{renderJobs(deliveryJobs, "No delivery jobs", "Warehouse-released delivery assignments will appear here.", "delivery")}</>}
 
         {view === "route" && (
