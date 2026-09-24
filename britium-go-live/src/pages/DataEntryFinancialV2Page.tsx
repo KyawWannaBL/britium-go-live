@@ -2545,35 +2545,18 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function authoritativeReadySequences(pickupId:string):Promise<number[]>{
-    const details=await (supabase as any)
-      .from("be_data_entry_parcel_details")
-      .select("parcel_sequence,delivery_way_id,financial_validation_status")
-      .eq("pickup_id",pickupId)
-      .eq("financial_validation_status","OK")
-      .order("parcel_sequence",{ascending:true});
-    if(details.error) throw new Error("Completed parcel readiness could not be refreshed: "+details.error.message);
+    const response=await (supabase as any).rpc("be_data_entry_financial_v2_ready_sequences_v137",{
+      p_pickup_id:pickupId,
+    });
+    if(response.error) throw new Error("Completed parcel readiness could not be refreshed: "+response.error.message);
 
-    const detailRows=Array.isArray(details.data)?details.data:[];
-    if(!detailRows.length) return [];
+    const result=response.data||{};
+    if(result.ok===false){
+      throw new Error(result.message||result.code||"Backend waybill readiness could not be confirmed.");
+    }
 
-    const wayIds=detailRows.map((item:any)=>text(item.delivery_way_id)).filter(Boolean);
-    if(!wayIds.length) return [];
-
-    const parcelRows=await (supabase as any)
-      .from("parcels")
-      .select("way_id,validation_status")
-      .in("way_id",wayIds);
-    if(parcelRows.error) throw new Error("Waybill parcel readiness could not be refreshed: "+parcelRows.error.message);
-
-    const validWays=new Set(
-      (Array.isArray(parcelRows.data)?parcelRows.data:[])
-        .filter((item:any)=>text(item.validation_status).toUpperCase()==="OK")
-        .map((item:any)=>text(item.way_id).trim().toUpperCase())
-    );
-
-    return detailRows
-      .filter((item:any)=>validWays.has(text(item.delivery_way_id).trim().toUpperCase()))
-      .map((item:any)=>positiveInt(item.parcel_sequence))
+    return (Array.isArray(result.ready_sequences)?result.ready_sequences:[])
+      .map((value:any)=>positiveInt(value))
       .filter(Boolean);
   }
 
@@ -3237,7 +3220,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
 
           <div className="max-h-[calc(100vh-12rem)] min-h-[650px] overflow-auto bg-[#f7f8fa]">
-            <table className="w-full min-w-[1450px] border-collapse text-[10px] text-slate-800">
+            <table data-registration-grid-v137="true" className="w-full min-w-[1450px] border-collapse text-[10px] text-slate-800">
               <thead className="sticky top-0 z-20 bg-[#102741] text-left text-[#ffd34d]">
                 <tr>
                   <th className="px-3 py-3">SR.</th>
