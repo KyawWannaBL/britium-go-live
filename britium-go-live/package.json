@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run verify:rider-waybill-release-v139 && npm run verify:manual-google-pin-override-v138 && npm run verify:data-entry-waybill-grid-map-v137 && npm run verify:two-step-location-defaults-v136 && npm run verify:deferred-route-supervisor-review-v135 && npm run verify:operational-fk-indexes-v133 && npm run verify:google-quota-circuit-v132 && npm run verify:location-panel-and-wayplan-v131 && npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && npm run verify:wayplan-location-recovery-v128 && npm run verify:wayplan-provider-resilience-v129 && vite build",
+    "build": "npm run verify:rider-proof-sync-orphan-guard-v141 && npm run verify:field-team-verify-release-v140 && npm run verify:rider-waybill-release-v139 && npm run verify:manual-google-pin-override-v138 && npm run verify:data-entry-waybill-grid-map-v137 && npm run verify:two-step-location-defaults-v136 && npm run verify:deferred-route-supervisor-review-v135 && npm run verify:operational-fk-indexes-v133 && npm run verify:google-quota-circuit-v132 && npm run verify:location-panel-and-wayplan-v131 && npm run verify:data-entry-photo-review-rotation-v107 && npm run verify:data-entry-photo-batch-waiver-v108 && npm run verify:stable-button-states-v109 && npm run verify:actionable-photo-blocker-v110 && npm run verify:google-pin-manual-sync-v111 && npm run verify:waybill-location-preflight-v112 && npm run verify:waybill-location-decoupling-v113 && npm run verify:wayplan-location-recovery-v128 && npm run verify:wayplan-provider-resilience-v129 && vite build",
     "lint": "eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "verify:data-entry-performance-v40": "node scripts/verify-data-entry-performance-v40.mjs",
@@ -66,7 +66,9 @@
     "verify:two-step-location-defaults-v136": "node scripts/verify-two-step-location-defaults-v136.mjs",
     "verify:data-entry-waybill-grid-map-v137": "node scripts/verify-data-entry-waybill-grid-map-v137.mjs",
     "verify:manual-google-pin-override-v138": "node scripts/verify-manual-google-pin-override-v138.mjs",
-    "verify:rider-waybill-release-v139": "node scripts/verify-rider-waybill-release-v139.mjs"
+    "verify:rider-waybill-release-v139": "node scripts/verify-rider-waybill-release-v139.mjs",
+    "verify:field-team-verify-release-v140": "node scripts/verify-field-team-verify-release-v140.mjs",
+    "verify:rider-proof-sync-orphan-guard-v141": "node scripts/verify-rider-proof-sync-orphan-guard-v141.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
