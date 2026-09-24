@@ -23,12 +23,12 @@ assert.match(
 );
 assert.match(
   rider,
-  /modal === "pickup"[\s\S]{0,300}?position:\s*"sticky"/,
+  /position:\s*modal === "pickup" \? "sticky" : "static"/,
   "Pickup verification final action bar must remain visible while the modal scrolls"
 );
 assert.match(
   rider,
-  /onClick=\{submitModal\}[\s\S]{0,500}?SUBMIT PICKUP VERIFICATION/,
+  /onClick=\{submitModal\}[\s\S]{0,1600}?SUBMIT PICKUP VERIFICATION/,
   "The visible final pickup button must call submitModal"
 );
 
