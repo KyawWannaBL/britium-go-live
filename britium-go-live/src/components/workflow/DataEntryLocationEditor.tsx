@@ -220,9 +220,14 @@ export default function DataEntryLocationEditor({
     const savedMapboxExact = row.review_status === "ACCEPTED"
       && ["ADDRESS_EXACT", "POI_EXACT"].includes(savedMatchLevel)
       && /^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)_(?:ADDRESS_EXACT|POI_EXACT)$/.test(savedSource);
+    const savedDefaultCoordinate = row.review_status === "ACCEPTED"
+      && (
+        (savedMatchLevel === "POSTAL_DEFAULT" && savedSource === "POSTAL_WARD_DEFAULT_V136")
+        || (savedMatchLevel === "TOWNSHIP_DEFAULT" && savedSource === "TOWNSHIP_DEFAULT_V136")
+      );
     const savedIsApproximate = ["WARD_APPROXIMATE", "STREET_APPROXIMATE"].includes(savedMatchLevel)
       || /WARD_APPROXIMATE|STREET_APPROXIMATE/.test(savedSource);
-    const savedCoordinateMatches = savedMapboxExact
+    const savedCoordinateMatches = savedMapboxExact || savedDefaultCoordinate
       ? validMyanmarCoordinate(row.longitude, row.latitude)
       : await withAutomaticLocationSlot(() => coordinateMatchesTownship(township, row.latitude, row.longitude));
     if (requestId !== requestSequence.current) return;
