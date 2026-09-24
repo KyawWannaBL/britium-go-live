@@ -24,7 +24,9 @@ const TRANSLATIONS = {
     lblParcels: "Expected Parcels",
     lblVehicle: "Required Vehicle",
     lblInstructions: "Remarks / Special Instructions",
-    phMerchant: "-- Select --",
+    phMerchant: "Type merchant name or code...",
+    merchantHint: "Start typing to search the merchant master. Select a suggestion to link the merchant.",
+    merchantUnlinked: "No exact merchant-master match yet.",
     loading: "Loading..."
   },
   my: {
@@ -46,7 +48,9 @@ const TRANSLATIONS = {
     lblParcels: "အရေအတွက်",
     lblVehicle: "လိုအပ်သော ယာဉ်",
     lblInstructions: "မှတ်ချက် / အထူးညွှန်ကြားချက်",
-    phMerchant: "-- ရွေးပါ --",
+    phMerchant: "Merchant အမည် သို့ Code ရိုက်ရှာပါ...",
+    merchantHint: "Merchant Master ထဲမှ အမည်/Code ကို စာရိုက်ရှာပြီး suggestion ကို ရွေးပါ။",
+    merchantUnlinked: "Merchant Master နှင့် တိတိကျကျ မချိတ်ရသေးပါ။",
     loading: "ဒေတာရယူနေပါသည်..."
   }
 };
@@ -72,6 +76,7 @@ const t = TRANSLATIONS[activeLang];
   const [merchants, setMerchants] = useState<any[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [autofilling, setAutofilling] = useState(false);
+  const [merchantQuery, setMerchantQuery] = useState("");
 
   const [formData, setFormData] = useState({
     dateFrom: "",
@@ -109,43 +114,68 @@ const t = TRANSLATIONS[activeLang];
     fetchOptions();
   }, []);
 
-  // --- FIX 2: Update merchant autofill ---
-  const handleMerchantSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const code = e.target.value;
+  // --- V130: Searchable merchant master selector ---
+  const normalizedMerchantText = (value: unknown) =>
+    String(value ?? "").trim().toLocaleLowerCase();
+
+  const findMerchantByQuery = (raw: string) => {
+    const q = normalizedMerchantText(raw);
+    if (!q) return undefined;
+    return merchants.find((m) => {
+      const code = normalizedMerchantText(m.value);
+      const label = normalizedMerchantText(m.label);
+      const displayDash = normalizedMerchantText(`${m.label} — ${m.value}`);
+      const displayHyphen = normalizedMerchantText(`${m.label} - ${m.value}`);
+      return q === code || q === label || q === displayDash || q === displayHyphen;
+    });
+  };
+
+  const applyMerchant = (selected: any) => {
+    if (!selected) return;
+    const code = String(selected.value || "").trim();
+    setMerchantQuery(String(selected.label || selected.value || ""));
     setAutofilling(true);
+    setFormData(prev => ({
+      ...prev,
+      merchantCode: code,
+      businessType: selected.business_type || "",
+      paymentTerms: selected.payment_terms || "COD",
+      contactPerson: selected.contact_person || "",
+      phone: selected.phone || "",
+      address: selected.address || "",
+      township: selected.township || "",
+      city: selected.city || "Yangon",
+      region: selected.region_state || "Yangon Region"
+    }));
+    setTimeout(() => setAutofilling(false), 300);
+  };
 
-    const selected = merchants.find(m => m.value === code);
+  const clearMerchantLink = () => {
+    setFormData(prev => ({
+      ...prev,
+      merchantCode: "",
+      businessType: "",
+      paymentTerms: "COD",
+      contactPerson: "",
+      phone: "",
+      address: "",
+      township: "",
+      city: "",
+      region: ""
+    }));
+  };
 
-    if (selected) {
-      const meta = selected;
-      setFormData(prev => ({
-        ...prev,
-        merchantCode: code,
-        businessType: meta.business_type || "",
-        paymentTerms: meta.payment_terms || "COD",
-        contactPerson: meta.contact_person || "",
-        phone: meta.phone || "",
-        address: meta.address || "",
-        township: meta.township || "",
-        city: meta.city || "Yangon",
-        region: meta.region_state || "Yangon Region"
-      }));
-    } else {
-      setFormData(prev => ({
-        ...prev,
-        merchantCode: code,
-        businessType: "",
-        paymentTerms: "COD",
-        contactPerson: "",
-        phone: "",
-        address: "",
-        township: "",
-        city: "",
-        region: ""
-      }));
-    }
+  const handleMerchantQueryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    setMerchantQuery(raw);
+    const exact = findMerchantByQuery(raw);
+    if (exact) applyMerchant(exact);
+    else if (formData.merchantCode) clearMerchantLink();
+  };
 
-    setTimeout(() => setAutofilling(false), 300); // Visual feedback pulse
+  const resolveMerchantQuery = () => {
+    const exact = findMerchantByQuery(merchantQuery);
+    if (exact) applyMerchant(exact);
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
@@ -155,7 +185,9 @@ const t = TRANSLATIONS[activeLang];
   // --- FIX 3: Submit button is currently inactive ---
   async function submitPickupRequest() {
     if (!formData.merchantCode) {
-      alert("Please select a merchant.");
+      alert(activeLang === "my"
+        ? "Merchant Master ထဲမှ merchant ကို စာရိုက်ရှာပြီး suggestion တစ်ခု ရွေးပါ။"
+        : "Type the merchant name or code and select a matching merchant from the merchant master.");
       return;
     }
 
@@ -184,6 +216,7 @@ const t = TRANSLATIONS[activeLang];
     alert(activeLang === "my" ? "Pickup တောင်းဆိုမှု အောင်မြင်ပါသည်" : "Pickup request submitted successfully");
 
     // Optional: clear form after submit
+    setMerchantQuery("");
     setFormData(prev => ({ ...prev, merchantCode: "", businessType: "", contactPerson: "", phone: "", address: "", township: "", instructions: "" }));
   }
 
@@ -243,12 +276,27 @@ const t = TRANSLATIONS[activeLang];
             {/* ROW 1 */}
             <div>
               <label className={labelClass}>{t.lblMerchant}</label>
-              <select name="merchantCode" value={formData.merchantCode} onChange={handleMerchantSelect} disabled={loadingOptions} className={`${inputClass} cursor-pointer ${formData.merchantCode ? 'border-[#f6b84b]' : ''}`}>
-                <option value="" className="!bg-white !text-black" style={{ color: "#000000", backgroundColor: "#ffffff" }}>{loadingOptions ? t.loading : t.phMerchant}</option>
+              <input
+                name="merchantSearch"
+                list="pickup-merchant-master-options-v130"
+                value={merchantQuery}
+                onChange={handleMerchantQueryChange}
+                onBlur={resolveMerchantQuery}
+                placeholder={loadingOptions ? t.loading : t.phMerchant}
+                autoComplete="off"
+                disabled={loadingOptions}
+                className={`${inputClass} ${formData.merchantCode ? 'border-[#f6b84b]' : ''}`}
+              />
+              <datalist id="pickup-merchant-master-options-v130">
                 {merchants.map(m => (
-                  <option key={m.value} value={m.value} className="!bg-white !text-black" style={{ color: "#000000", backgroundColor: "#ffffff" }}>{m.value} - {m.label}</option>
+                  <option key={m.value} value={`${m.label} — ${m.value}`} />
                 ))}
-              </select>
+              </datalist>
+              <div className={`mt-2 text-[11px] ${formData.merchantCode ? "text-emerald-300" : "text-slate-400"}`}>
+                {formData.merchantCode
+                  ? `${merchantQuery} · ${formData.merchantCode}`
+                  : merchantQuery.trim() ? t.merchantUnlinked : t.merchantHint}
+              </div>
             </div>
 
             <div>
