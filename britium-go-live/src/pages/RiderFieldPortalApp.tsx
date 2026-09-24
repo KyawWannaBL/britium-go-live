@@ -1496,6 +1496,7 @@ function JobCard({
   job,
   onAction,
   onModal,
+  onVerifyRelease,
   busy,
   screen,
   workerRole,
@@ -1503,6 +1504,7 @@ function JobCard({
   job: RiderJob;
   onAction: (job: RiderJob, action: string, remark?: string) => void;
   onModal: (job: RiderJob, mode: ModalMode) => void;
+  onVerifyRelease: (job: RiderJob) => void;
   busy: boolean;
   screen: JobScreen;
   workerRole: string;
@@ -1521,6 +1523,10 @@ function JobCard({
   const exception = isException(job);
   const stage = pickupActionStage(job);
   const helperMode = inferWorkforceRole(workerRole) === "helper";
+  const primaryFieldMode = !helperMode && ["rider", "driver"].includes(inferWorkforceRole(workerRole));
+  const helperEvidenceReady =
+    Boolean((job as any).assigned_helper_code || (job as any).assigned_helper_email) &&
+    ["APPROVED", "PARTIAL_REVIEW", "PENDING_REVIEW"].includes(upper((job as any).photo_review_status));
   const deliveryV77Available = Boolean((job as any).delivery_v77_available);
 
   const deliveryMode =
@@ -1623,6 +1629,14 @@ function JobCard({
       )}
 
       {helperMode && <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.10)",color:C.blue,borderRadius:12,padding:10,fontWeight:800 }}>Helper assist mode: accept assignment, upload pickup evidence, and report exceptions. Final verification requires the assigned rider or driver.</div>}
+      {pickupMode && primaryFieldMode && helperEvidenceReady && stage !== "collected" && stage !== "handover" && stage !== "warehouse_accepted" && (
+        <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.08)",color:C.blue,borderRadius:12,padding:10 }}>
+          <strong style={{ color: C.blue }}>Helper evidence is ready for primary-worker finalization.</strong>
+          <div style={{ marginTop: 4, fontSize: 12 }}>
+            Review the existing parcel photos/weights, then Verify Pickup or use VERIFY & RELEASE TO DATA ENTRY after arriving at pickup.
+          </div>
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         {pickupMode && stage === "assigned" && (
           <button
@@ -1654,6 +1668,17 @@ function JobCard({
             onClick={() => onModal(job, "pickup")}
           >
             {helperMode ? "Upload Pickup Evidence" : "Verify Pickup"}
+          </button>
+        )}
+
+        {pickupMode && stage === "arrived" && primaryFieldMode && (
+          <button
+            type="button"
+            disabled={busy}
+            style={buttonStyle("green")}
+            onClick={() => onVerifyRelease(job)}
+          >
+            VERIFY & RELEASE TO DATA ENTRY
           </button>
         )}
 
@@ -2172,6 +2197,57 @@ function FieldPortal() {
       await load(session, true);
     } catch (err: any) {
       setError(err?.message || `Could not update ${pickupId(job)}.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function verifyAndReleaseToDataEntry(job: RiderJob) {
+    const client = getRiderSupabase();
+    if (!client || !session) {
+      setError("Supabase/session is missing.");
+      return;
+    }
+
+    const id = pickupId(job);
+    setBusy(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const { data, error } = await client.rpc("be_field_team_verify_and_release_v140", {
+        p_payload: {
+          pickup_id: id,
+          pickup_way_id: id,
+          remark: "Primary field worker verified and released pickup to Data Entry",
+          remarks: "Primary field worker verified and released pickup to Data Entry",
+        },
+      });
+
+      if (error) throw error;
+
+      if ((data as any)?.ok === false) {
+        const message =
+          (data as any)?.message ||
+          (data as any)?.error ||
+          `Could not verify and release ${id}.`;
+        setError(message);
+
+        if ((data as any)?.error === "PICKUP_VERIFICATION_INCOMPLETE") {
+          setMessage(
+            `${id}: helper evidence or parcel verification is incomplete. Review the parcel rows, complete missing weight/photo evidence, then submit again.`
+          );
+          await openModal(job, "pickup");
+        }
+        return;
+      }
+
+      setMessage(
+        `${id}: WAYBILL READY — pickup verified and collected, released to Data Entry.`
+      );
+      await load(session, true);
+    } catch (err: any) {
+      setError(err?.message || `Could not verify and release ${id}.`);
     } finally {
       setBusy(false);
     }
@@ -2804,6 +2880,7 @@ function FieldPortal() {
             job={job}
             onAction={runAction}
             onModal={openModal}
+            onVerifyRelease={verifyAndReleaseToDataEntry}
             busy={busy}
             screen={screen}
             workerRole={session?.role || identity?.role || "rider"}
