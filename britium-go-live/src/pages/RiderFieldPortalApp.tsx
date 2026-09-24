@@ -2319,6 +2319,7 @@ function FieldPortal() {
     const itemNo =
       Number((row as any).index || (row as any).item_no || (row as any).parcel_sequence) ||
       Number(String(row.parcelId || row.id).match(/-(\d+)$/)?.[1] || 1);
+    const operationId = row.photoOperationId || null;
 
     try {
       if (manageBusy) setBusy(true);
@@ -2329,7 +2330,6 @@ function FieldPortal() {
       let publicUrl = row.photoUrl || "";
 
       if (row.photoFile) {
-        const operationId = row.photoOperationId;
         if (!operationId) throw new Error("Approve the current photo before upload.");
         const storagePath = row.storagePath || `pickup-proofs/${currentPickupId}/${itemNo}-${operationId}.jpg`;
         await confirmStorageUpload(storagePath, row.photoFile);
