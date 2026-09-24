@@ -738,9 +738,11 @@ export default function DataEntryLocationEditor({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className={`text-xs font-black uppercase tracking-[0.14em] ${externallySynced?"text-emerald-200":"text-amber-200"}`}><MapPin size={15} className="mr-2 inline"/>{externallySynced?"Location synchronized":externallyReviewRequired?"Location needs review":"Validating location"}</div>
-          <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Validated coordinates are ready for Wayplan.":externallyReviewRequired?"This row failed automatic validation and is included in the consolidated review Excel.":"The controlled background queue is checking this row without loading an interactive map."}</div>
+          <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Validated coordinates are ready for Wayplan. You can still move the pin manually when the exact drop-off point needs correction.":externallyReviewRequired?"This row failed automatic validation and is included in the consolidated review Excel. You can set the pin manually now.":"The controlled background queue is checking this row without loading an interactive map. Manual pin placement remains available."}</div>
         </div>
-        {externallyReviewRequired?<button type="button" onClick={()=>setManualOpen(true)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">OPEN MAP FOR THIS PARCEL</button>:null}
+        <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-50">
+          {externallySynced?"EDIT / MOVE PIN ON MAP":"SET PIN MANUALLY ON MAP"}
+        </button>
       </div>
     </div>;
   }
