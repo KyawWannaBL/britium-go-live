@@ -56,7 +56,7 @@ function readVarint(bytes: Uint8Array, state: { offset: number }) {
 const postalCompositeKeys = POSTAL_CODE_ROWS.map(([townshipIndex, _quarter, postalCode, quarterMm]) => {
   const townshipMm = POSTAL_CODE_TOWNSHIPS[townshipIndex][1];
   return `${String(postalCode).padStart(7, "0")}\u001f${String(townshipMm).trim()}\u001f${String(quarterMm).trim()}`;
-}).sort();
+}).sort((a, b) => a.localeCompare(b, "en"));
 
 let postalCoordinates: Array<readonly [number, number]> | null = null;
 let postalIndex: Map<string, number> | null = null;
