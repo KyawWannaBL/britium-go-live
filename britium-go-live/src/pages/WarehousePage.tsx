@@ -72,7 +72,7 @@ export default function WarehousePage() {
   const loadAll = useCallback(async (quiet=false) => {
     if(!quiet) setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v92");
+      const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v129");
       if (error) throw error;
       setSnapshot(data || { stats: {}, rows: [], reasons: [] });
       setReason((prev) => prev || data?.reasons?.find((r: any) => r.process_type === "DELIVERY")?.exception_code || "");
@@ -349,7 +349,7 @@ export default function WarehousePage() {
   const filterOptions=useMemo(()=>({
     pickups:Array.from(new Set(operationalRows.map((r:any)=>String(r.pickup_id||"").trim()).filter(Boolean))).sort(),
     townships:Array.from(new Set(operationalRows.map((r:any)=>String(r.delivery_township||"").trim()).filter(Boolean))).sort(),
-    merchants:Array.from(new Set(operationalRows.map((r:any)=>String(r.merchant_code||r.merchant_name||"").trim()).filter(Boolean))).sort(),
+    merchants:Array.from(new Set(operationalRows.map((r:any)=>String(r.merchant_name||r.merchant_code||"").trim()).filter(Boolean))).sort(),
   }),[operationalRows]);
 
   const progressOf=(r:any)=>{
@@ -393,7 +393,7 @@ export default function WarehousePage() {
       if(progressFilter!=="ALL" && progressOf(r)!==progressFilter) return false;
       if(pickupFilter!=="ALL" && String(r.pickup_id||"")!==pickupFilter) return false;
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
-      if(merchantFilter!=="ALL" && String(r.merchant_code||r.merchant_name||"")!==merchantFilter) return false;
+      if(merchantFilter!=="ALL" && String(r.merchant_name||r.merchant_code||"")!==merchantFilter) return false;
 
       const operationalDate=rowOperationalDate(r);
       if(dateFrom && (!operationalDate || operationalDate<dateFrom)) return false;
@@ -437,7 +437,7 @@ export default function WarehousePage() {
         r.waybill_no,
         r.pickup_id,
         track(r),
-        r.merchant_code || r.merchant_name,
+        r.merchant_name || r.merchant_code,
         r.recipient_name,
         r.phone_number || r.recipient_phone,
         r.delivery_township,
@@ -837,7 +837,7 @@ export default function WarehousePage() {
                   <tr key={`${code}-${idx}`} className="border-t border-slate-800 align-top hover:bg-slate-900/40">
                     <td className="p-2 text-slate-500">{idx + 1}</td>
                     <td className="p-2 min-w-[150px] font-semibold text-sky-300">{code || "-"}</td>
-                    <td className="p-2">{r.merchant_code || r.merchant_name || "-"}</td>
+                    <td className="p-2">{r.merchant_name || r.merchant_code || "-"}</td>
                     <td className="p-2 min-w-[180px]">{r.recipient_name || "-"}</td>
                     <td className="p-2">{r.phone_number || r.recipient_phone || "-"}</td>
                     <td className="p-2">{r.delivery_township || "-"}</td>
