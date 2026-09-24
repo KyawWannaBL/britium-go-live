@@ -58,6 +58,7 @@ export default function WarehousePage() {
   const [merchantFilter,setMerchantFilter]=useState("ALL");
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
+  const [dateBasis,setDateBasis]=useState<"WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY">("WAYBILL_CREATION");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
@@ -310,9 +311,7 @@ export default function WarehousePage() {
 
   const isBlkCode=(value:any)=>/(^|[-_])BLK([-_]|$)/i.test(String(value||"").trim());
 
-  const rowOperationalDate=(r:any)=>{
-    const raw=r.inbound_scan_at || r.dispatch_scan_at || r.return_scan_1_at || r.return_scan_2_at ||
-      r.return_scan_3_at || r.created_at || r.saved_at || r.updated_at || "";
+  const formatYangonDate=(raw:any)=>{
     if(!raw) return "";
     const d=new Date(raw);
     if(Number.isNaN(d.getTime())) return "";
@@ -324,6 +323,39 @@ export default function WarehousePage() {
     const day=parts.find(p=>p.type==="day")?.value;
     return y&&m&&day ? `${y}-${m}-${day}` : "";
   };
+
+  const rowOperationalDate=(r:any)=>{
+    const raw=r.inbound_scan_at || r.dispatch_scan_at || r.return_scan_1_at || r.return_scan_2_at ||
+      r.return_scan_3_at || r.created_at || r.saved_at || r.updated_at || "";
+    return formatYangonDate(raw);
+  };
+
+  const rowWaybillCreationDate=(r:any)=>{
+    const ids=[
+      r.source_waybill_no,
+      r.waybill_no,
+      r.display_way_id,
+      r.tracking_no,
+      operationalWayId(r),
+      r.delivery_way_id,
+      r.canonical_delivery_way_id,
+    ].map((x:any)=>String(x||"").trim()).filter(Boolean);
+    const encoded=ids.map((id:string)=>id.match(/^D(\d{2})(\d{2})-/i)).find(Boolean) as RegExpMatchArray|undefined;
+    if(encoded){
+      const month=Number(encoded[1]);
+      const day=Number(encoded[2]);
+      if(month>=1 && month<=12 && day>=1 && day<=31){
+        const timestampYear=formatYangonDate(r.created_at || r.saved_at || r.updated_at || "");
+        let year=timestampYear ? Number(timestampYear.slice(0,4)) : Number(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Yangon",year:"numeric"}).format(new Date()));
+        const currentMonth=Number(new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Yangon",month:"2-digit"}).format(new Date()));
+        if(!timestampYear && month>currentMonth+1) year-=1;
+        return `${String(year).padStart(4,"0")}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      }
+    }
+    return formatYangonDate(r.created_at || r.saved_at || r.updated_at || "");
+  };
+
+  const rowFilterDate=(r:any)=>dateBasis==="WAYBILL_CREATION" ? rowWaybillCreationDate(r) : rowOperationalDate(r);
 
   // Consolidated BLK delivery-way numbers are internal aliases only. Present one
   // operational row per original Way ID and prefer a non-BLK canonical row when
@@ -395,9 +427,9 @@ export default function WarehousePage() {
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
       if(merchantFilter!=="ALL" && String(r.merchant_name||r.merchant_code||"")!==merchantFilter) return false;
 
-      const operationalDate=rowOperationalDate(r);
-      if(dateFrom && (!operationalDate || operationalDate<dateFrom)) return false;
-      if(dateTo && (!operationalDate || operationalDate>dateTo)) return false;
+      const filterDate=rowFilterDate(r);
+      if(dateFrom && (!filterDate || filterDate<dateFrom)) return false;
+      if(dateTo && (!filterDate || filterDate>dateTo)) return false;
 
       if(!q) return true;
       return [
@@ -407,11 +439,12 @@ export default function WarehousePage() {
         operationalWayId(r),
       ].some((x)=>String(x||"").toLowerCase().includes(q));
     });
-  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFrom,dateTo,dispatchOnly]);
+  },[operationalRows,query,progressFilter,pickupFilter,townshipFilter,merchantFilter,dateFrom,dateTo,dateBasis,dispatchOnly]);
 
   const exportCsv = () => {
     const headers = [
       "Waybill",
+      "Waybill Creation Date",
       "Pickup",
       "Delivery Way",
       "Merchant",
@@ -435,6 +468,7 @@ export default function WarehousePage() {
       headers,
       ...filteredRows.map((r: any) => [
         r.waybill_no,
+        rowWaybillCreationDate(r),
         r.pickup_id,
         track(r),
         r.merchant_name || r.merchant_code,
@@ -462,7 +496,9 @@ export default function WarehousePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `warehouse_scan_lifecycle_${new Date().toISOString().slice(0, 10)}.csv`;
+    const basisLabel=dateBasis==="WAYBILL_CREATION" ? "waybill-date" : "warehouse-activity";
+    const rangeLabel=dateFrom || dateTo ? `_${dateFrom||"start"}_to_${dateTo||"end"}` : "";
+    a.download = `warehouse_${basisLabel}${rangeLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -715,6 +751,18 @@ export default function WarehousePage() {
 
           <div className="w-full overflow-x-auto pb-1">
             <div className="flex min-w-max flex-nowrap items-end gap-2">
+              <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                Date Basis
+                <select
+                  value={dateBasis}
+                  onChange={e=>setDateBasis(e.target.value as "WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY")}
+                  className="mt-1 block w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100"
+                >
+                  <option value="WAYBILL_CREATION">Waybill creation date</option>
+                  <option value="WAREHOUSE_ACTIVITY">Warehouse activity date</option>
+                </select>
+              </label>
+
               <label className="shrink-0 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
                 From
                 <input
