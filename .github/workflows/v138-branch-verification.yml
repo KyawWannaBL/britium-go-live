@@ -1,0 +1,46 @@
+name: V138 Branch Verification
+
+on:
+  push:
+    branches:
+      - fix/manual-google-pin-v138
+
+jobs:
+  red-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fe36aab9c648dd9f7e7b898e7aff40b81b249bef
+      - name: Confirm V138 regression test failed before implementation
+        working-directory: britium-go-live
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify-manual-google-pin-override-v138.mjs
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "Expected pre-fix V138 contract to fail, but it passed."
+            exit 1
+          fi
+          echo "Pre-fix V138 contract failed as expected."
+
+  green-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: britium-go-live/package-lock.json
+      - name: Install
+        working-directory: britium-go-live
+        run: npm ci
+      - name: V138 contract
+        working-directory: britium-go-live
+        run: npm run verify:manual-google-pin-override-v138
+      - name: Production build
+        working-directory: britium-go-live
+        run: npm run build
