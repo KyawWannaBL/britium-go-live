@@ -1122,3 +1122,46 @@ html body textarea[data-os-bulk-reason="true"]::placeholder {
   -webkit-text-fill-color: #64748b !important;
   opacity: 1 !important;
 }
+
+
+/* DATA_ENTRY_REGISTRATION_GRID_CONTRAST_V137
+   The Financial V2 registration grid intentionally uses a light worksheet surface.
+   These scoped rules override legacy global dark-theme table/text utilities only here. */
+[data-registration-grid-v137="true"] {
+  background-color: #f8fafc !important;
+  color: #0f172a !important;
+}
+
+[data-registration-grid-v137="true"] tbody tr {
+  background-color: #ffffff !important;
+}
+
+[data-registration-grid-v137="true"] tbody tr.bg-sky-100 {
+  background-color: #e0f2fe !important;
+}
+
+[data-registration-grid-v137="true"] tbody tr.bg-emerald-50 {
+  background-color: #ecfdf5 !important;
+}
+
+[data-registration-grid-v137="true"] tbody tr:hover {
+  background-color: #f1f5f9 !important;
+}
+
+[data-registration-grid-v137="true"] tbody td,
+[data-registration-grid-v137="true"] tbody td span,
+[data-registration-grid-v137="true"] tbody td button {
+  color: #0f172a !important;
+  -webkit-text-fill-color: #0f172a !important;
+}
+
+[data-registration-grid-v137="true"] tbody td:nth-child(2) {
+  color: #075985 !important;
+  -webkit-text-fill-color: #075985 !important;
+}
+
+[data-registration-grid-v137="true"] thead th {
+  background-color: #f6b84b !important;
+  color: #061524 !important;
+  -webkit-text-fill-color: #061524 !important;
+}
