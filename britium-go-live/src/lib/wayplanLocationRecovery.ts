@@ -28,9 +28,12 @@ function hasCoordinate(row: RecoverableWayplanRow) {
 function acceptedLocation(location: RecoveredLocation | null): location is RecoveredLocation {
   if (!location || String(location.reviewStatus || "").toUpperCase() !== "ACCEPTED") return false;
   const source = String(location.coordinateSource || "").toUpperCase();
+  const level = String(location.matchLevel || "").toUpperCase();
   const routingSource = /^(GOOGLE_|DATA_ENTRY_MANUAL_|MANAGEMENT_POSTAL_VALIDATED_)/.test(source)
+    || (source === "POSTAL_WARD_DEFAULT_V136" && level === "POSTAL_DEFAULT")
+    || (source === "TOWNSHIP_DEFAULT_V136" && level === "TOWNSHIP_DEFAULT")
     || (/^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)_(?:ADDRESS_EXACT|POI_EXACT)$/.test(source)
-      && ["ADDRESS_EXACT", "POI_EXACT"].includes(String(location.matchLevel || "").toUpperCase()));
+      && ["ADDRESS_EXACT", "POI_EXACT"].includes(level));
   if (!routingSource) return false;
   return Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
 }

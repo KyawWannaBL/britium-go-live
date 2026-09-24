@@ -6,6 +6,7 @@ import {
   normalizeEnglishAddressForGeocoding,
 } from "@/lib/myanmarAddressConverter";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
+import { postalWardDefaultCoordinate, townshipDefaultCoordinate } from "@/lib/locationDefaultCoordinates";
 import { pointInYangonTownship } from "@/lib/yangonTownshipBoundaries";
 
 export type DeliveryLocation = {
@@ -18,7 +19,7 @@ export type DeliveryLocation = {
   township: string;
   postalCode?: string;
   postalMatchLevel?: PostalMatch["matchLevel"];
-  matchLevel: "ADDRESS_EXACT" | "POI_EXACT" | "STREET_APPROXIMATE" | "WARD_APPROXIMATE" | "MANUAL";
+  matchLevel: "ADDRESS_EXACT" | "POI_EXACT" | "STREET_APPROXIMATE" | "WARD_APPROXIMATE" | "POSTAL_DEFAULT" | "TOWNSHIP_DEFAULT" | "MANUAL";
   confidence: number;
   coordinateSource: string;
   reviewStatus: "ACCEPTED" | "MANUAL_REVIEW";
@@ -674,10 +675,45 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   const originalAddress = String(input.address || "").trim();
   const addressWithPostalEvidence = [originalAddress, input.ward, input.postalCode].filter(Boolean).join(", ");
   const direct = parseCoordinate(originalAddress);
-  const postal = resolvePostalCode(addressWithPostalEvidence, input.township);
+  const postal = resolvePostalCode(addressWithPostalEvidence, input.township, {
+    ward: input.ward,
+    postalCode: input.postalCode,
+  });
   const canonicalTownship = canonicalTownshipForGeocoding(input.township, postal.township);
   const englishAddress = normalizeEnglishAddressForGeocoding(convertMyanmarAddressToEnglish(addressWithPostalEvidence, canonicalTownship));
   const verified = verifiedAddressLocation(originalAddress, input.township);
+
+  // V136 two-step non-blocking fallback:
+  // 1) an exact 7-digit postal/ward record gets its audited ward representative point;
+  // 2) otherwise the recognized township gets its audited township default point.
+  // These are deliberate generic routing coordinates, not claims of doorstep precision.
+  const defaultLocation = (): DeliveryLocation | null => {
+    const postalDefault = postal.matchLevel === "EXACT_QUARTER"
+      ? postalWardDefaultCoordinate(postal)
+      : null;
+    const fallback = postalDefault || townshipDefaultCoordinate(
+      postal.township || input.township,
+      postal.region || postal.regionMm,
+      addressWithPostalEvidence,
+    );
+    if (!fallback) return null;
+    return {
+      deliveryWayId: input.deliveryWayId,
+      latitude: fallback.latitude,
+      longitude: fallback.longitude,
+      label: fallback.label,
+      originalAddress,
+      englishAddress,
+      township: postal.township || input.township,
+      postalCode: postal.postalCode || "",
+      postalMatchLevel: postal.matchLevel,
+      matchLevel: fallback.level,
+      confidence: fallback.level === "POSTAL_DEFAULT" ? 0.82 : 0.62,
+      coordinateSource: fallback.source,
+      reviewStatus: "ACCEPTED",
+      reviewReason: "",
+    };
+  };
 
   if (input.client && originalAddress.length >= 3) {
     const { data: alias, error: aliasError } = await input.client.rpc("be_location_alias_lookup_v28", {
@@ -798,6 +834,8 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   }
 
   if (!candidates.length) {
+    const fallback = defaultLocation();
+    if (fallback) return fallback;
     if (providerFailure && !mapboxAccessToken) throw providerFailure;
     return null;
   }
@@ -815,7 +853,7 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
     ))
     .sort((a, b) => b.score - a.score);
 
-  if (!evaluated.length) return null;
+  if (!evaluated.length) return defaultLocation();
 
   // Google forward results are reverse-validated. Mapbox candidates use the
   // provider's administrative context plus the same township evidence and
@@ -830,7 +868,15 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   ));
   const bestIndex = reverseChecks.findIndex((result) => result.status === "fulfilled" && result.value);
   if (bestIndex >= 0) best = finalists[bestIndex];
-  if (!best) return null;
+  if (!best) return defaultLocation();
+
+  // Approximate or review-only provider results must not create a location-review
+  // blocker. Prefer the deterministic ward/township default instead.
+  if (best.reviewStatus !== "ACCEPTED" || !["ADDRESS_EXACT", "POI_EXACT"].includes(best.matchLevel)) {
+    const fallback = defaultLocation();
+    if (fallback) return fallback;
+  }
+
   // Keep exact validation lineage explicit for both providers so Wayplan can
   // accept exact Mapbox/Google coordinates while approximate candidates stay
   // review-only.
