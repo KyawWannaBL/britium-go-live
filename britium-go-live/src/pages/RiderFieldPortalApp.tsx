@@ -3246,7 +3246,7 @@ function FieldPortal() {
                             opacity: busy || uploadingAll || parcelRows.length === 0 ? 0.58 : 1,
                           }}
                         >
-                          {uploadingAll ? "UPLOADING ALL..." : "UPLOAD ALL"}
+                          {uploadingAll ? "SAVING ALL..." : "SAVE ALL PARCELS"}
                         </button>
                       </div>
                       <div style={{ display: "grid", gap: 12, maxHeight: "54vh", overflowY: "auto", paddingRight: 4 }}>
@@ -3292,7 +3292,37 @@ function FieldPortal() {
                                 {row.uploadStatus === "failed" && <div style={{ color: C.red, fontSize: 11, marginTop: 6 }}>{row.uploadError || "Upload failed"}</div>}
                                 {row.reuploadRequired && <div style={{ color: C.red, fontSize: 12, marginTop: 6, fontWeight: 700 }}>Rejected: {row.rejectionReason || "Photo is unclear or required information is missing."}</div>}
                               </div>
-                              <button type="button" disabled={busy || uploadingAll || row.photoPreparing || (!row.photoUrl && !row.photoApproved)} onClick={() => verifyParcelRow(row.id)} style={{ ...buttonStyle(row.reuploadRequired ? "red" : row.verified ? "green" : "gold"), opacity: busy || uploadingAll || row.photoPreparing || (!row.photoUrl && !row.photoApproved) ? 0.58 : 1 }}>{row.uploadStatus === "uploading" ? "UPLOADING..." : row.reuploadRequired ? "RE-UPLOAD" : row.verified ? "APPROVED" : "UPLOAD FOR REVIEW"}</button>
+                              <button
+                                type="button"
+                                disabled={
+                                  busy ||
+                                  uploadingAll ||
+                                  row.photoPreparing ||
+                                  (!row.photoUrl && !row.photoApproved) ||
+                                  (!row.reuploadRequired && (row.uploadStatus === "uploaded" || ["PENDING_REVIEW", "APPROVED", "APPROVED_AFTER_REUPLOAD"].includes(upper(row.reviewStatus))))
+                                }
+                                onClick={() => verifyParcelRow(row.id)}
+                                style={{
+                                  ...buttonStyle(row.reuploadRequired ? "red" : row.uploadStatus === "uploaded" || ["PENDING_REVIEW", "APPROVED", "APPROVED_AFTER_REUPLOAD"].includes(upper(row.reviewStatus)) ? "green" : "gold"),
+                                  opacity:
+                                    busy ||
+                                    uploadingAll ||
+                                    row.photoPreparing ||
+                                    (!row.photoUrl && !row.photoApproved)
+                                      ? 0.58
+                                      : 1,
+                                  minHeight: 48,
+                                  fontWeight: 900,
+                                }}
+                              >
+                                {row.uploadStatus === "uploading"
+                                  ? "SAVING..."
+                                  : row.reuploadRequired
+                                    ? "RE-SAVE PARCEL"
+                                    : row.uploadStatus === "uploaded" || ["PENDING_REVIEW", "APPROVED", "APPROVED_AFTER_REUPLOAD"].includes(upper(row.reviewStatus))
+                                      ? "SAVED ✓"
+                                      : "SAVE PARCEL"}
+                              </button>
                             </div>
                             <div><label>Remarks</label><input value={row.remarks} onChange={(e) => updateParcelRow(row.id, { remarks: e.target.value })} placeholder="Fragile / special handling note..." style={inputStyle()} /></div>
                           </div>
@@ -3406,9 +3436,59 @@ function FieldPortal() {
                 style={{ ...inputStyle(), minHeight: 82 }}
               />
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14 }}>
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "flex-end",
+                gap: 8,
+                marginTop: 14,
+                position: modal === "pickup" ? "sticky" : "static",
+                bottom: modal === "pickup" ? 0 : "auto",
+                zIndex: modal === "pickup" ? 5 : "auto",
+                padding: modal === "pickup" ? "12px 0 4px" : 0,
+                background: modal === "pickup" ? "linear-gradient(180deg, rgba(6,21,36,0.18), rgba(6,21,36,0.98) 30%)" : "transparent",
+                borderTop: modal === "pickup" ? `1px solid ${C.border}` : "none",
+              }}
+            >
               <button type="button" disabled={busy} onClick={closeModal} style={buttonStyle("ghost")}>Cancel</button>
-              <button type="button" onClick={submitModal} disabled={busy || proofPreparing || Boolean(proofFile && !proofApproved)} style={{ ...buttonStyle(modal === "exception" ? "red" : "gold"), opacity: busy || proofPreparing || Boolean(proofFile && !proofApproved) ? 0.58 : 1 }}><UploadCloud size={16} /> {busy ? "Submitting..." : "Submit"}</button>
+              {modal === "pickup" && (
+                <button
+                  type="button"
+                  onClick={uploadAllParcelPhotos}
+                  disabled={busy || uploadingAll || parcelRows.length === 0}
+                  style={{ ...buttonStyle("plain"), minWidth: 170, opacity: busy || uploadingAll || parcelRows.length === 0 ? 0.58 : 1 }}
+                >
+                  {uploadingAll ? "SAVING ALL..." : "SAVE ALL PARCELS"}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={submitModal}
+                disabled={
+                  busy ||
+                  uploadingAll ||
+                  (modal !== "pickup" && (proofPreparing || Boolean(proofFile && !proofApproved)))
+                }
+                style={{
+                  ...buttonStyle(modal === "exception" ? "red" : modal === "pickup" ? "green" : "gold"),
+                  opacity:
+                    busy ||
+                    uploadingAll ||
+                    (modal !== "pickup" && (proofPreparing || Boolean(proofFile && !proofApproved)))
+                      ? 0.58
+                      : 1,
+                  minWidth: modal === "pickup" ? 230 : undefined,
+                  minHeight: modal === "pickup" ? 48 : undefined,
+                  fontWeight: 900,
+                }}
+              >
+                <UploadCloud size={16} />
+                {busy
+                  ? "Submitting..."
+                  : modal === "pickup"
+                    ? "SUBMIT PICKUP VERIFICATION"
+                    : "Submit"}
+              </button>
             </div>
           </Card>
         </div>
