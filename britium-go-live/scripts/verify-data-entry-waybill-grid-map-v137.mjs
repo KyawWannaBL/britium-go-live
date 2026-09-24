@@ -38,7 +38,7 @@ assert.match(css, /\[data-registration-grid-v137="true"\][\s\S]{0,1200}tbody\s+t
 assert.match(css, /\[data-registration-grid-v137="true"\][\s\S]{0,1400}tbody\s+tr[\s\S]{0,300}background/i, "registration-grid light row backgrounds must be scoped against global dark-theme overrides");
 
 const deferredStart = editor.indexOf("if (deferAutomaticResolution && !manualOpen)");
-const deferredEnd = editor.indexOf("return <div data-location-details", deferredStart + 1);
+const deferredEnd = editor.indexOf('\n\n  return <div data-location-details="true"', deferredStart);
 assert.ok(deferredStart >= 0, "deferred location branch must exist");
 const deferredBlock = editor.slice(deferredStart, deferredEnd > deferredStart ? deferredEnd : deferredStart + 5000);
 assert.match(deferredBlock, /externallySynced/, "deferred UI must distinguish synchronized rows");
