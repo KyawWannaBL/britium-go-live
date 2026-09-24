@@ -24,30 +24,23 @@ begin
     raise exception 'be_sync_rider_proofs_to_data_entry() not found';
   end if;
 
-  v_old := $old$
-      if v_pickup_id is null or v_proof_url is null then
-        continue;
-      end if;
-$old$;
+  v_old := E'      if v_pickup_id is null or v_proof_url is null then\r\n        continue;\r\n      end if;\r\n';
 
-  v_new := $new$
-      if v_pickup_id is null or v_proof_url is null then
-        continue;
-      end if;
-
-      -- Legacy photo/proof tables can outlive their canonical pickup after
-      -- test-data cleanup or hard-delete. Never let one orphan proof abort
-      -- synchronization for every valid pickup.
-      if not exists (
-        select 1
-        from public.be_portal_pickup_requests canonical_pickup
-        where canonical_pickup.pickup_id = v_pickup_id
-           or canonical_pickup.pickup_way_id = v_pickup_id
-           or canonical_pickup.canonical_pickup_id = v_pickup_id
-      ) then
-        continue;
-      end if;
-$new$;
+  v_new := E'      if v_pickup_id is null or v_proof_url is null then\r\n'
+    || E'        continue;\r\n'
+    || E'      end if;\r\n\r\n'
+    || E'      -- Legacy photo/proof tables can outlive their canonical pickup after\r\n'
+    || E'      -- test-data cleanup or hard-delete. Never let one orphan proof abort\r\n'
+    || E'      -- synchronization for every valid pickup.\r\n'
+    || E'      if not exists (\r\n'
+    || E'        select 1\r\n'
+    || E'        from public.be_portal_pickup_requests canonical_pickup\r\n'
+    || E'        where canonical_pickup.pickup_id = v_pickup_id\r\n'
+    || E'           or canonical_pickup.pickup_way_id = v_pickup_id\r\n'
+    || E'           or canonical_pickup.canonical_pickup_id = v_pickup_id\r\n'
+    || E'      ) then\r\n'
+    || E'        continue;\r\n'
+    || E'      end if;\r\n';
 
   if position(v_old in v_def)=0 then
     raise exception 'Expected Rider proof sync guard insertion point not found';
