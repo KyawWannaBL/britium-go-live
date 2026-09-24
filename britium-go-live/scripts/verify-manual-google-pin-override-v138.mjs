@@ -15,7 +15,7 @@ assert.match(
   "A route where mapping is not required must stay compact only until the operator explicitly opens manual map mode.",
 );
 
-const disabledBranchStart = editor.indexOf("if (!enabled && !manualOpen)");
+const disabledBranchStart = editor.indexOf('if (!enabled && !manualOpen) {\n    return <div data-location-details="true"');
 assert.ok(disabledBranchStart >= 0, "manual override gate must exist");
 const disabledBranch = editor.slice(disabledBranchStart, disabledBranchStart + 4200);
 assert.match(
