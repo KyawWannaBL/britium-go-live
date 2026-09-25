@@ -219,23 +219,41 @@ begin
     and journal_id is null;
 
   insert into public.audit_logs(
+    actor_id,
+    action,
+    entity_type,
+    entity_id,
+    status,
+    before_data,
+    after_data,
+    notes,
+    created_at,
     table_name,
     record_id,
-    action,
     old_data,
     new_data,
     performed_by,
     related_journal_id,
-    metadata
+    metadata,
+    "timestamp"
   ) values (
+    auth.uid(),
+    'POST',
+    'be_accounting_events',
+    v_event.id::text,
+    'success',
+    jsonb_build_object('review_status',v_event.review_status,'posted_journal_id',v_event.posted_journal_id),
+    jsonb_build_object('review_status','POSTED','posted_journal_id',v_journal_id,'journal_number',v_journal_number),
+    'Posted by be_accounting_post_event_v1',
+    now(),
     'be_accounting_events',
     v_event.id,
-    'POST',
     jsonb_build_object('review_status',v_event.review_status,'posted_journal_id',v_event.posted_journal_id),
     jsonb_build_object('review_status','POSTED','posted_journal_id',v_journal_id,'journal_number',v_journal_number),
     auth.uid(),
     v_journal_id,
-    jsonb_build_object('posting_function','be_accounting_post_event_v1')
+    jsonb_build_object('posting_function','be_accounting_post_event_v1'),
+    now()
   );
 
   return jsonb_build_object(
