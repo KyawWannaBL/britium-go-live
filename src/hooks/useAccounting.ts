@@ -4,6 +4,7 @@ import {
   getAccountingFlags,
   listAccountingEvents,
   listGeneralLedger,
+  listFixedAssets,
   postAccountingEvent,
   reviewAccountingEvent,
   submitAdminHrLog,
@@ -99,5 +100,13 @@ export function useGeneralLedger(limit = 500) {
     queryKey: ["accounting", "general-ledger", limit],
     queryFn: () => listGeneralLedger(limit),
     staleTime: 15_000,
+  });
+}
+
+export function useFixedAssets() {
+  return useQuery({
+    queryKey: ["accounting", "assets"],
+    queryFn: listFixedAssets,
+    staleTime: 30_000,
   });
 }
