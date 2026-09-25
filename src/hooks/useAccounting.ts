@@ -2,6 +2,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getAccountingEventLines,
   getAccountingFlags,
+  getAccountingReconciliation,
+  getBalanceSheet,
+  getProfitLoss,
+  getTrialBalance,
   closeAccountingPeriod,
   listAccountingEvents,
   listAccountingAudit,
@@ -181,5 +185,41 @@ export function useCloseAccountingPeriod() {
         qc.invalidateQueries({ queryKey: ["accounting", "audit"] }),
       ]);
     },
+  });
+}
+
+export function useTrialBalance(dateFrom: string, dateTo: string, enabled = true) {
+  return useQuery({
+    queryKey: ["accounting", "trial-balance", dateFrom, dateTo],
+    queryFn: () => getTrialBalance(dateFrom, dateTo),
+    enabled: enabled && Boolean(dateFrom && dateTo),
+    staleTime: 30_000,
+  });
+}
+
+export function useProfitLoss(dateFrom: string, dateTo: string, enabled = true) {
+  return useQuery({
+    queryKey: ["accounting", "profit-loss", dateFrom, dateTo],
+    queryFn: () => getProfitLoss(dateFrom, dateTo),
+    enabled: enabled && Boolean(dateFrom && dateTo),
+    staleTime: 30_000,
+  });
+}
+
+export function useBalanceSheet(asOf: string, enabled = true) {
+  return useQuery({
+    queryKey: ["accounting", "balance-sheet", asOf],
+    queryFn: () => getBalanceSheet(asOf),
+    enabled: enabled && Boolean(asOf),
+    staleTime: 30_000,
+  });
+}
+
+export function useAccountingReconciliation(asOf: string, enabled = true) {
+  return useQuery({
+    queryKey: ["accounting", "reconciliation", asOf],
+    queryFn: () => getAccountingReconciliation(asOf),
+    enabled: enabled && Boolean(asOf),
+    staleTime: 30_000,
   });
 }
