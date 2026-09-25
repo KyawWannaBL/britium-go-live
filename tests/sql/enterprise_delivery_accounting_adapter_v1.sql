@@ -75,13 +75,22 @@ begin
     raise exception 'delivery sync failed: %',v_result;
   end if;
 
-  select count(*),min(id)
-  into v_count,v_event
+  select count(*)
+  into v_count
   from public.be_accounting_events
   where source_system='CANONICAL_FINANCE'
     and source_table='be_v_finance_merchant_settlement_queue_v2'
     and source_record_id='TST-DELIVERY-CANONICAL-001'
     and event_type='DELIVERY_REVENUE_RECOGNIZED';
+
+  select id
+  into v_event
+  from public.be_accounting_events
+  where source_system='CANONICAL_FINANCE'
+    and source_table='be_v_finance_merchant_settlement_queue_v2'
+    and source_record_id='TST-DELIVERY-CANONICAL-001'
+    and event_type='DELIVERY_REVENUE_RECOGNIZED'
+  limit 1;
 
   if v_count<>1 then
     raise exception 'expected exactly one canonical delivery event, got %',v_count;
