@@ -11,8 +11,8 @@ begin
     raise exception 'accounting flags must default OFF: %',v_flags;
   end if;
 
-  if not exists (
-    select 1
+  if (
+    select count(*)
     from public.be_accounting_runtime_config
     where config_key in (
       'ERP_UI_ENABLED',
@@ -20,9 +20,7 @@ begin
       'GL_POSTING_ENABLED',
       'FINANCIAL_REPORTS_ENABLED'
     )
-    group by true
-    having count(*)=4
-  ) then
+  ) <> 4 then
     raise exception 'required accounting runtime flags missing';
   end if;
 end $$;
