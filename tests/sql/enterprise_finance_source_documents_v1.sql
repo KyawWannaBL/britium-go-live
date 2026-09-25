@@ -1,3 +1,10 @@
+select set_config('be.accounting_override','on',true);
+delete from public.finance_daily_logs
+where entry_date=date '2099-01-02' and department_code='FINANCE';
+delete from public.admin_assets_and_hr_logs
+where entry_date=date '2099-01-02' and department_code='ADMIN_HR';
+select set_config('be.accounting_override','off',true);
+
 insert into public.finance_daily_logs (
   entry_date, department_code, fuel_and_tolls_spent, is_locked
 ) values (date '2099-01-02', 'FINANCE', 1000, false);
