@@ -4,6 +4,8 @@ import type {
   AccountingEventFilters,
   AccountingEventLine,
   AccountingReviewAction,
+  AccountingAuditRow,
+  AccountingPeriod,
   AccountingRpcResult,
   AccountingRuntimeFlags,
   AdminHrLogInput,
@@ -11,6 +13,7 @@ import type {
   FinanceDailyLogInput,
   FixedAsset,
   GeneralLedgerRow,
+  JournalHeader,
 } from "@/types/accounting";
 
 type ErrorShape = {
@@ -209,4 +212,76 @@ export async function listFixedAssets(): Promise<FixedAsset[]> {
 
   if (error) throw error;
   return (data ?? []) as FixedAsset[];
+}
+
+export async function listAccountingPeriods(): Promise<AccountingPeriod[]> {
+  const { data, error } = await supabase
+    .from("be_accounting_periods")
+    .select("*")
+    .order("period_start", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as AccountingPeriod[];
+}
+
+export async function listAccountingAudit(limit = 300): Promise<AccountingAuditRow[]> {
+  const { data, error } = await supabase
+    .from("audit_logs")
+    .select("*")
+    .or("table_name.ilike.%accounting%,table_name.eq.be_journal_entries,table_name.eq.be_accounting_events,entity_type.ilike.%accounting%,entity_type.eq.be_accounting_events")
+    .order("timestamp", { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []) as AccountingAuditRow[];
+}
+
+export async function listJournalHeaders(limit = 300): Promise<JournalHeader[]> {
+  const { data, error } = await supabase
+    .from("be_journal_entries")
+    .select("*")
+    .order("accounting_date", { ascending: false })
+    .order("posted_at", { ascending: false })
+    .limit(limit);
+
+  if (error) throw error;
+  return (data ?? []) as JournalHeader[];
+}
+
+export async function setAccountingFlag(
+  key: "ERP_UI_ENABLED" | "ACCOUNTING_SYNC_ENABLED" | "GL_POSTING_ENABLED" | "FINANCIAL_REPORTS_ENABLED",
+  value: boolean,
+  reason: string
+): Promise<AccountingRpcResult> {
+  const { data, error } = await supabase.rpc("be_accounting_set_flag_v1", {
+    p_key: key,
+    p_value: value,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return assertRpcResult(data);
+}
+
+export async function reverseAccountingJournal(
+  journalId: string,
+  reason: string
+): Promise<AccountingRpcResult> {
+  const { data, error } = await supabase.rpc("be_accounting_reverse_journal_v1", {
+    p_journal_id: journalId,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return assertRpcResult(data);
+}
+
+export async function closeAccountingPeriod(
+  periodId: string,
+  reason: string
+): Promise<AccountingRpcResult> {
+  const { data, error } = await supabase.rpc("be_accounting_close_period_v1", {
+    p_period_id: periodId,
+    p_reason: reason,
+  });
+  if (error) throw error;
+  return assertRpcResult(data);
 }
