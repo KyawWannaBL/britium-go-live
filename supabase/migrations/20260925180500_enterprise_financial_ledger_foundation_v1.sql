@@ -162,11 +162,20 @@ on public.be_accounting_source_links (
 create index be_accounting_source_links_event_idx on public.be_accounting_source_links(event_id);
 create index be_accounting_source_links_journal_idx on public.be_accounting_source_links(journal_id);
 
-create table public.audit_logs (
+create table if not exists public.audit_logs (
   id uuid primary key default gen_random_uuid(),
-  table_name text not null,
-  record_id uuid null,
+  actor_id uuid null,
+  actor_email text null,
   action text not null,
+  entity_type text not null default 'ACCOUNTING',
+  entity_id text null,
+  status text not null default 'success',
+  before_data jsonb null,
+  after_data jsonb null,
+  notes text null,
+  created_at timestamptz not null default now(),
+  table_name text null,
+  record_id uuid null,
   old_data jsonb null,
   new_data jsonb null,
   performed_by uuid null,
@@ -174,12 +183,72 @@ create table public.audit_logs (
   request_id text null,
   source_ip inet null,
   user_agent text null,
-  related_journal_id uuid null references public.be_journal_entries(id) on delete restrict,
+  related_journal_id uuid null,
   metadata jsonb not null default '{}'::jsonb,
   "timestamp" timestamptz not null default now()
 );
-create index audit_logs_record_idx on public.audit_logs(table_name,record_id,"timestamp" desc);
-create index audit_logs_journal_idx on public.audit_logs(related_journal_id);
+
+alter table public.audit_logs
+  add column if not exists actor_id uuid null,
+  add column if not exists actor_email text null,
+  add column if not exists entity_type text,
+  add column if not exists entity_id text null,
+  add column if not exists status text default 'success',
+  add column if not exists before_data jsonb null,
+  add column if not exists after_data jsonb null,
+  add column if not exists notes text null,
+  add column if not exists created_at timestamptz default now(),
+  add column if not exists table_name text null,
+  add column if not exists record_id uuid null,
+  add column if not exists old_data jsonb null,
+  add column if not exists new_data jsonb null,
+  add column if not exists performed_by uuid null,
+  add column if not exists reason text null,
+  add column if not exists request_id text null,
+  add column if not exists source_ip inet null,
+  add column if not exists user_agent text null,
+  add column if not exists related_journal_id uuid null,
+  add column if not exists metadata jsonb default '{}'::jsonb,
+  add column if not exists "timestamp" timestamptz default now();
+
+update public.audit_logs
+set entity_type=coalesce(nullif(entity_type,''),nullif(table_name,''),'ACCOUNTING')
+where entity_type is null or btrim(entity_type)='';
+
+update public.audit_logs
+set table_name=coalesce(nullif(table_name,''),nullif(entity_type,''),'ACCOUNTING')
+where table_name is null or btrim(table_name)='';
+
+update public.audit_logs
+set "timestamp"=coalesce("timestamp",created_at,now())
+where "timestamp" is null;
+
+alter table public.audit_logs
+  alter column entity_type set default 'ACCOUNTING',
+  alter column entity_type set not null,
+  alter column status set default 'success',
+  alter column created_at set default now(),
+  alter column "timestamp" set default now(),
+  alter column "timestamp" set not null,
+  alter column metadata set default '{}'::jsonb;
+
+do $
+begin
+  if not exists (
+    select 1 from pg_constraint
+    where conname='audit_logs_related_journal_id_fkey'
+      and conrelid='public.audit_logs'::regclass
+  ) then
+    alter table public.audit_logs
+      add constraint audit_logs_related_journal_id_fkey
+      foreign key (related_journal_id)
+      references public.be_journal_entries(id)
+      on delete restrict;
+  end if;
+end $;
+
+create index if not exists audit_logs_record_idx on public.audit_logs(table_name,record_id,"timestamp" desc);
+create index if not exists audit_logs_journal_idx on public.audit_logs(related_journal_id);
 
 create table public.be_fixed_asset_register (
   id uuid primary key default gen_random_uuid(),
