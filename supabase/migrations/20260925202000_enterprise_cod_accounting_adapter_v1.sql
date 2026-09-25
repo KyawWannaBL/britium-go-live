@@ -171,13 +171,15 @@ begin
         ) values
           (
             v_event_id,v_rider_receivable,10,v_collection,0,
-            nullif(v_row->>'rider_code',''),v_way,
-            'COD in rider custody - '||v_way
+            nullif(v_row->>'rider_code',''),
+            'COD in rider custody - '||v_way,
+            jsonb_build_object('source_reference',v_way)
           ),
           (
             v_event_id,v_clearing,20,0,v_collection,
-            nullif(v_row->>'rider_code',''),v_way,
-            'COD unallocated clearing - '||v_way
+            nullif(v_row->>'rider_code',''),
+            'COD unallocated clearing - '||v_way,
+            jsonb_build_object('source_reference',v_way)
           );
       end if;
 
@@ -257,17 +259,19 @@ begin
         if v_remittance>0 then
           insert into public.be_accounting_event_lines(
             event_id,account_id,sequence_no,debit_amount,credit_amount,
-            rider_or_employee_id,source_reference,description
+            rider_or_employee_id,description,metadata
           ) values
             (
               v_event_id,v_bank,10,v_remittance,0,
-              nullif(v_row->>'rider_code',''),v_way,
-              'Finance cash/bank receipt of rider COD - '||v_way
+              nullif(v_row->>'rider_code',''),
+              'Finance cash/bank receipt of rider COD - '||v_way,
+              jsonb_build_object('source_reference',v_way)
             ),
             (
               v_event_id,v_rider_receivable,20,0,v_remittance,
-              nullif(v_row->>'rider_code',''),v_way,
-              'Clear rider COD receivable - '||v_way
+              nullif(v_row->>'rider_code',''),
+              'Clear rider COD receivable - '||v_way,
+              jsonb_build_object('source_reference',v_way)
             );
         end if;
 
