@@ -17,12 +17,14 @@ import { useAccountingFlags } from "../hooks/useAccounting";
 import { FinanceDailyEntry } from "../components/accounting/FinanceDailyEntry";
 import { FinanceReviewQueue } from "../components/accounting/FinanceReviewQueue";
 import { GeneralLedgerExplorer } from "../components/accounting/GeneralLedgerExplorer";
+import { FinancialReports } from "../components/accounting/FinancialReports";
 
 type Tab =
   | "overview"
   | "daily-entry"
   | "review-queue"
   | "ledger"
+  | "reports"
   | "cod"
   | "settlements"
   | "wallets"
@@ -49,6 +51,9 @@ export default function FinancePortal() {
       { id: "daily-entry" as Tab, label: "🧮 Daily Finance Entry" },
       { id: "review-queue" as Tab, label: "✅ Review Queue" },
       { id: "ledger" as Tab, label: "📒 General Ledger" },
+      ...(accountingFlags.data?.reportsEnabled ? [
+        { id: "reports" as Tab, label: "📊 Financial Reports" },
+      ] : []),
     ] : []),
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
@@ -85,6 +90,7 @@ export default function FinancePortal() {
         {erpUiEnabled && tab === "daily-entry" && <FinanceDailyEntry />}
         {erpUiEnabled && tab === "review-queue" && <FinanceReviewQueue />}
         {erpUiEnabled && tab === "ledger" && <GeneralLedgerExplorer />}
+        {erpUiEnabled && accountingFlags.data?.reportsEnabled && tab === "reports" && <FinancialReports />}
 
         {/* COD RECONCILIATION */}
         {tab === "cod" && (
