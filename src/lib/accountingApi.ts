@@ -72,15 +72,30 @@ function assertRpcResult(data: unknown): AccountingRpcResult {
 }
 
 export async function getAccountingFlags(): Promise<AccountingRuntimeFlags> {
-  const { data, error } = await supabase.rpc("be_accounting_get_flags_v1");
-  if (error) throw error;
-  const flags = (data ?? {}) as Partial<AccountingRuntimeFlags>;
-  return {
-    erpUiEnabled: Boolean(flags.erpUiEnabled),
-    syncEnabled: Boolean(flags.syncEnabled),
-    postingEnabled: Boolean(flags.postingEnabled),
-    reportsEnabled: Boolean(flags.reportsEnabled),
+  const off: AccountingRuntimeFlags = {
+    erpUiEnabled: false,
+    syncEnabled: false,
+    postingEnabled: false,
+    reportsEnabled: false,
   };
+
+  try {
+    const { data, error } = await supabase.rpc("be_accounting_get_flags_v1");
+    if (error) {
+      console.warn("Accounting rollout flags unavailable; failing closed.", error.message);
+      return off;
+    }
+    const flags = (data ?? {}) as Partial<AccountingRuntimeFlags>;
+    return {
+      erpUiEnabled: Boolean(flags.erpUiEnabled),
+      syncEnabled: Boolean(flags.syncEnabled),
+      postingEnabled: Boolean(flags.postingEnabled),
+      reportsEnabled: Boolean(flags.reportsEnabled),
+    };
+  } catch (error) {
+    console.warn("Accounting rollout flags unavailable; failing closed.", error);
+    return off;
+  }
 }
 
 export async function listAccountingEvents(
