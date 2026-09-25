@@ -627,7 +627,7 @@ begin
     v_event_id := gen_random_uuid();
     v_version := 'STRAIGHT_LINE_V1:'||to_char(v_period_start,'YYYY-MM');
     v_fingerprint := encode(
-      digest(
+      extensions.digest(
         concat_ws('|',
           v_asset.id::text,
           v_asset.acquisition_cost::text,
