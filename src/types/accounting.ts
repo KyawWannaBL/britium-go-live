@@ -232,3 +232,98 @@ export interface JournalHeader {
   replacement_for_journal_id?: string | null;
   currency_code: string;
 }
+
+export interface TrialBalanceRow {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: string;
+  normal_balance: "DEBIT" | "CREDIT";
+  report_group: string;
+  opening_debit: number;
+  opening_credit: number;
+  opening_balance: number;
+  period_debit: number;
+  period_credit: number;
+  closing_balance: number;
+}
+
+export interface TrialBalanceReport {
+  ok: boolean;
+  code: string;
+  date_from: string;
+  date_to: string;
+  period_debit: number;
+  period_credit: number;
+  difference: number;
+  rows: TrialBalanceRow[];
+}
+
+export interface ProfitLossRow {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: "REVENUE" | "COGS" | "EXPENSE";
+  report_group: string;
+  debit: number;
+  credit: number;
+  amount: number;
+}
+
+export interface ProfitLossReport {
+  ok: boolean;
+  code: string;
+  date_from: string;
+  date_to: string;
+  total_revenue: number;
+  total_cogs: number;
+  gross_profit: number;
+  operating_expenses_before_depreciation: number;
+  ebitda: number;
+  depreciation: number;
+  ebit: number;
+  non_operating_items: number;
+  net_income: number;
+  rows: ProfitLossRow[];
+}
+
+export interface BalanceSheetRow {
+  account_id: string;
+  account_code: string;
+  account_name: string;
+  account_type: "ASSET" | "LIABILITY" | "EQUITY";
+  normal_balance: "DEBIT" | "CREDIT";
+  report_group: string;
+  debit: number;
+  credit: number;
+  balance: number;
+}
+
+export interface BalanceSheetReport {
+  ok: boolean;
+  code: string;
+  as_of: string;
+  total_assets: number;
+  total_liabilities: number;
+  equity_accounts: number;
+  current_period_earnings: number;
+  total_equity: number;
+  gross_fixed_assets: number;
+  accumulated_depreciation: number;
+  net_fixed_assets: number;
+  balance_difference: number;
+  balanced: boolean;
+  rows: BalanceSheetRow[];
+}
+
+export interface ReconciliationReport {
+  ok: boolean;
+  code: string;
+  as_of: string;
+  duplicate_source_events: number;
+  posted_events_without_journal: number;
+  journals_without_authorized_source: number;
+  unbalanced_journals: number;
+  balance_sheet_difference: number;
+  critical_difference_count: number;
+}
