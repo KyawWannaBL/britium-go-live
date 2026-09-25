@@ -9,12 +9,24 @@ import {
   useLeaveRequests, useLeaveAction, useApprovals,
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
+import { useAccountingFlags } from "../hooks/useAccounting";
+import { AdminHrAccountingEntry } from "../components/accounting/AdminHrAccountingEntry";
+import { AssetRegister } from "../components/accounting/AssetRegister";
 
-type Tab = "employees" | "attendance" | "leave" | "approvals" | "new-employee";
+type Tab =
+  | "employees"
+  | "attendance"
+  | "leave"
+  | "approvals"
+  | "new-employee"
+  | "assets-hr-costs"
+  | "asset-register";
 
 export default function AdminHRPortal() {
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("employees");
+  const accountingFlags = useAccountingFlags();
+  const erpUiEnabled = accountingFlags.data?.erpUiEnabled === true;
   const [search, setSearch] = useState("");
 
   // New employee form
@@ -35,6 +47,10 @@ export default function AdminHRPortal() {
     { id: "leave", label: "📋 Leave Requests" },
     { id: "approvals", label: "✅ Approvals" },
     { id: "new-employee", label: "➕ Add Employee" },
+    ...(erpUiEnabled ? [
+      { id: "assets-hr-costs" as Tab, label: "🧮 Assets & HR Costs" },
+      { id: "asset-register" as Tab, label: "🏢 Asset Register" },
+    ] : []),
   ];
 
   return (
@@ -43,7 +59,7 @@ export default function AdminHRPortal() {
         <span style={S.headerTitle}>👥 Admin & HR Portal</span>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
           <span style={S.userBadge}>{user?.full_name || user?.email}</span>
-          <button onClick={logout} style={S.logoutBtn}>Sign Out</button>
+          <button onClick={signOut} style={S.logoutBtn}>Sign Out</button>
         </div>
       </header>
 
@@ -142,6 +158,9 @@ export default function AdminHRPortal() {
             />
           </div>
         )}
+
+        {erpUiEnabled && tab === "assets-hr-costs" && <AdminHrAccountingEntry />}
+        {erpUiEnabled && tab === "asset-register" && <AssetRegister />}
 
         {/* NEW EMPLOYEE */}
         {tab === "new-employee" && (
