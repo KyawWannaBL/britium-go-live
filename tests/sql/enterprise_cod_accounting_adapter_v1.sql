@@ -1,3 +1,7 @@
+update public.be_accounting_runtime_config
+set boolean_value=true
+where config_key='GL_POSTING_ENABLED';
+
 do $$
 begin
   if to_regclass('public.be_finance_cod_settlements_v48') is null then
@@ -172,3 +176,7 @@ begin
     raise exception 'held COD event unexpectedly became posting eligible';
   end if;
 end $$;
+
+update public.be_accounting_runtime_config
+set boolean_value=false
+where config_key='GL_POSTING_ENABLED';
