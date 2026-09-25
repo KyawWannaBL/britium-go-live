@@ -162,3 +162,24 @@ export interface GeneralLedgerRow {
     posted_at: string;
   } | null;
 }
+
+export interface FixedAsset {
+  id: string;
+  asset_code: string;
+  asset_name: string;
+  category: string;
+  acquisition_date: string;
+  acquisition_cost: number;
+  residual_value: number;
+  useful_life_months: number;
+  depreciation_method: "STRAIGHT_LINE";
+  department_code?: string | null;
+  branch_code?: string | null;
+  supplier_reference?: string | null;
+  status: "ACTIVE" | "FULLY_DEPRECIATED" | "DISPOSED" | "UNDER_REVIEW";
+  disposed_at?: string | null;
+  disposal_proceeds?: number | null;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  updated_at: string;
+}
