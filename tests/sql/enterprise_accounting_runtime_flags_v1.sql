@@ -23,7 +23,14 @@ begin
   ) <> 4 then
     raise exception 'required accounting runtime flags missing';
   end if;
-end $$;
+  if public.be_accounting_post_event_v1(gen_random_uuid())->>'code' <> 'POSTING_DISABLED' then
+    raise exception 'GL posting flag is not enforced';
+  end if;
+
+  if public.be_accounting_sync_run_v1(date '2099-01-01',date '2099-01-01',array['DELIVERY'])->>'code' <> 'SYNC_DISABLED' then
+    raise exception 'accounting sync flag is not enforced';
+  end if;
+end $;
 
 begin;
 set local role authenticated;
