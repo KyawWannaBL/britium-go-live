@@ -9,7 +9,8 @@
     "test:pricing": "node --experimental-strip-types tests/deliveryPricingMath.test.mjs",
     "test:workflow": "node scripts/verify-rider-photo-and-dispatch-flow.mjs",
     "preview": "vite preview",
-    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0"
+    "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
+    "test:accounting-foundation": "node scripts/verify-enterprise-ledger-foundation.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
