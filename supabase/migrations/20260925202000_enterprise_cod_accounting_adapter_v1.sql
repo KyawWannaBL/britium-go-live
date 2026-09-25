@@ -167,7 +167,7 @@ begin
       if v_collection>0 then
         insert into public.be_accounting_event_lines(
           event_id,account_id,sequence_no,debit_amount,credit_amount,
-          rider_or_employee_id,source_reference,description
+          rider_or_employee_id,description,metadata
         ) values
           (
             v_event_id,v_rider_receivable,10,v_collection,0,
