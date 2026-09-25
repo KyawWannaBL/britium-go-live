@@ -183,3 +183,52 @@ export interface FixedAsset {
   created_at: string;
   updated_at: string;
 }
+
+export interface AccountingPeriod {
+  id: string;
+  period_code: string;
+  period_start: string;
+  period_end: string;
+  status: "OPEN" | "SOFT_CLOSED" | "CLOSED";
+  closed_by?: string | null;
+  closed_at?: string | null;
+  close_reason?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountingAuditRow {
+  id: string;
+  action: string;
+  entity_type?: string | null;
+  entity_id?: string | null;
+  table_name?: string | null;
+  record_id?: string | null;
+  status?: string | null;
+  reason?: string | null;
+  notes?: string | null;
+  old_data?: Record<string, unknown> | null;
+  new_data?: Record<string, unknown> | null;
+  before_data?: Record<string, unknown> | null;
+  after_data?: Record<string, unknown> | null;
+  performed_by?: string | null;
+  actor_id?: string | null;
+  related_journal_id?: string | null;
+  timestamp?: string | null;
+  created_at?: string | null;
+}
+
+export interface JournalHeader {
+  id: string;
+  journal_number: string;
+  accounting_date: string;
+  description?: string | null;
+  source_event_id?: string | null;
+  accounting_period_id?: string | null;
+  status: "POSTED" | "REVERSED";
+  posted_by?: string | null;
+  posted_at: string;
+  reversal_of_journal_id?: string | null;
+  replacement_for_journal_id?: string | null;
+  currency_code: string;
+}
