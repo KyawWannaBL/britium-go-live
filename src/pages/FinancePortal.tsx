@@ -13,12 +13,26 @@ import {
   useVouchers,
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
+import { useAccountingFlags } from "../hooks/useAccounting";
+import { FinanceDailyEntry } from "../components/accounting/FinanceDailyEntry";
+import { FinanceReviewQueue } from "../components/accounting/FinanceReviewQueue";
+import { GeneralLedgerExplorer } from "../components/accounting/GeneralLedgerExplorer";
 
-type Tab = "overview" | "cod" | "settlements" | "wallets" | "vouchers";
+type Tab =
+  | "overview"
+  | "daily-entry"
+  | "review-queue"
+  | "ledger"
+  | "cod"
+  | "settlements"
+  | "wallets"
+  | "vouchers";
 
 export default function FinancePortal() {
-  const { user, logout } = useAuth();
+  const { user, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
+  const accountingFlags = useAccountingFlags();
+  const erpUiEnabled = accountingFlags.data?.erpUiEnabled === true;
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
 
@@ -31,6 +45,11 @@ export default function FinancePortal() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "💰 Overview" },
+    ...(erpUiEnabled ? [
+      { id: "daily-entry" as Tab, label: "🧮 Daily Finance Entry" },
+      { id: "review-queue" as Tab, label: "✅ Review Queue" },
+      { id: "ledger" as Tab, label: "📒 General Ledger" },
+    ] : []),
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
     { id: "wallets", label: "👛 Rider Wallets" },
@@ -45,7 +64,7 @@ export default function FinancePortal() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={S.userBadge}>{user?.full_name || user?.email}</span>
-          <button onClick={logout} style={S.logoutBtn}>Sign Out</button>
+          <button onClick={signOut} style={S.logoutBtn}>Sign Out</button>
         </div>
       </header>
 
@@ -62,6 +81,10 @@ export default function FinancePortal() {
         {tab === "overview" && (
           <OverviewSection data={overview.data as Record<string, unknown>} loading={overview.isLoading} error={overview.error?.message} />
         )}
+
+        {erpUiEnabled && tab === "daily-entry" && <FinanceDailyEntry />}
+        {erpUiEnabled && tab === "review-queue" && <FinanceReviewQueue />}
+        {erpUiEnabled && tab === "ledger" && <GeneralLedgerExplorer />}
 
         {/* COD RECONCILIATION */}
         {tab === "cod" && (
