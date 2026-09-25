@@ -1,3 +1,7 @@
+update public.be_accounting_runtime_config
+set boolean_value=true
+where config_key in ('GL_POSTING_ENABLED','ACCOUNTING_SYNC_ENABLED');
+
 do $$
 declare
   v_event uuid;
@@ -95,3 +99,7 @@ begin
     raise exception 'sync run status was not persisted';
   end if;
 end $$;
+
+update public.be_accounting_runtime_config
+set boolean_value=false
+where config_key in ('GL_POSTING_ENABLED','ACCOUNTING_SYNC_ENABLED');
