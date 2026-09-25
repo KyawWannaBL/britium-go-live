@@ -1,3 +1,7 @@
+update public.be_accounting_runtime_config
+set boolean_value=true
+where config_key='GL_POSTING_ENABLED';
+
 insert into public.be_accounting_periods(period_code,period_start,period_end,status)
 values ('2099-04',date '2099-04-01',date '2099-04-30','OPEN')
 on conflict (period_code) do update set status='OPEN',closed_at=null,closed_by=null,close_reason=null;
@@ -288,3 +292,7 @@ begin
       end if;
   end;
 end $$;
+
+update public.be_accounting_runtime_config
+set boolean_value=false
+where config_key='GL_POSTING_ENABLED';
