@@ -4,7 +4,7 @@
 
 **Goal:** Deliver Britium Express's production double-entry accounting ERP in safe, independently testable increments without disrupting the existing Enterprise Portal or logistics workflows.
 
-**Architecture:** The approved design is decomposed into four implementation streams with a fixed dependency order: ledger foundation → operational synchronization → portal UI → reporting/exports → rollout/UAT. Each stream has its own testable plan and commits; production activation is deliberately last.
+**Architecture:** The approved design is decomposed into five implementation streams with a fixed dependency order: ledger foundation → operational synchronization → portal UI → reporting/exports → rollout/UAT. Each stream has its own testable plan and commits; production activation is deliberately last.
 
 **Tech Stack:** Existing Vite + React 18 + TypeScript Enterprise Portal, Supabase PostgreSQL/RLS/RPC, TanStack Query, React Hook Form, Zod, Recharts, SheetJS, jsPDF, Vercel.
 
