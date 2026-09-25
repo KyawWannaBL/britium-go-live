@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "test:accounting-foundation": "node scripts/verify-enterprise-ledger-foundation.mjs",
-    "test:accounting-sync": "node scripts/verify-enterprise-accounting-sync.mjs"
+    "test:accounting-sync": "node scripts/verify-enterprise-accounting-sync.mjs",
+    "prebuild": "node scripts/verify-accounting-exports.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
