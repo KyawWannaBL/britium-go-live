@@ -10,14 +10,16 @@ declare
   v_finance uuid := '11111111-1111-4111-8111-111111111111';
   v_admin uuid := '22222222-2222-4222-8222-222222222222';
   v_super uuid := '33333333-3333-4333-8333-333333333333';
+  v_ordinary uuid := '44444444-4444-4444-8444-444444444444';
 begin
   delete from public.be_user_account_registry
-  where auth_user_id in (v_finance,v_admin,v_super);
+  where auth_user_id in (v_finance,v_admin,v_super,v_ordinary);
 
   insert into public.be_user_account_registry(auth_user_id,role,active) values
     (v_finance,'finance',true),
     (v_admin,'admin',true),
-    (v_super,'super_admin',true);
+    (v_super,'super_admin',true),
+    (v_ordinary,'rider',true);
 end $$;
 
 begin;
@@ -108,5 +110,26 @@ begin
     when raise_exception then
       if sqlerrm='superadmin direct posted journal mutation unexpectedly succeeded' then raise; end if;
   end;
+end $$;
+rollback;
+
+
+begin;
+set local role authenticated;
+set local request.jwt.claims = '{"sub":"44444444-4444-4444-8444-444444444444","user_metadata":{"role":"super_admin"}}';
+
+do $$
+declare v_count integer;
+begin
+  if public.be_accounting_can_v1('finance_entry')
+     or public.be_accounting_can_v1('asset_entry')
+     or public.be_accounting_can_v1('ledger_admin') then
+    raise exception 'ordinary user gained accounting capability';
+  end if;
+
+  select count(*) into v_count from public.be_journal_entries;
+  if v_count<>0 then
+    raise exception 'ordinary user could read accounting journals through RLS';
+  end if;
 end $$;
 rollback;
