@@ -21,6 +21,7 @@ import type {
   PlatformOverview, UserProfile, Shipment, Exception,
   Settlement, Employee,
 } from "../types";
+import { SuperadminAccountingControl } from "../components/accounting/SuperadminAccountingControl";
 
 // ── Nav ───────────────────────────────────────────────────────────────────────
 const NAV: NavItem[] = [
@@ -28,6 +29,7 @@ const NAV: NavItem[] = [
   { key: "shipments",   label: "All Shipments",       icon: "📦" },
   { key: "exceptions",  label: "Exceptions",          icon: "⚠️" },
   { key: "finance",     label: "Finance Summary",     icon: "💰" },
+  { key: "accounting",  label: "Accounting Control",  icon: "📒" },
   { key: "users",       label: "User Management",     icon: "👤" },
   { key: "employees",   label: "HR Overview",         icon: "👥" },
   { key: "settings",    label: "System Settings",     icon: "⚙️" },
@@ -310,6 +312,7 @@ export default function SuperAdminPortal() {
     shipments:  <ShipmentsView />,
     exceptions: <ExceptionsView />,
     finance:    <FinanceView />,
+    accounting: <SuperadminAccountingControl />,
     users:      <UsersView />,
     employees:  <EmployeesView />,
     settings:   <SettingsView />,
