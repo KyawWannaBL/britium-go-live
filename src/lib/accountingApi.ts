@@ -9,10 +9,14 @@ import type {
   AccountingRpcResult,
   AccountingRuntimeFlags,
   AdminHrLogInput,
+  BalanceSheetReport,
   FinanceDailyLog,
   FinanceDailyLogInput,
   FixedAsset,
   GeneralLedgerRow,
+  ProfitLossReport,
+  ReconciliationReport,
+  TrialBalanceReport,
   JournalHeader,
 } from "@/types/accounting";
 
@@ -284,4 +288,46 @@ export async function closeAccountingPeriod(
   });
   if (error) throw error;
   return assertRpcResult(data);
+}
+
+export async function getTrialBalance(dateFrom: string, dateTo: string): Promise<TrialBalanceReport> {
+  const { data, error } = await supabase.rpc("be_accounting_trial_balance_v1", {
+    p_from: dateFrom,
+    p_to: dateTo,
+  });
+  if (error) throw error;
+  const result = data as TrialBalanceReport;
+  if (!result?.ok) throw new Error(accountingErrorMessage(result as unknown as ErrorShape));
+  return result;
+}
+
+export async function getProfitLoss(dateFrom: string, dateTo: string): Promise<ProfitLossReport> {
+  const { data, error } = await supabase.rpc("be_accounting_profit_loss_v1", {
+    p_from: dateFrom,
+    p_to: dateTo,
+  });
+  if (error) throw error;
+  const result = data as ProfitLossReport;
+  if (!result?.ok) throw new Error(accountingErrorMessage(result as unknown as ErrorShape));
+  return result;
+}
+
+export async function getBalanceSheet(asOf: string): Promise<BalanceSheetReport> {
+  const { data, error } = await supabase.rpc("be_accounting_balance_sheet_v1", {
+    p_as_of: asOf,
+  });
+  if (error) throw error;
+  const result = data as BalanceSheetReport;
+  if (!result?.ok) throw new Error(accountingErrorMessage(result as unknown as ErrorShape));
+  return result;
+}
+
+export async function getAccountingReconciliation(asOf: string): Promise<ReconciliationReport> {
+  const { data, error } = await supabase.rpc("be_accounting_reconciliation_v1", {
+    p_as_of: asOf,
+  });
+  if (error) throw error;
+  const result = data as ReconciliationReport;
+  if (!result?.ok) throw new Error(accountingErrorMessage(result as unknown as ErrorShape));
+  return result;
 }
