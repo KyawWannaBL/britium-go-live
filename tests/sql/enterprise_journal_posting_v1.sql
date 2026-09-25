@@ -95,3 +95,38 @@ begin
     when check_violation then null;
   end;
 end $$;
+
+
+do $$
+declare
+  v_missing integer;
+  v_compat_count integer;
+begin
+  select count(*) into v_missing
+  from (values
+    ('entity_type'),('entity_id'),('actor_id'),('before_data'),('after_data'),('created_at'),
+    ('table_name'),('record_id'),('old_data'),('new_data'),('performed_by'),('timestamp')
+  ) as required(column_name)
+  where not exists (
+    select 1
+    from information_schema.columns c
+    where c.table_schema='public'
+      and c.table_name='audit_logs'
+      and c.column_name=required.column_name
+  );
+
+  if v_missing<>0 then
+    raise exception 'audit_logs compatibility columns missing: %',v_missing;
+  end if;
+
+  select count(*) into v_compat_count
+  from public.audit_logs
+  where action='POST'
+    and entity_type='be_accounting_events'
+    and table_name='be_accounting_events'
+    and related_journal_id is not null;
+
+  if v_compat_count<1 then
+    raise exception 'posting audit did not populate legacy and accounting audit fields';
+  end if;
+end $$;
