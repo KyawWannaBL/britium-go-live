@@ -30,7 +30,7 @@ begin
   if public.be_accounting_sync_run_v1(date '2099-01-01',date '2099-01-01',array['DELIVERY'])->>'code' <> 'SYNC_DISABLED' then
     raise exception 'accounting sync flag is not enforced';
   end if;
-end $;
+end $$;
 
 begin;
 set local role authenticated;
