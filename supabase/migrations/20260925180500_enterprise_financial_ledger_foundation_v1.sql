@@ -232,7 +232,7 @@ alter table public.audit_logs
   alter column "timestamp" set not null,
   alter column metadata set default '{}'::jsonb;
 
-do $
+do $$
 begin
   if not exists (
     select 1 from pg_constraint
@@ -245,7 +245,7 @@ begin
       references public.be_journal_entries(id)
       on delete restrict;
   end if;
-end $;
+end $$;
 
 create index if not exists audit_logs_record_idx on public.audit_logs(table_name,record_id,"timestamp" desc);
 create index if not exists audit_logs_journal_idx on public.audit_logs(related_journal_id);
