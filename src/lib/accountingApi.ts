@@ -9,6 +9,7 @@ import type {
   AdminHrLogInput,
   FinanceDailyLog,
   FinanceDailyLogInput,
+  FixedAsset,
   GeneralLedgerRow,
 } from "@/types/accounting";
 
@@ -197,4 +198,15 @@ export async function listGeneralLedger(limit = 500): Promise<GeneralLedgerRow[]
 
   if (error) throw error;
   return (data ?? []) as unknown as GeneralLedgerRow[];
+}
+
+export async function listFixedAssets(): Promise<FixedAsset[]> {
+  const { data, error } = await supabase
+    .from("be_fixed_asset_register")
+    .select("*")
+    .order("acquisition_date", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+  return (data ?? []) as FixedAsset[];
 }
