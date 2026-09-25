@@ -52,8 +52,12 @@ begin
     raise exception 'V136 safety stop: be_data_entry_create_waybill_from_rows is missing.';
   end if;
 
+  -- pg_get_functiondef can preserve CRLF from older migrations. Normalize it
+  -- before an exact, safety-checked replacement.
+  v_definition := replace(v_definition, chr(13), '');
+
   if position(v_old in v_definition) = 0 then
-    raise exception 'V136 safety stop: legacy Rider-only waybill gate was not found exactly.';
+    raise exception 'V136 safety stop: legacy Rider-only waybill gate was not found exactly after newline normalization.';
   end if;
 
   v_definition := replace(v_definition, v_old, v_new);
