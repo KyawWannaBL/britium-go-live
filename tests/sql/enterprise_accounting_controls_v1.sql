@@ -237,3 +237,54 @@ begin
     raise exception 'period status not CLOSED';
   end if;
 end $$;
+
+
+do $$
+declare
+  v_journal uuid;
+  v_line uuid;
+begin
+  select id into v_journal
+  from public.be_journal_entries
+  where status='POSTED'
+  order by posted_at desc
+  limit 1;
+
+  if v_journal is null then
+    raise exception 'immutability test requires a posted journal';
+  end if;
+
+  begin
+    update public.be_journal_entries
+    set description='forbidden direct mutation'
+    where id=v_journal;
+    raise exception 'posted journal update unexpectedly succeeded';
+  exception
+    when others then
+      if sqlerrm='posted journal update unexpectedly succeeded' then
+        raise;
+      end if;
+      if position('POSTED_JOURNAL_IMMUTABLE' in sqlerrm)=0 then
+        raise;
+      end if;
+  end;
+
+  select id into v_line
+  from public.be_journal_lines
+  where journal_id=v_journal
+  order by sequence_no
+  limit 1;
+
+  begin
+    delete from public.be_journal_lines where id=v_line;
+    raise exception 'posted journal line delete unexpectedly succeeded';
+  exception
+    when others then
+      if sqlerrm='posted journal line delete unexpectedly succeeded' then
+        raise;
+      end if;
+      if position('POSTED_JOURNAL_IMMUTABLE' in sqlerrm)=0 then
+        raise;
+      end if;
+  end;
+end $$;
