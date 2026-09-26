@@ -173,7 +173,8 @@ function AppRoutes() {
             <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
             <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
             <Route path="/data-entry" element={<DataEntryFinancialV2Page />} />
-            <Route path="/finance/data-entry-review" element={<FinanceDataEntryReviewPage />} />\n            <Route path="/finance/accounting" element={<AccountingPortalPage />} />
+            <Route path="/finance/data-entry-review" element={<FinanceDataEntryReviewPage />} />
+            <Route path="/finance/accounting" element={<AccountingPortalPage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/admin-hr" element={<AdminHRPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
