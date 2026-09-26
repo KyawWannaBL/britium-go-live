@@ -2,7 +2,7 @@ name: Production Build Diagnostic
 
 on:
   push:
-    branches: [main]
+    branches: [main, hotfix/finance-rider-cod-drytest-v1]
 
 jobs:
   build:
