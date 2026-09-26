@@ -12,6 +12,7 @@ function assertIncludes(text, needle, label) {
 const page = mustRead("src/pages/AccountingPortalPage.tsx");
 const app = mustRead("src/App.tsx");
 const sidebar = mustRead("src/components/Sidebar.tsx");
+const pickup = mustRead("src/pages/PickupFormPage.tsx");
 
 for (const marker of [
   'data-be-accounting-portal="true"',
@@ -22,6 +23,9 @@ for (const marker of [
   "Periodical Finance Reports",
   "Finance Data Entry Template",
   "Download Excel Template",
+  "Pre-Dispatch Finance",
+  "be_finance_predispatch_queue_v1",
+  "be_finance_predispatch_review_v1",
   "MMQR",
   "09897447722",
   "KBZ Pay",
@@ -45,3 +49,12 @@ assertIncludes(sidebar, 'path: "/finance/accounting"', "Sidebar route");
 assertIncludes(sidebar, 'name: "Accounting ERP"', "Sidebar label");
 
 console.log("Accounting ERP production contract PASS");
+
+assertIncludes(pickup, "Payment Type", "Pickup payment type label");
+assertIncludes(pickup, "declaredItemValue", "Pickup declared item value");
+assertIncludes(pickup, 'option value="COD"', "Pickup COD payment option");
+assertIncludes(pickup, 'option value="CASH"', "Pickup Cash payment option");
+assertIncludes(pickup, 'option value="KBZ_PAY"', "Pickup KBZ Pay payment option");
+assertIncludes(pickup, 'option value="MMQR"', "Pickup MMQR payment option");
+assertIncludes(pickup, 'option value="BANK_TRANSFER"', "Pickup Bank Transfer payment option");
+assertIncludes(pickup, "200,000 MMK", "Pickup COD threshold guidance");
