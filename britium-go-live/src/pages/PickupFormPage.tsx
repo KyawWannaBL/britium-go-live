@@ -16,6 +16,9 @@ const TRANSLATIONS = {
     lblMerchant: "Merchant",
     lblBusinessType: "Business Type",
     lblPayment: "Payment Terms",
+    lblPaymentType: "Payment Type",
+    lblDeclaredValue: "Declared Item Value (MMK)",
+    codPolicyNote: "COD policy: Yangon parcels up to 200,000 MMK are standard COD. Above 200,000 MMK requires Finance approval and 2% COD service fee.",
     lblContact: "Contact Person",
     lblPhone: "Phone",
     lblDate: "Date",
@@ -39,7 +42,10 @@ const TRANSLATIONS = {
     sectionTitle: "ကုန်သည်နှင့် ပစ္စည်းအချက်အလက်",
     lblMerchant: "ကုန်သည်",
     lblBusinessType: "လုပ်ငန်းအမျိုးအစား",
-    lblPayment: "ငွေပေးချေမှု",
+    lblPayment: "ငွေပေးချေမှုစည်းကမ်း",
+    lblPaymentType: "ငွေပေးချေမှု အမျိုးအစား",
+    lblDeclaredValue: "ကြေညာထားသော ပစ္စည်းတန်ဖိုး (ကျပ်)",
+    codPolicyNote: "COD စည်းမျဉ်း - ရန်ကုန်အတွင်း ပစ္စည်းတန်ဖိုး ၂၀၀,၀၀၀ ကျပ်အထိ Standard COD ဖြစ်ပြီး၊ ၂၀၀,၀၀၀ ကျပ်ကျော်ပါက Finance အတည်ပြုချက်နှင့် ပစ္စည်းတန်ဖိုး၏ ၂% COD ဝန်ဆောင်ခ လိုအပ်ပါသည်။",
     lblContact: "ဆက်သွယ်ရန်",
     lblPhone: "ဖုန်းနံပါတ်",
     lblDate: "ရက်စွဲ",
@@ -84,6 +90,8 @@ const t = TRANSLATIONS[activeLang];
     merchantCode: "",
     businessType: "",
     paymentTerms: "COD",
+    paymentType: "COD",
+    declaredItemValue: "",
     contactPerson: "",
     phone: "",
     pickupDate: new Date().toISOString().split("T")[0],
@@ -140,6 +148,7 @@ const t = TRANSLATIONS[activeLang];
       merchantCode: code,
       businessType: selected.business_type || "",
       paymentTerms: selected.payment_terms || "COD",
+      paymentType: "COD",
       contactPerson: selected.contact_person || "",
       phone: selected.phone || "",
       address: selected.address || "",
@@ -156,6 +165,8 @@ const t = TRANSLATIONS[activeLang];
       merchantCode: "",
       businessType: "",
       paymentTerms: "COD",
+      paymentType: "COD",
+      declaredItemValue: "",
       contactPerson: "",
       phone: "",
       address: "",
@@ -199,6 +210,9 @@ const t = TRANSLATIONS[activeLang];
       pickup_city: formData.city,
       parcel_count: Number(formData.expectedParcels),
       payment_terms: formData.paymentTerms,
+      payment_type: formData.paymentType,
+      payment_method: formData.paymentType,
+      declared_item_value: Number(formData.declaredItemValue || 0),
       required_vehicle: formData.requiredVehicle,
       remark: formData.instructions
     };
@@ -311,6 +325,41 @@ const t = TRANSLATIONS[activeLang];
                 <option value="Prepaid" className="!bg-white !text-black" style={{ color: "#000000", backgroundColor: "#ffffff" }}>Prepaid</option>
                 <option value="Monthly" className="!bg-white !text-black" style={{ color: "#000000", backgroundColor: "#ffffff" }}>Monthly</option>
               </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>{t.lblPaymentType}</label>
+              <select name="paymentType" value={formData.paymentType} onChange={handleChange} className={`${inputClass} cursor-pointer`}>
+                <option value="COD">COD</option>
+                <option value="CASH">Cash</option>
+                <option value="PREPAID">Prepaid</option>
+                <option value="KBZ_PAY">KBZ Pay</option>
+                <option value="MMQR">MMQR</option>
+                <option value="BANK_TRANSFER">Bank Transfer</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className={labelClass}>{t.lblDeclaredValue}</label>
+              <input
+                type="number"
+                min="0"
+                step="1"
+                name="declaredItemValue"
+                value={formData.declaredItemValue}
+                onChange={handleChange}
+                className={inputClass}
+                placeholder="0"
+              />
+              {formData.paymentType === "COD" ? (
+                <div className="mt-2 rounded-lg border border-[#f6b84b]/30 bg-[#f6b84b]/10 p-2 text-[11px] leading-relaxed text-[#ffd98a]">
+                  {t.codPolicyNote}
+                  <div className="mt-1 text-[#8fb1c7]">
+                    Final COD eligibility is confirmed during Data Entry using the parcel delivery region.
+                  </div>
+                </div>
+              ) : null}
             </div>
 
             {/* ROW 2 */}
