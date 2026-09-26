@@ -19,7 +19,7 @@ for (const marker of [
   "Daily Finance Entry",
   "Review Queue",
   "General Ledger",
-  "P&L / Balance Sheet",
+  "Periodical Finance Reports",
   "Finance Data Entry Template",
   "Download Excel Template",
   "MMQR",
