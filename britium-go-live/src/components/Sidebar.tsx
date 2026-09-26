@@ -125,6 +125,7 @@ const NAV_GROUPS: NavGroup[] = [
     title: "Finance & Accounts",
     links: [
       { name: "Finance Portal", path: "/finance", icon: DollarSign },
+      { name: "Accounting ERP", path: "/finance/accounting", icon: Calculator },
       { name: "Invoice Studio", path: "/invoice-studio", icon: Receipt },
       { name: "COD Settlement", path: "/cod-settlement", icon: Coins },
       { name: "Workforce Commission", path: "/workforce-commission", icon: Wallet },
