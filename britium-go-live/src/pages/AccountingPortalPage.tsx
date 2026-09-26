@@ -5,6 +5,8 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  Download,
+  FileSpreadsheet,
   FileLock2,
   Loader2,
   RefreshCw,
@@ -13,17 +15,19 @@ import {
   WalletCards,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import * as XLSX from "xlsx";
 
-export const ACCOUNTING_PORTAL_BUILD = "ACCOUNTING_ERP_V1_20260926";
+export const ACCOUNTING_PORTAL_BUILD = "ACCOUNTING_ERP_V2_20260926";
 
 type Row = Record<string, any>;
-type Tab = "daily-entry" | "review" | "ledger" | "reports";
+type Tab = "daily-entry" | "template" | "review" | "ledger" | "reports";
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "daily-entry", label: "Daily Finance Entry" },
+  { id: "template", label: "Finance Data Entry Template" },
   { id: "review", label: "Review Queue" },
   { id: "ledger", label: "General Ledger" },
-  { id: "reports", label: "P&L / Balance Sheet" },
+  { id: "reports", label: "Periodical Finance Reports" },
 ];
 
 const inputClass =
@@ -80,6 +84,18 @@ function Field({
 export default function AccountingPortalPage() {
   const [tab, setTab] = useState<Tab>("daily-entry");
   const [message, setMessage] = useState("");
+  const [authority, setAuthority] = useState<Row | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      const { data, error } = await (supabase as any).rpc("be_accounting_my_authority_v2");
+      if (error) {
+        setMessage(error.message);
+        return;
+      }
+      setAuthority(data || null);
+    })();
+  }, []);
 
   return (
     <main
@@ -98,9 +114,19 @@ export default function AccountingPortalPage() {
                 and management financial statements. Existing COD operations remain available in the Finance Portal.
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Link to="/finance" className={buttonClass}>Finance Portal</Link>
-              <Link to="/finance/data-entry-review" className={buttonClass}>Data Entry Review</Link>
+            <div className="flex flex-col items-end gap-2">
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+                <b>RLS / Authority:</b> {authority ? `${authority.role || "unknown"} · Level ${authority.authority_level ?? 0}` : "checking…"}
+                {authority ? (
+                  <div className="mt-1 text-[11px] text-emerald-300/80">
+                    Entry {authority.can_entry ? "✓" : "—"} · Review {authority.can_review ? "✓" : "—"} · Post {authority.can_post ? "✓" : "—"} · Reports {authority.can_reports ? "✓" : "—"} · Audit {authority.can_audit ? "✓" : "—"}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Link to="/finance" className={buttonClass}>Finance Portal</Link>
+                <Link to="/finance/data-entry-review" className={buttonClass}>Data Entry Review</Link>
+              </div>
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -126,9 +152,10 @@ export default function AccountingPortalPage() {
         <Message text={message} />
 
         {tab === "daily-entry" ? <DailyFinanceEntry setMessage={setMessage} /> : null}
-        {tab === "review" ? <ReviewQueue setMessage={setMessage} /> : null}
+        {tab === "template" ? <FinanceDataEntryTemplate /> : null}
+        {tab === "review" ? <ReviewQueue setMessage={setMessage} authority={authority} /> : null}
         {tab === "ledger" ? <GeneralLedger setMessage={setMessage} /> : null}
-        {tab === "reports" ? <FinancialReports setMessage={setMessage} /> : null}
+        {tab === "reports" ? <FinancialReports setMessage={setMessage} authority={authority} /> : null}
       </div>
     </main>
   );
@@ -151,6 +178,10 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
     accounts_receivable_invoiced: "",
     accounts_payable_incurred: "",
     funding_account_code: "1010",
+    payment_method: "PETTY_CASH",
+    payment_mobile_number: "",
+    payment_reference: "",
+    supporting_document_reference: "",
     petty_cash_description: "",
     ar_counterparty: "",
     ar_reference: "",
@@ -204,7 +235,11 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
         p_entry_date: form.entry_date,
         p_department_code: form.department_code.trim() || "FINANCE",
         p_funding_account_code: form.funding_account_code,
+        p_payment_method: form.payment_method,
+        p_payment_mobile_number: form.payment_mobile_number || null,
+        p_payment_reference: form.payment_reference || null,
         p_metadata: {
+          supporting_document_reference: form.supporting_document_reference.trim(),
           petty_cash_description: form.petty_cash_description.trim(),
           ar_counterparty: form.ar_counterparty.trim(),
           ar_reference: form.ar_reference.trim(),
@@ -217,7 +252,7 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
       };
       for (const key of numericKeys) params[`p_${key}`] = Number(form[key] || 0);
 
-      const { data, error } = await (supabase as any).rpc("be_accounting_submit_finance_daily_v1", params);
+      const { data, error } = await (supabase as any).rpc("be_accounting_submit_finance_daily_v2", params);
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.message || data?.code || "Finance submission failed.");
 
@@ -251,11 +286,21 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Entry Date"><input type="date" className={inputClass} value={form.entry_date} onChange={(e) => setForm({ ...form, entry_date: e.target.value })} /></Field>
           <Field label="Department"><input className={inputClass} value={form.department_code} onChange={(e) => setForm({ ...form, department_code: e.target.value })} /></Field>
-          <Field label="Funding / Payment Account" hint="Used for cash/bank revenue receipts and immediate expenses.">
-            <select className={inputClass} value={form.funding_account_code} onChange={(e) => setForm({ ...form, funding_account_code: e.target.value })}>
-              <option value="1000">1000 · Cash on Hand</option>
-              <option value="1010">1010 · Petty Cash</option>
-              <option value="1100">1100 · Bank Accounts</option>
+          <Field label="Payment / Funding Method" hint="Select the actual channel used for the receipt or payment.">
+            <select
+              className={inputClass}
+              value={`${form.payment_method}|${form.payment_mobile_number}|${form.funding_account_code}`}
+              onChange={(e) => {
+                const [payment_method, payment_mobile_number, funding_account_code] = e.target.value.split("|");
+                setForm({ ...form, payment_method, payment_mobile_number, funding_account_code, payment_reference: "" });
+              }}
+            >
+              <option value="CASH||1000">Cash on Hand · 1000</option>
+              <option value="PETTY_CASH||1010">Petty Cash · 1010</option>
+              <option value="BANK||1100">Bank Accounts · 1100</option>
+              <option value="MMQR|09897447722|1110">MMQR · 09897447722</option>
+              <option value="KBZ_PAY|09897447722|1120">KBZ Pay · 09897447722</option>
+              <option value="KBZ_PAY|09897447733|1121">KBZ Pay · 09897447733</option>
             </select>
           </Field>
 
@@ -287,6 +332,36 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
             );
           })}
         </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <Field
+            label="Payment Transaction Reference"
+            hint={form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY" ? "Required for MMQR / KBZ Pay. Enter the transfer/transaction reference exactly." : "Optional for cash; recommended for bank transactions."}
+          >
+            <input
+              className={inputClass}
+              value={form.payment_reference}
+              onChange={(e) => setForm({ ...form, payment_reference: e.target.value })}
+              placeholder={form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY" ? "Required transaction reference" : "Bank / receipt / voucher reference"}
+            />
+          </Field>
+          <Field label="Supporting Document Reference" hint="Voucher, receipt, invoice, settlement batch, bank slip, or approval reference.">
+            <input
+              className={inputClass}
+              value={form.supporting_document_reference}
+              onChange={(e) => setForm({ ...form, supporting_document_reference: e.target.value })}
+              placeholder="e.g. VCH-20260926-001"
+            />
+          </Field>
+        </div>
+
+        {(form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY") ? (
+          <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 text-sm text-cyan-100">
+            <b>{form.payment_method === "MMQR" ? "MMQR" : "KBZ Pay"}</b> linked mobile:
+            <span className="ml-2 font-black">{form.payment_mobile_number}</span>
+            <span className="ml-2 text-xs text-cyan-300">· GL {form.funding_account_code}</span>
+          </div>
+        ) : null}
 
         {Number(form.petty_cash_expenses || 0) > 0 ? (
           <div className="mt-3">
@@ -358,7 +433,122 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
   );
 }
 
-function ReviewQueue({ setMessage }: { setMessage: (value: string) => void }) {
+
+function FinanceDataEntryTemplate() {
+  const columns = [
+    "Entry Date",
+    "Department",
+    "Payment Method",
+    "Mobile Number",
+    "Payment Reference",
+    "Delivery Fees Collected",
+    "COD Handling Fees",
+    "Surcharges",
+    "Rider Commissions Accrued",
+    "Fuel & Tolls Spent",
+    "Packaging Supplies Spent",
+    "Petty Cash Expenses",
+    "COD Cash Collected",
+    "Accounts Receivable Invoiced",
+    "Accounts Payable Incurred",
+    "Petty Cash Description",
+    "AR Counterparty",
+    "AR Invoice / Reference",
+    "AR Offset Account Code",
+    "AP Counterparty",
+    "AP Invoice / Reference",
+    "AP Offset Account Code",
+    "Supporting Document Reference",
+    "Notes",
+  ];
+
+  const sampleRows = [
+    ["2026-09-26","FINANCE","MMQR","09897447722","MMQR-REF-001",150000,5000,0,0,0,0,0,450000,0,0,"","","","","","","","SETTLE-0926-001","Daily MMQR collection"],
+    ["2026-09-26","FINANCE","KBZ_PAY","09897447722","KBZ-REF-001",200000,7000,0,0,0,0,0,600000,0,0,"","","","","","","","SETTLE-0926-002","KBZ Pay wallet 1"],
+    ["2026-09-26","FINANCE","KBZ_PAY","09897447733","KBZ-REF-002",175000,6000,0,0,0,0,0,525000,0,0,"","","","","","","","SETTLE-0926-003","KBZ Pay wallet 2"],
+    ["2026-09-26","FINANCE","PETTY_CASH","","PC-0926-015",0,0,0,0,0,0,35000,0,0,0,"Office stationery","","","","","","","VCH-PC-0926-015","Petty cash expense"],
+  ];
+
+  function downloadTemplate() {
+    const ws = XLSX.utils.aoa_to_sheet([columns, ...sampleRows]);
+    ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+    ws["!cols"] = columns.map((name) => ({ wch: Math.max(14, Math.min(30, name.length + 3)) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Finance Data Entry");
+    const guide = XLSX.utils.aoa_to_sheet([
+      ["Britium Express Finance Data Entry Template"],
+      ["Rule","Instruction"],
+      ["One row","Use one row per date + department + payment channel/reference batch."],
+      ["MMQR","Mobile number must be 09897447722 and transaction reference is required."],
+      ["KBZ Pay","Use either 09897447722 or 09897447733; transaction reference is required."],
+      ["Duplicate control","Do not re-enter the same locked transaction/reference."],
+      ["Supporting evidence","Record voucher, invoice, bank slip, settlement batch, or other evidence reference."],
+      ["Maker-checker","The preparer must not approve/post their own accounting event."],
+    ]);
+    guide["!cols"] = [{ wch: 20 }, { wch: 95 }];
+    XLSX.utils.book_append_sheet(wb, guide, "Instructions");
+    XLSX.writeFile(wb, `Britium_Express_Finance_Data_Entry_Template_${today()}.xlsx`);
+  }
+
+  return (
+    <section className={cardClass}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet size={20} className="text-[#68e8bd]" />
+            <h2 className="text-lg font-black">Finance Department Data Entry Template</h2>
+          </div>
+          <p className="mt-1 text-sm text-[#8eafc4]">
+            Standard batch format for Finance staff. One row represents one date/department/payment-channel batch.
+          </p>
+        </div>
+        <button onClick={downloadTemplate} className={primaryButton}>
+          <Download size={16} />Download Excel Template
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3">
+          <div className="text-xs font-bold text-cyan-300">MMQR</div>
+          <div className="mt-1 font-black">09897447722</div>
+          <div className="text-xs text-[#789ab1]">GL 1110 · transaction reference required</div>
+        </div>
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3">
+          <div className="text-xs font-bold text-blue-300">KBZ Pay</div>
+          <div className="mt-1 font-black">09897447722</div>
+          <div className="text-xs text-[#789ab1]">GL 1120 · transaction reference required</div>
+        </div>
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3">
+          <div className="text-xs font-bold text-blue-300">KBZ Pay</div>
+          <div className="mt-1 font-black">09897447733</div>
+          <div className="text-xs text-[#789ab1]">GL 1121 · transaction reference required</div>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-auto rounded-xl border border-[#183b58]">
+        <table className="w-full min-w-[2500px] text-left text-xs">
+          <thead className="bg-[#071b2c] text-[#88abc1]">
+            <tr>{columns.map((column) => <th key={column} className="whitespace-nowrap p-3">{column}</th>)}</tr>
+          </thead>
+          <tbody>
+            {sampleRows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="border-t border-[#173952]">
+                {row.map((cell, cellIndex) => <td key={cellIndex} className="whitespace-nowrap p-3">{String(cell || "—")}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-100">
+        <b>Control rule:</b> Staff must record the actual payment channel, exact mobile number/reference, and supporting document reference.
+        Repeated references or identical transaction fingerprints are blocked/flagged by the Accounting ERP audit controls.
+      </div>
+    </section>
+  );
+}
+
+function ReviewQueue({ setMessage, authority }: { setMessage: (value: string) => void; authority: Row | null }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [loading, setLoading] = useState(true);
@@ -416,22 +606,68 @@ function ReviewQueue({ setMessage }: { setMessage: (value: string) => void }) {
     }
   }
 
-  async function approveAndPost() {
+  async function approveOnly() {
     if (!selected?.id) return;
     setBusy(true);
     setMessage("");
     try {
-      const { data, error } = await (supabase as any).rpc("be_accounting_approve_and_post_event_v1", {
+      const { data, error } = await (supabase as any).rpc("be_accounting_review_event_v1", {
         p_event_id: selected.id,
-        p_note: note || "Approved from Accounting ERP review queue",
+        p_decision: "APPROVE",
+        p_note: note || "Reviewed and approved from Accounting ERP",
       });
       if (error) throw error;
-      if (!data?.ok) throw new Error(data?.code || "Approve/post failed.");
+      if (!data?.ok) throw new Error(data?.message || data?.code || "Approval failed.");
+      setMessage(`Event approved. A separate authorized poster must post it to the General Ledger.`);
+      setNote("");
+      await load();
+    } catch (error: any) {
+      setMessage(error?.message || "Approval failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function postApproved() {
+    if (!selected?.id) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_accounting_post_approved_event_v2", {
+        p_event_id: selected.id,
+        p_note: note || "Posted from Accounting ERP after independent approval",
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.message || data?.code || "Posting failed.");
       setMessage(`Posted successfully: ${data.journal_number || data.journal_id || selected.id}`);
       setNote("");
       await load();
     } catch (error: any) {
-      setMessage(error?.message || "Approve/post failed.");
+      setMessage(error?.message || "Posting failed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function raiseFraudFlag() {
+    if (!selected?.id) return;
+    const reason = note.trim() || "Finance reviewer flagged this accounting event for investigation.";
+    setBusy(true);
+    setMessage("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_accounting_raise_fraud_flag_v2", {
+        p_reference_type: "ACCOUNTING_EVENT",
+        p_reference_id: selected.id,
+        p_amount: Number(selected.total_amount || selected.debit_total || 0),
+        p_severity: "high",
+        p_reason: reason,
+        p_note: note || null,
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.code || "Unable to create fraud flag.");
+      setMessage(`Fraud/exception flag created: ${data.flag_no}`);
+    } catch (error: any) {
+      setMessage(error?.message || "Unable to create fraud flag.");
     } finally {
       setBusy(false);
     }
@@ -515,15 +751,26 @@ function ReviewQueue({ setMessage }: { setMessage: (value: string) => void }) {
 
             <div className="grid gap-2 sm:grid-cols-2">
               <button
-                disabled={busy || selected.review_status === "POSTED" || selected.review_status === "REJECTED"}
-                onClick={() => void approveAndPost()}
+                disabled={busy || !authority?.can_review || selected.review_status === "POSTED" || selected.review_status === "REJECTED"}
+                onClick={() => void approveOnly()}
                 className={primaryButton}
               >
-                <CheckCircle2 size={16} />Approve & Post
+                <CheckCircle2 size={16} />Approve
               </button>
-              <button disabled={busy} onClick={() => void review("INVESTIGATE")} className={buttonClass}><AlertTriangle size={16} />Investigate</button>
-              <button disabled={busy} onClick={() => void review("HOLD")} className={buttonClass}>Hold</button>
-              <button disabled={busy} onClick={() => void review("REJECT")} className={dangerButton}>Reject</button>
+              <button
+                disabled={busy || !authority?.can_post || selected.review_status !== "APPROVED"}
+                onClick={() => void postApproved()}
+                className={primaryButton}
+              >
+                <ShieldCheck size={16} />Post Approved Event
+              </button>
+              <button disabled={busy || !authority?.can_review} onClick={() => void review("INVESTIGATE")} className={buttonClass}><AlertTriangle size={16} />Investigate</button>
+              <button disabled={busy || !authority?.can_review} onClick={() => void review("HOLD")} className={buttonClass}>Hold</button>
+              <button disabled={busy || !authority?.can_review} onClick={() => void review("REJECT")} className={dangerButton}>Reject</button>
+              <button disabled={busy || !authority?.can_review} onClick={() => void raiseFraudFlag()} className={dangerButton}><AlertTriangle size={16} />Raise Fraud Flag</button>
+            </div>
+            <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-2 text-xs text-amber-200">
+              Maker-checker control: the transaction creator cannot approve or post the same accounting event. Posting is enabled only for users with explicit posting authority.
             </div>
           </div>
         )}
@@ -592,30 +839,37 @@ function GeneralLedger({ setMessage }: { setMessage: (value: string) => void }) 
   );
 }
 
-function FinancialReports({ setMessage }: { setMessage: (value: string) => void }) {
+function FinancialReports({ setMessage, authority }: { setMessage: (value: string) => void; authority: Row | null }) {
   const [from, setFrom] = useState(monthStart());
   const [to, setTo] = useState(today());
-  const [asOf, setAsOf] = useState(today());
   const [loading, setLoading] = useState(true);
-  const [pl, setPl] = useState<any>(null);
-  const [bs, setBs] = useState<any>(null);
+  const [report, setReport] = useState<any>(null);
+  const [audit, setAudit] = useState<any>(null);
 
   async function load() {
     setLoading(true);
     setMessage("");
     try {
-      const [plRes, bsRes] = await Promise.all([
-        (supabase as any).rpc("be_accounting_profit_loss_v1", { p_from: from, p_to: to }),
-        (supabase as any).rpc("be_accounting_balance_sheet_v1", { p_as_of: asOf }),
-      ]);
-      if (plRes.error) throw plRes.error;
-      if (bsRes.error) throw bsRes.error;
-      if (!plRes.data?.ok) throw new Error(plRes.data?.code || "P&L unavailable.");
-      if (!bsRes.data?.ok) throw new Error(bsRes.data?.code || "Balance Sheet unavailable.");
-      setPl(plRes.data);
-      setBs(bsRes.data);
+      const { data, error } = await (supabase as any).rpc("be_accounting_periodic_report_v2", {
+        p_from: from,
+        p_to: to,
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.code || "Periodical Finance report unavailable.");
+      setReport(data);
+
+      if (authority?.can_audit) {
+        const auditRes = await (supabase as any).rpc("be_accounting_audit_report_v2", {
+          p_from: from,
+          p_to: to,
+          p_limit: 1000,
+        });
+        if (!auditRes.error && auditRes.data?.ok) setAudit(auditRes.data);
+      } else {
+        setAudit(null);
+      }
     } catch (error: any) {
-      setMessage(error?.message || "Unable to load financial statements.");
+      setMessage(error?.message || "Unable to load periodical Finance reports.");
     } finally {
       setLoading(false);
     }
@@ -632,55 +886,166 @@ function FinancialReports({ setMessage }: { setMessage: (value: string) => void 
     </div>
   );
 
+  function downloadReportWorkbook() {
+    if (!report) return;
+    const wb = XLSX.utils.book_new();
+    const add = (name: string, rows: any[]) => {
+      const ws = XLSX.utils.json_to_sheet(Array.isArray(rows) ? rows : []);
+      XLSX.utils.book_append_sheet(wb, ws, name.slice(0, 31));
+    };
+
+    add("P&L", report.profit_and_loss?.rows || []);
+    add("Balance Sheet", report.balance_sheet?.rows || []);
+    add("Cash Flow", report.cash_flow?.rows || []);
+    add("Payment Channels", report.payment_channels?.rows || []);
+    add("COD Settlement", report.cod_settlement?.rows || []);
+    add("Journal Register", report.journal_register?.rows || []);
+    add("Audit Trail", audit?.audit_chain || []);
+    add("Fraud Flags", audit?.fraud_flags || []);
+
+    const summary = XLSX.utils.aoa_to_sheet([
+      ["Britium Express Periodical Finance & Settlement Report"],
+      ["Period From", from],
+      ["Period To", to],
+      [],
+      ["Metric","Amount / Count"],
+      ["Revenue", report.profit_and_loss?.revenue || 0],
+      ["Net Profit", report.profit_and_loss?.net_profit || 0],
+      ["Cash Inflows", report.cash_flow?.inflows || 0],
+      ["Cash Outflows", report.cash_flow?.outflows || 0],
+      ["Cash Net Movement", report.cash_flow?.net_movement || 0],
+      ["COD Expected", report.cod_settlement?.expected_cod || 0],
+      ["COD Settled", report.cod_settlement?.settled_amount || 0],
+      ["COD Variance", report.cod_settlement?.variance_amount || 0],
+      ["AR Closing", report.receivables_payables?.accounts_receivable_closing || 0],
+      ["AP Closing", report.receivables_payables?.accounts_payable_closing || 0],
+      ["Open Fraud Flags", report.controls?.open_fraud_flags || 0],
+    ]);
+    XLSX.utils.book_append_sheet(wb, summary, "Executive Summary");
+    XLSX.writeFile(wb, `Britium_Express_Finance_Report_${from}_to_${to}.xlsx`);
+  }
+
   return (
     <div className="space-y-4">
       <section className={cardClass}>
-        <div className="mb-4 flex flex-wrap items-end gap-3">
-          <div className="mr-auto flex items-center gap-2"><BarChart3 size={20} className="text-[#68e8bd]" /><h2 className="font-black">Financial Statements</h2></div>
-          <Field label="P&L From"><input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
-          <Field label="P&L To"><input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-          <Field label="Balance Sheet As Of"><input type="date" className={inputClass} value={asOf} onChange={(e) => setAsOf(e.target.value)} /></Field>
-          <button onClick={() => void load()} className={buttonClass}><RefreshCw size={15} />Refresh Reports</button>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="mr-auto">
+            <div className="flex items-center gap-2"><BarChart3 size={20} className="text-[#68e8bd]" /><h2 className="font-black">Periodical Finance & Settlement Reporting</h2></div>
+            <div className="mt-1 text-xs text-[#789ab1]">P&L · Cash Flow · Balance Sheet · COD Settlement · Payment Channels · AR/AP · Journal Register · Audit/Fraud Exceptions</div>
+          </div>
+          <Field label="Date From"><input type="date" className={inputClass} value={from} onChange={(e) => setFrom(e.target.value)} /></Field>
+          <Field label="Date To"><input type="date" className={inputClass} value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+          <button onClick={() => void load()} className={buttonClass}><RefreshCw size={15} />Generate</button>
+          <button disabled={!report} onClick={downloadReportWorkbook} className={primaryButton}><Download size={15} />Export Report Pack</button>
         </div>
-        {loading ? <div className="p-10 text-center text-[#82a5bb]"><Loader2 className="mr-2 inline animate-spin" size={18} />Calculating statements from posted journals…</div> : null}
       </section>
 
-      {!loading && pl ? (
-        <section className={cardClass}>
-          <h3 className="mb-3 font-black">Profit & Loss · {pl.from} to {pl.to}</h3>
-          <div className="grid gap-3 md:grid-cols-5">
-            {summaryCard("Revenue", pl.revenue, "text-emerald-300")}
-            {summaryCard("COGS", pl.cogs, "text-amber-300")}
-            {summaryCard("Gross Profit", pl.gross_profit, "text-[#f6b84b]")}
-            {summaryCard("Operating Expenses", pl.operating_expenses, "text-amber-300")}
-            {summaryCard("Net Profit", pl.net_profit, Number(pl.net_profit) >= 0 ? "text-emerald-300" : "text-rose-300")}
-          </div>
-          <div className="mt-4 overflow-auto rounded-xl border border-[#183b58]">
-            <table className="w-full min-w-[720px] text-left text-xs">
-              <thead className="bg-[#071b2c] text-[#88abc1]"><tr><th className="p-3">Account</th><th>Type</th><th>Report Group</th><th className="pr-3 text-right">Amount</th></tr></thead>
-              <tbody>{(Array.isArray(pl.rows) ? pl.rows : []).map((row: Row) => <tr key={row.account_code} className="border-t border-[#173952]"><td className="p-3">{row.account_code} · {row.account_name}</td><td>{row.account_type}</td><td>{row.report_group}</td><td className="pr-3 text-right">{money(row.amount)}</td></tr>)}</tbody>
-            </table>
-          </div>
-        </section>
-      ) : null}
+      {loading ? <section className={cardClass}><div className="p-10 text-center text-[#82a5bb]"><Loader2 className="mr-2 inline animate-spin" size={18} />Generating periodical report pack…</div></section> : null}
 
-      {!loading && bs ? (
-        <section className={cardClass}>
-          <h3 className="mb-3 font-black">Balance Sheet · As of {bs.as_of}</h3>
-          <div className="grid gap-3 md:grid-cols-5">
-            {summaryCard("Assets", bs.assets, "text-sky-300")}
-            {summaryCard("Liabilities", bs.liabilities, "text-amber-300")}
-            {summaryCard("Equity", bs.equity, "text-violet-300")}
-            {summaryCard("Current Earnings", bs.current_earnings, "text-emerald-300")}
-            {summaryCard("Balance Difference", bs.difference, Math.abs(Number(bs.difference || 0)) < 0.01 ? "text-emerald-300" : "text-rose-300")}
-          </div>
-          <div className="mt-4 overflow-auto rounded-xl border border-[#183b58]">
-            <table className="w-full min-w-[720px] text-left text-xs">
-              <thead className="bg-[#071b2c] text-[#88abc1]"><tr><th className="p-3">Account</th><th>Type</th><th>Report Group</th><th className="pr-3 text-right">Balance</th></tr></thead>
-              <tbody>{(Array.isArray(bs.rows) ? bs.rows : []).map((row: Row) => <tr key={row.account_code} className="border-t border-[#173952]"><td className="p-3">{row.account_code} · {row.account_name}</td><td>{row.account_type}</td><td>{row.report_group}</td><td className="pr-3 text-right">{money(row.amount)}</td></tr>)}</tbody>
-            </table>
-          </div>
-        </section>
+      {!loading && report ? (
+        <>
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">Executive Financial Summary</h3>
+            <div className="grid gap-3 md:grid-cols-4">
+              {summaryCard("Revenue", report.profit_and_loss?.revenue, "text-emerald-300")}
+              {summaryCard("Net Profit", report.profit_and_loss?.net_profit, Number(report.profit_and_loss?.net_profit) >= 0 ? "text-emerald-300" : "text-rose-300")}
+              {summaryCard("Cash Net Movement", report.cash_flow?.net_movement, "text-sky-300")}
+              {summaryCard("Balance Difference", report.balance_sheet?.difference, Math.abs(Number(report.balance_sheet?.difference || 0)) < 0.01 ? "text-emerald-300" : "text-rose-300")}
+              {summaryCard("COD Expected", report.cod_settlement?.expected_cod, "text-[#f6b84b]")}
+              {summaryCard("COD Settled", report.cod_settlement?.settled_amount, "text-emerald-300")}
+              {summaryCard("COD Variance", report.cod_settlement?.variance_amount, Number(report.cod_settlement?.variance_amount || 0) === 0 ? "text-emerald-300" : "text-rose-300")}
+              {summaryCard("Open Fraud Flags", report.controls?.open_fraud_flags, Number(report.controls?.open_fraud_flags || 0) === 0 ? "text-emerald-300" : "text-rose-300")}
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">Cash Flow / Cash & Wallet Movement</h3>
+            <div className="mb-3 grid gap-3 md:grid-cols-3">
+              {summaryCard("Inflows", report.cash_flow?.inflows, "text-emerald-300")}
+              {summaryCard("Outflows", report.cash_flow?.outflows, "text-amber-300")}
+              {summaryCard("Net Movement", report.cash_flow?.net_movement, "text-sky-300")}
+            </div>
+            <div className="overflow-auto rounded-xl border border-[#183b58]">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead className="bg-[#071b2c] text-[#88abc1]"><tr><th className="p-3">Account</th><th className="text-right">Inflows</th><th className="text-right">Outflows</th><th className="pr-3 text-right">Net Movement</th></tr></thead>
+                <tbody>{(report.cash_flow?.rows || []).map((row: Row) => <tr key={row.account_code} className="border-t border-[#173952]"><td className="p-3">{row.account_code} · {row.account_name}</td><td className="text-right">{money(row.inflows)}</td><td className="text-right">{money(row.outflows)}</td><td className="pr-3 text-right">{money(row.net_movement)}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">Payment Channel Reconciliation</h3>
+            <div className="overflow-auto rounded-xl border border-[#183b58]">
+              <table className="w-full min-w-[700px] text-left text-xs">
+                <thead className="bg-[#071b2c] text-[#88abc1]"><tr><th className="p-3">Method</th><th>Mobile Number</th><th className="text-right">Submissions</th><th className="pr-3 text-right">Total Activity</th></tr></thead>
+                <tbody>{(report.payment_channels?.rows || []).map((row: Row, i: number) => <tr key={i} className="border-t border-[#173952]"><td className="p-3">{row.payment_method}</td><td>{row.payment_mobile_number || "—"}</td><td className="text-right">{row.submissions}</td><td className="pr-3 text-right">{money(row.total_activity)}</td></tr>)}</tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">COD / Financial Settlement Summary</h3>
+            <div className="grid gap-3 md:grid-cols-4">
+              {summaryCard("Expected COD", report.cod_settlement?.expected_cod)}
+              {summaryCard("Reported Collected", report.cod_settlement?.reported_collected)}
+              {summaryCard("Rider Remittance", report.cod_settlement?.rider_remittance)}
+              {summaryCard("Settled Amount", report.cod_settlement?.settled_amount)}
+              {summaryCard("Delivery Fee", report.cod_settlement?.delivery_fee)}
+              {summaryCard("Variance", report.cod_settlement?.variance_amount, Number(report.cod_settlement?.variance_amount || 0) === 0 ? "text-emerald-300" : "text-rose-300")}
+              {summaryCard("Ways", report.cod_settlement?.ways)}
+              {summaryCard("Open / Held", report.cod_settlement?.open_or_held, Number(report.cod_settlement?.open_or_held || 0) === 0 ? "text-emerald-300" : "text-amber-300")}
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">Receivables / Payables Position</h3>
+            <div className="grid gap-3 md:grid-cols-4">
+              {summaryCard("Accounts Receivable", report.receivables_payables?.accounts_receivable_closing)}
+              {summaryCard("Accounts Payable", report.receivables_payables?.accounts_payable_closing)}
+              {summaryCard("Rider Payable", report.receivables_payables?.rider_payable_closing)}
+              {summaryCard("COD Pending Remittance", report.receivables_payables?.cod_pending_remittance_closing)}
+            </div>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-3 font-black">P&L and Balance Sheet</h3>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <div>
+                <div className="mb-2 font-bold text-[#9bbbd0]">Profit & Loss</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {summaryCard("Revenue", report.profit_and_loss?.revenue)}
+                  {summaryCard("COGS", report.profit_and_loss?.cogs)}
+                  {summaryCard("Operating Expenses", report.profit_and_loss?.operating_expenses)}
+                  {summaryCard("Net Profit", report.profit_and_loss?.net_profit)}
+                </div>
+              </div>
+              <div>
+                <div className="mb-2 font-bold text-[#9bbbd0]">Balance Sheet</div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {summaryCard("Assets", report.balance_sheet?.assets)}
+                  {summaryCard("Liabilities", report.balance_sheet?.liabilities)}
+                  {summaryCard("Equity", report.balance_sheet?.equity)}
+                  {summaryCard("Difference", report.balance_sheet?.difference)}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {authority?.can_audit ? (
+            <section className={cardClass}>
+              <h3 className="mb-3 font-black">Audit & Fraud Control</h3>
+              <div className="grid gap-3 md:grid-cols-4">
+                {summaryCard("Review Pending", report.controls?.review_pending)}
+                {summaryCard("Held", report.controls?.held)}
+                {summaryCard("Needs Review", report.controls?.needs_review)}
+                {summaryCard("Approved Not Posted", report.controls?.approved_not_posted)}
+              </div>
+              <div className="mt-3 text-xs text-[#789ab1]">
+                Tamper-evident audit events loaded: {Array.isArray(audit?.audit_chain) ? audit.audit_chain.length : 0} · Fraud flags: {Array.isArray(audit?.fraud_flags) ? audit.fraud_flags.length : 0}
+              </div>
+            </section>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
