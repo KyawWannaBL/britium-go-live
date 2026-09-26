@@ -70,7 +70,9 @@
     "verify:field-team-verify-release-v140": "node scripts/verify-field-team-verify-release-v140.mjs",
     "verify:rider-proof-sync-orphan-guard-v141": "node scripts/verify-rider-proof-sync-orphan-guard-v141.mjs",
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
-    "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs"
+    "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
+    "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
+    "prebuild": "npm run verify:accounting-portal-v1"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
