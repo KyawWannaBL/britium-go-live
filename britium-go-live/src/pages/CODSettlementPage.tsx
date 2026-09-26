@@ -5,9 +5,9 @@ export default function CODSettlementPage() {
   return (
     <PortalLiveSnapshotPage
       title="COD Settlement"
-      subtitle="COD settlement rows from delivered/drop-off/RTO workflow."
-      rpcName="be_cod_settlement_display_snapshot"
-      rpcArgs={{}}
+      subtitle="Finance V48 COD reconciliation from Rider delivery proof, COD collection, remittance and settlement workflow."
+      rpcName="be_finance_cod_snapshot_v48"
+      rpcArgs={{ p_status: "ALL", p_limit: 500 }}
       rowsKey="rows"
     />
   );
