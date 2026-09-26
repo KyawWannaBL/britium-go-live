@@ -5,6 +5,8 @@ import {
   BarChart3,
   BookOpen,
   CheckCircle2,
+  Download,
+  FileSpreadsheet,
   FileLock2,
   Loader2,
   RefreshCw,
@@ -13,14 +15,16 @@ import {
   WalletCards,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import * as XLSX from "xlsx";
 
 export const ACCOUNTING_PORTAL_BUILD = "ACCOUNTING_ERP_V1_20260926";
 
 type Row = Record<string, any>;
-type Tab = "daily-entry" | "review" | "ledger" | "reports";
+type Tab = "daily-entry" | "template" | "review" | "ledger" | "reports";
 
 const tabs: Array<{ id: Tab; label: string }> = [
   { id: "daily-entry", label: "Daily Finance Entry" },
+  { id: "template", label: "Finance Data Entry Template" },
   { id: "review", label: "Review Queue" },
   { id: "ledger", label: "General Ledger" },
   { id: "reports", label: "P&L / Balance Sheet" },
@@ -126,6 +130,7 @@ export default function AccountingPortalPage() {
         <Message text={message} />
 
         {tab === "daily-entry" ? <DailyFinanceEntry setMessage={setMessage} /> : null}
+        {tab === "template" ? <FinanceDataEntryTemplate /> : null}
         {tab === "review" ? <ReviewQueue setMessage={setMessage} /> : null}
         {tab === "ledger" ? <GeneralLedger setMessage={setMessage} /> : null}
         {tab === "reports" ? <FinancialReports setMessage={setMessage} /> : null}
@@ -151,6 +156,10 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
     accounts_receivable_invoiced: "",
     accounts_payable_incurred: "",
     funding_account_code: "1010",
+    payment_method: "PETTY_CASH",
+    payment_mobile_number: "",
+    payment_reference: "",
+    supporting_document_reference: "",
     petty_cash_description: "",
     ar_counterparty: "",
     ar_reference: "",
@@ -204,7 +213,11 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
         p_entry_date: form.entry_date,
         p_department_code: form.department_code.trim() || "FINANCE",
         p_funding_account_code: form.funding_account_code,
+        p_payment_method: form.payment_method,
+        p_payment_mobile_number: form.payment_mobile_number || null,
+        p_payment_reference: form.payment_reference || null,
         p_metadata: {
+          supporting_document_reference: form.supporting_document_reference.trim(),
           petty_cash_description: form.petty_cash_description.trim(),
           ar_counterparty: form.ar_counterparty.trim(),
           ar_reference: form.ar_reference.trim(),
@@ -217,7 +230,7 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
       };
       for (const key of numericKeys) params[`p_${key}`] = Number(form[key] || 0);
 
-      const { data, error } = await (supabase as any).rpc("be_accounting_submit_finance_daily_v1", params);
+      const { data, error } = await (supabase as any).rpc("be_accounting_submit_finance_daily_v2", params);
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.message || data?.code || "Finance submission failed.");
 
@@ -251,11 +264,21 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
         <div className="grid gap-3 md:grid-cols-3">
           <Field label="Entry Date"><input type="date" className={inputClass} value={form.entry_date} onChange={(e) => setForm({ ...form, entry_date: e.target.value })} /></Field>
           <Field label="Department"><input className={inputClass} value={form.department_code} onChange={(e) => setForm({ ...form, department_code: e.target.value })} /></Field>
-          <Field label="Funding / Payment Account" hint="Used for cash/bank revenue receipts and immediate expenses.">
-            <select className={inputClass} value={form.funding_account_code} onChange={(e) => setForm({ ...form, funding_account_code: e.target.value })}>
-              <option value="1000">1000 · Cash on Hand</option>
-              <option value="1010">1010 · Petty Cash</option>
-              <option value="1100">1100 · Bank Accounts</option>
+          <Field label="Payment / Funding Method" hint="Select the actual channel used for the receipt or payment.">
+            <select
+              className={inputClass}
+              value={`${form.payment_method}|${form.payment_mobile_number}|${form.funding_account_code}`}
+              onChange={(e) => {
+                const [payment_method, payment_mobile_number, funding_account_code] = e.target.value.split("|");
+                setForm({ ...form, payment_method, payment_mobile_number, funding_account_code, payment_reference: "" });
+              }}
+            >
+              <option value="CASH||1000">Cash on Hand · 1000</option>
+              <option value="PETTY_CASH||1010">Petty Cash · 1010</option>
+              <option value="BANK||1100">Bank Accounts · 1100</option>
+              <option value="MMQR|09897447722|1110">MMQR · 09897447722</option>
+              <option value="KBZ_PAY|09897447722|1120">KBZ Pay · 09897447722</option>
+              <option value="KBZ_PAY|09897447733|1121">KBZ Pay · 09897447733</option>
             </select>
           </Field>
 
@@ -287,6 +310,36 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
             );
           })}
         </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <Field
+            label="Payment Transaction Reference"
+            hint={form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY" ? "Required for MMQR / KBZ Pay. Enter the transfer/transaction reference exactly." : "Optional for cash; recommended for bank transactions."}
+          >
+            <input
+              className={inputClass}
+              value={form.payment_reference}
+              onChange={(e) => setForm({ ...form, payment_reference: e.target.value })}
+              placeholder={form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY" ? "Required transaction reference" : "Bank / receipt / voucher reference"}
+            />
+          </Field>
+          <Field label="Supporting Document Reference" hint="Voucher, receipt, invoice, settlement batch, bank slip, or approval reference.">
+            <input
+              className={inputClass}
+              value={form.supporting_document_reference}
+              onChange={(e) => setForm({ ...form, supporting_document_reference: e.target.value })}
+              placeholder="e.g. VCH-20260926-001"
+            />
+          </Field>
+        </div>
+
+        {(form.payment_method === "MMQR" || form.payment_method === "KBZ_PAY") ? (
+          <div className="mt-3 rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3 text-sm text-cyan-100">
+            <b>{form.payment_method === "MMQR" ? "MMQR" : "KBZ Pay"}</b> linked mobile:
+            <span className="ml-2 font-black">{form.payment_mobile_number}</span>
+            <span className="ml-2 text-xs text-cyan-300">· GL {form.funding_account_code}</span>
+          </div>
+        ) : null}
 
         {Number(form.petty_cash_expenses || 0) > 0 ? (
           <div className="mt-3">
@@ -355,6 +408,121 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
         </div>
       </section>
     </div>
+  );
+}
+
+
+function FinanceDataEntryTemplate() {
+  const columns = [
+    "Entry Date",
+    "Department",
+    "Payment Method",
+    "Mobile Number",
+    "Payment Reference",
+    "Delivery Fees Collected",
+    "COD Handling Fees",
+    "Surcharges",
+    "Rider Commissions Accrued",
+    "Fuel & Tolls Spent",
+    "Packaging Supplies Spent",
+    "Petty Cash Expenses",
+    "COD Cash Collected",
+    "Accounts Receivable Invoiced",
+    "Accounts Payable Incurred",
+    "Petty Cash Description",
+    "AR Counterparty",
+    "AR Invoice / Reference",
+    "AR Offset Account Code",
+    "AP Counterparty",
+    "AP Invoice / Reference",
+    "AP Offset Account Code",
+    "Supporting Document Reference",
+    "Notes",
+  ];
+
+  const sampleRows = [
+    ["2026-09-26","FINANCE","MMQR","09897447722","MMQR-REF-001",150000,5000,0,0,0,0,0,450000,0,0,"","","","","","","","SETTLE-0926-001","Daily MMQR collection"],
+    ["2026-09-26","FINANCE","KBZ_PAY","09897447722","KBZ-REF-001",200000,7000,0,0,0,0,0,600000,0,0,"","","","","","","","SETTLE-0926-002","KBZ Pay wallet 1"],
+    ["2026-09-26","FINANCE","KBZ_PAY","09897447733","KBZ-REF-002",175000,6000,0,0,0,0,0,525000,0,0,"","","","","","","","SETTLE-0926-003","KBZ Pay wallet 2"],
+    ["2026-09-26","FINANCE","PETTY_CASH","","PC-0926-015",0,0,0,0,0,0,35000,0,0,0,"Office stationery","","","","","","","VCH-PC-0926-015","Petty cash expense"],
+  ];
+
+  function downloadTemplate() {
+    const ws = XLSX.utils.aoa_to_sheet([columns, ...sampleRows]);
+    ws["!freeze"] = { xSplit: 0, ySplit: 1 };
+    ws["!cols"] = columns.map((name) => ({ wch: Math.max(14, Math.min(30, name.length + 3)) }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Finance Data Entry");
+    const guide = XLSX.utils.aoa_to_sheet([
+      ["Britium Express Finance Data Entry Template"],
+      ["Rule","Instruction"],
+      ["One row","Use one row per date + department + payment channel/reference batch."],
+      ["MMQR","Mobile number must be 09897447722 and transaction reference is required."],
+      ["KBZ Pay","Use either 09897447722 or 09897447733; transaction reference is required."],
+      ["Duplicate control","Do not re-enter the same locked transaction/reference."],
+      ["Supporting evidence","Record voucher, invoice, bank slip, settlement batch, or other evidence reference."],
+      ["Maker-checker","The preparer must not approve/post their own accounting event."],
+    ]);
+    guide["!cols"] = [{ wch: 20 }, { wch: 95 }];
+    XLSX.utils.book_append_sheet(wb, guide, "Instructions");
+    XLSX.writeFile(wb, `Britium_Express_Finance_Data_Entry_Template_${today()}.xlsx`);
+  }
+
+  return (
+    <section className={cardClass}>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <FileSpreadsheet size={20} className="text-[#68e8bd]" />
+            <h2 className="text-lg font-black">Finance Department Data Entry Template</h2>
+          </div>
+          <p className="mt-1 text-sm text-[#8eafc4]">
+            Standard batch format for Finance staff. One row represents one date/department/payment-channel batch.
+          </p>
+        </div>
+        <button onClick={downloadTemplate} className={primaryButton}>
+          <Download size={16} />Download Excel Template
+        </button>
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-cyan-500/25 bg-cyan-500/5 p-3">
+          <div className="text-xs font-bold text-cyan-300">MMQR</div>
+          <div className="mt-1 font-black">09897447722</div>
+          <div className="text-xs text-[#789ab1]">GL 1110 · transaction reference required</div>
+        </div>
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3">
+          <div className="text-xs font-bold text-blue-300">KBZ Pay</div>
+          <div className="mt-1 font-black">09897447722</div>
+          <div className="text-xs text-[#789ab1]">GL 1120 · transaction reference required</div>
+        </div>
+        <div className="rounded-xl border border-blue-500/25 bg-blue-500/5 p-3">
+          <div className="text-xs font-bold text-blue-300">KBZ Pay</div>
+          <div className="mt-1 font-black">09897447733</div>
+          <div className="text-xs text-[#789ab1]">GL 1121 · transaction reference required</div>
+        </div>
+      </div>
+
+      <div className="mt-4 overflow-auto rounded-xl border border-[#183b58]">
+        <table className="w-full min-w-[2500px] text-left text-xs">
+          <thead className="bg-[#071b2c] text-[#88abc1]">
+            <tr>{columns.map((column) => <th key={column} className="whitespace-nowrap p-3">{column}</th>)}</tr>
+          </thead>
+          <tbody>
+            {sampleRows.map((row, rowIndex) => (
+              <tr key={rowIndex} className="border-t border-[#173952]">
+                {row.map((cell, cellIndex) => <td key={cellIndex} className="whitespace-nowrap p-3">{String(cell || "—")}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 rounded-xl border border-amber-500/25 bg-amber-500/5 p-3 text-sm text-amber-100">
+        <b>Control rule:</b> Staff must record the actual payment channel, exact mobile number/reference, and supporting document reference.
+        Repeated references or identical transaction fingerprints are blocked/flagged by the Accounting ERP audit controls.
+      </div>
+    </section>
   );
 }
 
