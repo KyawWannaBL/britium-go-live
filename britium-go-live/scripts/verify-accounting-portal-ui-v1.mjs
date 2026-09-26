@@ -13,6 +13,12 @@ const page = mustRead("src/pages/AccountingPortalPage.tsx");
 const app = mustRead("src/App.tsx");
 const sidebar = mustRead("src/components/Sidebar.tsx");
 const pickup = mustRead("src/pages/PickupFormPage.tsx");
+const codSettlement = mustRead("src/pages/CODSettlementPage.tsx");
+const workforce = mustRead("src/pages/WorkforceCommissionPage.tsx");
+const riderField = mustRead("src/pages/RiderFieldPortalApp.tsx");
+const riderFinanceSync = mustRead("../supabase/migrations/20260926164500_rider_finance_cod_payload_sync_v94.sql");
+const codExpectedSync = mustRead("../supabase/migrations/20260926165000_finance_cod_expected_amount_source_v48.sql");
+const deliveryCommissionSync = mustRead("../supabase/migrations/20260926165500_delivery_commission_sync_v94.sql");
 
 for (const marker of [
   'data-be-accounting-portal="true"',
@@ -58,3 +64,17 @@ assertIncludes(pickup, 'option value="KBZ_PAY"', "Pickup KBZ Pay payment option"
 assertIncludes(pickup, 'option value="MMQR"', "Pickup MMQR payment option");
 assertIncludes(pickup, 'option value="BANK_TRANSFER"', "Pickup Bank Transfer payment option");
 assertIncludes(pickup, "200,000 MMK", "Pickup COD threshold guidance");
+
+assertIncludes(codSettlement, "be_finance_cod_snapshot_v48", "COD Settlement V48 source");
+assertIncludes(codSettlement, 'p_status: "ALL"', "COD Settlement all-status filter");
+assertIncludes(workforce, "loadRiderCommissionSettlement", "Workforce rider commission");
+assertIncludes(workforce, "loadDriverHelperCommissionSettlement", "Workforce driver/helper commission");
+assertIncludes(riderField, "Verify Delivery / Delivered", "Rider delivery verification UI");
+assertIncludes(riderField, "COD must be collected before delivery", "Rider COD collection guard");
+assertIncludes(riderField, "delivery proof photo", "Rider delivery proof guard");
+assertIncludes(riderFinanceSync, "cod_collected", "Rider-to-Finance COD payload sync");
+assertIncludes(riderFinanceSync, "proof_reference", "Rider-to-Finance proof sync");
+assertIncludes(codExpectedSync, "greatest(coalesce(d.actual_collect,0),coalesce(d.cod_amount,0)", "Finance canonical expected COD");
+assertIncludes(deliveryCommissionSync, "be_user_account_registry", "Commission canonical workforce lookup");
+assertIncludes(deliveryCommissionSync, "WAYPLAN_DELIVERED_TRIGGER_V94", "Commission delivered-stop source");
+console.log("Finance Rider-to-Settlement production contract PASS");
