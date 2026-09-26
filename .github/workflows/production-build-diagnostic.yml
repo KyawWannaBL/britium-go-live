@@ -2,7 +2,7 @@ name: Production Build Diagnostic
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/accounting-erp-v2-controls-reports]
 
 jobs:
   build:
