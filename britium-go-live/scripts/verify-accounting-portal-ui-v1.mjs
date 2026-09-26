@@ -20,12 +20,19 @@ for (const marker of [
   "Review Queue",
   "General Ledger",
   "P&L / Balance Sheet",
-  "be_accounting_submit_finance_daily_v1",
+  "Finance Data Entry Template",
+  "Download Excel Template",
+  "MMQR",
+  "09897447722",
+  "KBZ Pay",
+  "09897447733",
+  "be_accounting_submit_finance_daily_v2",
   "be_accounting_review_event_v1",
-  "be_accounting_approve_and_post_event_v1",
+  "be_accounting_post_approved_event_v2",
+  "be_accounting_raise_fraud_flag_v2",
   "be_accounting_general_ledger_v1",
-  "be_accounting_profit_loss_v1",
-  "be_accounting_balance_sheet_v1",
+  "be_accounting_periodic_report_v2",
+  "be_accounting_audit_report_v2",
 ]) {
   assertIncludes(page, marker, "AccountingPortalPage");
 }
