@@ -1525,6 +1525,39 @@ function DeliveryJourney({ job }: { job: RiderJob }) {
   </div>;
 }
 
+function DeliveryControlPanel({
+  job,
+  onAction,
+  onModal,
+}: {
+  job: RiderJob;
+  onAction: (job: RiderJob, action: string, remark?: string) => void;
+  onModal: (job: RiderJob, mode: ModalMode) => void;
+}) {
+  const state=upper((job as any).mobile_status || (job as any).stop_status || (job as any).rider_status || (job as any).dispatch_status || "");
+  const isAccepted=["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY"].includes(state);
+  const isOut=["OUT_FOR_DELIVERY","DELIVERY_STARTED"].includes(state);
+  const isArrived=state==="ARRIVED_AT_CUSTOMER";
+  const isDone=["DELIVERED","COMPLETED"].includes(state);
+
+  if(isDone) return <div style={{border:`1px solid ${C.green}`,background:"rgba(52,211,153,.10)",color:C.green,borderRadius:14,padding:12,fontWeight:800}}>Delivery completed.</div>;
+
+  return <div data-delivery-control-v161="true" style={{border:`2px solid ${C.blue}`,background:"rgba(78,168,222,.08)",borderRadius:16,padding:14,display:"grid",gap:10}}>
+    <div style={{display:"flex",justifyContent:"space-between",gap:10,flexWrap:"wrap",alignItems:"center"}}>
+      <div>
+        <div style={{fontSize:12,color:C.sub,fontWeight:800,textTransform:"uppercase"}}>Delivery Control</div>
+        <div style={{fontSize:18,fontWeight:900,color:C.text,marginTop:2}}>{state || "READY_FOR_DELIVERY"}</div>
+      </div>
+      <Badge color={C.blue}>Backend-driven next action</Badge>
+    </div>
+    {isAccepted && <button type="button" data-delivery-primary-action="START" onClick={()=>onAction(job,"OUT_FOR_DELIVERY","Rider started customer delivery")} style={{...buttonStyle("blue"),minHeight:52,fontSize:15}}>Start Delivery</button>}
+    {isOut && <button type="button" data-delivery-primary-action="ARRIVE" onClick={()=>onAction(job,"ARRIVED_AT_CUSTOMER","Rider GPS-confirmed arrival at customer")} style={{...buttonStyle("gold"),minHeight:52,fontSize:15}}><MapPin size={18}/> Arrived at Customer</button>}
+    {isArrived && <button type="button" data-delivery-primary-action="VERIFY" onClick={()=>onModal(job,"delivery")} style={{...buttonStyle("green"),minHeight:52,fontSize:15}}>Verify Recipient, Payment & Proof</button>}
+    {!isAccepted && !isOut && !isArrived && <button type="button" data-delivery-primary-action="ACCEPT" onClick={()=>onAction(job,"ACCEPTED","Rider accepted delivery parcel")} style={{...buttonStyle("plain"),minHeight:52,fontSize:15}}><CheckCircle2 size={18}/> Accept Delivery</button>}
+    <button type="button" onClick={()=>onModal(job,"exception")} style={{...buttonStyle("red"),minHeight:46}}><AlertTriangle size={16}/> Delivery Exception / Reschedule</button>
+  </div>;
+}
+
 function JobCard({
   job,
   onAction,
@@ -1687,6 +1720,9 @@ function JobCard({
       )}
 
       {deliveryMode && <DeliveryJourney job={job} />}
+      {deliveryMode && !delivered && !exception && !helperMode && (
+        <DeliveryControlPanel job={job} onAction={onAction} onModal={onModal} />
+      )}
       {deliveryMode && (
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           <Badge color={C.blue}>Current state: {upper((job as any).mobile_status || (job as any).stop_status || (job as any).rider_status || "READY_FOR_DELIVERY")}</Badge>
@@ -3092,6 +3128,7 @@ function FieldPortal() {
               <div style={{ color: C.gold, letterSpacing: "0.28em", fontSize: 12, fontWeight: 800 }}>FIELD COMMAND WALL</div>
               <h1 style={{ margin: "8px 0 6px", fontSize: 28 }}>Welcome, {me.name}</h1>
               <p style={{ margin: 0, color: C.sub }}>Backend assignments, notifications, pickup, delivery, COD, route, and exception workflow.</p>
+              <div style={{marginTop:6,fontSize:10,color:C.dim}}>Rider UI build: V161</div>
             </div>
             <div style={{ display: "grid", gap: 7, minWidth: 260 }}>
               <div style={{ color: C.sub, fontSize: 12 }}>Source</div>

@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const page=fs.readFileSync(path.join(root,"src/pages/RiderFieldPortalApp.tsx"),"utf8");
+assert.match(page,/data-delivery-control-v161/);
+assert.match(page,/data-delivery-primary-action="START"/);
+assert.match(page,/data-delivery-primary-action="ARRIVE"/);
+assert.match(page,/data-delivery-primary-action="VERIFY"/);
+assert.match(page,/Delivery Exception \/ Reschedule/);
+assert.match(page,/Rider UI build: V161/);
+assert.doesNotMatch(page,/disabled=\{deliveryActionBusy\}/);
+console.log("Rider Delivery Control Panel V161 PASS");
