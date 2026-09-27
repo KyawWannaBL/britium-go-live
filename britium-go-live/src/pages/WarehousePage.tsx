@@ -280,11 +280,16 @@ export default function WarehousePage() {
     }
   };
 
+  const handedOffWayIds = useMemo(
+    () => new Set((handoffArchive?.handed_off_ids || []).map((id:any)=>String(id||"").toUpperCase())),
+    [handoffArchive]
+  );
+
   const readyWays = Array.from(new Set(
     rows
       .filter((r:any) => r.warehouse_scan_status === "RECEIVED")
       .map((r:any) => canonicalDeliveryWayId(r))
-      .filter(Boolean)
+      .filter((id:string) => id && !handedOffWayIds.has(id.toUpperCase()))
   )) as string[];
 
   const openWayplanHandoff = (deliveryWayIds:string[], notice:string) => {
@@ -633,40 +638,37 @@ export default function WarehousePage() {
         ))}
       </div>
 
-      <section className={`mb-4 rounded-xl border p-4 ${dispatchRequiredRows.length ? "border-amber-500 bg-amber-950/20" : "border-slate-800 bg-[#0B2133]"}`}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="font-bold text-amber-300">Warehouse Dispatch Scan Queue</h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Only parcels in this queue require Dispatch Scan now. They are already released by Supervisor as DISPATCH_READY.
-            </p>
-            <p className="mt-1 text-xs text-slate-400">
-              Draft / under-review Wayplans are not scannable. Received parcels not yet assigned to a released Wayplan remain in Ready for Wayplan.
-            </p>
+      {dispatchRequiredRows.length ? (
+        <section className="mb-4 rounded-xl border border-amber-500 bg-amber-950/20 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-amber-300">Warehouse Dispatch Scan Queue</h2>
+              <p className="mt-1 text-sm text-slate-300">These parcels are now released by Supervisor as DISPATCH_READY and require Warehouse Dispatch Scan.</p>
+              <p className="mt-1 text-xs text-slate-400">Correct flow: Warehouse Ready → Create Wayplan → Supervisor confirms/releases → Warehouse Dispatch Scan.</p>
+            </div>
+            <button
+              type="button"
+              onClick={()=>{setDispatchOnly(true);setProgressFilter("DISPATCH_SCAN_REQUIRED");setScanMode("dispatch");setTimeout(()=>focusScanner(),0);}}
+              className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950"
+            >
+              Show parcels to Dispatch Scan ({dispatchRequiredRows.length})
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={()=>{setDispatchOnly(true);setProgressFilter("DISPATCH_SCAN_REQUIRED");setScanMode("dispatch");setTimeout(()=>focusScanner(),0);}}
-            disabled={!dispatchRequiredRows.length}
-            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Show only parcels to Dispatch Scan ({dispatchRequiredRows.length})
-          </button>
-        </div>
-        {dispatchWayplans.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
+          {dispatchWayplans.length ? <div className="mt-3 flex flex-wrap gap-2">
             {dispatchWayplans.map(w=>(
               <span key={w.wayplanId} className="rounded-lg border border-amber-700 bg-slate-950/40 px-3 py-2 text-xs text-slate-200">
                 <strong className="text-amber-300">{w.wayplanId}</strong> · {w.count} parcel(s) · Vehicle {w.vehicle}
               </span>
             ))}
-          </div>
-        ) : (
-          <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/30 p-3 text-sm text-slate-400">
-            No parcels currently require Dispatch Scan. Warehouse staff should continue inbound staging / Wayplan preparation.
-          </div>
-        )}
-      </section>
+          </div> : null}
+        </section>
+      ) : (
+        <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
+          <h2 className="font-bold text-slate-200">Wayplan / Supervisor workflow status</h2>
+          <p className="mt-1 text-sm text-slate-300">No parcel is released for Dispatch Scan. Continue with Wayplan creation or wait for Supervisor confirmation.</p>
+          <p className="mt-1 text-xs text-slate-500">Warehouse Dispatch Scan will appear automatically only after Supervisor releases a created Wayplan as DISPATCH_READY.</p>
+        </section>
+      )}
 
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -713,7 +715,7 @@ export default function WarehousePage() {
                   {(handoffArchive.rows || []).map((item:any)=>(
                     <div key={item.delivery_way_id} className="rounded-lg border border-violet-500/40 bg-violet-950/30 px-3 py-2 text-xs">
                       <div className="font-black text-violet-200">{item.delivery_way_id}</div>
-                      <div className="mt-1 text-slate-400">Shown in Wayplan: {fmt(item.visible_in_wayplan_at)}</div>
+                      <div className="mt-1 text-slate-400">{item.visible_in_wayplan_at ? `Shown in Wayplan: ${fmt(item.visible_in_wayplan_at)}` : "Handed off to Wayplan — awaiting creation/review"}</div>
                       <div className="text-slate-500">Archive expires: {fmt(item.expires_at)}</div>
                     </div>
                   ))}
