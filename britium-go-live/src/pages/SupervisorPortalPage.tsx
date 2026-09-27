@@ -284,6 +284,43 @@ export default function SupervisorPortalPage() {
   const [selectedHelper, setSelectedHelper] = useState("");
   const [selectedFleet, setSelectedFleet] = useState("");
   const [supervisorNote, setSupervisorNote] = useState("");
+  const [workforceMaster, setWorkforceMaster] = useState<any[]>([]);
+  const [workforceSearch, setWorkforceSearch] = useState("");
+  const [workforceTypeFilter, setWorkforceTypeFilter] = useState("");
+  const [workforceMessage, setWorkforceMessage] = useState("");
+  const [workforceBusy, setWorkforceBusy] = useState(false);
+  const [workforceForm, setWorkforceForm] = useState({
+    workforce_type: "RIDER", workforce_code: "", workforce_name: "", phone: "",
+    branch_code: "YGN", assigned_zone: "", employment_type: "FULL_TIME",
+    license_no: "", assigned_fleet_id: "", status: "ACTIVE",
+  });
+
+  async function loadWorkforceMaster() {
+    const { data, error } = await (supabase as any).rpc("be_supervisor_workforce_master_center_v1", {
+      p_type: workforceTypeFilter || null,
+      p_status: null,
+      p_search: workforceSearch.trim() || null,
+    });
+    if (error) return setWorkforceMessage(error.message);
+    if (data?.ok === false) return setWorkforceMessage(data?.code || "Unable to load workforce master.");
+    setWorkforceMaster(Array.isArray(data?.rows) ? data.rows : []);
+  }
+
+  async function saveWorkforce() {
+    setWorkforceBusy(true);
+    setWorkforceMessage("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_supervisor_workforce_master_upsert_v1", { p_payload: workforceForm });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.code || "Workforce update failed.");
+      setWorkforceMessage(String(data.workforce_code) + ": workforce master synchronized to assignment lists.");
+      await Promise.all([loadWorkforceMaster(), loadData(false)]);
+    } catch (e:any) {
+      setWorkforceMessage(e?.message || "Workforce update failed.");
+    } finally {
+      setWorkforceBusy(false);
+    }
+  }
 
   async function loadData(showSpinner = true) {
     if (showSpinner) setLoading(true);
@@ -360,12 +397,19 @@ export default function SupervisorPortalPage() {
     }
 
     loadData();
+    loadWorkforceMaster();
 
     const channel = supabase
       .channel("supervisor-portal-live-assignment")
       .on("postgres_changes", { event: "*", schema: "public", table: "be_portal_pickup_requests" }, safeReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "be_app_notifications" }, safeReload)
       .on("postgres_changes", { event: "*", schema: "public", table: "be_mobile_workforce_accounts" }, safeReload)
+      .on("postgres_changes", { event: "*", schema: "public", table: "be_master_data_rows" }, async () => {
+        if (mounted) {
+          await loadWorkforceMaster();
+          await loadData(false);
+        }
+      })
       .subscribe();
 
     return () => {
@@ -751,6 +795,50 @@ export default function SupervisorPortalPage() {
             <button onClick={assignJob} disabled={loading || !selectedItem} className="w-full h-14 rounded-2xl bg-[#f6b84b] hover:bg-[#e5a93a] text-[#061524] font-black uppercase tracking-wider transition-colors disabled:opacity-50 cursor-pointer shadow-lg shadow-[#f6b84b]/10 flex items-center justify-center gap-2">
               <Truck size={18} /> <span>{loading ? t("Assigning...", "Assigning...") : t("Confirm Assignment + Send to App", "တာဝန်ချပြီး App သို့ ပို့မည်")}</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
+        <div className="flex flex-col xl:flex-row justify-between gap-4 mb-5">
+          <div>
+            <div className="text-[#f6b84b] text-[11px] font-black uppercase tracking-[0.18em]">Workforce Master Authority</div>
+            <h2 className="text-xl font-black text-white mt-1">Rider / Driver / Helper Master</h2>
+            <p className="text-[#4d7a9b] text-xs mt-1">Add, edit, suspend, reactivate or remove field-team members. Changes synchronize immediately to Supabase and assignment dropdowns.</p>
+          </div>
+          <div className="flex gap-2 items-start">
+            <input value={workforceSearch} onChange={(e)=>setWorkforceSearch(e.target.value)} placeholder="Search code/name/phone" className="h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs" />
+            <select value={workforceTypeFilter} onChange={(e)=>setWorkforceTypeFilter(e.target.value)} className="h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs"><option value="">All Types</option><option>RIDER</option><option>DRIVER</option><option>HELPER</option></select>
+            <button onClick={()=>void loadWorkforceMaster()} className="h-11 px-4 rounded-xl bg-[#1a3a5c] text-white text-xs font-black">Refresh</button>
+          </div>
+        </div>
+        {workforceMessage && <div className="mb-4 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-3 text-sm font-bold text-[#86efac]">{workforceMessage}</div>}
+        <div className="grid grid-cols-1 xl:grid-cols-[0.85fr_1.15fr] gap-5">
+          <div className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Type</span><select value={workforceForm.workforce_type} onChange={(e)=>setWorkforceForm({...workforceForm,workforce_type:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white"><option>RIDER</option><option>DRIVER</option><option>HELPER</option></select></label>
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Code</span><input value={workforceForm.workforce_code} onChange={(e)=>setWorkforceForm({...workforceForm,workforce_code:e.target.value.toUpperCase()})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label>
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Name</span><input value={workforceForm.workforce_name} onChange={(e)=>setWorkforceForm({...workforceForm,workforce_name:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label>
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Phone</span><input value={workforceForm.phone} onChange={(e)=>setWorkforceForm({...workforceForm,phone:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label>
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Branch</span><input value={workforceForm.branch_code} onChange={(e)=>setWorkforceForm({...workforceForm,branch_code:e.target.value.toUpperCase()})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label>
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Zone</span><input value={workforceForm.assigned_zone} onChange={(e)=>setWorkforceForm({...workforceForm,assigned_zone:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label>
+              {workforceForm.workforce_type==="DRIVER" && <><label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">License No.</span><input value={workforceForm.license_no} onChange={(e)=>setWorkforceForm({...workforceForm,license_no:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label><label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Assigned Fleet ID</span><input value={workforceForm.assigned_fleet_id} onChange={(e)=>setWorkforceForm({...workforceForm,assigned_fleet_id:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white" /></label></>}
+              <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Status</span><select value={workforceForm.status} onChange={(e)=>setWorkforceForm({...workforceForm,status:e.target.value})} className="w-full h-11 rounded-xl bg-[#081b2e] border border-[#1a3a5c] px-3 text-white"><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select></label>
+            </div>
+            <button disabled={workforceBusy || !workforceForm.workforce_code.trim() || !workforceForm.workforce_name.trim()} onClick={()=>void saveWorkforce()} className="mt-4 w-full h-12 rounded-xl bg-[#f6b84b] text-[#061524] font-black disabled:opacity-40">{workforceBusy?"Synchronizing...":"Save + Synchronize Workforce"}</button>
+          </div>
+          <div className="space-y-2 max-h-[540px] overflow-auto">
+            {workforceMaster.map((w:any)=>(
+              <button key={w.workforce_type + "-" + w.workforce_code} onClick={()=>setWorkforceForm({
+                workforce_type:w.workforce_type||"RIDER",workforce_code:w.workforce_code||"",workforce_name:w.workforce_name||"",
+                phone:w.phone||"",branch_code:w.branch_code||"",assigned_zone:w.assigned_zone||"",employment_type:w.employment_type||"FULL_TIME",
+                license_no:w.license_no||"",assigned_fleet_id:w.assigned_fleet_id||"",status:w.status||"ACTIVE"
+              })} className="w-full text-left rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4 hover:border-[#f6b84b]">
+                <div className="flex justify-between gap-3"><div><span className="font-mono text-[#38bdf8] font-black">{w.workforce_code}</span><span className="ml-2 text-white font-bold">{w.workforce_name}</span></div><span className="text-[10px] font-black text-[#f6b84b]">{w.workforce_type} · {w.status}</span></div>
+                <div className="mt-2 text-xs text-[#4d7a9b]">{w.phone||"—"} · {w.branch_code||"—"} · {w.assigned_zone||w.license_no||"—"}</div>
+              </button>
+            ))}
+            {workforceMaster.length===0 && <div className="p-10 text-center text-[#4d7a9b]">No workforce records.</div>}
           </div>
         </div>
       </div>
