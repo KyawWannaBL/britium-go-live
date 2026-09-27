@@ -3590,17 +3590,37 @@ function FieldPortal() {
 
                 <aside style={{display:"grid",gap:10,alignContent:"start"}}>
                   <DeliveryHistory job={selectedJob} />
+                  <div style={{fontSize:11,color:C.sub,lineHeight:1.5}}>
+                    “ပို့ဆောင်ပြီး / Delivered” is always clickable. If verification is incomplete, the system will show what is missing instead of disabling the button.
+                  </div>
                   <button
                     type="button"
-                    onClick={()=>{setDeliveryConfirmChoice("");setDeliveryConfirmOpen(true);}}
-                    disabled={
-                      busy ||
-                      !recipientName.trim() ||
-                      (Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0)>0 && Number(codCollected||0)<Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0)) ||
-                      !(proofUrl || (proofFile && proofApproved)) ||
-                      !(signatureFile && signatureApproved)
-                    }
-                    style={{...buttonStyle("green"),background:deliveryConfirmChoice==="yes"?C.purple:C.green,minHeight:54,fontSize:15,fontWeight:900}}
+                    onClick={()=>{
+                      const requiredCod=Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0);
+                      const missing:string[]=[];
+                      if(!recipientName.trim()) missing.push("Recipient name");
+                      if(requiredCod>0 && Number(codCollected||0)<requiredCod) missing.push(`COD / Payment ${money(requiredCod)}`);
+                      if(!(proofUrl || (proofFile && proofApproved))) missing.push("approved delivery proof photo");
+                      if(!(signatureFile && signatureApproved)) missing.push("approved recipient signature");
+                      if(missing.length){
+                        setError(`Complete before Delivered: ${missing.join(", ")}.`);
+                        setMessage("Delivered button is active. Complete the listed verification items, then click it again.");
+                        return;
+                      }
+                      setError("");
+                      setDeliveryConfirmChoice("");
+                      setDeliveryConfirmOpen(true);
+                    }}
+                    aria-busy={busy}
+                    style={{
+                      ...buttonStyle("green"),
+                      background:deliveryConfirmChoice==="yes"?C.purple:C.green,
+                      minHeight:54,
+                      fontSize:15,
+                      fontWeight:900,
+                      cursor:"pointer",
+                      opacity:busy?.78:1
+                    }}
                   >
                     ပို့ဆောင်ပြီး / Delivered
                   </button>
