@@ -239,9 +239,33 @@ export default function WayplanCommandCenterPage() {
         return code === selectedRegion;
       });
 
+      const queueRows = Array.isArray(q) ? q : [];
+      const queueIds = queueRows.map((row:any)=>text(row.delivery_way_id)).filter(Boolean);
+      if(queueIds.length){
+        const acknowledgement=await (supabase as any).rpc("be_warehouse_ack_wayplan_handoff_v150",{p_delivery_way_ids:queueIds});
+        if(acknowledgement.error) console.warn("Warehouse handoff acknowledgement unavailable",acknowledgement.error);
+      }
+
+      let handoffSelection:Record<string,boolean>={};
+      try {
+        const requested=JSON.parse(window.sessionStorage.getItem("be_wayplan_handoff_ids_v150") || "[]");
+        const requestedSet=new Set((Array.isArray(requested)?requested:[]).map((id:any)=>text(id).toUpperCase()));
+        queueRows.forEach((row:any)=>{
+          const id=text(row.delivery_way_id);
+          if(id && requestedSet.has(id.toUpperCase())) handoffSelection[id]=true;
+        });
+        const notice=window.sessionStorage.getItem("be_wayplan_handoff_notice_v150") || "";
+        if(Object.keys(handoffSelection).length){
+          setMessage(notice || `${Object.keys(handoffSelection).length} Warehouse handoff way(s) are preselected for Wayplan creation.`);
+          setFiltersExpanded(false);
+        }
+        window.sessionStorage.removeItem("be_wayplan_handoff_ids_v150");
+        window.sessionStorage.removeItem("be_wayplan_handoff_notice_v150");
+      } catch {}
+
       setRegions(Array.isArray(regionRows) ? regionRows : []);
-      setReadyRows(Array.isArray(q) ? q : []);
-      setSelected({});
+      setReadyRows(queueRows);
+      setSelected(handoffSelection);
       setWayplans(filteredWayplans);
       setActiveWayplan((previous) => {
         if (preferredId) {
