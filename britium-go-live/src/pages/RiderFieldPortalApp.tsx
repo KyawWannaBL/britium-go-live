@@ -1550,26 +1550,11 @@ function DeliveryControlPanel({
       </div>
       <Badge color={C.blue}>Backend-driven next action</Badge>
     </div>
-
-    {isAccepted && <button type="button" data-delivery-primary-action="START" onClick={()=>onAction(job,"OUT_FOR_DELIVERY","Rider started customer delivery")} style={{...buttonStyle("blue"),minHeight:52,fontSize:15}}>
-      Start Delivery
-    </button>}
-
-    {isOut && <button type="button" data-delivery-primary-action="ARRIVE" onClick={()=>onAction(job,"ARRIVED_AT_CUSTOMER","Rider GPS-confirmed arrival at customer")} style={{...buttonStyle("gold"),minHeight:52,fontSize:15}}>
-      <MapPin size={18}/> Arrived at Customer
-    </button>}
-
-    {isArrived && <button type="button" data-delivery-primary-action="VERIFY" onClick={()=>onModal(job,"delivery")} style={{...buttonStyle("green"),minHeight:52,fontSize:15}}>
-      Verify Recipient, Payment & Proof
-    </button>}
-
-    {!isAccepted && !isOut && !isArrived && <button type="button" data-delivery-primary-action="ACCEPT" onClick={()=>onAction(job,"ACCEPTED","Rider accepted delivery parcel")} style={{...buttonStyle("plain"),minHeight:52,fontSize:15}}>
-      <CheckCircle2 size={18}/> Accept Delivery
-    </button>}
-
-    <button type="button" onClick={()=>onModal(job,"exception")} style={{...buttonStyle("red"),minHeight:46}}>
-      <AlertTriangle size={16}/> Delivery Exception / Reschedule
-    </button>
+    {isAccepted && <button type="button" data-delivery-primary-action="START" onClick={()=>onAction(job,"OUT_FOR_DELIVERY","Rider started customer delivery")} style={{...buttonStyle("blue"),minHeight:52,fontSize:15}}>Start Delivery</button>}
+    {isOut && <button type="button" data-delivery-primary-action="ARRIVE" onClick={()=>onAction(job,"ARRIVED_AT_CUSTOMER","Rider GPS-confirmed arrival at customer")} style={{...buttonStyle("gold"),minHeight:52,fontSize:15}}><MapPin size={18}/> Arrived at Customer</button>}
+    {isArrived && <button type="button" data-delivery-primary-action="VERIFY" onClick={()=>onModal(job,"delivery")} style={{...buttonStyle("green"),minHeight:52,fontSize:15}}>Verify Recipient, Payment & Proof</button>}
+    {!isAccepted && !isOut && !isArrived && <button type="button" data-delivery-primary-action="ACCEPT" onClick={()=>onAction(job,"ACCEPTED","Rider accepted delivery parcel")} style={{...buttonStyle("plain"),minHeight:52,fontSize:15}}><CheckCircle2 size={18}/> Accept Delivery</button>}
+    <button type="button" onClick={()=>onModal(job,"exception")} style={{...buttonStyle("red"),minHeight:46}}><AlertTriangle size={16}/> Delivery Exception / Reschedule</button>
   </div>;
 }
 
@@ -1843,7 +1828,71 @@ function JobCard({
           </button>
         )}
 
-        {/* V161: delivery actions are rendered only by DeliveryControlPanel above. */}
+        {deliveryMode && !delivered && !exception && !isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("plain"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onAction(job, "ACCEPTED", "Rider accepted delivery parcel")}
+          >
+            <CheckCircle2 size={16} /> Accept Delivery
+          </button>
+        )}
+
+        {deliveryMode && !delivered && !exception && isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("blue"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onAction(job, "OUT_FOR_DELIVERY", "Rider started customer delivery")}
+          >
+            Start Delivery
+          </button>
+        )}
+
+        {deliveryMode && deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("gold"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onAction(job, "ARRIVED_AT_CUSTOMER", "Rider GPS-confirmed arrival at customer")}
+          >
+            <MapPin size={16} /> Arrived at Customer
+          </button>
+        )}
+
+        {deliveryMode && !deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("green"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onModal(job, "delivery")}
+          >
+            Verify Delivery / Delivered
+          </button>
+        )}
+
+        {deliveryMode && deliveryV77Available && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("green"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onModal(job, "delivery")}
+          >
+            Verify Delivery / Delivered
+          </button>
+        )}
+
+        {deliveryMode && !delivered && !exception && (
+          <button
+            type="button"
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("red"), opacity: deliveryActionBusy ? 0.72 : 1}}
+            onClick={() => onModal(job, "exception")}
+          >
+            <AlertTriangle size={16} /> Delivery Exception
+          </button>
+        )}
       </div>
     </Card>
   );
