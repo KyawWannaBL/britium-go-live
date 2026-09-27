@@ -1687,9 +1687,15 @@ function JobCard({
       )}
 
       {deliveryMode && <DeliveryJourney job={job} />}
+      {deliveryMode && (
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <Badge color={C.blue}>Current state: {upper((job as any).mobile_status || (job as any).stop_status || (job as any).rider_status || "READY_FOR_DELIVERY")}</Badge>
+          <span style={{fontSize:11,color:C.sub}}>Next action buttons remain clickable; backend validation controls the workflow.</span>
+        </div>
+      )}
       {deliveryMode && deliveryActionBusy && (
         <div style={{border:`1px solid ${C.gold}`,background:"rgba(246,184,75,.08)",color:C.gold,borderRadius:12,padding:10,fontSize:12,fontWeight:800}}>
-          Saving this delivery action… only this parcel is temporarily locked.
+          Saving this delivery action… repeated clicks are ignored until the save finishes.
         </div>
       )}
 
@@ -1789,8 +1795,8 @@ function JobCard({
         {deliveryMode && !delivered && !exception && !isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("plain")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("plain"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onAction(job, "ACCEPTED", "Rider accepted delivery parcel")}
           >
             <CheckCircle2 size={16} /> Accept Delivery
@@ -1800,8 +1806,8 @@ function JobCard({
         {deliveryMode && !delivered && !exception && isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("blue")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("blue"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onAction(job, "OUT_FOR_DELIVERY", "Rider started customer delivery")}
           >
             Start Delivery
@@ -1811,8 +1817,8 @@ function JobCard({
         {deliveryMode && deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("gold")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("gold"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onAction(job, "ARRIVED_AT_CUSTOMER", "Rider GPS-confirmed arrival at customer")}
           >
             <MapPin size={16} /> Arrived at Customer
@@ -1822,8 +1828,8 @@ function JobCard({
         {deliveryMode && !deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("green")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("green"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onModal(job, "delivery")}
           >
             Verify Delivery / Delivered
@@ -1833,8 +1839,8 @@ function JobCard({
         {deliveryMode && deliveryV77Available && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("green")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("green"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onModal(job, "delivery")}
           >
             Verify Delivery / Delivered
@@ -1844,8 +1850,8 @@ function JobCard({
         {deliveryMode && !delivered && !exception && (
           <button
             type="button"
-            disabled={deliveryActionBusy}
-            style={buttonStyle("red")}
+            aria-busy={deliveryActionBusy}
+            style={{...buttonStyle("red"), opacity: deliveryActionBusy ? 0.72 : 1}}
             onClick={() => onModal(job, "exception")}
           >
             <AlertTriangle size={16} /> Delivery Exception
@@ -3035,6 +3041,7 @@ function FieldPortal() {
             busy={busy}
             screen={screen}
             workerRole={session?.role || identity?.role || "rider"}
+            deliveryActionKey={deliveryActionKey}
           />
         ))
       ) : (
