@@ -461,8 +461,25 @@ export async function performRiderAction(
     payload.process_type = request.process_type;
   }
 
+  const isDeliveryAction =
+    request.action === "start_delivery" ||
+    request.action === "deliver" ||
+    ((request.action === "exception") &&
+      (request.workflow_area === "delivery" ||
+        request.process_type === "delivery"));
+
+  if (isDeliveryAction && !request.delivery_way_id) {
+    throw new Error(
+      "Delivery Way ID is required for Rider delivery actions."
+    );
+  }
+
+  const rpcName = isDeliveryAction
+    ? "be_field_team_delivery_action_v77"
+    : "be_rider_pickup_action";
+
   const { data, error } = await supabase.rpc(
-    "be_rider_pickup_action",
+    rpcName,
     { p_payload: payload }
   );
 
