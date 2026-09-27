@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const wh=fs.readFileSync(path.join(root,"src/pages/WarehousePage.tsx"),"utf8");
+assert.match(wh,/option value="dispatch" disabled=\{!dispatchRequiredRows\.length\}/);
+assert.match(wh,/disabled=\{!dispatchRequiredRows\.length \|\| \(loading && scanMode!=="dispatch"\)\}/);
+assert.match(wh,/Dispatch is disabled until a created Wayplan is confirmed\/released by Supervisor/);
+assert.match(wh,/if\(!dispatchRequiredRows\.length && scanMode==="dispatch"\)/);
+console.log("Warehouse Dispatch UI gate V152 PASS");
