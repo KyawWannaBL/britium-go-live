@@ -346,30 +346,175 @@ export function WarehouseLifecycleLivePage() {
 export function FinancePortalLivePage() {
   const state = useRows(
     async () => {
-      const { data, error } = await supabase.rpc("be_finance_portal_center");
-      if (error) throw error;
-      return data;
+      const [{ data: center, error: centerError }, { data: live, error: liveError }] = await Promise.all([
+        supabase.rpc("be_finance_portal_center"),
+        supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
+          p_work_date: null,
+          p_vehicle: null,
+          p_worker: null,
+          p_status: null,
+        }),
+      ]);
+      if (centerError) throw centerError;
+      if (liveError) throw liveError;
+      return { ...(center || {}), live_wayplans: live?.rows || [], live_work_date: live?.work_date };
     },
     (d) => Array.isArray(d?.cod_rows) ? d.cod_rows : []
   );
 
+  const [settlements,setSettlements] = useState<any[]>([]);
+  const [settlementDate,setSettlementDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [settlementBusy,setSettlementBusy] = useState("");
+  const [settlementMessage,setSettlementMessage] = useState("");
+  const [signedNames,setSignedNames] = useState<Record<string,string>>({});
+
+  async function loadSettlements() {
+    const { data, error } = await (supabase as any).rpc("be_finance_field_settlement_center_v1", { p_work_date: settlementDate });
+    if (error) {
+      setSettlementMessage(error.message);
+      return;
+    }
+    if (data?.ok === false) {
+      setSettlementMessage(data?.code || "Unable to load settlements.");
+      return;
+    }
+    setSettlements(Array.isArray(data?.rows) ? data.rows : []);
+  }
+
+  useEffect(() => { void loadSettlements(); }, [settlementDate]);
+
+  async function signFinance(row:any) {
+    setSettlementBusy(row.wayplan_id);
+    setSettlementMessage("");
+    const signedName = (signedNames[row.wayplan_id] || "").trim();
+    const { data, error } = await (supabase as any).rpc("be_finance_field_settlement_sign_v1", {
+      p_work_date: settlementDate,
+      p_wayplan_id: row.wayplan_id,
+      p_signed_name: signedName,
+      p_note: "Finance electronic signature",
+    });
+    if (error || data?.ok === false) setSettlementMessage(error?.message || data?.code || "Signature failed.");
+    else {
+      setSettlementMessage(`${row.wayplan_id}: Finance signature recorded.`);
+      await loadSettlements();
+    }
+    setSettlementBusy("");
+  }
+
+  async function clearSettlement(row:any) {
+    setSettlementBusy(row.wayplan_id);
+    setSettlementMessage("");
+    const { data, error } = await (supabase as any).rpc("be_finance_field_settlement_clear_v1", {
+      p_work_date: settlementDate,
+      p_wayplan_id: row.wayplan_id,
+      p_note: "End-of-day personal field settlement cleared",
+    });
+    if (error || data?.ok === false) setSettlementMessage(error?.message || data?.code || "Settlement clear failed.");
+    else {
+      setSettlementMessage(`${row.wayplan_id}: CLEARED. COD, workforce commission and merchant settlement synchronized.`);
+      await Promise.all([loadSettlements(),state.load()]);
+    }
+    setSettlementBusy("");
+  }
+
   const s = state.data || {};
   const fs = s.finance_summary || {};
   const ws = s.wallet_summary || {};
+  const liveRows = Array.isArray(s.live_wayplans) ? s.live_wayplans : [];
+  const liveTotals = liveRows.reduce((a:any,r:any)=>({
+    totalWays:a.totalWays+Number(r.total_ways||0),
+    dropped:a.dropped+Number(r.dropped_ways||0),
+    failed:a.failed+Number(r.failed_ways||0),
+    left:a.left+Number(r.remaining_ways||0),
+    opening:a.opening+Number(r.opening_cod_amount||0),
+    cash:a.cash+Number(r.cash_collected||0),
+    mobile:a.mobile+Number(r.mobile_banking_collected||0),
+    collected:a.collected+Number(r.actual_collected||0),
+  }),{totalWays:0,dropped:0,failed:0,left:0,opening:0,cash:0,mobile:0,collected:0});
 
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
       <div style={{ display: "grid", gap: 16 }}>
-        <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live COD, settlement, wallet and operations finance summary." loading={state.loading} onRefresh={state.load} />
+        <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={() => { state.load(); loadSettlements(); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
+        {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
+
         <SummaryCards cards={[
           { label: "Today Revenue", value: money(s.today_revenue), color: C.green },
-          { label: "Pending COD", value: money(s.pending_cod_collection), color: C.red },
-          { label: "Settlement Rows", value: s.settlement_queue || 0, color: C.gold },
-          { label: "Settled COD", value: money(fs.settled), color: C.green },
+          { label: "Opening COD", value: money(liveTotals.opening), color: C.gold },
+          { label: "Total Ways", value: liveTotals.totalWays, color: C.blue },
+          { label: "Dropped", value: liveTotals.dropped, color: C.green },
+          { label: "Failed", value: liveTotals.failed, color: C.red },
+          { label: "Still Left", value: liveTotals.left, color: C.gold },
+          { label: "Cash Collected", value: money(liveTotals.cash), color: C.green },
+          { label: "Mobile Banking", value: money(liveTotals.mobile), color: C.blue },
+          { label: "Actual Collected", value: money(liveTotals.collected), color: C.green },
           { label: "Workforce Pending", value: money(ws.pending_amount), color: C.gold },
         ]} />
+
         <Card>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap", marginBottom:12 }}>
+            <div>
+              <h2 style={{ margin:0 }}>Live Wayplan Financial Status</h2>
+              <div style={{ color:C.sub, fontSize:12, marginTop:4 }}>Vehicle, driver, rider/helper, total Ways, opening COD, dropped/failed/remaining, cash and mobile collections.</div>
+            </div>
+            <Badge status="LIVE" />
+          </div>
+          <LiveTable
+            rows={liveRows}
+            activeRow={state.activeRow}
+            setActiveRow={state.setActiveRow}
+            columns={[
+              { key: "vehicle_plate", label: "Vehicle / Plate", render:(r)=><><div style={{fontWeight:900,color:C.gold}}>{text(r.vehicle_plate)}</div><div style={{fontSize:11,color:C.sub}}>{text(r.vehicle_name)}</div></> },
+              { key: "driver_name", label: "Driver", render:(r)=><>{text(r.driver_name)}<div style={{fontSize:11,color:C.sub}}>{text(r.driver_code)}</div></> },
+              { key: "rider_name", label: "Rider", render:(r)=><>{text(r.rider_name)}<div style={{fontSize:11,color:C.sub}}>{text(r.rider_code)}</div></> },
+              { key: "helper_name", label: "Helper", render:(r)=><>{text(r.helper_name)}<div style={{fontSize:11,color:C.sub}}>{text(r.helper_code)}</div></> },
+              { key: "total_ways", label: "Total Ways", align:"right" },
+              { key: "opening_cod_amount", label: "Opening COD", align:"right", render:(r)=>money(r.opening_cod_amount) },
+              { key: "dropped_ways", label: "Dropped", align:"right" },
+              { key: "failed_ways", label: "Failed", align:"right" },
+              { key: "remaining_ways", label: "Left", align:"right" },
+              { key: "cash_collected", label: "Cash", align:"right", render:(r)=>money(r.cash_collected) },
+              { key: "mobile_banking_collected", label: "Mobile", align:"right", render:(r)=>money(r.mobile_banking_collected) },
+              { key: "actual_collected", label: "Actual", align:"right", render:(r)=>money(r.actual_collected) },
+            ]}
+          />
+        </Card>
+
+        <Card>
+          <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
+            <div>
+              <h2 style={{ margin:0 }}>Financial Settlement</h2>
+              <div style={{ color:C.sub, fontSize:12, marginTop:4 }}>Finance + assigned Rider/Driver/Helper must electronically sign. Clear is blocked until all required signatures and collection reconciliation are complete.</div>
+            </div>
+            <input type="date" value={settlementDate} onChange={(e)=>setSettlementDate(e.target.value)} style={{...input(),width:170}} />
+          </div>
+          <div style={{ display:"grid", gap:12 }}>
+            {settlements.length===0 ? <div style={{padding:24,textAlign:"center",color:C.sub}}>No settlement rows for this date.</div> : settlements.map((r:any)=>(
+              <div key={r.id} style={{ border:`1px solid ${C.border}`, borderRadius:16, padding:14, background:"#081b2e" }}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
+                  <div><div style={{fontSize:10,color:C.sub}}>WAYPLAN</div><div style={{fontWeight:900}}>{r.wayplan_id}</div><div style={{fontSize:11,color:C.gold}}>{text(r.vehicle_code || r.vehicle_name)}</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>TEAM</div><div>{text(r.driver_name)} / {text(r.rider_name)}</div><div style={{fontSize:11,color:C.sub}}>Helper: {text(r.helper_name)}</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>WAYS</div><div style={{fontWeight:900}}>{r.total_ways} total · {r.delivered_ways} delivered · {r.failed_ways} failed · {r.remaining_ways} left</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>COLLECTION</div><div style={{fontWeight:900}}>{money(r.actual_collected)}</div><div style={{fontSize:11,color:C.sub}}>Cash {money(r.cash_collected)} · Digital {money(r.digital_collected)}</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>VARIANCE</div><div style={{fontWeight:900,color:Number(r.variance_amount||0)===0?C.green:C.red}}>{money(r.variance_amount)}</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>STATUS</div><Badge status={r.status} /></div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1fr) auto auto",gap:8,marginTop:12}}>
+                  <input value={signedNames[r.wayplan_id]||""} onChange={(e)=>setSignedNames({...signedNames,[r.wayplan_id]:e.target.value})} placeholder="Finance signer full name" style={input()} />
+                  <button disabled={settlementBusy===r.wayplan_id || r.status==="CLEARED"} onClick={()=>signFinance(r)} style={btn("blue")}>Finance Sign</button>
+                  <button disabled={settlementBusy===r.wayplan_id || r.status==="CLEARED"} onClick={()=>clearSettlement(r)} style={btn(r.status==="CLEARED"?"green":"gold")}>{r.status==="CLEARED"?"Cleared":"Clear Settlement"}</button>
+                </div>
+                <div style={{marginTop:10,fontSize:11,color:C.sub}}>
+                  Signatures: Finance {r.signature_status?.finance?"✓":"—"} · Rider {r.signature_status?.rider?"✓":"—"} · Driver {r.signature_status?.driver?"✓":"—"} · Helper {r.signature_status?.helper?"✓":"—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+
+        <Card>
+          <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
           <LiveTable
             rows={state.rows}
             activeRow={state.activeRow}
