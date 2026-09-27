@@ -19,6 +19,11 @@ const button: React.CSSProperties = { ...field, background: "#f6b84b", fontWeigh
 const secondary: React.CSSProperties = { ...field, background: "#173a55", color: "white", fontWeight: 700, cursor: "pointer" };
 const LOCATION_RECOVERY_INTERACTIVE_LIMIT = 8;
 const LOCATION_RECOVERY_TIMEOUT_MS = 4500;
+const RIDER_ONLY_VEHICLE_CODES = new Set(["MOTORBIKE", "BICYCLE"]);
+
+function isRiderOnlyVehicle(vehicleCode: unknown) {
+  return RIDER_ONLY_VEHICLE_CODES.has(String(vehicleCode || "").trim().toUpperCase());
+}
 
 function isProviderQuotaError(error: unknown) {
   return /RESOURCE_EXHAUSTED|quota|rate.?limit|too many requests/i.test(String((error as any)?.message || error || ""));
@@ -121,12 +126,20 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     available: !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
-  const vehicles = available(
+  const baseVehicles = available(
     (context?.vehicles || []).filter((v: any) =>
       v.operation_type === "DELIVERY" && (!v.branch_code || v.branch_code === branch)
     ),
     "vehicle_code"
   );
+  const mobilityVehicles: Resource[] = [
+    { id: "MOTORBIKE", name: "Motor Bike", operation_type: "DELIVERY", branch_code: branch, vehicle_mode: "RIDER_ONLY", available: true },
+    { id: "BICYCLE", name: "Bicycle", operation_type: "DELIVERY", branch_code: branch, vehicle_mode: "RIDER_ONLY", available: true },
+  ];
+  const vehicles = [
+    ...baseVehicles,
+    ...mobilityVehicles.filter((mobility) => !baseVehicles.some((vehicle) => vehicle.id === mobility.id)),
+  ];
   const drivers = available((context?.drivers || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "driver_code");
   const riders = available((context?.riders || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "rider_code");
   const helpers = available((context?.helpers || []).filter((d: any) => !d.branch_code || d.branch_code === branch), "helper_code");
@@ -196,9 +209,24 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   function patchPlan(index: number, patch: Partial<OperationalVanPlan>) {
     const next = plans.map((p, j) => j === index ? { ...p, ...patch } : p);
-    // Do not auto-fill Rider after an operator explicitly selects "No rider".
-    // Crew edits preserve the reviewed route and below-minimum approval.
     reset(next, true);
+  }
+
+  function selectVehicle(index: number, vehicleCode: string) {
+    patchPlan(index, {
+      vehicle_code: vehicleCode,
+      crew_mode: "ROSTER",
+      driver_code: "",
+      rider_code: "",
+      helper_code: "",
+      manual_driver_name: "",
+      manual_rider_name: "",
+      manual_helper_name: "",
+      emergency_substitution_reason: "",
+    });
+    if (!vehicleCode) setMessage("Choose a vehicle first. Crew selection stays disabled until a vehicle is selected.");
+    else if (isRiderOnlyVehicle(vehicleCode)) setMessage("Rider vehicle selected. Choose the Rider; Driver and Helper are disabled for Motor Bike/Bicycle.");
+    else setMessage("Vehicle selected. Choose the Driver and optional Helper; Rider is disabled for vehicle-crew routes.");
   }
 
   function autoAssignMissingCrew() {
@@ -567,32 +595,21 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const strategic = hasLocationPending
         ? deferredLocationAllocation(planningRows)
         : (isYangonMaster ? await yangonMasterAllocation(planningRows) : standardAllocation(planningRows));
-      // Driver is mandatory. Rider/Helper remain optional.
-      // For sub-50 routes, assign an available Rider automatically when possible so the route
-      // uses the approved Rider minimum exemption instead of forcing an unnecessary exception approval.
-      let crewed = repairCrewGaps(assignCrews(strategic, drivers, [], [], convertMyanmarTownshipToEnglish) as OperationalVanPlan[]);
-      const riderPool = riders.filter((r) => r.available !== false);
-      const riderUsedByWave = new Map<number, Set<string>>();
-      crewed = crewed.map((plan) => {
-        if (plan.crew_mode === "EMERGENCY_MANUAL" || plan.rows.length >= 50 || plan.rider_code) return plan;
-        const wave = Math.max(1, Number(plan.wave_no || 1));
-        const used = riderUsedByWave.get(wave) || new Set<string>();
-        riderUsedByWave.set(wave, used);
-        const rider = riderPool.find((candidate) =>
-          !used.has(candidate.id) &&
-          personKey(candidate) !== personKey(drivers.find((d) => d.id === plan.driver_code))
-        );
-        if (!rider) return plan;
-        used.add(rider.id);
-        return { ...plan, rider_code: rider.id };
-      });
-      if (crewed.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code)) {
-        throw new Error("The route plan was created, but no available Driver could be assigned. Refresh crew availability or use an approved Emergency substitution.");
-      }
+      // V148: route preview must not silently choose a vehicle or crew member.
+      // Vehicle selection is the operator's first explicit assignment step:
+      // van/car/truck => Driver + optional Helper; Motor Bike/Bicycle => Rider only.
+      const reviewed = strategic.map((plan) => ({
+        ...plan,
+        vehicle_code: "",
+        driver_code: "",
+        rider_code: "",
+        helper_code: "",
+        crew_mode: "ROSTER" as const,
+      }));
       setBusy(false);
       await optimizePlans(
-        crewed,
-        crewed.some((plan) => plan.rows.some((row) => !coord(row)))
+        reviewed,
+        reviewed.some((plan) => plan.rows.some((row) => !coord(row)))
           ? "Stage 2/2: saving assignment-ready routes. Road optimization will run only for routes with complete coordinates…"
           : "Stage 2/2: optimizing every active route on the actual road network…"
       );
@@ -696,12 +713,18 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     }
   }
 
-  const short = plans.filter((p) => p.rows.length < 50 && !hasRiderAssignment(p));
-  const riderMinimumExempt = plans.filter((p) => p.rows.length < 50 && hasRiderAssignment(p));
+  const short = plans.filter((p) => p.rows.length < 50 && !isRiderOnlyVehicle(p.vehicle_code));
+  const riderMinimumExempt = plans.filter((p) => p.rows.length < 50 && isRiderOnlyVehicle(p.vehicle_code) && hasRiderAssignment(p));
   const oversized = plans.filter((p) => p.rows.length > 75);
-  const invalidCrewPlans = plans.filter((p) => p.crew_mode === "EMERGENCY_MANUAL"
-    ? !p.manual_driver_name?.trim() || !p.manual_rider_name?.trim() || String(p.emergency_substitution_reason || "").trim().length < 5
-    : !p.driver_code);
+  const invalidCrewPlans = plans.filter((p) => {
+    if (!p.vehicle_code) return true;
+    const riderOnly = isRiderOnlyVehicle(p.vehicle_code);
+    if (p.crew_mode === "EMERGENCY_MANUAL") {
+      if (String(p.emergency_substitution_reason || "").trim().length < 5) return true;
+      return riderOnly ? !p.manual_rider_name?.trim() : !p.manual_driver_name?.trim();
+    }
+    return riderOnly ? !p.rider_code : !p.driver_code;
+  });
   const invalidCrew = invalidCrewPlans.length > 0;
   const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")));
   const roadInvalid = roadInvalidPlans.length > 0;
@@ -709,16 +732,26 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   if (!plans.length) readinessIssues.push("Generate and review at least one Wayplan assignment.");
   invalidCrewPlans.forEach((plan, index) => {
     const label = plan.master?.routeCode || `route ${index + 1}`;
-    if (plan.crew_mode === "EMERGENCY_MANUAL") readinessIssues.push(`${label}: enter Emergency Driver, Emergency Rider and a substitution reason.`);
-    else {
-      if (!plan.driver_code) readinessIssues.push(`${label}: choose a Driver.`);
+    if (!plan.vehicle_code) {
+      readinessIssues.push(`${label}: choose a Vehicle first.`);
+      return;
+    }
+    const riderOnly = isRiderOnlyVehicle(plan.vehicle_code);
+    if (plan.crew_mode === "EMERGENCY_MANUAL") {
+      if (riderOnly && !plan.manual_rider_name?.trim()) readinessIssues.push(`${label}: enter the Emergency Rider name.`);
+      if (!riderOnly && !plan.manual_driver_name?.trim()) readinessIssues.push(`${label}: enter the Emergency Driver name.`);
+      if (String(plan.emergency_substitution_reason || "").trim().length < 5) readinessIssues.push(`${label}: enter an emergency substitution reason of at least 5 characters.`);
+    } else if (riderOnly) {
+      if (!plan.rider_code) readinessIssues.push(`${label}: choose a Rider for the Motor Bike/Bicycle.`);
+    } else {
+      if (!plan.driver_code) readinessIssues.push(`${label}: choose a Driver for the selected vehicle.`);
     }
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
   if (oversized.length) readinessIssues.push("Split any route above 75 parcels before creation.");
-  if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one Driver/van-only route is below 50 parcels; rebalance, assign a Rider, or hold low-volume parcels.");
-  if (short.length > 0 && !approved) readinessIssues.push(isYangonMaster ? "Approve the unavoidable below-50 Driver/van-only hard-fence route batch." : "Approve the one Driver/van-only route below 50 parcels.");
-  if (short.length > 0 && reason.trim().length < 5) readinessIssues.push(isYangonMaster ? "Enter an operational reason of at least 5 characters for the below-50 Driver/van-only hard-fence route batch." : "Enter an operational reason of at least 5 characters for the below-50 Driver/van-only route.");
+  if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one Driver/vehicle-crew route is below 50 parcels; rebalance, use a Motor Bike/Bicycle Rider route, or hold low-volume parcels.");
+  if (short.length > 0 && !approved) readinessIssues.push(isYangonMaster ? "Approve the unavoidable below-50 Driver/vehicle-crew hard-fence route batch." : "Approve the one Driver/vehicle-crew route below 50 parcels.");
+  if (short.length > 0 && reason.trim().length < 5) readinessIssues.push(isYangonMaster ? "Enter an operational reason of at least 5 characters for the below-50 Driver/vehicle-crew hard-fence route batch." : "Enter an operational reason of at least 5 characters for the below-50 Driver/vehicle-crew route.");
   const cannotSave = busy || readinessIssues.length > 0;
 
   return <section style={{ padding: 16, border: "1px solid #1a3a5c", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
@@ -764,23 +797,35 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
         <FullVanRouteMap origin={origin} plan={plan} vanLabel={`${title} · ${vehicleName}`} allowLocationEdit onStopPinUpdated={(deliveryWayId, latitude, longitude) => updateStopPin(i, deliveryWayId, latitude, longitude)} />
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-          <label>Vehicle <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => patchPlan(i, { vehicle_code: e.target.value })}><option value="">Choose</option>{vehicles.filter((x) => x.available || x.id === plan.vehicle_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-          <label>Crew mode <select style={field} disabled={busy} value={plan.crew_mode || "ROSTER"} onChange={(e) => patchPlan(i, { crew_mode: e.target.value as any })}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
-          {!emergency && <>
-            <label>Driver * <select style={field} disabled={busy} value={plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">Choose name</option>{drivers.filter((x) => x.available || x.id === plan.driver_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>Rider (optional) <select data-rider-optional-v57="true" style={field} disabled={busy} value={plan.rider_code || ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">No rider — Driver only</option>{riders.filter((x) => x.available || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-            <label>Helper (optional) <select style={field} disabled={busy} value={plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">No helper</option>{helpers.filter((x) => x.available || x.id === plan.helper_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-          </>}
-        </div>
+        {(() => {
+          const vehicleSelected = Boolean(plan.vehicle_code);
+          const riderOnly = isRiderOnlyVehicle(plan.vehicle_code);
+          return <>
+            <div data-vehicle-driven-crew-v148="true" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
+              <label>Vehicle * <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => selectVehicle(i, e.target.value)}><option value="">Choose vehicle first</option>{vehicles.filter((x) => x.available || x.id === plan.vehicle_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+              <label>Crew mode <select style={field} disabled={busy || !vehicleSelected} value={plan.crew_mode || "ROSTER"} onChange={(e) => patchPlan(i, { crew_mode: e.target.value as any, driver_code: "", rider_code: "", helper_code: "", manual_driver_name: "", manual_rider_name: "", manual_helper_name: "" })}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
+              {!emergency && <>
+                <label>Driver {vehicleSelected && !riderOnly ? "*" : "(disabled)"} <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "Choose name"}</option>{drivers.filter((x) => x.available || x.id === plan.driver_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+                <label>Rider {vehicleSelected && riderOnly ? "*" : "(disabled)"} <select data-rider-vehicle-mode-v148="true" style={field} disabled={busy || !vehicleSelected || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">{riderOnly ? "Choose Rider" : "Disabled for van/car/truck"}</option>{riders.filter((x) => x.available || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+                <label>Helper (optional) <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "No helper"}</option>{helpers.filter((x) => x.available || x.id === plan.helper_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+              </>}
+            </div>
 
-        {emergency && <div style={{ display: "grid", gridTemplateColumns: "repeat(3,minmax(180px,1fr))", gap: 8, marginTop: 10, padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}>
-          <input style={field} disabled={busy} placeholder="Emergency Driver name" value={plan.manual_driver_name || ""} onChange={(e) => patchPlan(i, { manual_driver_name: e.target.value })} />
-          <input style={field} disabled={busy} placeholder="Emergency Rider name" value={plan.manual_rider_name || ""} onChange={(e) => patchPlan(i, { manual_rider_name: e.target.value })} />
-          <input style={field} disabled={busy} placeholder="Emergency Helper name (optional)" value={plan.manual_helper_name || ""} onChange={(e) => patchPlan(i, { manual_helper_name: e.target.value })} />
-          <input style={{ ...field, gridColumn: "1 / -1" }} disabled={busy} placeholder="Mandatory reason for emergency substitution" value={plan.emergency_substitution_reason || ""} onChange={(e) => patchPlan(i, { emergency_substitution_reason: e.target.value })} />
-          <div style={{ gridColumn: "1 / -1", fontSize: 12 }}>Emergency manual crew is audit-recorded. A manually substituted Rider has no Rider-App login mapping unless separately provisioned; use only as an approved operational exception.</div>
-        </div>}
+            {vehicleSelected && <div style={{ marginTop: 6, fontSize: 12, color: riderOnly ? "#86efac" : "#bfdbfe" }}>
+              {riderOnly
+                ? "Motor Bike/Bicycle mode: Rider is required. Driver and Helper are disabled."
+                : "Vehicle crew mode: Driver is required, Helper is optional, and Rider is disabled."}
+            </div>}
+
+            {emergency && <div style={{ display: "grid", gridTemplateColumns: riderOnly ? "minmax(220px,1fr)" : "repeat(2,minmax(180px,1fr))", gap: 8, marginTop: 10, padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}>
+              {!riderOnly && <input style={field} disabled={busy || !vehicleSelected} placeholder="Emergency Driver name" value={plan.manual_driver_name || ""} onChange={(e) => patchPlan(i, { manual_driver_name: e.target.value })} />}
+              {riderOnly && <input style={field} disabled={busy || !vehicleSelected} placeholder="Emergency Rider name" value={plan.manual_rider_name || ""} onChange={(e) => patchPlan(i, { manual_rider_name: e.target.value })} />}
+              {!riderOnly && <input style={field} disabled={busy || !vehicleSelected} placeholder="Emergency Helper name (optional)" value={plan.manual_helper_name || ""} onChange={(e) => patchPlan(i, { manual_helper_name: e.target.value })} />}
+              <input style={{ ...field, gridColumn: "1 / -1" }} disabled={busy || !vehicleSelected} placeholder="Mandatory reason for emergency substitution" value={plan.emergency_substitution_reason || ""} onChange={(e) => patchPlan(i, { emergency_substitution_reason: e.target.value })} />
+              <div style={{ gridColumn: "1 / -1", fontSize: 12 }}>Emergency substitution follows the selected vehicle mode and is audit-recorded.</div>
+            </div>}
+          </>;
+        })()}
 
         <details style={{ marginTop: 10 }} open>
           <summary>Editable delivery sequence</summary>
@@ -794,14 +839,14 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       </section>;
     })}
 
-    {riderMinimumExempt.length > 0 && <div data-rider-minimum-exempt-v84="true" style={{ padding: 10, border: "1px solid #2f855a", borderRadius: 8, background: "rgba(47,133,90,0.12)" }}><strong>Rider assignment: no minimum parcel count.</strong><div style={{ marginTop: 4 }}>{riderMinimumExempt.length} Rider-selected route{riderMinimumExempt.length === 1 ? "" : "s"} below 50 parcels can be created without below-minimum approval or reason. The 50-parcel minimum applies only to Driver/van-only routes.</div></div>}
-    {short.length > 0 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> {isYangonMaster ? `Approve ${short.length} unavoidable below-50 Driver/van-only hard-fence route${short.length === 1 ? "" : "s"}` : "Approve one Driver/van-only route below 50 parcels"}</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isYangonMaster ? "Mandatory operational reason for Driver/van-only hard-fence low-volume route(s)" : "Mandatory operational reason"} /></div>}
-    {!isYangonMaster && short.length > 1 && <p style={{ margin: 0 }}>More than one Driver/van-only route is below 50 parcels. Reassign, select a Rider, or hold low-volume parcels before creation.</p>}
+    {riderMinimumExempt.length > 0 && <div data-rider-minimum-exempt-v84="true" style={{ padding: 10, border: "1px solid #2f855a", borderRadius: 8, background: "rgba(47,133,90,0.12)" }}><strong>Rider assignment: no minimum parcel count.</strong><div style={{ marginTop: 4 }}>{riderMinimumExempt.length} Rider-selected route{riderMinimumExempt.length === 1 ? "" : "s"} below 50 parcels can be created without below-minimum approval or reason. The 50-parcel minimum applies only to Driver/vehicle-crew routes.</div></div>}
+    {short.length > 0 && <div style={{ padding: 10, border: "1px solid #8f5a2a", borderRadius: 8 }}><label><input type="checkbox" checked={approved} onChange={(e) => setApproved(e.target.checked)} /> {isYangonMaster ? `Approve ${short.length} unavoidable below-50 Driver/vehicle-crew hard-fence route${short.length === 1 ? "" : "s"}` : "Approve one Driver/vehicle-crew route below 50 parcels"}</label><input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder={isYangonMaster ? "Mandatory operational reason for Driver/vehicle-crew hard-fence low-volume route(s)" : "Mandatory operational reason"} /></div>}
+    {!isYangonMaster && short.length > 1 && <p style={{ margin: 0 }}>More than one Driver/vehicle-crew route is below 50 parcels. Reassign, select a Rider, or hold low-volume parcels before creation.</p>}
     {oversized.length > 0 && <p style={{ margin: 0 }}>One or more active routes exceeds 75 stops. Split that operational zone before creation.</p>}
     {plans.length > 0 && <div data-wayplan-create-readiness-v56="true" style={{ padding: 10, border: `1px solid ${readinessIssues.length ? "#8f5a2a" : "#2f855a"}`, borderRadius: 8, background: readinessIssues.length ? "rgba(143,90,42,0.12)" : "rgba(47,133,90,0.12)" }}>
       <strong>{readinessIssues.length ? "Creation blocked — complete these items:" : "Ready to create reviewed Wayplans"}</strong>
-      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route, fleet and mandatory Driver checks are complete. Rider-selected routes have no minimum parcel requirement; the 50-parcel minimum applies only to Driver/van-only routes. Helper remains optional.</div>}
-      {invalidCrew && <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={autoAssignMissingCrew}>Auto-assign missing Driver</button>}
+      {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route and vehicle-driven crew checks are complete. Motor Bike/Bicycle routes require a Rider only; van/car/truck routes require a Driver with optional Helper. Incompatible crew selectors stay disabled.</div>}
+      {invalidCrew && <div style={{ marginTop: 8, fontSize: 12 }}>Crew is intentionally not auto-assigned. Choose the vehicle first, then select only the crew enabled for that vehicle type.</div>}
     </div>}
     <button data-create-reviewed-wayplans-v56="true" style={{ ...button, opacity: cannotSave ? 0.55 : 1 }} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : cannotSave ? "Create reviewed Wayplans — resolve items above" : "Create reviewed Wayplans"}</button>
   </section>;
