@@ -3,7 +3,8 @@
 // WarehousePortal.tsx — Production Warehouse Operations Portal
 // API: /api/v1/warehouse/*   Role: warehouse
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import {
   useWarehouseOverview,
   useWarehouseInbound,
@@ -18,11 +19,14 @@ import {
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "inbound" | "staging" | "storage" | "outbound" | "manifests";
+type Tab = "overview" | "lifecycle" | "inbound" | "staging" | "storage" | "outbound" | "manifests";
 
 export default function WarehousePortal() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
+  const [lifecycleRows, setLifecycleRows] = useState<any[]>([]);
+  const [lifecycleLoading, setLifecycleLoading] = useState(false);
+  const [lifecycleError, setLifecycleError] = useState("");
 
   // QR scan
   const [qrCode, setQrCode] = useState("");
@@ -58,8 +62,26 @@ export default function WarehousePortal() {
     qrInputRef.current?.focus();
   };
 
+  async function loadLifecycle() {
+    setLifecycleLoading(true);
+    setLifecycleError("");
+    const { data, error } = await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
+    if (error) {
+      setLifecycleError(error.message);
+      setLifecycleRows([]);
+    } else {
+      setLifecycleRows(Array.isArray(data?.rows) ? data.rows : []);
+    }
+    setLifecycleLoading(false);
+  }
+
+  useEffect(() => {
+    if (tab === "lifecycle") void loadLifecycle();
+  }, [tab]);
+
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "📊 Overview" },
+    { id: "lifecycle", label: "🔁 Delivery Scan Cycle" },
     { id: "inbound", label: "📥 Inbound" },
     { id: "staging", label: "🔄 Staging" },
     { id: "storage", label: "🗄️ Storage" },
@@ -146,6 +168,39 @@ export default function WarehousePortal() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* DELIVERY SCAN CYCLE */}
+        {tab === "lifecycle" && (
+          <div>
+            <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", gap:12, marginBottom:16 }}>
+              <div>
+                <h2 style={{...S.h2, marginBottom:4}}>🔁 Delivery Scan Cycle</h2>
+                <div style={{fontSize:12,color:"#64748b",fontWeight:600}}>
+                  Fresh dispatch = Dispatch Scan (1). After each failed return: Return Scan (1/2/3), followed by Dispatch Scan (2/3) for the next retry. Return Scan (3) becomes RTO.
+                </div>
+              </div>
+              <button onClick={() => void loadLifecycle()} style={S.submitBtn} disabled={lifecycleLoading}>
+                {lifecycleLoading ? "Refreshing..." : "Refresh"}
+              </button>
+            </div>
+            {lifecycleError && <ErrBanner msg={lifecycleError} />}
+            <TableSection
+              title=""
+              loading={lifecycleLoading}
+              data={lifecycleRows}
+              cols={["Way ID","Recipient","Latest Scan","Dispatch Attempt","Return Attempt","Failed Reason","Warehouse Stage"]}
+              rowFn={(r: Record<string, unknown>) => [
+                r.delivery_way_id || r.canonical_delivery_way_id || r.waybill_no,
+                r.recipient_name,
+                r.latest_scan_label || "Not Scanned",
+                r.dispatch_scan_label || "—",
+                r.return_scan_label || "—",
+                r.last_exception_reason || r.pending_return_reason_name || "—",
+                r.dispatch_workflow_stage || r.warehouse_scan_status || "—",
+              ]}
+            />
           </div>
         )}
 
