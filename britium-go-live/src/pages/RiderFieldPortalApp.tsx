@@ -3600,7 +3600,7 @@ function FieldPortal() {
                       !(proofUrl || (proofFile && proofApproved)) ||
                       !(signatureFile && signatureApproved)
                     }
-                    style={{...buttonStyle(deliveryConfirmChoice==="yes"?"purple" as any:"green"),minHeight:54,fontSize:15,fontWeight:900}}
+                    style={{...buttonStyle("green"),background:deliveryConfirmChoice==="yes"?C.purple:C.green,minHeight:54,fontSize:15,fontWeight:900}}
                   >
                     ပို့ဆောင်ပြီး / Delivered
                   </button>
