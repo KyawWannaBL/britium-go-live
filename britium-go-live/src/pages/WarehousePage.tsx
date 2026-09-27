@@ -1,5 +1,6 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { canonicalDeliveryWayId } from "@/lib/wayId";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle,
@@ -272,45 +273,49 @@ export default function WarehousePage() {
     }
   };
 
-  const readyPickups = Array.from(new Set(rows.filter((r:any) => r.warehouse_scan_status === "RECEIVED").map((r:any) => r.pickup_id))).filter(Boolean) as string[];
-  const markReady = async (pickupId:string) => {
+  const readyWays = Array.from(new Set(
+    rows
+      .filter((r:any) => r.warehouse_scan_status === "RECEIVED")
+      .map((r:any) => canonicalDeliveryWayId(r))
+      .filter(Boolean)
+  )) as string[];
+
+  const markReady = async (deliveryWayId:string) => {
     if (loading || scanBusy.current) return;
-    if (!window.confirm("Confirm received parcels in " + pickupId + " are checked and staged for Wayplan. Exceptions stay on hold. This action records your account.")) return;
+    if (!window.confirm("Confirm received parcel " + deliveryWayId + " is checked and staged for Wayplan. Exceptions stay on hold. This action records your account.")) return;
     setLoading(true);
     try {
-      const {data,error}=await supabase.rpc("be_warehouse_mark_scanned_ready_v36", {p_pickup_id:pickupId});
+      const {data,error}=await supabase.rpc("be_warehouse_mark_delivery_ready_v149", {p_delivery_way_id:deliveryWayId});
       if(error) throw error;
-      if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcels ready.");
+      if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcel ready.");
       await loadAll();
-      setMessage(data.ready_count + " parcels marked ready. Open Wayplan Command, click Open queue, then select the regional stops and assign the team.");
+      setMessage(deliveryWayId + " marked ready for Wayplan. Open Wayplan Command, click Open queue, then assign the route and team.");
     } catch(e:any) {setMessage(e.message || "Readiness confirmation unavailable. Refresh before retrying.");}
     finally {setLoading(false);}
   };
 
   const markAllReady = async () => {
-    if (loading || scanBusy.current || !readyPickups.length) return;
-    const pickupIds=[...readyPickups];
+    if (loading || scanBusy.current || !readyWays.length) return;
+    const deliveryWayIds=[...readyWays];
     if (!window.confirm(
-      "Confirm ALL " + pickupIds.length + " received pickup(s) are checked and staged for Wayplan. " +
+      "Confirm ALL " + deliveryWayIds.length + " received Delivery Way(s) are checked and staged for Wayplan. " +
       "Only received parcels will be marked ready; unreceived parcels and exceptions stay on hold. This action records your account."
     )) return;
 
     setLoading(true);
-    setMessage("Marking " + pickupIds.length + " pickup(s) ready for Wayplan…");
+    setMessage("Marking " + deliveryWayIds.length + " Delivery Way(s) ready for Wayplan…");
     const completed:string[]=[];
-    const failed:Array<{pickupId:string;message:string}>=[];
-    let totalReady=0;
+    const failed:Array<{deliveryWayId:string;message:string}>=[];
 
     try {
-      for (const pickupId of pickupIds) {
+      for (const deliveryWayId of deliveryWayIds) {
         try {
-          const {data,error}=await supabase.rpc("be_warehouse_mark_scanned_ready_v36", {p_pickup_id:pickupId});
+          const {data,error}=await supabase.rpc("be_warehouse_mark_delivery_ready_v149", {p_delivery_way_id:deliveryWayId});
           if(error) throw error;
-          if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcels ready.");
-          completed.push(pickupId);
-          totalReady+=Number(data?.ready_count||0);
+          if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcel ready.");
+          completed.push(deliveryWayId);
         } catch (error:any) {
-          failed.push({pickupId,message:error?.message||"Readiness confirmation failed."});
+          failed.push({deliveryWayId,message:error?.message||"Readiness confirmation failed."});
         }
       }
 
@@ -318,13 +323,13 @@ export default function WarehousePage() {
 
       if (!failed.length) {
         setMessage(
-          totalReady + " parcel(s) across " + completed.length + " pickup(s) marked ready for Wayplan. " +
+          completed.length + " Delivery Way(s) marked ready for Wayplan. " +
           "Open Wayplan Command, click Open queue, then select the regional stops and assign the team."
         );
       } else {
         setMessage(
-          completed.length + " of " + pickupIds.length + " pickup(s) marked ready (" + totalReady + " parcel(s)). " +
-          "Failed: " + failed.map(item=>item.pickupId + " — " + item.message).join("; ")
+          completed.length + " of " + deliveryWayIds.length + " Delivery Way(s) marked ready. " +
+          "Failed: " + failed.map(item=>item.deliveryWayId + " — " + item.message).join("; ")
         );
       }
     } finally {
@@ -350,9 +355,7 @@ export default function WarehousePage() {
     }
   };
 
-  const operationalWayId=(r:any)=>String(
-    r.display_way_id || r.waybill_no || r.tracking_no || r.delivery_way_id || r.id || ""
-  ).trim();
+  const operationalWayId=(r:any)=>canonicalDeliveryWayId(r);
 
   const isBlkCode=(value:any)=>/(^|[-_])BLK([-_]|$)/i.test(String(value||"").trim());
 
@@ -659,16 +662,16 @@ export default function WarehousePage() {
         <div className="mb-3 flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={loading || !readyPickups.length}
+            disabled={loading || !readyWays.length}
             onClick={()=>void markAllReady()}
             className="rounded-lg bg-emerald-400 px-4 py-2 font-black text-emerald-950 shadow-sm hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Mark ALL ready for Wayplan ({readyPickups.length} pickup{readyPickups.length===1?"":"s"})
+            Mark ALL ready for Wayplan ({readyWays.length} way{readyWays.length===1?"":"s"})
           </button>
           <a href="#/wayplan-command" className="rounded-lg bg-blue-600 px-3 py-2">Open Wayplan Command</a>
         </div>
         <div className="flex flex-wrap gap-2">
-          {readyPickups.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2">Mark ready for Wayplan: {id}</button>)}
+          {readyWays.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2">Mark ready for Wayplan: {id}</button>)}
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
