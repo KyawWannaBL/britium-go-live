@@ -430,7 +430,36 @@ export default function WarehousePage() {
   // both the original and consolidated aliases are present.
   const operationalRows=useMemo(()=>{
     const byWay=new Map<string,any>();
-    for(const row of rows){
+    const normalizeCurrentState=(input:any)=>{
+      const row={...input};
+      const delivery=String(row.delivery_status||row.rider_status||row.stop_status||"").toUpperCase();
+      const activeFieldStates=new Set([
+        "DISPATCHED","READY_FOR_DELIVERY","RIDER_ACCEPTED","DELIVERY_ACCEPTED",
+        "ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"
+      ]);
+
+      if(activeFieldStates.has(delivery)){
+        row.rto_at=null;
+        row.return_scan_required=false;
+        row.field_exception_pending=false;
+        row.last_exception_code=null;
+        row.last_exception_reason=null;
+        row.dispatch_workflow_stage=
+          ["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY"].includes(delivery) ? "RIDER_ACCEPTED" :
+          delivery==="OUT_FOR_DELIVERY" ? "OUT_FOR_DELIVERY" :
+          delivery==="ARRIVED_AT_CUSTOMER" ? "ARRIVED_AT_CUSTOMER" :
+          "DISPATCHED_TO_FIELD";
+      } else if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)){
+        row.rto_at=null;
+        row.return_scan_required=true;
+        row.field_exception_pending=true;
+        row.dispatch_workflow_stage="AWAITING_RETURN_SCAN";
+      }
+      return row;
+    };
+
+    for(const rawRow of rows){
+      const row=normalizeCurrentState(rawRow);
       const display=operationalWayId(row);
       if(!display || isBlkCode(display)) continue;
       const key=display.toUpperCase();
@@ -453,6 +482,9 @@ export default function WarehousePage() {
   }),[operationalRows]);
 
   const progressOf=(r:any)=>{
+    const delivery=String(r.delivery_status||r.rider_status||r.stop_status||"").toUpperCase();
+    if(["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return "DISPATCH_SCANNED";
+    if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)) return "AWAITING_RETURN_SCAN";
     const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
     if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
     if(stage==="RTO") return "RTO";
