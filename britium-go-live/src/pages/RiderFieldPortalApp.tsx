@@ -1525,6 +1525,25 @@ function DeliveryJourney({ job }: { job: RiderJob }) {
   </div>;
 }
 
+function DeliveryHistory({job}:{job:RiderJob}) {
+  const items=[
+    ["Assignment received", (job as any).assigned_at || (job as any).wayplan_created_at || (job as any).created_at],
+    ["Dispatched from warehouse", (job as any).dispatched_at || (job as any).dispatch_scan_at],
+    ["Accepted by rider", (job as any).handed_over_to_rider_at],
+    ["Last delivery activity", (job as any).updated_at],
+    ["Delivered", (job as any).delivered_at],
+  ].filter((item)=>Boolean(item[1]));
+  return <div style={{border:`1px solid ${C.border}`,background:C.panel3,borderRadius:14,padding:12}}>
+    <div style={{fontSize:12,fontWeight:900,color:C.sub,textTransform:"uppercase",letterSpacing:1}}>Delivery History</div>
+    <div style={{display:"grid",gap:8,marginTop:10}}>
+      {items.length ? items.map(([label,ts])=><div key={String(label)} style={{display:"flex",justifyContent:"space-between",gap:12,fontSize:12}}>
+        <span style={{color:C.text,fontWeight:700}}>{String(label)}</span>
+        <span style={{color:C.dim}}>{compactDate(ts)}</span>
+      </div>) : <span style={{color:C.dim,fontSize:12}}>No history timestamp available yet.</span>}
+    </div>
+  </div>;
+}
+
 function DeliveryControlPanel({
   job,
   onAction,
@@ -1720,6 +1739,7 @@ function JobCard({
       )}
 
       {deliveryMode && <DeliveryJourney job={job} />}
+      {deliveryMode && <DeliveryHistory job={job} />}
       {deliveryMode && !delivered && !exception && !helperMode && (
         <DeliveryControlPanel job={job} onAction={onAction} onModal={onModal} />
       )}
@@ -1939,6 +1959,8 @@ function FieldPortal() {
   const [signatureFile, setSignatureFile] = useState<File | null>(null);
   const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
   const [signatureApproved, setSignatureApproved] = useState(false);
+  const [deliveryConfirmOpen,setDeliveryConfirmOpen]=useState(false);
+  const [deliveryConfirmChoice,setDeliveryConfirmChoice]=useState<""|"yes"|"no">("");
   const selectedJobRef = useRef<RiderJob | null>(null);
   const modalRef = useRef<ModalMode>(null);
   const parcelPhotoOperations = useRef(new Map<string, { id: string; jobId: string; modal: ModalMode; controller: AbortController; previewUrl?: string }>());
@@ -1974,6 +1996,8 @@ function FieldPortal() {
     setSignatureFile(null);
     setSignaturePreviewUrl("");
     setSignatureApproved(false);
+    setDeliveryConfirmOpen(false);
+    setDeliveryConfirmChoice("");
     setRescheduleDate("");
     setModal(null);
     modalSubmissionId.current = "";
@@ -2426,6 +2450,8 @@ function FieldPortal() {
     setProofOperationId("");
     setRemark("");
     setExceptionReason("CUSTOMER_NOT_AVAILABLE");
+    setDeliveryConfirmOpen(false);
+    setDeliveryConfirmChoice("");
     setRescheduleDate("");
     setPickupSearch("");
 
@@ -3374,6 +3400,22 @@ function FieldPortal() {
         })}
       </div>
 
+      {deliveryConfirmOpen && selectedJob && (
+        <div style={{position:"fixed",inset:0,zIndex:80,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
+          <Card style={{width:"min(460px,100%)",display:"grid",gap:14}}>
+            <div>
+              <strong style={{fontSize:18}}>Confirm delivery completion?</strong>
+              <div style={{color:C.sub,marginTop:6}}>This will permanently mark {text((selectedJob as any).delivery_way_id || (selectedJob as any).waybill_no || pickupId(selectedJob))} as Delivered.</div>
+            </div>
+            <div style={{color:C.gold,fontSize:13}}>Are recipient, COD/payment, proof photo and signature all confirmed?</div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <button type="button" onClick={()=>{setDeliveryConfirmChoice("no");setDeliveryConfirmOpen(false);setTimeout(()=>setDeliveryConfirmChoice(""),0);}} style={buttonStyle("plain")}>No</button>
+              <button type="button" onClick={async()=>{setDeliveryConfirmChoice("yes");setDeliveryConfirmOpen(false);await submitModal();}} style={{...buttonStyle("gold"),background:deliveryConfirmChoice==="yes"?C.purple:C.gold}}>Yes</button>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {modal && selectedJob && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.58)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
           <Card style={{ width: modal === "pickup" ? "min(1180px, 100%)" : "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
@@ -3530,19 +3572,53 @@ function FieldPortal() {
             )}
 
             {modal === "delivery" && (
-              <div style={{ display: "grid", gap: 12 }}>
-                <div><label>Recipient name</label><input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} style={inputStyle()} /></div>
-                <div><label>Recipient phone</label><input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} style={inputStyle()} /></div>
-                <div><label>COD collected amount</label><input value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
-                <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
-                {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
-                {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
-                {proofFile && !proofApproved && <button type="button" onClick={approveWorkflowProof} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
-                {proofApproved && <Badge color={C.green}>Delivery photo approved</Badge>}
-                <div><label>Required recipient signature evidence</label><input type="file" accept="image/*" capture="environment" disabled={busy} onChange={handleSignatureEvidence} style={inputStyle()} /></div>
-                {signaturePreviewUrl && <img src={signaturePreviewUrl} alt="Recipient signature preview" style={{ width:"100%", maxHeight:180, objectFit:"contain", borderRadius:12, border:`1px solid ${signatureApproved?C.green:C.gold}` }} />}
-                {signatureFile && !signatureApproved && <button type="button" onClick={approveSignatureEvidence} style={buttonStyle("gold")}>APPROVE SIGNATURE</button>}
-                {signatureApproved && <Badge color={C.green}>Recipient signature approved</Badge>}
+              <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) 280px",gap:14}} className="be-delivery-final-grid">
+                <div style={{ display: "grid", gap: 12 }}>
+                  <div><label>Recipient name</label><input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} style={inputStyle()} /></div>
+                  <div><label>Recipient phone</label><input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} style={inputStyle()} /></div>
+                  <div><label>COD / Payment collected amount</label><input value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
+                  <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
+                  {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
+                  {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
+                  {proofFile && !proofApproved && <button type="button" onClick={approveWorkflowProof} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
+                  {proofApproved && <Badge color={C.green}>Delivery photo approved</Badge>}
+                  <div><label>Required recipient signature evidence</label><input type="file" accept="image/*" capture="environment" disabled={busy} onChange={handleSignatureEvidence} style={inputStyle()} /></div>
+                  {signaturePreviewUrl && <img src={signaturePreviewUrl} alt="Recipient signature preview" style={{ width:"100%", maxHeight:180, objectFit:"contain", borderRadius:12, border:`1px solid ${signatureApproved?C.green:C.gold}` }} />}
+                  {signatureFile && !signatureApproved && <button type="button" onClick={approveSignatureEvidence} style={buttonStyle("gold")}>APPROVE SIGNATURE</button>}
+                  {signatureApproved && <Badge color={C.green}>Recipient signature approved</Badge>}
+                </div>
+
+                <aside style={{display:"grid",gap:10,alignContent:"start"}}>
+                  <DeliveryHistory job={selectedJob} />
+                  <button
+                    type="button"
+                    onClick={()=>{setDeliveryConfirmChoice("");setDeliveryConfirmOpen(true);}}
+                    disabled={
+                      busy ||
+                      !recipientName.trim() ||
+                      (Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0)>0 && Number(codCollected||0)<Number(selectedJob.rider_cod_amount || selectedJob.cod_amount || selectedJob.item_price || 0)) ||
+                      !(proofUrl || (proofFile && proofApproved)) ||
+                      !(signatureFile && signatureApproved)
+                    }
+                    style={{...buttonStyle("green"),background:deliveryConfirmChoice==="yes"?C.purple:C.green,minHeight:54,fontSize:15,fontWeight:900}}
+                  >
+                    ပို့ဆောင်ပြီး / Delivered
+                  </button>
+
+                  <div>
+                    <label>Failed reason</label>
+                    <select value={exceptionReason} onChange={(e)=>setExceptionReason(e.target.value)} disabled={busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob)} style={inputStyle()}>
+                      {DELIVERY_EXCEPTION_RULES.map((rule)=><option key={rule.code} value={rule.code}>{rule.nameEn} / {rule.nameMm}</option>)}
+                    </select>
+                  </div>
+
+                  <button type="button" disabled={busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob)} onClick={()=>{setModal("exception");}} style={{...buttonStyle("red"),opacity:(busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob))?.55:1}}>
+                    ပို့ဆောင်မှုမအောင်မြင် / Delivery Failed
+                  </button>
+                  <button type="button" disabled={busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob)} onClick={()=>{setExceptionReason("CUSTOMER_REFUSED");setModal("exception");setRemark("Return parcel to Warehouse after failed delivery attempt");}} style={{...buttonStyle("plain"),opacity:(busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob))?.55:1}}>
+                    Warehouse သို့ပြန်ပို့ရန်
+                  </button>
+                </aside>
               </div>
             )}
 
@@ -3660,7 +3736,7 @@ function FieldPortal() {
                   {uploadingAll ? "SAVING ALL..." : "SAVE ALL PARCELS"}
                 </button>
               )}
-              <button
+              {modal !== "delivery" && <button
                 type="button"
                 onClick={submitModal}
                 disabled={
@@ -3689,7 +3765,7 @@ function FieldPortal() {
                     : modal === "delivery"
                       ? "VERIFY & MARK DELIVERED"
                       : "Submit"}
-              </button>
+              </button>}
             </div>
           </Card>
         </div>
@@ -3716,7 +3792,7 @@ const globalStyle = `
   @media (max-width: 680px) { .be-three-grid, .be-four-grid, .be-six-grid { grid-template-columns: 1fr !important; } .be-bottom-nav { display: flex !important; } main { padding-bottom: 64px; } h1 { font-size: 24px !important; } }
 
   @media (max-width: 900px) {
-    .be-pickup-verification-grid { grid-template-columns: 1fr !important; }
+    .be-pickup-verification-grid, .be-delivery-final-grid { grid-template-columns: 1fr !important; }
     .be-pickup-verification-grid aside { border-right: 0 !important; border-bottom: 1px solid #1a3a5c !important; }
     .be-parcel-row-grid { grid-template-columns: 1fr !important; }
   }
