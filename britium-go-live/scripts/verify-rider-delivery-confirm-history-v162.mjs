@@ -1,0 +1,14 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const page=fs.readFileSync(path.join(root,"src/pages/RiderFieldPortalApp.tsx"),"utf8");
+assert.match(page,/ပို့ဆောင်ပြီး \/ Delivered/);
+assert.match(page,/Confirm delivery completion\?/);
+assert.match(page,/Warehouse သို့ပြန်ပို့ရန်/);
+assert.match(page,/ပို့ဆောင်မှုမအောင်မြင် \/ Delivery Failed/);
+assert.match(page,/Failed reason/);
+assert.match(page,/Delivery History/);
+assert.match(page,/deliveryConfirmChoice==="yes"/);
+assert.match(page,/modal !== "delivery" && <button/);
+console.log("Rider delivery confirmation/history V162 PASS");
