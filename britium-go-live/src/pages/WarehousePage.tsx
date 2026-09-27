@@ -77,7 +77,7 @@ export default function WarehousePage() {
     if(!quiet) setLoading(true);
     try {
       const [snapshotResult,archiveResult] = await Promise.all([
-        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v158"),
+        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v164"),
         (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
       ]);
       if (snapshotResult.error) throw snapshotResult.error;
@@ -265,7 +265,7 @@ export default function WarehousePage() {
 
       setMessage(
         kind === "return"
-          ? `Return scan saved for ${displayId}. Attempt ${data.attempt_count || ""}${data.rto ? " → RTO" : " → priority for next wayplan"}.`
+          ? `Return Scan ${data.physical_return_scan_number || data.attempt_count || ""} saved for ${displayId}. ${data.rto ? "Explicit RTO state confirmed." : (data.next_attempt_priority ? "Parcel is returned and prioritized for the next Wayplan." : "Third physical return recorded; Operations review is required before any RTO decision.")}`
           : `${kind.toUpperCase()} scan saved for ${displayId}.`
       );
 
@@ -813,7 +813,8 @@ export default function WarehousePage() {
           <select
             value={reason}
             onChange={(e) => setReason(e.target.value)}
-            className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30]"
+            disabled={scanMode!=="return"}
+            className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <option value="">Select return reason from exception rules...</option>
             {reasons.map((r: any) => (
