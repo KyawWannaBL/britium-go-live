@@ -474,6 +474,15 @@ export default function WarehousePage() {
     [operationalRows]
   );
 
+  useEffect(()=>{
+    if(!dispatchRequiredRows.length && scanMode==="dispatch"){
+      setScanMode("inbound");
+      dispatchQueue.current=[];
+      setDispatchQueueCount(0);
+      setDispatchProcessing(false);
+    }
+  },[dispatchRequiredRows.length,scanMode]);
+
   const dispatchWayplans=useMemo(()=>{
     const map=new Map<string,{wayplanId:string;vehicle:string;count:number}>();
     for(const r of dispatchRequiredRows){
@@ -745,10 +754,10 @@ export default function WarehousePage() {
         <button type="button" disabled={!!scanChoices} className="mb-3 rounded bg-sky-700 px-3 py-2" onClick={focusScanner}>Focus scanner</button>
         <label className="mb-3 block text-sm">Scanner Enter action:
           <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
-            <option value="inbound">Inbound</option><option value="dispatch">Dispatch</option><option value="return">Return</option>
+            <option value="inbound">Inbound</option><option value="dispatch" disabled={!dispatchRequiredRows.length}>Dispatch{dispatchRequiredRows.length ? ` (${dispatchRequiredRows.length} released)` : " — Supervisor release required"}</option><option value="return">Return</option>
           </select>
         </label>
-        <p className="mb-3 text-sm text-slate-300">USB/Bluetooth scanners: choose Dispatch once and keep scanning with an Enter suffix. The field stays focused continuously; a new scan may be queued while the previous one is saving. You no longer need to click the textbox between parcels. Inbound/Return still use the normal confirmation flow.</p>
+        <p className="mb-3 text-sm text-slate-300">{dispatchRequiredRows.length ? "USB/Bluetooth scanners: Dispatch is enabled because Supervisor-released parcels are waiting. Choose Dispatch once and keep scanning with an Enter suffix." : "Dispatch is disabled until a created Wayplan is confirmed/released by Supervisor. Inbound and Return scanning remain available."}</p>
         <div className="grid grid-cols-1 gap-3 xl:grid-cols-[1.2fr_1.5fr_1.2fr_1.4fr]">
           <input
             ref={scanInputRef}
@@ -812,8 +821,8 @@ export default function WarehousePage() {
               Inbound
             </button>
             <button
-              disabled={loading && scanMode!=="dispatch"} onClick={() => doScan("dispatch")}
-              className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600"
+              disabled={!dispatchRequiredRows.length || (loading && scanMode!=="dispatch")} onClick={() => doScan("dispatch")}
+              className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Truck className="mr-1 inline h-4 w-4" />
               Dispatch
