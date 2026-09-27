@@ -3,7 +3,8 @@
 // FinancePortal.tsx — Production Finance Portal
 // API: /api/v1/finance-portal/*   Role: finance / accountant
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import {
   useFinanceOverview,
   useCodReconciliation,
@@ -14,13 +15,18 @@ import {
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "cod" | "settlements" | "wallets" | "vouchers";
+type Tab = "overview" | "field-delivery" | "cod" | "settlements" | "wallets" | "vouchers";
 
 export default function FinancePortal() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [fieldDate, setFieldDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [fieldWorker, setFieldWorker] = useState("");
+  const [fieldDaily, setFieldDaily] = useState<any>({ summary: {}, rows: [] });
+  const [fieldLoading, setFieldLoading] = useState(false);
+  const [fieldError, setFieldError] = useState("");
 
   const overview = useFinanceOverview();
   const cod = useCodReconciliation(dateFrom && dateTo ? { date_from: dateFrom, date_to: dateTo } : undefined);
@@ -31,11 +37,29 @@ export default function FinancePortal() {
 
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "💰 Overview" },
+    { id: "field-delivery", label: "🚚 Field Delivery Daily" },
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
     { id: "wallets", label: "👛 Rider Wallets" },
     { id: "vouchers", label: "🧾 Vouchers" },
   ];
+
+  async function loadFieldDaily() {
+    setFieldLoading(true);
+    setFieldError("");
+    const { data, error } = await (supabase as any).rpc("be_finance_field_delivery_daily_v172", {
+      p_work_date: fieldDate || null,
+      p_worker_code: fieldWorker.trim() || null,
+    });
+    if (error) setFieldError(error.message);
+    else if (data?.ok === false) setFieldError(data?.error || "Unable to load field delivery daily reconciliation.");
+    else setFieldDaily(data || { summary: {}, rows: [] });
+    setFieldLoading(false);
+  }
+
+  useEffect(() => {
+    if (tab === "field-delivery") void loadFieldDaily();
+  }, [tab]);
 
   return (
     <div style={S.page}>
@@ -61,6 +85,26 @@ export default function FinancePortal() {
         {/* OVERVIEW */}
         {tab === "overview" && (
           <OverviewSection data={overview.data as Record<string, unknown>} loading={overview.isLoading} error={overview.error?.message} />
+        )}
+
+        {/* FIELD DELIVERY DAILY */}
+        {tab === "field-delivery" && (
+          <div>
+            <h2 style={S.h2}>Field Delivery Daily Reconciliation</h2>
+            <div style={S.filterBar}>
+              <label style={S.filterLabel}>Work Date
+                <input type="date" style={S.filterInput} value={fieldDate} onChange={(e) => setFieldDate(e.target.value)} />
+              </label>
+              <label style={S.filterLabel}>Rider / Driver Code
+                <input type="text" style={S.filterInput} placeholder="All or RID007 / DRV001" value={fieldWorker} onChange={(e) => setFieldWorker(e.target.value)} />
+              </label>
+              <button onClick={() => void loadFieldDaily()} style={S.approveBtn} disabled={fieldLoading}>
+                {fieldLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+            {fieldError && <ErrBanner msg={fieldError} />}
+            <FieldDeliveryDailySection data={fieldDaily} loading={fieldLoading} />
+          </div>
         )}
 
         {/* COD RECONCILIATION */}
@@ -157,6 +201,54 @@ export default function FinancePortal() {
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function FieldDeliveryDailySection({ data, loading }: { data: any; loading: boolean }) {
+  if (loading) return <Loader />;
+  const s = data?.summary || {};
+  const rows = Array.isArray(data?.rows) ? data.rows : [];
+  const cards: [string, string, string][] = [
+    ["Total Ways", String(s.total_ways ?? 0), "#334155"],
+    ["Successful", String(s.success_ways ?? 0), "#10b981"],
+    ["Failed", String(s.failed_ways ?? 0), "#ef4444"],
+    ["Active", String(s.active_ways ?? 0), "#3b82f6"],
+    ["Wayplan Expected", fmt(s.wayplan_expected_total ?? 0), "#6366f1"],
+    ["Successful Expected", fmt(s.success_expected_total ?? 0), "#0ea5e9"],
+    ["Actual Collected", fmt(s.actual_collected_total ?? 0), "#059669"],
+    ["Cash", fmt(s.cash_collected ?? 0), "#16a34a"],
+    ["Mobile Banking", fmt(s.mobile_banking_collected ?? 0), "#7c3aed"],
+    ["Variance", fmt(s.cash_reconciliation_variance ?? 0), s.cash_reconciliation_status === "MATCH" ? "#10b981" : "#ef4444"],
+  ];
+  return (
+    <div>
+      <div style={{...S.statsGrid, marginBottom: 18}}>
+        {cards.map(([label,val,color]) => (
+          <div key={label} style={{...S.statCard,borderTop:`4px solid ${color}`}}>
+            <div style={{fontSize:20,fontWeight:900,color}}>{val}</div>
+            <div style={{fontSize:12,color:"#64748b",marginTop:4}}>{label}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{marginBottom:12,fontWeight:800,color:s.cash_reconciliation_status==="MATCH"?"#166534":"#991b1b"}}>
+        Reconciliation: {s.cash_reconciliation_status || "—"}
+      </div>
+      <DataTable
+        loading={false}
+        data={rows}
+        cols={["Way ID","Worker","Result","Reason","Expected","Actual","Payment","Settlement"]}
+        rowFn={(r:any)=>[
+          r.delivery_way_id,
+          r.worker_code || "-",
+          badge(String(r.result_class || "")),
+          r.failed_reason || "-",
+          fmt(r.expected_collect),
+          fmt(r.actual_collected),
+          r.payment_mode || "-",
+          r.settlement_status || "-",
+        ]}
+      />
     </div>
   );
 }
