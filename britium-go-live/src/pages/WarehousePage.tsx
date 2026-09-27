@@ -63,6 +63,8 @@ export default function WarehousePage() {
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
+  const [handoffArchive,setHandoffArchive]=useState<any>({rows:[],count:0});
+  const [handoffArchiveExpanded,setHandoffArchiveExpanded]=useState(false);
 
   const rows = snapshot.rows || [];
   const stats = snapshot.stats || {};
@@ -74,10 +76,15 @@ export default function WarehousePage() {
   const loadAll = useCallback(async (quiet=false) => {
     if(!quiet) setLoading(true);
     try {
-      const { data, error } = await supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v129");
-      if (error) throw error;
+      const [snapshotResult,archiveResult] = await Promise.all([
+        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v129"),
+        (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
+      ]);
+      if (snapshotResult.error) throw snapshotResult.error;
+      const data=snapshotResult.data;
       setSnapshot(data || { stats: {}, rows: [], reasons: [] });
       setReason((prev) => prev || data?.reasons?.find((r: any) => r.process_type === "DELIVERY")?.exception_code || "");
+      if(!archiveResult.error) setHandoffArchive(archiveResult.data || {rows:[],count:0});
     } catch (e: any) {
       setMessage(e.message || "Failed to load warehouse scan data.");
     } finally {
@@ -280,16 +287,27 @@ export default function WarehousePage() {
       .filter(Boolean)
   )) as string[];
 
+  const openWayplanHandoff = (deliveryWayIds:string[], notice:string) => {
+    if(!deliveryWayIds.length) return;
+    try {
+      window.sessionStorage.setItem("be_wayplan_handoff_ids_v150",JSON.stringify(deliveryWayIds));
+      window.sessionStorage.setItem("be_wayplan_handoff_notice_v150",notice);
+    } catch {}
+    window.location.hash="/wayplan-command";
+  };
+
   const markReady = async (deliveryWayId:string) => {
     if (loading || scanBusy.current) return;
-    if (!window.confirm("Confirm received parcel " + deliveryWayId + " is checked and staged for Wayplan. Exceptions stay on hold. This action records your account.")) return;
+    if (!window.confirm("Confirm received parcel " + deliveryWayId + " is checked and staged for Wayplan. It will open in Wayplan Command and this button will move to the 7-day handoff archive after the queue sees it.")) return;
     setLoading(true);
     try {
-      const {data,error}=await supabase.rpc("be_warehouse_mark_delivery_ready_v149", {p_delivery_way_id:deliveryWayId});
+      const {data,error}=await (supabase as any).rpc("be_warehouse_mark_delivery_ready_v150", {p_delivery_way_id:deliveryWayId});
       if(error) throw error;
       if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcel ready.");
       await loadAll();
-      setMessage(deliveryWayId + " marked ready for Wayplan. Open Wayplan Command, click Open queue, then assign the route and team.");
+      const notice=deliveryWayId + " is ready and handed off from Warehouse. It is preselected below for Wayplan creation.";
+      setMessage(notice);
+      openWayplanHandoff([deliveryWayId],notice);
     } catch(e:any) {setMessage(e.message || "Readiness confirmation unavailable. Refresh before retrying.");}
     finally {setLoading(false);}
   };
@@ -299,7 +317,7 @@ export default function WarehousePage() {
     const deliveryWayIds=[...readyWays];
     if (!window.confirm(
       "Confirm ALL " + deliveryWayIds.length + " received Delivery Way(s) are checked and staged for Wayplan. " +
-      "Only received parcels will be marked ready; unreceived parcels and exceptions stay on hold. This action records your account."
+      "They will open in Wayplan Command together. Unreceived parcels and exceptions stay on hold."
     )) return;
 
     setLoading(true);
@@ -310,7 +328,7 @@ export default function WarehousePage() {
     try {
       for (const deliveryWayId of deliveryWayIds) {
         try {
-          const {data,error}=await supabase.rpc("be_warehouse_mark_delivery_ready_v149", {p_delivery_way_id:deliveryWayId});
+          const {data,error}=await (supabase as any).rpc("be_warehouse_mark_delivery_ready_v150", {p_delivery_way_id:deliveryWayId});
           if(error) throw error;
           if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcel ready.");
           completed.push(deliveryWayId);
@@ -321,17 +339,11 @@ export default function WarehousePage() {
 
       await loadAll();
 
-      if (!failed.length) {
-        setMessage(
-          completed.length + " Delivery Way(s) marked ready for Wayplan. " +
-          "Open Wayplan Command, click Open queue, then select the regional stops and assign the team."
-        );
-      } else {
-        setMessage(
-          completed.length + " of " + deliveryWayIds.length + " Delivery Way(s) marked ready. " +
-          "Failed: " + failed.map(item=>item.deliveryWayId + " — " + item.message).join("; ")
-        );
-      }
+      const notice = !failed.length
+        ? completed.length + " Delivery Way(s) handed off from Warehouse and preselected for Wayplan creation."
+        : completed.length + " of " + deliveryWayIds.length + " Delivery Way(s) handed off. Failed: " + failed.map(item=>item.deliveryWayId + " — " + item.message).join("; ");
+      setMessage(notice);
+      if(completed.length) openWayplanHandoff(completed,notice);
     } finally {
       setLoading(false);
     }
@@ -657,9 +669,18 @@ export default function WarehousePage() {
       </section>
 
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
-        <h2 className="font-bold">Prepare received parcels for Wayplan</h2>
-        <p className="mb-3 text-sm text-slate-400">After checking and staging the received parcels, mark the pickup ready. Unreceived parcels and exceptions remain on hold.</p>
-        <div className="mb-3 flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-bold">Prepare received parcels for Wayplan</h2>
+            <p className="mt-1 text-sm text-slate-400">Mark an individual Delivery Way or all received ways ready. The selected D-series Way IDs are handed directly to Wayplan Command and preselected there.</p>
+          </div>
+          <div className="rounded-xl border border-cyan-500/50 bg-cyan-950/30 px-4 py-3 text-right">
+            <div className="text-2xl font-black text-cyan-300">{Number(stats.ready_for_wayplan || 0)}</div>
+            <div className="text-[11px] font-bold uppercase tracking-wide text-cyan-100">Ready to Create Wayplan</div>
+          </div>
+        </div>
+
+        <div className="mb-3 mt-3 flex flex-wrap gap-2">
           <button
             type="button"
             disabled={loading || !readyWays.length}
@@ -670,8 +691,36 @@ export default function WarehousePage() {
           </button>
           <a href="#/wayplan-command" className="rounded-lg bg-blue-600 px-3 py-2">Open Wayplan Command</a>
         </div>
+
         <div className="flex flex-wrap gap-2">
-          {readyWays.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2">Mark ready for Wayplan: {id}</button>)}
+          {readyWays.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2 font-semibold hover:bg-emerald-500 disabled:opacity-40">Mark ready for Wayplan: {id}</button>)}
+          {!readyWays.length && <span className="text-sm text-slate-500">No newly received Delivery Ways are waiting for readiness confirmation.</span>}
+        </div>
+
+        <div className="mt-4 border-t border-slate-700/70 pt-3">
+          <button
+            type="button"
+            onClick={()=>setHandoffArchiveExpanded(value=>!value)}
+            className="rounded-lg border border-violet-500/60 bg-violet-950/40 px-4 py-2 text-sm font-bold text-violet-200 hover:bg-violet-900/50"
+          >
+            {handoffArchiveExpanded ? "Hide" : "Show"} Recent Wayplan Handoffs — 7 days ({Number(handoffArchive?.count || 0)})
+          </button>
+          <p className="mt-2 text-xs text-slate-500">After a handed-off D-series Way ID is visible in Wayplan Command, its active Warehouse button is archived here for 7 days for checking/audit only.</p>
+          {handoffArchiveExpanded && (
+            <div className="mt-3 max-h-64 overflow-auto rounded-xl border border-violet-500/30 bg-slate-950/35 p-3">
+              {(handoffArchive?.rows || []).length ? (
+                <div className="flex flex-wrap gap-2">
+                  {(handoffArchive.rows || []).map((item:any)=>(
+                    <div key={item.delivery_way_id} className="rounded-lg border border-violet-500/40 bg-violet-950/30 px-3 py-2 text-xs">
+                      <div className="font-black text-violet-200">{item.delivery_way_id}</div>
+                      <div className="mt-1 text-slate-400">Shown in Wayplan: {fmt(item.visible_in_wayplan_at)}</div>
+                      <div className="text-slate-500">Archive expires: {fmt(item.expires_at)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : <div className="text-sm text-slate-500">No Wayplan handoffs archived in the last 7 days.</div>}
+            </div>
+          )}
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
