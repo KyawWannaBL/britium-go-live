@@ -287,6 +287,51 @@ export default function WarehousePage() {
     finally {setLoading(false);}
   };
 
+  const markAllReady = async () => {
+    if (loading || scanBusy.current || !readyPickups.length) return;
+    const pickupIds=[...readyPickups];
+    if (!window.confirm(
+      "Confirm ALL " + pickupIds.length + " received pickup(s) are checked and staged for Wayplan. " +
+      "Only received parcels will be marked ready; unreceived parcels and exceptions stay on hold. This action records your account."
+    )) return;
+
+    setLoading(true);
+    setMessage("Marking " + pickupIds.length + " pickup(s) ready for Wayplan…");
+    const completed:string[]=[];
+    const failed:Array<{pickupId:string;message:string}>=[];
+    let totalReady=0;
+
+    try {
+      for (const pickupId of pickupIds) {
+        try {
+          const {data,error}=await supabase.rpc("be_warehouse_mark_scanned_ready_v36", {p_pickup_id:pickupId});
+          if(error) throw error;
+          if(!data?.ok) throw new Error(data?.message || data?.error || "Could not mark parcels ready.");
+          completed.push(pickupId);
+          totalReady+=Number(data?.ready_count||0);
+        } catch (error:any) {
+          failed.push({pickupId,message:error?.message||"Readiness confirmation failed."});
+        }
+      }
+
+      await loadAll();
+
+      if (!failed.length) {
+        setMessage(
+          totalReady + " parcel(s) across " + completed.length + " pickup(s) marked ready for Wayplan. " +
+          "Open Wayplan Command, click Open queue, then select the regional stops and assign the team."
+        );
+      } else {
+        setMessage(
+          completed.length + " of " + pickupIds.length + " pickup(s) marked ready (" + totalReady + " parcel(s)). " +
+          "Failed: " + failed.map(item=>item.pickupId + " — " + item.message).join("; ")
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const closeDispatchDay = async () => {
     setLoading(true);
     try {
@@ -611,9 +656,19 @@ export default function WarehousePage() {
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <h2 className="font-bold">Prepare received parcels for Wayplan</h2>
         <p className="mb-3 text-sm text-slate-400">After checking and staging the received parcels, mark the pickup ready. Unreceived parcels and exceptions remain on hold.</p>
+        <div className="mb-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={loading || !readyPickups.length}
+            onClick={()=>void markAllReady()}
+            className="rounded-lg bg-emerald-400 px-4 py-2 font-black text-emerald-950 shadow-sm hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Mark ALL ready for Wayplan ({readyPickups.length} pickup{readyPickups.length===1?"":"s"})
+          </button>
+          <a href="#/wayplan-command" className="rounded-lg bg-blue-600 px-3 py-2">Open Wayplan Command</a>
+        </div>
         <div className="flex flex-wrap gap-2">
           {readyPickups.map(id => <button key={id} disabled={loading} onClick={()=>void markReady(id)} className="rounded-lg bg-emerald-600 px-3 py-2">Mark ready for Wayplan: {id}</button>)}
-          <a href="#/wayplan-command" className="rounded-lg bg-blue-600 px-3 py-2">Open Wayplan Command</a>
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
