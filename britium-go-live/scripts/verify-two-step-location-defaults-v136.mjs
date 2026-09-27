@@ -10,6 +10,7 @@ const defaults = read("src/lib/locationDefaultCoordinates.ts");
 const editor = read("src/components/workflow/DataEntryLocationEditor.tsx");
 const recovery = read("src/lib/wayplanLocationRecovery.ts");
 const migration = read("supabase/migrations/20260924072000_two_step_location_defaults_v136.sql");
+const backendContract = read("supabase/migrations/20260927145500_location_default_backend_contract_v146.sql");
 
 assert.match(resolver, /resolvePostalCode\(addressWithPostalEvidence, input\.township, \{[\s\S]*ward: input\.ward,[\s\S]*postalCode: input\.postalCode/);
 assert.match(resolver, /postal\.matchLevel === "EXACT_QUARTER"[\s\S]*postalWardDefaultCoordinate\(postal\)/);
@@ -34,5 +35,17 @@ assert.match(migration, /TOWNSHIP_DEFAULT_V136/);
 assert.match(migration, /POSTAL_DEFAULT','TOWNSHIP_DEFAULT/);
 assert.match(migration, /route_block_reason',case when route_ready then null else 'LOCATION_PENDING'/);
 assert.match(migration, /WAYPLAN_VISIBLE_QUEUE_V136_GENERIC_DEFAULTS_20260924/);
+
+assert.match(backendContract, /POSTAL_WARD_DEFAULT_V136/);
+assert.match(backendContract, /TOWNSHIP_DEFAULT_V136/);
+assert.match(backendContract, /POSTAL_DEFAULT'',''TOWNSHIP_DEFAULT/);
+assert.match(backendContract, /v_trusted_default/);
+assert.match(backendContract, /be_delivery_way_id_registry/);
+assert.match(backendContract, /be_data_entry_parcel_details/);
+assert.doesNotMatch(
+  backendContract,
+  /canonical pickup and Delivery Way ID\.'',v_index\+1; end if;\s*\$migration\$/,
+  "V146 must not restore the obsolete PickupID-001-only Delivery Way validator.",
+);
 
 console.log("two-step location defaults V136 contract PASS");
