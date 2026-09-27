@@ -577,18 +577,25 @@ function PreDispatchFinance({ setMessage, authority }: { setMessage: (value: str
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
-  const [filters, setFilters] = useState({ from: monthStart(), to: today(), status: "", merchant: "" });
+  const [filters, setFilters] = useState({
+    from: monthStart(), to: today(), status: "", merchant: "",
+    destination: "", provider: "", payment: "", search: "",
+  });
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   async function load() {
     setLoading(true);
     setMessage("");
     try {
-      const { data, error } = await (supabase as any).rpc("be_finance_predispatch_queue_v1", {
+      const { data, error } = await (supabase as any).rpc("be_finance_predispatch_queue_v2", {
         p_from: filters.from || null,
         p_to: filters.to || null,
         p_status: filters.status || null,
         p_merchant: filters.merchant.trim() || null,
+        p_destination: filters.destination.trim() || null,
+        p_service_provider: filters.provider.trim() || null,
+        p_payment_method: filters.payment || null,
+        p_search: filters.search.trim() || null,
         p_limit: 2000,
       });
       if (error) throw error;
@@ -602,6 +609,25 @@ function PreDispatchFinance({ setMessage, authority }: { setMessage: (value: str
   }
 
   useEffect(() => { void load(); }, []);
+
+  async function setPayment(row: Row, paymentMethod: string) {
+    if (!row.delivery_way_id) return;
+    setBusyId(row.delivery_way_id);
+    try {
+      const { data, error } = await (supabase as any).rpc("be_finance_predispatch_set_payment_v2", {
+        p_delivery_way_id: row.delivery_way_id,
+        p_payment_method: paymentMethod,
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.code || "Payment method update failed.");
+      setMessage(`${row.delivery_way_id}: payment method changed to ${paymentMethod}.`);
+      await load();
+    } catch (error: any) {
+      setMessage(error?.message || "Payment method update failed.");
+    } finally {
+      setBusyId("");
+    }
+  }
 
   async function decide(row: Row, decision: "APPROVE" | "HOLD" | "REJECT") {
     if (!row.delivery_way_id) return;
@@ -631,72 +657,60 @@ function PreDispatchFinance({ setMessage, authority }: { setMessage: (value: str
         <div>
           <div className="flex items-center gap-2"><ShieldCheck size={20} className="text-[#68e8bd]" /><h2 className="font-black">Pre-Dispatch Finance Control</h2></div>
           <p className="mt-1 text-xs text-[#82a5bb]">
-            COD policy is finalized from the Data Entry parcel's actual delivery region and item value before dispatch.
+            Finance uses the canonical Delivery Way ID only: <b>DMMDD-MERCHANT-xxx</b>. Pickup IDs and legacy P... identifiers are never used as Finance Way IDs.
           </p>
         </div>
         <div className="rounded-xl border border-[#f6b84b]/30 bg-[#f6b84b]/10 px-3 py-2 text-xs text-[#ffd98a]">
-          Yangon COD ≤ 200,000 MMK: auto-approved · Yangon COD &gt; 200,000 MMK: 2% fee + Finance approval · Outside Yangon: COD not eligible
+          COD is the default payment method · Destination and Service Provider are synchronized from Data Entry routing.
         </div>
       </div>
 
-      <div className="mb-4 grid gap-3 md:grid-cols-5">
+      <div className="mb-4 grid gap-3 md:grid-cols-4 xl:grid-cols-8">
         <Field label="Date From"><input type="date" className={inputClass} value={filters.from} onChange={(e) => setFilters({ ...filters, from: e.target.value })} /></Field>
         <Field label="Date To"><input type="date" className={inputClass} value={filters.to} onChange={(e) => setFilters({ ...filters, to: e.target.value })} /></Field>
-        <Field label="Status">
-          <select className={inputClass} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
-            <option value="">All</option>
-            <option value="PENDING_FINANCE">Pending Finance</option>
-            <option value="PENDING_VALUE">Pending Value</option>
-            <option value="PENDING_DATA_ENTRY">Pending Data Entry</option>
-            <option value="AUTO_APPROVED">Auto Approved</option>
-            <option value="APPROVED">Approved</option>
-            <option value="HELD">Held</option>
-            <option value="REJECTED">Rejected</option>
-            <option value="NOT_ELIGIBLE">Not Eligible</option>
-          </select>
-        </Field>
-        <Field label="Merchant"><input className={inputClass} value={filters.merchant} onChange={(e) => setFilters({ ...filters, merchant: e.target.value })} placeholder="Name or code" /></Field>
-        <div className="flex items-end"><button className={buttonClass} onClick={() => void load()}><RefreshCw size={15} />Refresh</button></div>
+        <Field label="Status"><select className={inputClass} value={filters.status} onChange={(e) => setFilters({ ...filters, status: e.target.value })}>
+          <option value="">All</option><option value="PENDING_FINANCE">Pending Finance</option><option value="PENDING_VALUE">Pending Value</option>
+          <option value="PENDING_DATA_ENTRY">Pending Data Entry</option><option value="AUTO_APPROVED">Auto Approved</option>
+          <option value="APPROVED">Approved</option><option value="HELD">Held</option><option value="REJECTED">Rejected</option><option value="NOT_ELIGIBLE">Not Eligible</option>
+        </select></Field>
+        <Field label="Merchant"><input className={inputClass} value={filters.merchant} onChange={(e) => setFilters({ ...filters, merchant: e.target.value })} placeholder="Name / 3-digit code" /></Field>
+        <Field label="Destination"><input className={inputClass} value={filters.destination} onChange={(e) => setFilters({ ...filters, destination: e.target.value })} placeholder="Yangon / township..." /></Field>
+        <Field label="Service Provider"><select className={inputClass} value={filters.provider} onChange={(e) => setFilters({ ...filters, provider: e.target.value })}>
+          <option value="">All</option><option value="BRITIUM">BRITIUM</option><option value="DK">DK</option><option value="NPT BRANCH">NPT BRANCH</option><option value="ROYAL EXPRESS">ROYAL EXPRESS</option>
+        </select></Field>
+        <Field label="Payment"><select className={inputClass} value={filters.payment} onChange={(e) => setFilters({ ...filters, payment: e.target.value })}>
+          <option value="">All</option><option value="COD">COD</option><option value="PREPAID">Prepaid</option><option value="BANK_TRANSFER">Bank Transfer</option><option value="MOBILE_BANKING">Mobile Banking</option><option value="CASH">Cash</option><option value="CREDIT">Credit</option>
+        </select></Field>
+        <Field label="Way / Recipient"><div className="flex gap-2"><input className={inputClass} value={filters.search} onChange={(e) => setFilters({ ...filters, search: e.target.value })} placeholder="D0927-BCC-001" /><button className={buttonClass} onClick={() => void load()}><RefreshCw size={15} /></button></div></Field>
       </div>
 
-      {loading ? (
-        <div className="p-10 text-center text-[#82a5bb]"><Loader2 className="mr-2 inline animate-spin" size={18} />Loading pre-dispatch Finance queue…</div>
-      ) : (
+      {loading ? <div className="p-10 text-center text-[#82a5bb]"><Loader2 className="mr-2 inline animate-spin" size={18} />Loading pre-dispatch Finance queue…</div> : (
         <div className="space-y-3">
           {rows.length === 0 ? <div className="rounded-xl border border-dashed border-[#315a78] p-8 text-center text-sm text-[#789ab1]">No pre-dispatch Finance rows match the filters.</div> : null}
           {rows.map((row) => (
             <div key={row.delivery_way_id} className="rounded-xl border border-[#1d405d] bg-[#071b2c] p-4">
-              <div className="grid gap-3 lg:grid-cols-[1.2fr_1fr_1fr_1fr]">
+              <div className="grid gap-3 xl:grid-cols-[1.15fr_0.85fr_0.85fr_0.9fr_0.85fr_0.85fr]">
                 <div>
-                  <div className="font-black">{row.delivery_way_id}</div>
+                  <div className="font-black text-[#f6b84b]">{row.delivery_way_id}</div>
+                  <div className="mt-1 text-[10px] font-bold text-emerald-300">{row.way_id_valid ? "CANONICAL D-WAY ✓" : "INVALID WAY ID"}</div>
                   <div className="mt-1 text-xs text-[#789ab1]">{row.merchant_name || row.merchant_code || "Merchant"} · Pickup {row.pickup_id}</div>
-                  <div className="mt-1 text-xs text-[#789ab1]">{row.township || "—"} · {row.delivery_region || "Region pending"}</div>
                 </div>
+                <div><div className="text-[10px] font-bold uppercase text-[#789ab1]">Destination</div><div className="mt-1 text-sm font-black">{row.destination || row.township || "—"}</div><div className="text-xs text-[#9bbbd0]">{row.delivery_region || "—"}</div></div>
+                <div><div className="text-[10px] font-bold uppercase text-[#789ab1]">Service Provider</div><div className="mt-1 text-sm font-black">{row.service_provider || "BRITIUM"}</div><div className="text-xs text-[#9bbbd0]">{row.delivery_route_mode || "—"}</div></div>
                 <div>
-                  <div className="text-[10px] font-bold uppercase text-[#789ab1]">Payment / COD Policy</div>
-                  <div className="mt-1 text-sm font-black">{row.payment_type}</div>
-                  <div className="text-xs text-[#9bbbd0]">{row.cod_policy_status}</div>
+                  <div className="text-[10px] font-bold uppercase text-[#789ab1]">Payment Method</div>
+                  <select disabled={!authority?.can_review || busyId === row.delivery_way_id} className={inputClass} value={row.payment_type || "COD"} onChange={(e) => void setPayment(row,e.target.value)}>
+                    <option value="COD">COD</option><option value="PREPAID">PREPAID</option><option value="BANK_TRANSFER">BANK TRANSFER</option><option value="MOBILE_BANKING">MOBILE BANKING</option><option value="CASH">CASH</option><option value="CREDIT">CREDIT</option>
+                  </select>
+                  <div className="mt-1 text-xs text-[#9bbbd0]">{row.cod_policy_status}</div>
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase text-[#789ab1]">Declared Item Value</div>
-                  <div className="mt-1 font-black">{money(row.declared_item_value)}</div>
-                  <div className="text-xs text-[#f6b84b]">COD fee: {money(row.cod_service_fee_amount)} ({Number(row.cod_service_fee_rate || 0) * 100}%)</div>
-                </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase text-[#789ab1]">Finance Status</div>
-                  <span className={`mt-1 inline-block rounded-full border px-2 py-1 text-xs font-black ${statusClass(row.finance_status)}`}>{row.finance_status}</span>
-                  <div className="mt-1 text-xs text-[#789ab1]">COD: {money(row.cod_amount)} · Delivery fee: {money(row.delivery_fee)}</div>
-                </div>
+                <div><div className="text-[10px] font-bold uppercase text-[#789ab1]">Declared / COD</div><div className="mt-1 font-black">{money(row.declared_item_value)}</div><div className="text-xs text-[#f6b84b]">COD {money(row.cod_amount)} · Fee {money(row.delivery_fee)}</div></div>
+                <div><div className="text-[10px] font-bold uppercase text-[#789ab1]">Finance Status</div><span className={`mt-1 inline-block rounded-full border px-2 py-1 text-xs font-black ${statusClass(row.finance_status)}`}>{row.finance_status}</span><div className="mt-1 text-xs text-[#789ab1]">COD fee {money(row.cod_service_fee_amount)}</div></div>
               </div>
 
               {row.finance_required || ["PENDING_FINANCE","HELD","REJECTED"].includes(String(row.finance_status || "")) ? (
                 <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto_auto_auto]">
-                  <input
-                    className={inputClass}
-                    value={notes[row.delivery_way_id] || ""}
-                    onChange={(e) => setNotes({ ...notes, [row.delivery_way_id]: e.target.value })}
-                    placeholder="Finance review note / approval reference"
-                  />
+                  <input className={inputClass} value={notes[row.delivery_way_id] || ""} onChange={(e) => setNotes({ ...notes, [row.delivery_way_id]: e.target.value })} placeholder="Finance review note / approval reference" />
                   <button disabled={!authority?.can_review || busyId === row.delivery_way_id} className={primaryButton} onClick={() => void decide(row, "APPROVE")}>Approve</button>
                   <button disabled={!authority?.can_review || busyId === row.delivery_way_id} className={buttonClass} onClick={() => void decide(row, "HOLD")}>Hold</button>
                   <button disabled={!authority?.can_review || busyId === row.delivery_way_id} className={dangerButton} onClick={() => void decide(row, "REJECT")}>Reject</button>
@@ -709,6 +723,7 @@ function PreDispatchFinance({ setMessage, authority }: { setMessage: (value: str
     </section>
   );
 }
+
 
 function ReviewQueue({ setMessage, authority }: { setMessage: (value: string) => void; authority: Row | null }) {
   const [rows, setRows] = useState<Row[]>([]);
