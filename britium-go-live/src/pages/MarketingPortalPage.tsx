@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Megaphone, Users, Store, Target, TrendingUp, Search, Download, ClipboardList, Phone, MapPin, CheckCircle2 } from "lucide-react";
 
@@ -6,6 +7,48 @@ export default function MarketingPortalPage() {
   const { t } = useLanguage();
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("overview");
+  const [merchantRows, setMerchantRows] = useState<any[]>([]);
+  const [merchantSearch, setMerchantSearch] = useState("");
+  const [merchantStatus, setMerchantStatus] = useState("");
+  const [merchantMessage, setMerchantMessage] = useState("");
+  const [merchantBusy, setMerchantBusy] = useState(false);
+  const [merchantForm, setMerchantForm] = useState({
+    merchant_code: "", merchant_name: "", business_type: "", contact_person: "",
+    phone_primary: "", phone_secondary: "", email: "", address_mm: "", address_line_1: "",
+    township: "", city: "", region_state: "", customer_tier: "STANDARD",
+    payment_profile: "COD", service_profile: "STANDARD", status: "ACTIVE",
+  });
+
+  async function loadMerchantAccounts() {
+    const { data, error } = await (supabase as any).rpc("be_marketing_merchant_master_center_v1", {
+      p_search: merchantSearch.trim() || null,
+      p_status: merchantStatus || null,
+      p_limit: 1000,
+    });
+    if (error) return setMerchantMessage(error.message);
+    if (data?.ok === false) return setMerchantMessage(data?.code || "Unable to load merchant accounts.");
+    setMerchantRows(Array.isArray(data?.rows) ? data.rows : []);
+  }
+
+  async function saveMerchant() {
+    setMerchantBusy(true);
+    setMerchantMessage("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_marketing_merchant_master_upsert_v1", { p_payload: merchantForm });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.code || "Merchant update failed.");
+      setMerchantMessage(String(data.merchant_code) + ": merchant account synchronized across Britium Express.");
+      await loadMerchantAccounts();
+    } catch (e: any) {
+      setMerchantMessage(e?.message || "Merchant update failed.");
+    } finally {
+      setMerchantBusy(false);
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === "merchants") void loadMerchantAccounts();
+  }, [activeTab]);
 
   // In production, wire this to your backend
   const leads = [
@@ -51,6 +94,9 @@ export default function MarketingPortalPage() {
           </button>
           <button onClick={() => setActiveTab("registry")} className={`px-6 py-3 rounded-2xl text-[13px] font-black transition-colors ${activeTab === "registry" ? "bg-[#38bdf8] text-[#061524]" : "bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}`}>
             <span>{t('Lead Registry', 'Lead မှတ်တမ်း')}</span>
+          </button>
+          <button onClick={() => setActiveTab("merchants")} className={activeTab === "merchants" ? "px-6 py-3 rounded-2xl text-[13px] font-black bg-[#22c55e] text-[#061524]" : "px-6 py-3 rounded-2xl text-[13px] font-black bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}>
+            <span>{t('Merchant Accounts', 'Merchant Account များ')}</span>
           </button>
         </div>
 
@@ -126,6 +172,54 @@ export default function MarketingPortalPage() {
                 </div>
               ))}
               {filtered.length === 0 && <div className="text-center p-10 text-[#4d7a9b] font-bold"><span>{t('No leads found.', 'ရှာဖွေမှု မတွေ့ရှိပါ။')}</span></div>}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "merchants" && (
+          <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
+              <h2 className="text-lg font-black text-white">Create / Update Merchant Account</h2>
+              <p className="text-xs text-[#4d7a9b] mt-1 mb-4">After contract execution. Merchant Code must be exactly 3 alphanumeric characters and becomes the canonical Merchant ID.</p>
+              {merchantMessage && <div className="mb-4 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-3 text-sm font-bold text-[#86efac]">{merchantMessage}</div>}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {[
+                  ["merchant_code","Merchant Code (3 chars)"],["merchant_name","Merchant Name"],["business_type","Business Type"],["contact_person","Contact Person"],
+                  ["phone_primary","Primary Phone"],["phone_secondary","Secondary Phone"],["email","Email"],["township","Township"],["city","City"],["region_state","Region / State"],
+                  ["address_line_1","Pickup Address"],["address_mm","Myanmar Address"]
+                ].map(([key,label]) => (
+                  <label key={key} className="text-xs font-bold text-[#c8dff0]">
+                    <span className="block mb-1">{label}</span>
+                    <input value={(merchantForm as any)[key]} maxLength={key==="merchant_code"?3:undefined}
+                      onChange={(e)=>setMerchantForm({...merchantForm,[key]:key==="merchant_code"?e.target.value.toUpperCase():e.target.value})}
+                      className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white outline-none focus:border-[#22c55e]" />
+                  </label>
+                ))}
+                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Tier</span><select value={merchantForm.customer_tier} onChange={(e)=>setMerchantForm({...merchantForm,customer_tier:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option></select></label>
+                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Payment Profile</span><select value={merchantForm.payment_profile} onChange={(e)=>setMerchantForm({...merchantForm,payment_profile:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>COD</option><option>PREPAID</option><option>CREDIT</option></select></label>
+                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Service Profile</span><select value={merchantForm.service_profile} onChange={(e)=>setMerchantForm({...merchantForm,service_profile:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>STANDARD</option><option>EXPRESS</option><option>DEDICATED</option></select></label>
+                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Status</span><select value={merchantForm.status} onChange={(e)=>setMerchantForm({...merchantForm,status:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select></label>
+              </div>
+              <button disabled={merchantBusy || merchantForm.merchant_code.length!==3 || !merchantForm.merchant_name.trim()} onClick={()=>void saveMerchant()} className="mt-5 w-full h-12 rounded-xl bg-[#22c55e] text-[#061524] font-black disabled:opacity-40">{merchantBusy?"Synchronizing...":"Save + Synchronize Merchant"}</button>
+            </div>
+            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
+              <div className="flex flex-wrap justify-between gap-3 mb-4">
+                <div><h2 className="text-lg font-black text-white">Merchant Master</h2><p className="text-xs text-[#4d7a9b]">Live Supabase master used across the application.</p></div>
+                <div className="flex gap-2">
+                  <input value={merchantSearch} onChange={(e)=>setMerchantSearch(e.target.value)} placeholder="Search" className="h-10 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs" />
+                  <select value={merchantStatus} onChange={(e)=>setMerchantStatus(e.target.value)} className="h-10 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs"><option value="">All</option><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select>
+                  <button onClick={()=>void loadMerchantAccounts()} className="h-10 px-4 rounded-xl bg-[#1a3a5c] text-white text-xs font-black">Refresh</button>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[760px] overflow-auto">
+                {merchantRows.map((m:any)=>(
+                  <button key={m.merchant_code} onClick={()=>setMerchantForm({...merchantForm,...m,merchant_code:m.merchant_code||"",merchant_name:m.merchant_name||"",status:m.status||"ACTIVE"})} className="w-full text-left rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4 hover:border-[#22c55e]">
+                    <div className="flex justify-between"><div><div className="font-mono font-black text-[#22c55e]">{m.merchant_code}</div><div className="font-bold text-white">{m.merchant_name}</div></div><span className="text-[10px] font-black text-[#c8dff0]">{m.status}</span></div>
+                    <div className="mt-2 text-xs text-[#4d7a9b]">{m.contact_person||"—"} · {m.phone_primary||"—"} · {[m.township,m.city,m.region_state].filter(Boolean).join(", ")||"—"}</div>
+                  </button>
+                ))}
+                {merchantRows.length===0 && <div className="p-10 text-center text-[#4d7a9b]">No merchant records.</div>}
+              </div>
             </div>
           </div>
         )}
