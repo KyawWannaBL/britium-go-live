@@ -77,7 +77,7 @@ export default function WarehousePage() {
     if(!quiet) setLoading(true);
     try {
       const [snapshotResult,archiveResult] = await Promise.all([
-        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v129"),
+        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v158"),
         (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
       ]);
       if (snapshotResult.error) throw snapshotResult.error;

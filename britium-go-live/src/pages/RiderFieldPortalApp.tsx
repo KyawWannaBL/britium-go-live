@@ -1501,6 +1501,30 @@ function LoginPortal({ onSignedIn }: { onSignedIn: (session: RiderSession, paylo
 
 type JobScreen = "jobs" | "pickup" | "delivery" | "cod";
 
+function DeliveryJourney({ job }: { job: RiderJob }) {
+  const s=upper(job.mobile_status || job.stop_status || job.rider_status || job.dispatch_status || "");
+  const delivered=isDelivered(job);
+  const arrived=isArrivedAtCustomer(job);
+  const out=isOutForDelivery(job) || arrived || delivered;
+  const accepted=isDeliveryAccepted(job) || out || delivered;
+  const steps=[
+    {label:"Assignment Received",done:true},
+    {label:"Parcel Accepted",done:accepted},
+    {label:"Delivery Started",done:out},
+    {label:"Arrived at Customer",done:arrived || delivered},
+    {label:"Recipient Verification",done:delivered},
+    {label:"COD / Payment Confirmation",done:delivered},
+    {label:"Proof Photo + Recipient Signature",done:delivered},
+    {label:"Delivery Completed",done:delivered},
+  ];
+  return <div style={{display:"grid",gridTemplateColumns:"repeat(4,minmax(0,1fr))",gap:8,marginTop:10}} className="be-four-grid">
+    {steps.map((step,index)=><div key={step.label} style={{border:`1px solid ${step.done?C.green:C.border}`,background:step.done?"rgba(52,211,153,.08)":C.panel3,borderRadius:12,padding:9}}>
+      <div style={{fontSize:10,color:step.done?C.green:C.dim,fontWeight:900}}>STEP {index+1}</div>
+      <div style={{fontSize:11,color:step.done?C.text:C.sub,fontWeight:700,marginTop:3}}>{step.label}</div>
+    </div>)}
+  </div>;
+}
+
 function JobCard({
   job,
   onAction,
@@ -1657,6 +1681,8 @@ function JobCard({
           </div>
         </div>
       )}
+
+      {deliveryMode && <DeliveryJourney job={job} />}
 
       {helperMode && <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.10)",color:C.blue,borderRadius:12,padding:10,fontWeight:800 }}>Helper assist mode: accept assignment, upload pickup evidence, and report exceptions. Final verification requires the assigned rider or driver.</div>}
       {pickupMode && primaryFieldMode && helperEvidenceReady && stage !== "collected" && stage !== "handover" && stage !== "warehouse_accepted" && (
@@ -1833,7 +1859,7 @@ function EmptyState({ title, body }: { title: string; body: string }) {
 
 function FieldPortal() {
   const [session, setSession] = useState<RiderSession | null>(() => readSavedSession());
-  const [view, setView] = useState<View>(viewFromHash());
+  const [view, setView] = useState<View>("wall");
   const [identity, setIdentity] = useState<any>(null);
   const [jobs, setJobs] = useState<RiderJob[]>([]);
   const [availablePickups, setAvailablePickups] = useState<RiderJob[]>([]);
@@ -1857,6 +1883,9 @@ function FieldPortal() {
   const [proofApproved, setProofApproved] = useState(false);
   const [proofPreparing, setProofPreparing] = useState(false);
   const [proofOperationId, setProofOperationId] = useState("");
+  const [signatureFile, setSignatureFile] = useState<File | null>(null);
+  const [signaturePreviewUrl, setSignaturePreviewUrl] = useState("");
+  const [signatureApproved, setSignatureApproved] = useState(false);
   const selectedJobRef = useRef<RiderJob | null>(null);
   const modalRef = useRef<ModalMode>(null);
   const parcelPhotoOperations = useRef(new Map<string, { id: string; jobId: string; modal: ModalMode; controller: AbortController; previewUrl?: string }>());
@@ -1888,6 +1917,10 @@ function FieldPortal() {
     setProofApproved(false);
     setProofPreparing(false);
     setProofOperationId("");
+    if (signaturePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(signaturePreviewUrl);
+    setSignatureFile(null);
+    setSignaturePreviewUrl("");
+    setSignatureApproved(false);
     setRescheduleDate("");
     setModal(null);
     modalSubmissionId.current = "";
@@ -2002,12 +2035,6 @@ function FieldPortal() {
   }
 
   useEffect(() => {
-    const onHash = () => setView(viewFromHash());
-    window.addEventListener("hashchange", onHash);
-    return () => window.removeEventListener("hashchange", onHash);
-  }, []);
-
-  useEffect(() => {
     if (session) void load(session);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session?.normalizedLogin]);
@@ -2020,7 +2047,6 @@ function FieldPortal() {
   }, [session?.normalizedLogin]);
 
   function navigate(next: View) {
-    window.location.hash = navHash(next);
     setView(next);
   }
 
@@ -2088,7 +2114,6 @@ function FieldPortal() {
     setJobs(payload?.jobs || []);
     setNotifications(payload?.notifications || []);
     setSource(payload?.source || "login");
-    window.location.hash = "#/wall";
     setView("wall");
   }
 
@@ -2105,7 +2130,7 @@ function FieldPortal() {
     setJobs([]);
     setNotifications([]);
     setSource("signed out");
-    window.location.hash = "#/login";
+    setView("wall");
   }
 
   async function claimPickup(job: RiderJob) {
@@ -2687,6 +2712,31 @@ function FieldPortal() {
     return data.publicUrl;
   }
 
+  function handleSignatureEvidence(e: React.ChangeEvent<HTMLInputElement>) {
+    const file=e.target.files?.[0];
+    e.currentTarget.value="";
+    if(!file) return;
+    if(signaturePreviewUrl.startsWith("blob:")) URL.revokeObjectURL(signaturePreviewUrl);
+    setSignatureFile(file);
+    setSignaturePreviewUrl(URL.createObjectURL(file));
+    setSignatureApproved(false);
+    setMessage("Recipient signature preview ready. Approve it before completing delivery.");
+  }
+
+  function approveSignatureEvidence() {
+    if(!signatureFile) return;
+    setSignatureApproved(true);
+    setMessage("Recipient signature approved.");
+  }
+
+  async function uploadSignatureEvidence(deliveryWayId:string,file:File) {
+    const safeId=deliveryWayId.replace(/[^a-zA-Z0-9_-]/g,"_");
+    const ext=(file.name.split(".").pop() || "jpg").replace(/[^a-zA-Z0-9]/g,"").toLowerCase() || "jpg";
+    const path=`workflow-proofs/${safeId}/recipient-signature-${crypto.randomUUID()}.${ext}`;
+    await confirmStorageUpload(path,file);
+    return supabase.storage.from("rider-proofs").getPublicUrl(path).data.publicUrl;
+  }
+
   async function submitModal() {
     if (!selectedJob || !session) return;
 
@@ -2757,12 +2807,18 @@ function FieldPortal() {
         return;
       }
 
+      if (!signatureFile || !signatureApproved) {
+        setError("Capture and approve the recipient signature evidence before completing delivery.");
+        return;
+      }
+
       action = "deliver";
       payload = {
         recipient_name: recipientName,
         recipient_phone: recipientPhone,
         cod_collected_amount: Number(codCollected || 0),
         proof_url: proof,
+        signature_url: null,
       };
       note = note || "Delivery verified by rider";
     }
@@ -2820,6 +2876,13 @@ function FieldPortal() {
         const activeOperation = workflowPhotoOperation.current;
         if (!activeOperation || activeOperation.id !== submittedPhotoOperationId || activeOperation.jobId !== pickupId(selectedJobRef.current || {}) || activeOperation.modal !== modalRef.current) return;
         payload.proof_url = proof;
+      }
+
+      if (modal === "delivery" && signatureFile && signatureApproved) {
+        payload.signature_url = await uploadSignatureEvidence(
+          text((selectedJob as any).delivery_way_id || (selectedJob as any).tracking_no || id),
+          signatureFile
+        );
       }
 
       const actionPayload = {
@@ -3404,7 +3467,11 @@ function FieldPortal() {
                 {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
                 {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
                 {proofFile && !proofApproved && <button type="button" onClick={approveWorkflowProof} style={buttonStyle("gold")}>APPROVE PHOTO</button>}
-                {proofApproved && <Badge color={C.green}>Approved — ready to upload and submit</Badge>}
+                {proofApproved && <Badge color={C.green}>Delivery photo approved</Badge>}
+                <div><label>Required recipient signature evidence</label><input type="file" accept="image/*" capture="environment" disabled={busy} onChange={handleSignatureEvidence} style={inputStyle()} /></div>
+                {signaturePreviewUrl && <img src={signaturePreviewUrl} alt="Recipient signature preview" style={{ width:"100%", maxHeight:180, objectFit:"contain", borderRadius:12, border:`1px solid ${signatureApproved?C.green:C.gold}` }} />}
+                {signatureFile && !signatureApproved && <button type="button" onClick={approveSignatureEvidence} style={buttonStyle("gold")}>APPROVE SIGNATURE</button>}
+                {signatureApproved && <Badge color={C.green}>Recipient signature approved</Badge>}
               </div>
             )}
 
@@ -3575,7 +3642,7 @@ const globalStyle = `
   .be-scroll-x::-webkit-scrollbar { height: 6px; }
   .be-scroll-x::-webkit-scrollbar-thumb { background: #1a3a5c; border-radius: 999px; }
   @media (max-width: 920px) { .be-login-grid, .be-two-grid { grid-template-columns: 1fr !important; } .be-six-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; } }
-  @media (max-width: 680px) { .be-three-grid, .be-six-grid { grid-template-columns: 1fr !important; } .be-bottom-nav { display: flex !important; } main { padding-bottom: 64px; } h1 { font-size: 24px !important; } }
+  @media (max-width: 680px) { .be-three-grid, .be-four-grid, .be-six-grid { grid-template-columns: 1fr !important; } .be-bottom-nav { display: flex !important; } main { padding-bottom: 64px; } h1 { font-size: 24px !important; } }
 
   @media (max-width: 900px) {
     .be-pickup-verification-grid { grid-template-columns: 1fr !important; }
