@@ -94,9 +94,25 @@ export default function AccountingPortalPage() {
         setMessage(error.message);
         return;
       }
-      setAuthority(data || null);
+      const nextAuthority = data || null;
+      setAuthority(nextAuthority);
+      if (nextAuthority?.can_reports && !nextAuthority?.can_entry && !nextAuthority?.can_review) {
+        setTab("reports");
+      }
     })();
   }, []);
+
+  const visibleTabs = useMemo(
+    () =>
+      tabs.filter((item) => {
+        if (!authority) return item.id === "reports" || item.id === "ledger";
+        if (item.id === "daily-entry" || item.id === "template") return Boolean(authority.can_entry);
+        if (item.id === "predispatch" || item.id === "review") return Boolean(authority.can_review);
+        if (item.id === "ledger" || item.id === "reports") return Boolean(authority.can_reports);
+        return false;
+      }),
+    [authority],
+  );
 
   return (
     <main
@@ -124,14 +140,20 @@ export default function AccountingPortalPage() {
                   </div>
                 ) : null}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <Link to="/finance" className={buttonClass}>Finance Portal</Link>
-                <Link to="/finance/data-entry-review" className={buttonClass}>Data Entry Review</Link>
-              </div>
+              {authority?.can_entry || authority?.can_review ? (
+                <div className="flex flex-wrap gap-2">
+                  <Link to="/finance" className={buttonClass}>Finance Portal</Link>
+                  {authority?.can_review ? <Link to="/finance/data-entry-review" className={buttonClass}>Data Entry Review</Link> : null}
+                </div>
+              ) : authority?.can_reports ? (
+                <div className="rounded-xl border border-sky-500/25 bg-sky-500/5 px-3 py-2 text-xs text-sky-200">
+                  Read-only management view · Reports, audit and posted ledger
+                </div>
+              ) : null}
             </div>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
-            {tabs.map((item) => (
+            {visibleTabs.map((item) => (
               <button
                 key={item.id}
                 onClick={() => {
