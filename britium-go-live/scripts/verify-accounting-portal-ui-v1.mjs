@@ -12,6 +12,7 @@ function assertIncludes(text, needle, label) {
 const page = mustRead("src/pages/AccountingPortalPage.tsx");
 const app = mustRead("src/App.tsx");
 const sidebar = mustRead("src/components/Sidebar.tsx");
+const accessControl = mustRead("src/lib/accessControl.ts");
 const pickup = mustRead("src/pages/PickupFormPage.tsx");
 const codSettlement = mustRead("src/pages/CODSettlementPage.tsx");
 const workforce = mustRead("src/pages/WorkforceCommissionPage.tsx");
@@ -50,6 +51,15 @@ assertIncludes(app, 'path="/finance"', "Existing Finance route");
 assertIncludes(app, 'path="/finance/data-entry-review"', "Existing Finance review route");
 assertIncludes(sidebar, 'path: "/finance/accounting"', "Sidebar route");
 assertIncludes(sidebar, 'name: "Accounting ERP"', "Sidebar label");
+assertIncludes(accessControl, "['/finance/accounting', rule('finance', 'finance-user', 'accountant', 'management', 'director')]", "Accounting ERP management route access");
+
+for (const marker of [
+  'setTab("reports")',
+  'item.id === "ledger" || item.id === "reports"',
+  'Read-only management view · Reports, audit and posted ledger',
+]) {
+  assertIncludes(page, marker, "Accounting read-only management UX");
+}
 
 console.log("Accounting ERP production contract PASS");
 
