@@ -1533,6 +1533,7 @@ function JobCard({
   busy,
   screen,
   workerRole,
+  deliveryActionKey,
 }: {
   job: RiderJob;
   onAction: (job: RiderJob, action: string, remark?: string) => void;
@@ -1541,6 +1542,7 @@ function JobCard({
   busy: boolean;
   screen: JobScreen;
   workerRole: string;
+  deliveryActionKey?: string;
 }) {
   const id = pickupId(job);
   const displayId = text(
@@ -1578,6 +1580,8 @@ function JobCard({
         "DELIVERY_STARTED",
         "ARRIVED_AT_CUSTOMER"
       ));
+
+  const deliveryActionBusy = Boolean(deliveryActionKey && deliveryActionKey.startsWith(id + ":"));
 
   const pickupMode =
     screen === "pickup" ||
@@ -1683,6 +1687,11 @@ function JobCard({
       )}
 
       {deliveryMode && <DeliveryJourney job={job} />}
+      {deliveryMode && deliveryActionBusy && (
+        <div style={{border:`1px solid ${C.gold}`,background:"rgba(246,184,75,.08)",color:C.gold,borderRadius:12,padding:10,fontSize:12,fontWeight:800}}>
+          Saving this delivery action… only this parcel is temporarily locked.
+        </div>
+      )}
 
       {helperMode && <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.10)",color:C.blue,borderRadius:12,padding:10,fontWeight:800 }}>Helper assist mode: accept assignment, upload pickup evidence, and report exceptions. Final verification requires the assigned rider or driver.</div>}
       {pickupMode && primaryFieldMode && helperEvidenceReady && stage !== "collected" && stage !== "handover" && stage !== "warehouse_accepted" && (
@@ -1780,7 +1789,7 @@ function JobCard({
         {deliveryMode && !delivered && !exception && !isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("plain")}
             onClick={() => onAction(job, "ACCEPTED", "Rider accepted delivery parcel")}
           >
@@ -1791,7 +1800,7 @@ function JobCard({
         {deliveryMode && !delivered && !exception && isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("blue")}
             onClick={() => onAction(job, "OUT_FOR_DELIVERY", "Rider started customer delivery")}
           >
@@ -1802,7 +1811,7 @@ function JobCard({
         {deliveryMode && deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("gold")}
             onClick={() => onAction(job, "ARRIVED_AT_CUSTOMER", "Rider GPS-confirmed arrival at customer")}
           >
@@ -1813,7 +1822,7 @@ function JobCard({
         {deliveryMode && !deliveryV77Available && !delivered && !exception && isOutForDelivery(job) && !helperMode && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("green")}
             onClick={() => onModal(job, "delivery")}
           >
@@ -1824,7 +1833,7 @@ function JobCard({
         {deliveryMode && deliveryV77Available && !delivered && !exception && isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("green")}
             onClick={() => onModal(job, "delivery")}
           >
@@ -1835,7 +1844,7 @@ function JobCard({
         {deliveryMode && !delivered && !exception && (
           <button
             type="button"
-            disabled={busy}
+            disabled={deliveryActionBusy}
             style={buttonStyle("red")}
             onClick={() => onModal(job, "exception")}
           >
@@ -1868,6 +1877,8 @@ function FieldPortal() {
   const [source, setSource] = useState("not synced");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [deliveryActionKey, setDeliveryActionKey] = useState("");
+  const deliveryActionInFlight = useRef(new Set<string>());
   const [uploadingAll, setUploadingAll] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -2199,7 +2210,17 @@ function FieldPortal() {
       )[action] ||
       (action.includes("EXCEPTION") ? "exception" : action.toLowerCase());
 
-    setBusy(true);
+    const deliveryWayIdPre = text((job as any).delivery_way_id || (job as any).tracking_no || pickupId(job));
+    const isDeliveryAction = isDeliveryJob(job) || /^D\d{4}-[A-Z0-9]+-\d{3}$/i.test(deliveryWayIdPre);
+    const actionKey = `${pickupId(job)}:${action}`;
+
+    if (isDeliveryAction) {
+      if (deliveryActionInFlight.current.has(actionKey)) return;
+      deliveryActionInFlight.current.add(actionKey);
+      setDeliveryActionKey(actionKey);
+    } else {
+      setBusy(true);
+    }
     setError("");
     setMessage("");
 
@@ -2236,9 +2257,10 @@ function FieldPortal() {
         }
 
         if (deliveryAssignment && normalizedAction === "accept") {
-          // The delivery backend records RIDER_ACCEPTED. Continue below so the canonical
-          // delivery action state is synchronized, then keep the user on Delivery.
+          setMessage(`${deliveryWayId || pickupId(job)} accepted. Next step: Start Delivery.`);
           navigate("delivery");
+          await load(session, true);
+          return;
         }
       }
 
@@ -2284,7 +2306,12 @@ function FieldPortal() {
     } catch (err: any) {
       setError(err?.message || `Could not update ${pickupId(job)}.`);
     } finally {
-      setBusy(false);
+      if (isDeliveryAction) {
+        deliveryActionInFlight.current.delete(actionKey);
+        setDeliveryActionKey((current) => current === actionKey ? "" : current);
+      } else {
+        setBusy(false);
+      }
     }
   }
 
