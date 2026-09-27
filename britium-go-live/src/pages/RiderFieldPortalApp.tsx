@@ -531,7 +531,11 @@ function isCollected(job: RiderJob) {
 }
 
 function isOutForDelivery(job: RiderJob) {
-  return hasJobStatus(job, "OUT_FOR_DELIVERY");
+  return hasJobStatus(job, "OUT_FOR_DELIVERY", "DELIVERY_STARTED");
+}
+
+function isDeliveryAccepted(job: RiderJob) {
+  return hasJobStatus(job, "RIDER_ACCEPTED", "DELIVERY_ACCEPTED", "ACCEPTED_FOR_DELIVERY");
 }
 
 function isArrivedAtCustomer(job: RiderJob) {
@@ -686,10 +690,15 @@ function isDeliveryJob(job: RiderJob) {
   return (
     hasJobStatus(
       job,
+      "DISPATCHED",
       "READY_FOR_DELIVERY",
       "ASSIGNED_FOR_DELIVERY",
       "DELIVERY_ASSIGNED",
+      "RIDER_ACCEPTED",
+      "DELIVERY_ACCEPTED",
+      "ACCEPTED_FOR_DELIVERY",
       "OUT_FOR_DELIVERY",
+      "DELIVERY_STARTED",
       "ARRIVED_AT_CUSTOMER"
     ) &&
     !isDelivered(job) &&
@@ -1534,10 +1543,16 @@ function JobCard({
     (screen === "jobs" &&
       hasJobStatus(
         job,
+        "DISPATCHED",
         "READY_FOR_DELIVERY",
         "ASSIGNED_FOR_DELIVERY",
         "DELIVERY_ASSIGNED",
-        "OUT_FOR_DELIVERY"
+        "RIDER_ACCEPTED",
+        "DELIVERY_ACCEPTED",
+        "ACCEPTED_FOR_DELIVERY",
+        "OUT_FOR_DELIVERY",
+        "DELIVERY_STARTED",
+        "ARRIVED_AT_CUSTOMER"
       ));
 
   const pickupMode =
@@ -1625,6 +1640,21 @@ function JobCard({
           {job.warehouse_remark || job.exception_reason
             ? ` Remark: ${job.warehouse_remark || job.exception_reason}`
             : ""}
+        </div>
+      )}
+
+      {deliveryMode && !delivered && !exception && !helperMode && (
+        <div style={{ border:`1px solid ${C.blue}`,background:"rgba(78,168,222,.08)",color:C.text,borderRadius:14,padding:12 }}>
+          <strong style={{ color:C.blue }}>Delivery verification process</strong>
+          <div style={{ marginTop:6, color:C.sub, fontSize:12, lineHeight:1.6 }}>
+            {isArrivedAtCustomer(job)
+              ? "Arrival confirmed. Verify recipient, collect required COD, attach approved proof photo, then submit Delivered."
+              : isOutForDelivery(job)
+                ? "Delivery started. Go to the customer and press Arrived at Customer with GPS before final verification."
+                : isDeliveryAccepted(job)
+                  ? "Parcel accepted. Press Start Delivery to begin the route."
+                  : "Assignment is ready. Accept the parcel to continue."}
+          </div>
         </div>
       )}
 
@@ -1721,7 +1751,18 @@ function JobCard({
           </button>
         )}
 
-        {deliveryMode && !delivered && !exception && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+        {deliveryMode && !delivered && !exception && !isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
+          <button
+            type="button"
+            disabled={busy}
+            style={buttonStyle("plain")}
+            onClick={() => onAction(job, "ACCEPTED", "Rider accepted delivery parcel")}
+          >
+            <CheckCircle2 size={16} /> Accept Delivery
+          </button>
+        )}
+
+        {deliveryMode && !delivered && !exception && isDeliveryAccepted(job) && !isOutForDelivery(job) && !isArrivedAtCustomer(job) && !helperMode && (
           <button
             type="button"
             disabled={busy}
@@ -2160,11 +2201,19 @@ function FieldPortal() {
           throw new Error((responseData as any)?.error || `Could not record ${role} response.`);
         }
 
-        // Driver and Helper only confirm/reject the assignment here. Rider continues into pickup workflow.
+        const deliveryAssignment = isDeliveryJob(job) || /^D\d{4}-[A-Z0-9]+-\d{3}$/i.test(text((job as any).delivery_way_id || (job as any).tracking_no || pickupId(job)));
+
+        // Driver and Helper only confirm/reject the assignment here. Rider continues into the matching workflow.
         if (role !== "rider" || normalizedAction === "reject") {
           setMessage(`${pickupId(job)}: ${role.toUpperCase()} ${(responseData as any)?.status || normalizedAction}. Supervisor status updated.`);
           await load(session, true);
           return;
+        }
+
+        if (deliveryAssignment && normalizedAction === "accept") {
+          // The delivery backend records RIDER_ACCEPTED. Continue below so the canonical
+          // delivery action state is synchronized, then keep the user on Delivery.
+          navigate("delivery");
         }
       }
 
@@ -2193,7 +2242,19 @@ function FieldPortal() {
         throw new Error((data as any)?.error || `Could not update ${pickupId(job)}.`);
       }
 
-      setMessage(`${pickupId(job)} updated: ${(data as any)?.action || normalizedAction}. Supervisor status updated.`);
+      const deliveryAction = isDeliveryJob(job) || /^D\d{4}-[A-Z0-9]+-\d{3}$/i.test(deliveryWayId);
+      if (deliveryAction && normalizedAction === "accept") {
+        setMessage(`${deliveryWayId || pickupId(job)} accepted. Next step: Start Delivery.`);
+        navigate("delivery");
+      } else if (deliveryAction && normalizedAction === "start_delivery") {
+        setMessage(`${deliveryWayId || pickupId(job)} is OUT FOR DELIVERY. Next step: Arrived at Customer (GPS required).`);
+        navigate("delivery");
+      } else if (deliveryAction && normalizedAction === "arrive_customer") {
+        setMessage(`${deliveryWayId || pickupId(job)} arrival confirmed. Complete recipient/COD/proof verification now.`);
+        navigate("delivery");
+      } else {
+        setMessage(`${pickupId(job)} updated: ${(data as any)?.action || normalizedAction}. Supervisor status updated.`);
+      }
       await load(session, true);
     } catch (err: any) {
       setError(err?.message || `Could not update ${pickupId(job)}.`);
@@ -3183,7 +3244,7 @@ function FieldPortal() {
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.58)", display: "grid", placeItems: "center", zIndex: 50, padding: 16 }}>
           <Card style={{ width: modal === "pickup" ? "min(1180px, 100%)" : "min(560px, 100%)", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", marginBottom: 12 }}>
-              <div><strong>{modal === "pickup" ? "Verify pickup" : modal === "delivery" ? "Verify delivery" : "Submit exception"}</strong><div style={{ color: C.sub }}>{pickupId(selectedJob)}</div></div>
+              <div><strong>{modal === "pickup" ? "Verify pickup" : modal === "delivery" ? "Delivery Verification & Proof" : "Submit exception"}</strong><div style={{ color: C.sub }}>{pickupId(selectedJob)}</div></div>
               <button onClick={closeModal} style={buttonStyle("ghost")}><X size={16} /></button>
             </div>
 
@@ -3487,7 +3548,9 @@ function FieldPortal() {
                   ? "Submitting..."
                   : modal === "pickup"
                     ? "SUBMIT PICKUP VERIFICATION"
-                    : "Submit"}
+                    : modal === "delivery"
+                      ? "VERIFY & MARK DELIVERED"
+                      : "Submit"}
               </button>
             </div>
           </Card>
