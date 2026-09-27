@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const page=fs.readFileSync(path.join(root,"src/pages/RiderFieldPortalApp.tsx"),"utf8");
+assert.match(page,/Delivered button is active/);
+assert.match(page,/Complete before Delivered:/);
+assert.match(page,/cursor:"pointer"/);
+assert.match(page,/setDeliveryConfirmOpen\(true\)/);
+const deliveredBlock=page.slice(page.indexOf("ပို့ဆောင်ပြီး / Delivered")-2200,page.indexOf("ပို့ဆောင်ပြီး / Delivered")+300);
+assert.doesNotMatch(deliveredBlock,/disabled=/);
+console.log("Delivered button clickable V163 PASS");
