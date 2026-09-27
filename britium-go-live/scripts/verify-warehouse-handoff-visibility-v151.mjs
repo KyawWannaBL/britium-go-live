@@ -1,0 +1,15 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
+const wh=fs.readFileSync(path.join(root,"src/pages/WarehousePage.tsx"),"utf8");
+const migration=fs.readFileSync(path.join(root,"supabase/migrations/20260927234000_warehouse_handoff_visibility_v151.sql"),"utf8");
+assert.match(wh,/handedOffWayIds/);
+assert.match(wh,/!handedOffWayIds\.has/);
+assert.match(wh,/No parcel is released for Dispatch Scan/);
+assert.match(wh,/Warehouse Dispatch Scan will appear automatically only after Supervisor releases/);
+assert.doesNotMatch(wh,/No parcels currently require Dispatch Scan/);
+assert.match(migration,/handed_off_ids/);
+assert.match(migration,/HANDED_OFF_AWAITING_WAYPLAN/);
+assert.match(migration,/where expires_at>=now\(\)/);
+console.log("Warehouse handoff visibility V151 PASS");
