@@ -857,6 +857,7 @@ function DeliveryModal({
     task.cod_amount
   );
   const [proofUrl, setProofUrl] = useState("");
+  const [signatureUrl, setSignatureUrl] = useState("");
   const [remarks, setRemarks] = useState("");
   const [formError, setFormError] = useState("");
 
@@ -891,6 +892,11 @@ function DeliveryModal({
       return;
     }
 
+    if (!signatureUrl) {
+      setFormError("Recipient signature / လက်ခံသူလက်မှတ် is required.");
+      return;
+    }
+
     try {
       await action.mutateAsync({
         task_id: task.id,
@@ -901,7 +907,10 @@ function DeliveryModal({
         recipient_phone:
           recipientPhone.trim() || undefined,
         proof_url: proofUrl,
+        signature_url: signatureUrl,
         cod_collected_amount: codCollected,
+        workflow_area: "delivery",
+        process_type: "delivery",
         remarks: remarks.trim() || undefined,
       });
 
@@ -1005,6 +1014,24 @@ function DeliveryModal({
         <img src={proofUrl} alt="Uploaded proof of delivery" style={{ width: "100%", maxHeight: 200, marginBottom: 12, objectFit: "contain", borderRadius: 8 }}/>
       )}
 
+      <ProofPhotoPicker
+        label={bi("Recipient signature photo — select, inspect, then approve upload", "လက်ခံသူလက်မှတ်ဓာတ်ပုံ — ရွေးချယ်၊ preview စစ်ပြီး upload အတည်ပြုပါ")}
+        uploadedUrl={signatureUrl}
+        busy={upload.isPending}
+        onApprove={async (file) => {
+          const url = await upload.mutateAsync({
+            task_id: task.delivery_way_id || task.id,
+            file,
+          });
+          setSignatureUrl(url);
+        }}
+        onSelection={() => setSignatureUrl("")}
+      />
+
+      {signatureUrl && (
+        <img src={signatureUrl} alt="Uploaded recipient signature" style={{ width: "100%", maxHeight: 160, marginBottom: 12, objectFit: "contain", borderRadius: 8 }}/>
+      )}
+
       <label style={{ fontSize: 12, fontWeight: 700 }}>
         Remarks / မှတ်ချက်
       </label>
@@ -1093,6 +1120,10 @@ function FailureModal({
         action: "exception",
         exception_code: mapping.exception_code,
         mapped_status: mapping.mapped_status,
+        delivery_way_id:
+          task.task_type === "delivery"
+            ? task.delivery_way_id || undefined
+            : undefined,
         workflow_area: task.task_type,
         process_type: task.task_type,
         remarks: remark,
@@ -1290,6 +1321,12 @@ export default function RiderPortal() {
         task_id: task.id,
         action:
           task.next_action as RiderActionRequest["action"],
+        delivery_way_id:
+          task.task_type === "delivery"
+            ? task.delivery_way_id || undefined
+            : undefined,
+        workflow_area: task.task_type,
+        process_type: task.task_type,
       });
 
       setNotice(
