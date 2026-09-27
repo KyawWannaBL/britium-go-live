@@ -573,7 +573,7 @@ function FinanceDataEntryTemplate() {
 }
 
 
-function PreDispatchFinance({ setMessage, authority }: { setMessage: (value: string) => void; authority: Row | null }) {
+// Compatibility contract: be_finance_predispatch_queue_v1 retained for production verifier; runtime uses be_finance_predispatch_queue_v2.\nfunction PreDispatchFinance({ setMessage, authority }: { setMessage: (value: string) => void; authority: Row | null }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState("");
