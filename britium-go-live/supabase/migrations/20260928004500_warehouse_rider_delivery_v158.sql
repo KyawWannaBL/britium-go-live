@@ -12,7 +12,7 @@ select
   coalesce(s.parcel_weight_kg,0) as parcel_weight_kg,
   s.stop_status,coalesce(s.rider_status,'PENDING') as rider_status,
   s.loaded_to_vehicle_at,s.handed_over_to_rider_at,s.delivered_at,s.cod_collected,
-  s.failed_reason,s.rider_proof_url,s.receiver_name,s.receiver_phone,s.receiver_signature_url,
+  s.failed_reason,s.rider_proof_url,s.receiver_name,s.receiver_phone,
   w.wayplan_status,w.vehicle_code,w.vehicle_name,w.driver_code,w.driver_name,
   w.rider_code,w.rider_name,w.helper_code,w.helper_name,w.dispatched_at,
   w.created_at as wayplan_created_at,
@@ -25,7 +25,8 @@ select
     'vehicle_code',w.vehicle_code,
     'receiver_signature_url',s.receiver_signature_url,
     'build','RIDER_DELIVERY_VIEW_V158'
-  ) as metadata
+  ) as metadata,
+  s.receiver_signature_url
 from public.be_wayplan_dispatch_stops s
 join public.be_wayplan_dispatches w on w.wayplan_id=s.wayplan_id
 where coalesce(w.wayplan_status,'') in ('DISPATCHED','LOADED_TO_VEHICLE','HANDOVER_TO_RIDER','OUT_FOR_DELIVERY','COMPLETED')
