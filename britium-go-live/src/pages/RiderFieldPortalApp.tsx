@@ -38,7 +38,8 @@ import {
 } from "lucide-react";
 import { getRiderSupabase, riderSupabaseConfigured } from "../lib/riderPortalSupabase";
 
-import { supabase } from "../integrations/supabase/client";
+import { supabase as enterpriseSupabase } from "../integrations/supabase/client";
+const supabase = getRiderSupabase();
 import AssignmentNotificationSound from "../components/AssignmentNotificationSound";
 import { compressRiderPhoto, confirmRiderStorageUpload, MAX_RIDER_PROOF_BYTES } from "../lib/riderPhotoUpload";
 
@@ -1990,22 +1991,25 @@ function FieldPortal() {
 
     void (async () => {
       try {
-        const { data: authData, error: authError } = await supabase.auth.getSession();
+        const { data: authData, error: authError } = await enterpriseSupabase.auth.getSession();
         if (authError || !authData?.session?.user) return;
 
-        const { data: fieldIdentity, error: identityError } = await (supabase as any).rpc("be_current_field_team_identity");
+        const { data: fieldIdentity, error: identityError } = await (enterpriseSupabase as any).rpc("be_current_field_team_identity");
         if (identityError || !fieldIdentity?.worker_code || !active) return;
 
-        const enterpriseSession = makeSession(
-          String(fieldIdentity.worker_code),
-          fieldIdentity,
-        );
+        const mirrored = await supabase.auth.setSession({
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+        });
+        if (mirrored.error) throw mirrored.error;
+
+        const enterpriseSession = makeSession(String(fieldIdentity.worker_code), fieldIdentity);
         saveSession(enterpriseSession);
         if (active) {
           setIdentity(fieldIdentity);
           setSession(enterpriseSession);
-          setSource("enterprise authenticated session");
-          setMessage("Enterprise login session connected to Mobile Sandbox.");
+          setSource("enterprise authenticated session → isolated mobile session");
+          setMessage("Enterprise field-team login securely connected to Mobile Sandbox.");
         }
       } catch (bridgeError) {
         console.warn("Enterprise-to-Mobile Sandbox session bridge unavailable", bridgeError);
@@ -2236,14 +2240,10 @@ function FieldPortal() {
 
     // When embedded inside the authenticated Enterprise Portal, keep the
     // Enterprise Supabase session alive. The outer portal owns sign-out.
-    const { data: authData } = await supabase.auth.getSession();
-    if (!authData?.session) {
-      try {
-        const riderClient = getRiderSupabase();
-        if (riderClient && riderClient !== supabase) await riderClient.auth.signOut({ scope: "local" });
-      } catch {
-        // ignore isolated Rider-client sign-out failures
-      }
+    try {
+      await supabase.auth.signOut({ scope: "local" });
+    } catch {
+      // ignore isolated Mobile Sandbox sign-out failures
     }
   }
 
