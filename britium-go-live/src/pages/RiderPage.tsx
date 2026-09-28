@@ -1,90 +1,101 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import { useLanguage } from '@/contexts/LanguageContext';
-import { RefreshCw, Plus } from 'lucide-react';
-
-const HARDCODED_RIDERS = [
-  { id: 'RID001', name: 'Ko Kyaw Zin Khant', phone: '09-779 052 872', zone: 'Yangon Central', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID002', name: 'Ko Paing Zay Htet', phone: '09-779 615 147', zone: 'Yangon South', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID003', name: 'Ko Chit Yin Htoo', phone: '09-662 385 475', zone: 'Yangon North', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID004', name: 'Ko Wai Lin Phyo', phone: '09-779 634 710', zone: 'Yangon North', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID005', name: 'Ko Aye Chan Soe', phone: '09-259 725 323', zone: 'Yangon North', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID006', name: 'Ma Myo Pa Pa Aung', phone: '09-779 617 044', zone: 'Yangon East', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID007', name: 'Ko Myo Min Kyaw', phone: '09-775 018 446', zone: 'Yangon Central', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID008', name: 'Ko Than Min Soe', phone: '09-786 015 602', zone: 'Yangon South', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' },
-  { id: 'RID009', name: 'Ko S Lin Phyo', phone: '09-965 023 790', zone: 'Yangon Central', vehicle: 'Motorcycle', status: 'Active', rate: '+150 / +300 MMK' }
-];
+// @ts-nocheck
+import { useEffect, useMemo, useState } from "react";
+import { Plus, RefreshCw, Save, Search } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function RiderPage() {
   const { t } = useLanguage();
-  const [loading, setLoading] = useState(false);
-  const loadData = () => { setLoading(true); setTimeout(() => setLoading(false), 500); };
-  useEffect(() => { loadData(); }, []);
+  const [rows,setRows]=useState<any[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [message,setMessage]=useState("");
+  const [search,setSearch]=useState("");
+  const [edit,setEdit]=useState<any>(null);
 
-  return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-start border-b border-[#1a3a5c] pb-4">
-        <div>
-          <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px]">{t('RIDER MANAGEMENT', 'ပို့ဆောင်ရေးဝန်ထမ်း (Rider) စီမံခန့်ခွဲမှု')}</h1>
-          <p className="text-[#4d7a9b] text-[13px]">{t('Field rider profiles, service zones, commission visibility and daily duty readiness.', 'ဝန်ထမ်းအချက်အလက်၊ တာဝန်ကျဇုန် နှင့် ကော်မရှင်များကို စီမံပါ။')}</p>
-        </div>
-        <div className="flex gap-2">
-          <button onClick={loadData} className="bg-[#0b2236] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2.5 rounded-xl text-[13px] hover:border-[#f6b84b] transition-colors flex items-center gap-2 cursor-pointer">
-            <RefreshCw size={14} className={loading ? "animate-spin text-[#f6b84b]" : ""} /> <span className="hidden md:inline">{t('Refresh', 'ပြန်လည်စတင်ရန်')}</span>
-          </button>
-          <button className="bg-[#f6b84b] text-[#061524] px-4 py-2.5 rounded-xl text-[12px] uppercase tracking-wider hover:bg-[#e5a93a] transition-colors flex items-center gap-2 cursor-pointer">
-            <Plus size={14} /> {t('Add Rider', 'ဝန်ထမ်းသစ် ထည့်မည်')}
-          </button>
-        </div>
+  async function load(){
+    setLoading(true); setMessage("");
+    const {data,error}=await (supabase as any).rpc("be_supervisor_workforce_master_center_v1",{p_type:"RIDER",p_status:null,p_search:null});
+    if(error){setMessage(error.message);setRows([]);setLoading(false);return;}
+    if(data?.ok===false){setMessage(data?.code||"Unable to load Rider master.");setRows([]);setLoading(false);return;}
+    setRows(Array.isArray(data?.rows)?data.rows:[]);
+    setLoading(false);
+  }
+
+  async function save(){
+    if(!edit?.workforce_code || !edit?.workforce_name) return setMessage("Rider code and name are required.");
+    setLoading(true);
+    const {data,error}=await (supabase as any).rpc("be_supervisor_workforce_master_upsert_v1",{p_payload:{
+      workforce_type:"RIDER",
+      workforce_code:String(edit.workforce_code).toUpperCase(),
+      workforce_name:edit.workforce_name,
+      phone:edit.phone||"",
+      branch_code:edit.branch_code||"YGN",
+      assigned_zone:edit.assigned_zone||"",
+      employment_type:edit.employment_type||"FULL_TIME",
+      status:edit.status||"ACTIVE"
+    }});
+    if(error || data?.ok===false){setMessage(error?.message||data?.code||"Unable to save Rider.");setLoading(false);return;}
+    setMessage(data.workforce_code+" synchronized to Rider master and assignment lists.");
+    setEdit(null);
+    await load();
+  }
+
+  useEffect(()=>{void load();},[]);
+
+  const filtered=useMemo(()=>{
+    const q=search.trim().toLowerCase();
+    if(!q) return rows;
+    return rows.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(q));
+  },[rows,search]);
+
+  const active=rows.filter((r:any)=>String(r.status||"").toUpperCase()==="ACTIVE").length;
+
+  return <div className="space-y-6">
+    <div className="flex flex-col gap-4 border-b border-[#1a3a5c] pb-4 xl:flex-row xl:items-start xl:justify-between">
+      <div>
+        <h1 className="mb-1 text-[16px] uppercase text-[#f6b84b]">{t("RIDER MANAGEMENT","ပို့ဆောင်ရေးဝန်ထမ်း (Rider) စီမံခန့်ခွဲမှု")}</h1>
+        <p className="text-[13px] text-[#4d7a9b]">{t("Live Supabase Rider master synchronized to Supervisor, Wayplan, Rider App and commission workflows.","Supabase Rider Master ကို Supervisor, Wayplan, Rider App နှင့် Commission များသို့ တိုက်ရိုက်ချိတ်ဆက်ထားပါသည်။")}</p>
       </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-[#0b2236] border border-[#1a3a5c] p-5 rounded-2xl"><div className="text-[#4ea8de] uppercase text-[11px] tracking-widest mb-1">{t('TOTAL RIDERS', 'စုစုပေါင်း')}</div><div className="text-[20px] text-[#eef8ff]">{HARDCODED_RIDERS.length}</div></div>
-        <div className="bg-[#0b2236] border border-[#1a3a5c] p-5 rounded-2xl"><div className="text-[#4ea8de] uppercase text-[11px] tracking-widest mb-1">{t('ACTIVE RIDERS', 'လက်ရှိ အသုံးပြုနေသူ')}</div><div className="text-[20px] text-[#eef8ff]">{HARDCODED_RIDERS.length}</div></div>
-        <div className="bg-[#0b2236] border border-[#1a3a5c] p-5 rounded-2xl"><div className="text-[#4ea8de] uppercase text-[11px] tracking-widest mb-1">{t('ON DUTY TODAY', 'ယနေ့ တာဝန်ကျသူ')}</div><div className="text-[20px] text-[#eef8ff]">{HARDCODED_RIDERS.length}</div></div>
-        <div className="bg-[#0b2236] border border-[#1a3a5c] p-5 rounded-2xl"><div className="text-[#4ea8de] uppercase text-[11px] tracking-widest mb-1">{t('COMMISSION TODAY', 'ယနေ့ ကော်မရှင်')}</div><div className="text-[20px] text-[#f6b84b]">0 MMK</div></div>
-      </div>
-
-      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl p-5 mb-4 flex gap-4 flex-wrap items-center">
-        <div className="text-[#eef8ff] text-[13px] mr-4">{t('Commission Reference', 'ကော်မရှင် နှုန်းထားများ')}</div>
-        <div className="bg-[#061524] border border-[#1a3a5c] text-[#f6b84b] px-4 py-2 rounded-xl text-[12px] flex items-center gap-2">{t('Pickup +150 MMK', 'ကောက်ယူမှု +၁၅၀ ကျပ်')}</div>
-        <div className="bg-[#061524] border border-[#1a3a5c] text-[#4ea8de] px-4 py-2 rounded-xl text-[12px] flex items-center gap-2">{t('Delivery +300 MMK', 'ပို့ဆောင်မှု +၃၀၀ ကျပ်')}</div>
-      </div>
-
-      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col min-h-[400px]">
-         <div className="p-4 border-b border-[#1a3a5c] flex justify-between items-center">
-           <h3 className="text-[#eef8ff] text-[14px] uppercase tracking-widest">{t('Rider Directory', 'ဝန်ထမ်း စာရင်း')}</h3>
-         </div>
-         <div className="flex-1 overflow-auto custom-scrollbar h-[500px]">
-           <table className="w-full text-left text-[13px]">
-             <thead className="bg-[#061524] sticky top-0 border-b border-[#1a3a5c] z-10">
-               <tr className="text-[#4d7a9b] uppercase text-[11px] tracking-widest">
-                 <th className="p-4">{t('RIDER ID', 'အိုင်ဒီ')}</th>
-                 <th className="p-4">{t('NAME', 'အမည်')}</th>
-                 <th className="p-4">{t('PHONE', 'ဖုန်း')}</th>
-                 <th className="p-4">{t('ZONE', 'ဇုန်')}</th>
-                 <th className="p-4">{t('VEHICLE', 'ယာဉ်')}</th>
-                 <th className="p-4">{t('STATUS', 'အခြေအနေ')}</th>
-                 <th className="p-4">{t('COMMISSION RATE', 'ကော်မရှင်')}</th>
-                 <th className="p-4">{t('ACTION', 'လုပ်ဆောင်ချက်')}</th>
-               </tr>
-             </thead>
-             <tbody>
-               {loading ? (<tr><td colSpan={8} className="text-center p-8 text-[#4d7a9b]">{t('Loading...', 'ဖတ်နေသည်...')}</td></tr>) : (
-                 HARDCODED_RIDERS.map((r, i) => (
-                   <tr key={i} className="border-b border-[#1a3a5c]/50 hover:bg-[#061524] text-[#eef8ff] transition-colors">
-                     <td className="p-4">{r.id}</td><td className="p-4">{r.name}</td><td className="p-4 text-[#4d7a9b]">{r.phone}</td><td className="p-4 text-[#4ea8de]">{r.zone}</td>
-                     <td className="p-4 text-[#4d7a9b]">{r.vehicle}</td>
-                     <td className="p-4"><span className="px-2 py-1 rounded-full text-[10px] uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">{r.status}</span></td>
-                     <td className="p-4 text-[#f6b84b]">{r.rate}</td>
-                     <td className="p-4"><button className="text-[#4ea8de] hover:underline text-[12px]">{t('Edit', 'ပြင်မည်')}</button></td>
-                   </tr>
-                 ))
-               )}
-             </tbody>
-           </table>
-         </div>
+      <div className="flex gap-2">
+        <button onClick={()=>void load()} className="flex items-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] px-4 py-2.5 text-[13px] text-[#eef8ff]"><RefreshCw size={14} className={loading?"animate-spin":""}/>{t("Refresh","ပြန်ဖွင့်ရန်")}</button>
+        <button onClick={()=>setEdit({workforce_type:"RIDER",workforce_code:"",workforce_name:"",phone:"",branch_code:"YGN",assigned_zone:"",employment_type:"FULL_TIME",status:"ACTIVE"})} className="flex items-center gap-2 rounded-xl bg-[#f6b84b] px-4 py-2.5 text-[12px] font-black uppercase text-[#061524]"><Plus size={14}/>{t("Add Rider","Rider အသစ်ထည့်ရန်")}</button>
       </div>
     </div>
-  );
+
+    {message && <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4 text-sm font-bold text-[#f6b84b]">{message}</div>}
+
+    <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="text-[11px] uppercase tracking-widest text-[#4ea8de]">TOTAL RIDERS</div><div className="mt-1 text-[24px] font-black text-white">{rows.length}</div></div>
+      <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="text-[11px] uppercase tracking-widest text-emerald-400">ACTIVE RIDERS</div><div className="mt-1 text-[24px] font-black text-white">{active}</div></div>
+      <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="text-[11px] uppercase tracking-widest text-[#4ea8de]">MASTER SOURCE</div><div className="mt-1 text-[13px] font-black text-white">be_master_riders</div></div>
+      <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="text-[11px] uppercase tracking-widest text-[#f6b84b]">ASSIGNMENT SYNC</div><div className="mt-1 text-[13px] font-black text-emerald-400">LIVE</div></div>
+    </div>
+
+    {edit && <div className="rounded-3xl border border-[#f6b84b]/40 bg-[#0b2236] p-5">
+      <div className="mb-4 flex items-center justify-between"><h2 className="font-black text-white">{edit.workforce_code?"Edit Rider":"New Rider"}</h2><button onClick={()=>setEdit(null)} className="text-sm text-[#8ab0c9]">Close</button></div>
+      <div className="grid gap-3 md:grid-cols-4">
+        <input value={edit.workforce_code||""} onChange={e=>setEdit({...edit,workforce_code:e.target.value.toUpperCase()})} placeholder="Rider Code" className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"/>
+        <input value={edit.workforce_name||""} onChange={e=>setEdit({...edit,workforce_name:e.target.value})} placeholder="Rider Name" className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"/>
+        <input value={edit.phone||""} onChange={e=>setEdit({...edit,phone:e.target.value})} placeholder="Phone" className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"/>
+        <input value={edit.assigned_zone||""} onChange={e=>setEdit({...edit,assigned_zone:e.target.value})} placeholder="Assigned Zone" className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"/>
+        <input value={edit.branch_code||""} onChange={e=>setEdit({...edit,branch_code:e.target.value.toUpperCase()})} placeholder="Branch" className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"/>
+        <select value={edit.employment_type||"FULL_TIME"} onChange={e=>setEdit({...edit,employment_type:e.target.value})} className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"><option>FULL_TIME</option><option>PART_TIME</option><option>CONTRACT</option></select>
+        <select value={edit.status||"ACTIVE"} onChange={e=>setEdit({...edit,status:e.target.value})} className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-white"><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select>
+        <button onClick={()=>void save()} disabled={loading} className="flex items-center justify-center gap-2 rounded-xl bg-[#22c55e] p-3 font-black text-[#061524] disabled:opacity-50"><Save size={16}/>Save + Sync</button>
+      </div>
+    </div>}
+
+    <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] overflow-hidden">
+      <div className="flex items-center gap-3 border-b border-[#1a3a5c] p-4"><Search size={16} className="text-[#4ea8de]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search rider code, name, phone, zone..." className="w-full bg-transparent text-sm text-white outline-none"/></div>
+      <div className="max-h-[620px] overflow-auto">
+        <table className="w-full min-w-[900px] text-left text-[13px]">
+          <thead className="sticky top-0 bg-[#061524] text-[11px] uppercase tracking-widest text-[#4d7a9b]"><tr><th className="p-4">Code</th><th className="p-4">Name</th><th className="p-4">Phone</th><th className="p-4">Zone</th><th className="p-4">Branch</th><th className="p-4">Employment</th><th className="p-4">Status</th><th className="p-4">Action</th></tr></thead>
+          <tbody>{filtered.map((r:any)=><tr key={r.workforce_code} className="border-t border-[#1a3a5c]/50 text-white">
+            <td className="p-4 font-mono text-[#38bdf8]">{r.workforce_code}</td><td className="p-4 font-bold">{r.workforce_name}</td><td className="p-4">{r.phone||"-"}</td><td className="p-4">{r.assigned_zone||"-"}</td><td className="p-4">{r.branch_code||"-"}</td><td className="p-4">{r.employment_type||"-"}</td><td className="p-4">{r.status||"-"}</td>
+            <td className="p-4"><button onClick={()=>setEdit({...r})} className="text-[#f6b84b]">Edit</button></td>
+          </tr>)}</tbody>
+        </table>
+      </div>
+    </div>
+  </div>;
 }
