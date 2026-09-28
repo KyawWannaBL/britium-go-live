@@ -536,81 +536,61 @@ export default function SupervisorPickupAssignmentGoLivePage() {
               <div className="grid gap-4">
                 <label className="grid gap-2 text-sm font-bold text-[#9cc2d9]">
                   ASSIGN FIELD RIDER
-                  <select
+                  <input
+                    list={"rider-options-"+p.pickup_id}
                     value={choice[p.pickup_id]?.rider ?? p.assigned_rider_code ?? ""}
                     onChange={(e) => setPick(p.pickup_id, "rider", e.target.value)}
+                    placeholder="Type Rider code/name or choose..."
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
-                  >
-                    <option value="">-- Select Available Rider --</option>
-                    {p.assigned_rider_code && !riders.some((row) => row.code === p.assigned_rider_code) && (
-                      <option value={p.assigned_rider_code}>
-                        {p.assigned_rider_code} - {p.assigned_rider_name || "Current assignment"} · currently assigned
-                      </option>
-                    )}
-                    {riders.map((row) => (
-                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
-                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id={"rider-options-"+p.pickup_id}>
+                    {p.assigned_rider_code && <option value={p.assigned_rider_code}>{p.assigned_rider_name || "Current assignment"}</option>}
+                    {riders.filter((row)=>row.mobileAuthReady).map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
+                  </datalist>
                 </label>
 
                 <label className="grid gap-2 text-sm font-bold text-[#9cc2d9]">
                   ASSIGN DRIVER
-                  <select
+                  <input
+                    list={"driver-options-"+p.pickup_id}
                     value={choice[p.pickup_id]?.driver ?? p.assigned_driver_code ?? ""}
                     onChange={(e) => setPick(p.pickup_id, "driver", e.target.value)}
+                    placeholder="Type Driver code/name or choose..."
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
-                  >
-                    <option value="">-- Select Driver --</option>
-                    {p.assigned_driver_code && !drivers.some((row) => row.code === p.assigned_driver_code) && (
-                      <option value={p.assigned_driver_code}>
-                        {p.assigned_driver_code} - {p.assigned_driver_name || "Current assignment"} · currently assigned
-                      </option>
-                    )}
-                    {drivers.map((row) => (
-                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
-                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id={"driver-options-"+p.pickup_id}>
+                    {p.assigned_driver_code && <option value={p.assigned_driver_code}>{p.assigned_driver_name || "Current assignment"}</option>}
+                    {drivers.filter((row)=>row.mobileAuthReady).map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
+                  </datalist>
                 </label>
 
                 <label className="grid gap-2 text-sm font-bold text-[#9cc2d9]">
                   ASSIGN HELPER
-                  <select
+                  <input
+                    list={"helper-options-"+p.pickup_id}
                     value={choice[p.pickup_id]?.helper ?? p.assigned_helper_code ?? ""}
                     onChange={(e) => setPick(p.pickup_id, "helper", e.target.value)}
+                    placeholder="Type Helper code/name or choose..."
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
-                  >
-                    <option value="">-- Select Helper --</option>
-                    {p.assigned_helper_code && !helpers.some((row) => row.code === p.assigned_helper_code) && (
-                      <option value={p.assigned_helper_code}>
-                        {p.assigned_helper_code} - {p.assigned_helper_name || "Current assignment"} · currently assigned
-                      </option>
-                    )}
-                    {helpers.map((row) => (
-                      <option key={row.code} value={row.code} disabled={!row.mobileAuthReady}>
-                        {row.code} - {row.name}{row.mobileAuthReady ? "" : " · no mobile login"}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id={"helper-options-"+p.pickup_id}>
+                    {p.assigned_helper_code && <option value={p.assigned_helper_code}>{p.assigned_helper_name || "Current assignment"}</option>}
+                    {helpers.filter((row)=>row.mobileAuthReady).map((row) => <option key={row.code} value={row.code}>{row.name}</option>)}
+                  </datalist>
                 </label>
 
                 <label className="grid gap-2 text-sm font-bold text-[#9cc2d9]">
                   REQUIRED FLEET VEHICLE
-                  <select
+                  <input
+                    list={"vehicle-options-"+p.pickup_id}
                     value={choice[p.pickup_id]?.vehicle ?? p.assigned_vehicle_code ?? p.assigned_vehicle_id ?? ""}
                     onChange={(e) => setPick(p.pickup_id, "vehicle", e.target.value)}
+                    placeholder="Type Vehicle code/name or choose..."
                     className="rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 py-3 text-white"
-                  >
-                    <option value="">-- Select Vehicle --</option>
-                    {fleet.map(([code, name]) => (
-                      <option key={code} value={code}>
-                        {code} - {name}
-                      </option>
-                    ))}
-                  </select>
+                  />
+                  <datalist id={"vehicle-options-"+p.pickup_id}>
+                    {fleet.map(([code, name]) => <option key={code} value={code}>{name}</option>)}
+                  </datalist>
                 </label>
 
                 <button
