@@ -36,12 +36,9 @@ function rowsFrom(v:any,source:string){
 }
 async function loadTownshipTariffs(){
   const errors:string[]=[];
-  try{
-    const {data,error}=await (supabase as any).rpc("be_master_data_snapshot",{p_master_type:"tariff_master",p_search:null,p_start_date:null,p_end_date:null});
-    if(error)throw error;
-    const rows=rowsFrom(data,"RPC be_master_data_snapshot");
-    if(rows.length)return {rows,source:"RPC be_master_data_snapshot"};
-  }catch(e:any){errors.push(e?.message||"master snapshot unavailable")}
+  // Canonical operational delivery tariff master comes first because this is
+  // the backend used by routing/calculation and is the only township source
+  // exposed for direct Superadmin editing from this portal.
   for(const table of ["be_delivery_tariff_master_v13","be_md_tariffs","tariff_master","township_tariffs","tariffs"]){
     try{
       const {data,error}=await (supabase as any).from(table).select("*").limit(3000);
@@ -50,6 +47,12 @@ async function loadTownshipTariffs(){
       if(rows.length)return {rows,source:"table "+table};
     }catch(e:any){errors.push(table+": "+(e?.message||"unavailable"))}
   }
+  try{
+    const {data,error}=await (supabase as any).rpc("be_master_data_snapshot",{p_master_type:"tariff_master",p_search:null,p_start_date:null,p_end_date:null});
+    if(error)throw error;
+    const rows=rowsFrom(data,"RPC be_master_data_snapshot");
+    if(rows.length)return {rows,source:"RPC be_master_data_snapshot"};
+  }catch(e:any){errors.push(e?.message||"master snapshot unavailable")}
   throw new Error(errors[0]||"No live tariff rows returned.");
 }
 
@@ -60,6 +63,7 @@ export default function TariffPage(){
   const [rows,setRows]=useState<TariffRow[]>([]);
   const [tiers,setTiers]=useState<any[]>([]);
   const [edit,setEdit]=useState<any>(null);
+  const [editOperational,setEditOperational]=useState<any>(null);
   const [search,setSearch]=useState("");
   const [source,setSource]=useState("Waiting for backend");
   const [lastSynced,setLastSynced]=useState("");
@@ -84,6 +88,24 @@ export default function TariffPage(){
       setRows([]);setSource("No live township tariff source");setMessage(townResult.reason?.message||"Unable to load township tariffs.");
     }
     setLastSynced(new Date().toLocaleString());setLoading(false);
+  }
+
+  async function saveOperationalTariff(){
+    if(!editOperational||!canEdit)return;
+    setSaving(true);setMessage("");
+    const {data,error}=await (supabase as any).rpc("be_delivery_tariff_update_v1",{
+      p_id:editOperational.id,
+      p_base_fee:Number(editOperational.baseFee||0),
+      p_included_kg:Number(editOperational.includedKg||0),
+      p_extra_per_kg:Number(editOperational.extraPerKg||0),
+      p_status:editOperational.status||"active",
+      p_note:editOperational.note||null,
+    });
+    if(error||data?.ok===false){
+      setMessage(error?.message||data?.message||"Operational tariff update failed.");setSaving(false);return;
+    }
+    setMessage(editOperational.township+" updated directly in the canonical Supabase delivery tariff master and recorded in the audit log.");
+    setEditOperational(null);setSaving(false);await load();
   }
 
   async function saveTier(){
@@ -145,10 +167,17 @@ export default function TariffPage(){
       </section>
 
       <section className="overflow-hidden rounded-3xl border border-[#1a3a5c] bg-[#0b2236]">
-        <div className="flex flex-col gap-3 border-b border-[#1a3a5c] p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-black text-white">Operational Township / Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{rows.length} live rows</p></div><div className="relative w-full lg:w-[420px]"><Search size={16} className="absolute left-3 top-3 text-[#64748b]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search township, zone, tier, status..." className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-sm font-bold text-[#061524] outline-none"/></div></div>
-        <div className="overflow-x-auto bg-white"><table className="min-w-[1120px] w-full text-left text-sm text-[#061524]"><thead className="bg-[#f6b84b] text-[11px] uppercase"><tr>{["Destination","Zone","Tier","Base Charge","Included KG","Extra / KG","Status","Note","Source"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>
-          {filtered.map(r=><tr key={r.id} className="border-t border-slate-200 hover:bg-amber-50"><td className="p-3 font-black">{r.township}</td><td>{r.zone}</td><td className="font-black">{r.tier}</td><td className="text-right font-black">{r.baseFee.toLocaleString()} MMK</td><td className="text-right">{r.includedKg}</td><td className="text-right">{r.extraPerKg.toLocaleString()} MMK</td><td><span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">{r.status}</span></td><td className="max-w-[300px] p-3">{r.note}</td><td className="max-w-[240px] text-xs font-bold">{r.source}</td></tr>)}
-          {!filtered.length&&<tr><td colSpan={9} className="p-12 text-center font-black">No tariff rows match the search.</td></tr>}
+        <div className="flex flex-col gap-3 border-b border-[#1a3a5c] p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-black text-white">Operational Township / Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{rows.length} live rows · Canonical delivery rows are directly editable by Superadmin only</p></div><div className="relative w-full lg:w-[420px]"><Search size={16} className="absolute left-3 top-3 text-[#64748b]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search township, zone, tier, status..." className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-sm font-bold text-[#061524] outline-none"/></div></div>
+        {editOperational&&canEdit&&<div className="border-b border-[#1a3a5c] bg-[#061524] p-4 text-[#c8dff0]">
+          <div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-widest text-[#f6b84b]">Edit Operational Tariff</div><h3 className="mt-1 font-black text-white">{editOperational.township} · {editOperational.tier}</h3></div><button onClick={()=>setEditOperational(null)}><X size={18}/></button></div>
+          <div className="mt-3 grid gap-3 md:grid-cols-5">
+            {[["baseFee","Base Charge (MMK)"],["includedKg","Included KG"],["extraPerKg","Extra / KG (MMK)"],["status","Status"],["note","Note"]].map(([key,label])=><label key={key} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{label}</span><input type={key==="note"||key==="status"?"text":"number"} min="0" value={editOperational[key]??""} onChange={e=>setEditOperational({...editOperational,[key]:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#0b2236] px-3 text-white outline-none focus:border-[#f6b84b]"/></label>)}
+          </div>
+          <button onClick={()=>void saveOperationalTariff()} disabled={saving} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-[#f6b84b] px-5 font-black text-[#061524] disabled:opacity-50"><Save size={16}/>{saving?"Saving...":"Save Operational Tariff to Supabase"}</button>
+        </div>}
+        <div className="overflow-x-auto bg-white"><table className="min-w-[1200px] w-full text-left text-sm text-[#061524]"><thead className="bg-[#f6b84b] text-[11px] uppercase"><tr>{["Destination","Zone","Tier","Base Charge","Included KG","Extra / KG","Status","Note","Source","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>
+          {filtered.map(r=><tr key={r.id} className="border-t border-slate-200 hover:bg-amber-50"><td className="p-3 font-black">{r.township}</td><td>{r.zone}</td><td className="font-black">{r.tier}</td><td className="text-right font-black">{r.baseFee.toLocaleString()} MMK</td><td className="text-right">{r.includedKg}</td><td className="text-right">{r.extraPerKg.toLocaleString()} MMK</td><td><span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">{r.status}</span></td><td className="max-w-[300px] p-3">{r.note}</td><td className="max-w-[240px] text-xs font-bold">{r.source}</td><td className="p-3">{canEdit&&r.source==="table be_delivery_tariff_master_v13"?<button onClick={()=>setEditOperational({...r})} className="inline-flex items-center gap-1 rounded-lg border border-[#061524]/20 px-3 py-2 text-xs font-black"><Edit3 size={14}/>Edit</button>:<span className="text-xs text-slate-400">Read only</span>}</td></tr>)}
+          {!filtered.length&&<tr><td colSpan={10} className="p-12 text-center font-black">No tariff rows match the search.</td></tr>}
         </tbody></table></div>
       </section>
     </div>
