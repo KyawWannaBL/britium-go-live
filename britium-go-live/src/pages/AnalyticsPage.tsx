@@ -150,9 +150,11 @@ export default function AnalyticsPage() {
 
     try {
       const { data, error } = await supabase.rpc(
-        "be_export_report",
+        "be_export_report_v2",
         {
           p_report_type: report.apiName,
+          p_from: null,
+          p_to: null,
         },
       );
 
