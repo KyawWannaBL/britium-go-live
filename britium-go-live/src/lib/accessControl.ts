@@ -42,16 +42,16 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/supervisor', rule('supervisor', 'operations', 'operations-admin')],
 
   ['/rider-app', rule('rider', 'driver', 'helper')],
-  ['/rider', rule('rider', 'driver')],
+  ['/rider', rule('rider', 'driver', 'helper', 'supervisor', 'operations', 'operations-admin')],
   ['/driver', rule('driver', 'supervisor', 'operations', 'operations-admin')],
 
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
   ['/cs-', rule('customer-service', 'cs', 'support')],
   ['/merchant-portal', rule('merchant', 'vip-customer')],
   ['/customer-portal', rule('customer')],
-  ['/marketing', rule('marketing')],
+  ['/marketing', rule('marketing', 'management', 'director')],
   ['/biz-dev', rule('business-development', 'biz-dev', 'management', 'director')],
-  ['/tariff', rule('finance', 'finance-user', 'accountant', 'data-entry', 'encoder', 'business-development', 'biz-dev')],
+  ['/tariff', rule('finance', 'finance-user', 'accountant', 'data-entry', 'encoder', 'business-development', 'biz-dev', 'management', 'director')],
 ];
 
 export function isElevatedRole(rawRole: string | null | undefined): boolean {
