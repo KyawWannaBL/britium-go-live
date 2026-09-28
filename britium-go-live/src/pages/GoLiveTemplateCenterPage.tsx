@@ -1,16 +1,62 @@
 // @ts-nocheck
 import React, { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import { Link } from "react-router-dom";
-import { GO_LIVE_TEMPLATE_SCHEMAS, downloadCsv } from "@/lib/britiumGoLiveTemplateSchemas";
+import { GO_LIVE_TEMPLATE_SCHEMAS, downloadCsv, parseCsvText } from "@/lib/britiumGoLiveTemplateSchemas";
 
 export default function GoLiveTemplateCenterPage() {
   const [query, setQuery] = useState("");
+  const [verifying,setVerifying]=useState(false);
+  const [verification,setVerification]=useState<any[]>([]);
+  const [notice,setNotice]=useState("");
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return GO_LIVE_TEMPLATE_SCHEMAS;
     return GO_LIVE_TEMPLATE_SCHEMAS.filter((schema) => `${schema.title} ${schema.description} ${schema.headers.join(" ")}`.toLowerCase().includes(q));
   }, [query]);
+
+  async function verifyTemplates(){
+    setVerifying(true);setNotice("");
+    const rows:any[]=[];
+    for(const schema of GO_LIVE_TEMPLATE_SCHEMAS){
+      const item:any={key:schema.key,title:schema.title,csv:"FAIL",xlsx:"FAIL",headers:"FAIL",upload_target:"",notes:[]};
+      try{
+        const csvRes=await fetch(schema.csvFile,{cache:"no-store"});
+        if(!csvRes.ok)throw new Error("CSV HTTP "+csvRes.status);
+        const text=await csvRes.text();
+        const parsed=parseCsvText(text);
+        item.csv="PASS";
+        item.headers=JSON.stringify(parsed.headers)===JSON.stringify(schema.headers)?"PASS":"FAIL";
+        if(item.headers!=="PASS")item.notes.push("CSV headers differ from schema.");
+      }catch(e:any){item.notes.push(e?.message||"CSV verification failed");}
+      try{
+        const xlsxRes=await fetch(schema.xlsxFile,{cache:"no-store"});
+        if(!xlsxRes.ok)throw new Error("XLSX HTTP "+xlsxRes.status);
+        const wb=XLSX.read(await xlsxRes.arrayBuffer());
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const matrix=XLSX.utils.sheet_to_json(ws,{header:1,blankrows:false}) as any[][];
+        const headers=(matrix[0]||[]).map((x:any)=>String(x??"").trim());
+        item.xlsx="PASS";
+        if(JSON.stringify(headers)!==JSON.stringify(schema.headers)){
+          item.headers="FAIL";item.notes.push("XLSX headers differ from schema.");
+        }
+      }catch(e:any){item.notes.push(e?.message||"XLSX verification failed");}
+      item.upload_target=schema.key==="warehouse"?"/warehouse-uat":schema.key==="portal-upload"?"/merchant-portal":"/data-entry-uat";
+      rows.push(item);
+    }
+    setVerification(rows);
+    setNotice(rows.every(x=>x.csv==="PASS"&&x.xlsx==="PASS"&&x.headers==="PASS")?"All template files and schemas passed verification.":"Template verification found one or more issues.");
+    setVerifying(false);
+  }
+
+  function downloadVerification(){
+    const payload={generated_at:new Date().toISOString(),ok:verification.every(x=>x.csv==="PASS"&&x.xlsx==="PASS"&&x.headers==="PASS"),rows:verification};
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json;charset=utf-8"});
+    const url=URL.createObjectURL(blob);const a=document.createElement("a");
+    a.href=url;a.download="britium_template_verification_"+new Date().toISOString().slice(0,10)+".json";
+    document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(url);
+  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950">
@@ -62,7 +108,7 @@ export default function GoLiveTemplateCenterPage() {
               <a href={schema.xlsxFile} download className="rounded-2xl bg-blue-700 px-4 py-3 text-center text-xs font-black uppercase text-white">Download XLSX</a>
               <a href={schema.csvFile} download className="rounded-2xl bg-white px-4 py-3 text-center text-xs font-black uppercase text-slate-700 ring-1 ring-slate-200">Download CSV</a>
               <button type="button" onClick={() => downloadCsv(schema)} className="rounded-2xl bg-slate-950 px-4 py-3 text-xs font-black uppercase text-white">Generate CSV</button>
-              <Link to={schema.key === "warehouse" ? "/warehouse/upload" : schema.key === "portal-upload" ? "/merchant/upload" : "/data-entry"} className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-xs font-black uppercase text-white">Open Upload</Link>
+              <Link to={schema.key === "warehouse" ? "/warehouse-uat" : schema.key === "portal-upload" ? "/merchant-portal" : "/data-entry-uat"} className="rounded-2xl bg-emerald-600 px-4 py-3 text-center text-xs font-black uppercase text-white">Open Upload</Link>
             </div>
           </article>
         ))}
