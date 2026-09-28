@@ -1,419 +1,107 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from "react";
+import { Download, FileText, RefreshCw, Search, UploadCloud, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useLanguage } from "@/contexts/LanguageContext";
-import { RefreshCw, Plus, Users, ShieldCheck, Search, AlertTriangle } from "lucide-react";
 
-type EmployeeRow = {
-  employee_code: string;
-  display_name: string;
-  department: string;
-  role_label: string;
-  branch_code: string;
-  email: string;
-  phone_primary: string;
-  status: string;
-  is_active: boolean;
-  record_key?: string;
-  updated_at?: string;
-};
-
-const FALLBACK_EMPLOYEES: EmployeeRow[] = [
-  { employee_code: "EMP001", display_name: "Daw Aye Pwint Phyu", department: "Operation", role_label: "Operation Manager", branch_code: "YGN", email: "optmgr_ygn_001@britiumventures.com", phone_primary: "", status: "Active", is_active: true },
-  { employee_code: "EMP002", display_name: "U Nay Soe", department: "Operation", role_label: "Operation Supervisor", branch_code: "YGN", email: "sup_ygn_001@britiumventures.com", phone_primary: "", status: "Active", is_active: true },
-  { employee_code: "EMP003", display_name: "U Shine Wai Yan", department: "Operation", role_label: "Warehouse Controller", branch_code: "YGN", email: "warehouse_ygn_002@britiumventures.com", phone_primary: "", status: "Active", is_active: true },
-  { employee_code: "EMP004", display_name: "U Paing Zay Htut", department: "Operation", role_label: "Warehouse Controller", branch_code: "YGN", email: "warehouse_ygn_003@britiumventures.com", phone_primary: "", status: "Active", is_active: true },
+const DOC_TYPES=[
+  ["EMPLOYMENT_CONTRACT","Employment Contract / အလုပ်ခန့်စာချုပ်"],
+  ["NRC_ID","NRC / ID / မှတ်ပုံတင်"],
+  ["NDA","NDA / လျှို့ဝှက်ချက်ထိန်းသိမ်းရေးစာချုပ်"],
+  ["AGREEMENT","Agreement / သဘောတူစာချုပ်"],
+  ["HR_POLICY","HR Rule / Policy / HR စည်းမျဉ်း"],
+  ["WARNING","Warning / Disciplinary / သတိပေးစာ"],
+  ["TRAINING","Training / Certificate / သင်တန်းမှတ်တမ်း"],
+  ["PAYROLL","Payroll / Compensation Document"],
+  ["LICENSE","License / Professional Credential"],
+  ["OTHER","Other / အခြား"]
 ];
 
-function isObject(value: unknown): value is Record<string, any> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+export default function AdminHRPage(){
+  const [employees,setEmployees]=useState<any[]>([]);
+  const [summary,setSummary]=useState<any>({});
+  const [docs,setDocs]=useState<any[]>([]);
+  const [loading,setLoading]=useState(false);
+  const [message,setMessage]=useState("");
+  const [search,setSearch]=useState("");
+  const [docSearch,setDocSearch]=useState("");
+  const [file,setFile]=useState<File|null>(null);
+  const [form,setForm]=useState({employee_code:"",document_type:"EMPLOYMENT_CONTRACT",title:"",effective_date:"",expiry_date:"",notes:""});
 
-function safeText(value: unknown, fallback = ""): string {
-  if (value === null || value === undefined) return fallback;
-  if (typeof value === "string") return value.trim() || fallback;
-  if (typeof value === "number" || typeof value === "boolean") return String(value);
-  if (Array.isArray(value)) {
-    const text = value.map((item) => safeText(item, "")).filter(Boolean).join(", ");
-    return text || fallback;
+  async function load(){
+    setLoading(true);setMessage("");
+    const [hr,dr]=await Promise.all([
+      (supabase as any).rpc("be_hr_dashboard"),
+      (supabase as any).rpc("be_hr_document_snapshot_v1",{p_search:docSearch.trim()||null,p_limit:1000})
+    ]);
+    if(hr.error)setMessage(hr.error.message);
+    else {setEmployees(Array.isArray(hr.data?.employees)?hr.data.employees:Array.isArray(hr.data?.rows)?hr.data.rows:[]);setSummary(hr.data?.summary||{});}
+    if(dr.error||dr.data?.ok===false)setMessage((m:string)=>m||dr.error?.message||dr.data?.code||"HR documents unavailable.");
+    else setDocs(Array.isArray(dr.data?.rows)?dr.data.rows:[]);
+    setLoading(false);
   }
-  if (isObject(value)) {
-    for (const key of ["label", "name", "display_name", "displayName", "value", "code"]) {
-      const text = safeText(value[key], "");
-      if (text) return text;
-    }
-    try {
-      const json = JSON.stringify(value);
-      return json === "{}" ? fallback : json;
-    } catch {
-      return fallback;
-    }
-  }
-  return fallback;
-}
+  useEffect(()=>{void load()},[]);
 
-/**
- * Legacy employee rows in this project can contain several payload wrappers.
- * Merge outer metadata with each nested payload while allowing the deepest
- * employee fields to win.
- */
-function flattenPayload(value: any): Record<string, any> {
-  let current = isObject(value) ? value : {};
-  let merged: Record<string, any> = {};
-  const seen = new Set<any>();
-
-  for (let depth = 0; depth < 10 && isObject(current) && !seen.has(current); depth += 1) {
-    seen.add(current);
-    const { payload, ...rest } = current;
-    merged = { ...merged, ...rest };
-    if (!isObject(payload)) break;
-    current = payload;
+  async function upload(){
+    if(!file||!form.title.trim())return setMessage("Document title and file are required.");
+    setLoading(true);setMessage("");
+    const safe=file.name.replace(/[^A-Za-z0-9._-]+/g,"_");
+    const path=(form.employee_code||"CORPORATE")+"/"+new Date().toISOString().slice(0,10)+"/"+crypto.randomUUID()+"-"+safe;
+    const up=await supabase.storage.from("hr-documents").upload(path,file,{upsert:false,contentType:file.type||undefined});
+    if(up.error){setMessage(up.error.message);setLoading(false);return;}
+    const {data,error}=await (supabase as any).rpc("be_hr_document_register_upsert_v1",{p_payload:{
+      ...form,storage_path:path,file_name:file.name,mime_type:file.type||null,status:"ACTIVE"
+    }});
+    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Document registration failed.");setLoading(false);return;}
+    setMessage("HR document uploaded securely and registered in Supabase.");
+    setFile(null);setForm({...form,title:"",notes:""});await load();
   }
 
-  return merged;
-}
-
-function looksLikeUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-}
-
-function normalizeEmployee(row: any): EmployeeRow | null {
-  const flat = flattenPayload(row);
-  const displayName = safeText(
-    flat.employee_name ??
-      flat.display_name ??
-      flat.name ??
-      flat.workforce_name,
-  );
-
-  // Reject rider/driver/helper records that were accidentally wrapped inside
-  // employee_master legacy snapshots.
-  if (!displayName) return null;
-
-  const rawEmployeeCode = safeText(flat.employee_id ?? flat.employee_code);
-  const recordKey = safeText(flat.record_key ?? row?.record_key);
-  const email = safeText(flat.email).toLowerCase();
-
-  let employeeCode = rawEmployeeCode;
-  if (!employeeCode || looksLikeUuid(employeeCode) || /^EMPLOYEE_MASTER-/i.test(employeeCode)) {
-    if (recordKey && !looksLikeUuid(recordKey) && !/^EMPLOYEE_MASTER-/i.test(recordKey)) {
-      employeeCode = recordKey;
-    } else {
-      employeeCode = email || displayName;
-    }
+  async function downloadDoc(row:any){
+    const {data,error}=await supabase.storage.from("hr-documents").createSignedUrl(row.storage_path,120);
+    if(error||!data?.signedUrl)return setMessage(error?.message||"Could not create secure download link.");
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
   }
 
-  const status = safeText(flat.status ?? flat.record_status, "Active");
-  const inactive = ["inactive", "suspended", "deleted", "terminated", "false", "0", "no"].includes(
-    status.toLowerCase(),
-  );
-  const explicitActive = flat.is_active;
-  const isActive = explicitActive === false ? false : !inactive;
+  const filtered=useMemo(()=>{
+    const q=search.trim().toLowerCase();if(!q)return employees;
+    return employees.filter((e:any)=>JSON.stringify(e).toLowerCase().includes(q));
+  },[employees,search]);
 
-  return {
-    employee_code: employeeCode,
-    display_name: displayName,
-    department: safeText(flat.department, "Unassigned"),
-    role_label: safeText(flat.role_label ?? flat.role_id ?? flat.role, "Unassigned"),
-    branch_code: safeText(flat.branch_code ?? flat.branch, "YGN"),
-    email,
-    phone_primary: safeText(flat.phone_primary ?? flat.phone),
-    status,
-    is_active: isActive,
-    record_key: recordKey,
-    updated_at: safeText(flat.updated_at ?? row?.updated_at),
-  };
-}
+  return <div className="space-y-5 text-[#eef8ff]">
+    <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-6">
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between"><div><div className="text-[11px] font-black uppercase tracking-[.22em] text-[#f6b84b]">ADMINISTRATION & HUMAN RESOURCES</div><h1 className="mt-2 text-3xl font-black">Admin / HR Control Center</h1><p className="mt-2 text-sm text-[#8fb2c9]">Employee master, contracts, agreements, HR policies, IDs, disciplinary records and required evidence in one controlled workspace.</p></div><button onClick={()=>void load()} className="flex h-11 items-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 font-black"><RefreshCw size={16} className={loading?"animate-spin":""}/>Refresh</button></div>
+      {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
+    </section>
 
-function employeeScore(employee: EmployeeRow): number {
-  return (
-    (employee.employee_code && !looksLikeUuid(employee.employee_code) ? 4 : 0) +
-    (employee.email ? 3 : 0) +
-    (employee.department && employee.department !== "Unassigned" ? 2 : 0) +
-    (employee.role_label && employee.role_label !== "Unassigned" ? 2 : 0) +
-    (employee.phone_primary ? 1 : 0)
-  );
-}
+    <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+      {[["Employees",summary.total_employees||employees.length],["Active",summary.active_employees||0],["Departments",summary.departments||0],["Branches",summary.branches||0],["Field Team",(summary.riders||0)+(summary.drivers||0)+(summary.helpers||0)],["HR Documents",docs.length]].map(([l,v])=><div key={l} className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4"><div className="text-[10px] font-black uppercase text-[#8fb2c9]">{l}</div><div className="mt-2 text-xl font-black text-[#f6b84b]">{Number(v||0).toLocaleString()}</div></div>)}
+    </section>
 
-function dedupeEmployees(rows: any[]): EmployeeRow[] {
-  const best = new Map<string, EmployeeRow>();
-
-  rows
-    .map(normalizeEmployee)
-    .filter(Boolean)
-    .forEach((employee: EmployeeRow) => {
-      const identity = (
-        employee.employee_code ||
-        employee.email ||
-        employee.display_name
-      ).toLowerCase();
-
-      const existing = best.get(identity);
-      if (!existing || employeeScore(employee) > employeeScore(existing)) {
-        best.set(identity, employee);
-      } else if (
-        existing &&
-        employeeScore(employee) === employeeScore(existing) &&
-        (employee.updated_at || "") > (existing.updated_at || "")
-      ) {
-        best.set(identity, employee);
-      }
-    });
-
-  return [...best.values()].sort((a, b) =>
-    a.employee_code.localeCompare(b.employee_code, undefined, { numeric: true }),
-  );
-}
-
-function rowsFromAdminSnapshot(data: any): any[] {
-  if (Array.isArray(data?.employees)) return data.employees;
-  if (Array.isArray(data?.rows)) return data.rows;
-  return [];
-}
-
-function rowsFromMasterSnapshot(data: any): any[] {
-  const grouped = isObject(data?.records_by_dataset) ? data.records_by_dataset : {};
-  if (Array.isArray(grouped.employee_master)) return grouped.employee_master;
-
-  const rows = Array.isArray(data?.rows) ? data.rows : [];
-  return rows.filter((row: any) => safeText(row?.dataset_key) === "employee_master");
-}
-
-export default function AdminHRPage() {
-  const { t } = useLanguage();
-  const [loading, setLoading] = useState(false);
-  const [employees, setEmployees] = useState<EmployeeRow[]>([]);
-  const [source, setSource] = useState("Waiting for employee master");
-  const [errorMessage, setErrorMessage] = useState("");
-  const [search, setSearch] = useState("");
-
-  const loadData = async () => {
-    setLoading(true);
-    setErrorMessage("");
-
-    try {
-      // Preferred dedicated RPC. The supplied SQL migration makes this RPC
-      // read directly from employee_master.
-      const adminResult = await supabase.rpc("be_admin_hr_snapshot");
-      if (!adminResult.error) {
-        const normalized = dedupeEmployees(rowsFromAdminSnapshot(adminResult.data));
-        if (normalized.length) {
-          setEmployees(normalized);
-          setSource(adminResult.data?.source || "employee_master via be_admin_hr_snapshot");
-          return;
-        }
-      }
-
-      // Safe fallback to the working master-data snapshot.
-      const masterResult = await supabase.rpc("be_master_data_page_snapshot");
-      if (masterResult.error) throw masterResult.error;
-
-      const normalized = dedupeEmployees(rowsFromMasterSnapshot(masterResult.data));
-      setEmployees(normalized);
-      setSource("employee_master via be_master_data_page_snapshot");
-
-      if (!normalized.length) {
-        setErrorMessage("The employee_master dataset returned no usable employee records.");
-      }
-    } catch (error: any) {
-      if (error?.name === "AbortError" || error?.message?.includes("aborted")) return;
-      setEmployees(FALLBACK_EMPLOYEES);
-      setSource("Local emergency fallback");
-      setErrorMessage(error?.message || "Could not synchronize employee master.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    void loadData();
-  }, []);
-
-  const filteredEmployees = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return employees;
-    return employees.filter((employee) =>
-      [
-        employee.employee_code,
-        employee.display_name,
-        employee.department,
-        employee.role_label,
-        employee.branch_code,
-        employee.email,
-        employee.phone_primary,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [employees, search]);
-
-  const activeEmployees = employees.filter((employee) => employee.is_active).length;
-  const accessUsers = employees.filter((employee) => Boolean(employee.email)).length;
-  const activeUsers = employees.filter((employee) => employee.is_active && employee.email).length;
-
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap justify-between gap-3 items-start border-b border-[#1a3a5c] pb-4">
-        <div>
-          <h1 className="text-[#f6b84b] uppercase mb-1 text-[16px]">
-            {t("ADMIN & HR PORTAL", "စီမံခန့်ခွဲရေး နှင့် လူ့စွမ်းအားအရင်းအမြစ်")}
-          </h1>
-          <p className="text-[#4d7a9b] text-[13px]">
-            {t(
-              "Employee management synchronized with Employee Master.",
-              "ဝန်ထမ်း Master Data နှင့် ချိတ်ဆက်ထားသော ဝန်ထမ်းစီမံခန့်ခွဲမှု။",
-            )}
-          </p>
-          <p className="mt-1 text-[11px] text-[#4ea8de]">Backend source: {source}</p>
+    <section className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
+      <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+        <div className="flex items-center gap-2"><UploadCloud size={18} className="text-[#38bdf8]"/><h2 className="font-black">Collect / Upload HR Document</h2></div>
+        <p className="mt-1 text-xs text-[#8fb2c9]">Corporate policies may be stored without an employee code. Employee-specific records should select the employee code.</p>
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Employee</span><select value={form.employee_code} onChange={e=>setForm({...form,employee_code:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option value="">Corporate / All Staff</option>{employees.map((e:any)=><option key={e.employee_code||e.employee_id} value={e.employee_code||e.employee_id}>{e.employee_code||e.employee_id} · {e.display_name||e.employee_name||e.full_name}</option>)}</select></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Document Type</span><select value={form.document_type} onChange={e=>setForm({...form,document_type:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3">{DOC_TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+          <label className="md:col-span-2 text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Title / Document Name</span><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3" placeholder="e.g. Employment Contract 2026 / HR Leave Policy"/></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Effective Date</span><input type="date" value={form.effective_date} onChange={e=>setForm({...form,effective_date:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Expiry Date</span><input type="date" value={form.expiry_date} onChange={e=>setForm({...form,expiry_date:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>
+          <label className="md:col-span-2 text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Notes</span><textarea value={form.notes} onChange={e=>setForm({...form,notes:e.target.value})} className="min-h-[90px] w-full rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"/></label>
+          <label className="md:col-span-2 text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Evidence / Contract File</span><input type="file" accept=".pdf,.docx,image/*" onChange={e=>setFile(e.target.files?.[0]||null)} className="w-full rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"/></label>
         </div>
-
-        <button
-          onClick={() => void loadData()}
-          disabled={loading}
-          className="bg-[#0b2236] border border-[#1a3a5c] text-[#eef8ff] px-4 py-2.5 rounded-xl text-[13px] hover:border-[#f6b84b] flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-60"
-        >
-          <RefreshCw size={14} className={loading ? "animate-spin text-[#f6b84b]" : ""} />
-          <span className="hidden md:inline">{t("Refresh", "ပြန်လည်စတင်ရန်")}</span>
-        </button>
+        <button onClick={()=>void upload()} disabled={loading||!file||!form.title.trim()} className="mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#f6b84b] font-black text-[#061524] disabled:opacity-50"><UploadCloud size={16}/>Upload + Register in HR Vault</button>
       </div>
 
-      {errorMessage ? (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-700 bg-amber-950/30 px-4 py-3 text-[12px] text-amber-200">
-          <AlertTriangle size={15} className="mt-0.5 shrink-0" />
-          <span>{errorMessage}</span>
-        </div>
-      ) : null}
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Metric label={t("EMPLOYEES", "ဝန်ထမ်းစုစုပေါင်း")} value={employees.length} icon={<Users size={16} />} />
-        <Metric label={t("ACTIVE EMPLOYEES", "လက်ရှိ ဝန်ထမ်း")} value={activeEmployees} icon={<Users size={16} />} accent="emerald" />
-        <Metric label={t("ACCESS USERS", "အကောင့်များ")} value={accessUsers} icon={<ShieldCheck size={16} />} />
-        <Metric label={t("ACTIVE USERS", "အသုံးပြုနေသော အကောင့်")} value={activeUsers} icon={<ShieldCheck size={16} />} accent="rose" />
+      <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><FileText size={18} className="text-[#38bdf8]"/><h2 className="font-black">HR Document Register</h2></div><div className="flex gap-2"><input value={docSearch} onChange={e=>setDocSearch(e.target.value)} placeholder="Search documents..." className="h-10 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><button onClick={()=>void load()} className="h-10 rounded-xl border border-[#1a3a5c] px-4 font-black">Search</button></div></div>
+        <div className="mt-4 max-h-[630px] space-y-2 overflow-auto">{docs.map((d:any)=><div key={d.id} className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4"><div className="flex items-start justify-between gap-3"><div><div className="text-xs font-black text-[#38bdf8]">{d.document_type}</div><div className="mt-1 font-black">{d.title}</div><div className="mt-1 text-xs text-[#8fb2c9]">{d.employee_code||"CORPORATE"} · {d.file_name}</div></div><button onClick={()=>void downloadDoc(d)} className="flex h-9 items-center gap-1 rounded-lg border border-[#1a3a5c] px-3 text-xs font-black"><Download size={14}/>Open</button></div><div className="mt-2 flex flex-wrap gap-3 text-[11px] text-[#6f91aa]"><span>Effective: {d.effective_date||"-"}</span><span>Expiry: {d.expiry_date||"-"}</span><span>Status: {d.status}</span></div></div>)}{!docs.length&&<div className="p-10 text-center text-[#6f91aa]">No HR documents registered yet.</div>}</div>
       </div>
+    </section>
 
-      <div className="flex gap-2 border-b border-[#1a3a5c] pb-3 flex-wrap">
-        <button className="bg-[#f6b84b] text-[#061524] px-5 py-2.5 rounded-xl text-[13px] uppercase tracking-widest cursor-pointer">
-          {t("Overview", "အနှစ်ချုပ်")}
-        </button>
-        <button className="bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] hover:border-[#4ea8de] px-5 py-2.5 rounded-xl text-[13px] uppercase tracking-widest transition-colors cursor-pointer">
-          {t("Employees", "ဝန်ထမ်းများ")}
-        </button>
-        <button className="bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] hover:border-[#4ea8de] px-5 py-2.5 rounded-xl text-[13px] uppercase tracking-widest transition-colors cursor-pointer">
-          {t("Admin/Access", "ဝင်ရောက်ခွင့်များ")}
-        </button>
-        <button className="bg-[#061524] text-[#eef8ff] border border-[#1a3a5c] hover:border-[#4ea8de] px-5 py-2.5 rounded-xl text-[13px] uppercase tracking-widest transition-colors cursor-pointer">
-          {t("Reports", "အစီရင်ခံစာများ")}
-        </button>
-      </div>
-
-      <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-2xl flex flex-col min-h-[400px]">
-        <div className="p-4 border-b border-[#1a3a5c] flex flex-wrap gap-3 justify-between items-center">
-          <div className="text-[#eef8ff] text-[14px] uppercase tracking-widest">
-            {t("Employee Directory", "ဝန်ထမ်း စာရင်း")}
-          </div>
-
-          <div className="flex flex-1 justify-end gap-2 min-w-[260px]">
-            <div className="relative w-full max-w-sm">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#4d7a9b]" />
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder={t("Search employees...", "ဝန်ထမ်းရှာရန်...")}
-                className="w-full rounded-xl border border-[#1a3a5c] bg-[#061524] py-2.5 pl-9 pr-3 text-[12px] text-[#eef8ff] outline-none focus:border-[#f6b84b]"
-              />
-            </div>
-            <button className="bg-[#f6b84b] text-[#061524] px-4 py-2.5 rounded-xl text-[13px] uppercase tracking-wider flex items-center gap-2 hover:bg-[#e5a93a] transition-colors cursor-pointer">
-              <Plus size={14} /> {t("Add Employee", "ဝန်ထမ်းသစ် ထည့်မည်")}
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-auto custom-scrollbar h-[500px]">
-          <table className="w-full text-left text-[13px] whitespace-nowrap">
-            <thead className="bg-[#061524] sticky top-0 border-b border-[#1a3a5c] z-10">
-              <tr className="text-[#4d7a9b] uppercase text-[11px] tracking-widest">
-                <th className="p-4">{t("CODE", "ကုဒ်")}</th>
-                <th className="p-4">{t("NAME", "အမည်")}</th>
-                <th className="p-4">{t("DEPARTMENT", "ဌာန")}</th>
-                <th className="p-4">{t("ROLE", "ရာထူး")}</th>
-                <th className="p-4">{t("BRANCH", "ရုံးခွဲ")}</th>
-                <th className="p-4">{t("EMAIL", "အီးမေးလ်")}</th>
-                <th className="p-4">{t("STATUS", "အခြေအနေ")}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && !employees.length ? (
-                <tr>
-                  <td colSpan={7} className="text-center p-8 text-[#4d7a9b]">
-                    {t("Loading...", "ဖတ်နေသည်...")}
-                  </td>
-                </tr>
-              ) : filteredEmployees.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="text-center p-8 text-[#4d7a9b]">
-                    {t("No records found.", "မှတ်တမ်း မရှိပါ။")}
-                  </td>
-                </tr>
-              ) : (
-                filteredEmployees.map((employee) => (
-                  <tr
-                    key={`${employee.employee_code}-${employee.email}`}
-                    className="border-b border-[#1a3a5c]/50 hover:bg-[#061524] text-[#eef8ff] transition-colors"
-                  >
-                    <td className="p-4 font-mono">{employee.employee_code}</td>
-                    <td className="p-4">{employee.display_name}</td>
-                    <td className="p-4 text-[#4ea8de]">{employee.department}</td>
-                    <td className="p-4 text-[#f6b84b]">{employee.role_label}</td>
-                    <td className="p-4 text-[#4d7a9b]">{employee.branch_code}</td>
-                    <td className="p-4 text-[#4d7a9b]">{employee.email || "—"}</td>
-                    <td className="p-4">
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-[10px] uppercase ${
-                          employee.is_active
-                            ? "border-emerald-700 bg-emerald-900/20 text-emerald-300"
-                            : "border-rose-800 bg-rose-900/20 text-rose-300"
-                        }`}
-                      >
-                        {employee.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Metric({
-  label,
-  value,
-  icon,
-  accent = "blue",
-}: {
-  label: string;
-  value: number;
-  icon: React.ReactNode;
-  accent?: "blue" | "emerald" | "rose";
-}) {
-  const classes =
-    accent === "emerald"
-      ? "text-emerald-400"
-      : accent === "rose"
-        ? "text-rose-400"
-        : "text-[#4ea8de]";
-
-  return (
-    <div className="bg-[#0b2236] border border-[#1a3a5c] p-5 rounded-2xl flex justify-between items-start">
-      <div>
-        <div className={`${classes} uppercase text-[11px] tracking-widest mb-1`}>{label}</div>
-        <div className={`text-[20px] ${accent === "blue" ? "text-[#f6b84b]" : classes}`}>{value}</div>
-      </div>
-      <span className={classes}>{icon}</span>
-    </div>
-  );
+    <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><Users size={18} className="text-[#38bdf8]"/><h2 className="font-black">Employee Master</h2></div><div className="relative"><Search size={15} className="absolute left-3 top-3 text-[#6f91aa]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employee, department, branch..." className="h-10 min-w-[340px] rounded-xl border border-[#1a3a5c] bg-[#061524] pl-9 pr-3"/></div></div>
+      <div className="mt-4 max-h-[650px] overflow-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Employee</th><th>Name</th><th>Department</th><th>Role</th><th>Branch</th><th>Email</th><th>Status</th></tr></thead><tbody>{filtered.map((e:any)=><tr key={e.employee_code||e.employee_id||e.email} className="border-t border-[#1a3a5c]/60"><td className="p-3 font-mono text-[#38bdf8]">{e.employee_code||e.employee_id||"-"}</td><td className="font-black">{e.display_name||e.employee_name||e.full_name||"-"}</td><td>{e.department||"-"}</td><td>{e.role_label||e.role_id||"-"}</td><td>{e.branch_code||"-"}</td><td>{e.email||"-"}</td><td>{e.status||"-"}</td></tr>)}</tbody></table>{!filtered.length&&<div className="p-10 text-center text-[#6f91aa]">No employees match the search.</div>}</div>
+    </section>
+  </div>;
 }
