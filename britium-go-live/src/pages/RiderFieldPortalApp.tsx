@@ -1984,6 +1984,37 @@ function FieldPortal() {
 
   useEffect(() => () => cancelPhotoOperations(), []);
 
+  useEffect(() => {
+    let active = true;
+    if (session) return () => { active = false; };
+
+    void (async () => {
+      try {
+        const { data: authData, error: authError } = await supabase.auth.getSession();
+        if (authError || !authData?.session?.user) return;
+
+        const { data: fieldIdentity, error: identityError } = await (supabase as any).rpc("be_current_field_team_identity");
+        if (identityError || !fieldIdentity?.worker_code || !active) return;
+
+        const enterpriseSession = makeSession(
+          String(fieldIdentity.worker_code),
+          fieldIdentity,
+        );
+        saveSession(enterpriseSession);
+        if (active) {
+          setIdentity(fieldIdentity);
+          setSession(enterpriseSession);
+          setSource("enterprise authenticated session");
+          setMessage("Enterprise login session connected to Mobile Sandbox.");
+        }
+      } catch (bridgeError) {
+        console.warn("Enterprise-to-Mobile Sandbox session bridge unavailable", bridgeError);
+      }
+    })();
+
+    return () => { active = false; };
+  }, [session]);
+
   function closeModal() {
     cancelPhotoOperations();
     setProofFile(null);
@@ -2195,19 +2226,25 @@ function FieldPortal() {
   }
 
   async function logout() {
-    try {
-      const supabase = getRiderSupabase();
-      if (supabase) await supabase.auth.signOut();
-    } catch {
-      // ignore
-    }
     clearAllSessions();
     setSession(null);
     setIdentity(null);
     setJobs([]);
     setNotifications([]);
-    setSource("signed out");
+    setSource("mobile sandbox session cleared");
     setView("wall");
+
+    // When embedded inside the authenticated Enterprise Portal, keep the
+    // Enterprise Supabase session alive. The outer portal owns sign-out.
+    const { data: authData } = await supabase.auth.getSession();
+    if (!authData?.session) {
+      try {
+        const riderClient = getRiderSupabase();
+        if (riderClient && riderClient !== supabase) await riderClient.auth.signOut({ scope: "local" });
+      } catch {
+        // ignore isolated Rider-client sign-out failures
+      }
+    }
   }
 
   async function claimPickup(job: RiderJob) {
