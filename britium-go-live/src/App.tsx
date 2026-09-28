@@ -168,6 +168,12 @@ function AppRoutes() {
           <Route path="/signup" element={<SignupPage />} />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
 
+          {/* Mobile Sandbox owns its field-team Supabase session. Keep it outside
+              Enterprise AuthLayout so Rider/Driver/Helper authentication cannot
+              be bounced back to the enterprise login page. Backend field RPC/RLS
+              remains the authorization boundary for operational actions. */}
+          <Route path="/rider-app" element={<RiderAppPage />} />
+
           <Route element={<AuthLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/branch-office" element={<BranchOfficePage />} />
@@ -201,7 +207,6 @@ function AppRoutes() {
             <Route path="/pickup-form" element={<PickupFormPage />} />
             <Route path="/profile" element={<ProfilePage />} />
             <Route path="/rider" element={<RiderPage />} />
-            <Route path="/rider-app" element={<RiderAppPage />} />
             <Route path="/rider-settlement" element={<RiderSettlementPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="/supervisor-pickup" element={<SupervisorPickupAssignmentGoLivePage />} />
