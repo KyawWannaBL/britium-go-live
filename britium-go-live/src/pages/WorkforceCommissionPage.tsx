@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Wallet, Download, RefreshCw, CheckCircle2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { loadRiderCommissionSettlement, loadDriverHelperCommissionSettlement } from "@/lib/commissionApi";
 
 export default function WorkforceCommissionPage() {
@@ -14,9 +15,11 @@ export default function WorkforceCommissionPage() {
     setLoading(true);
     try {
       // Fetch both Rider and Driver/Helper Settlements
+      const { data: { session } } = await supabase.auth.getSession();
+      const actorEmail = session?.user?.email || null;
       const [riderData, driverData] = await Promise.all([
         loadRiderCommissionSettlement(null),
-        loadDriverHelperCommissionSettlement("finance@britiumexpress.com")
+        loadDriverHelperCommissionSettlement(actorEmail)
       ]);
 
       if (riderData?.ok) {
@@ -29,7 +32,7 @@ export default function WorkforceCommissionPage() {
       }
     } catch (error) {
       console.error(error);
-      alert("Failed to sync payouts from backend.");
+      alert("Failed to sync payouts from live commission backend.");
     } finally {
       setLoading(false);
     }
