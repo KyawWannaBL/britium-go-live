@@ -74,13 +74,13 @@ export default function AccountingMasterWorkspacePage(){
     setReference(data.reference);setMessage("System-generated journal reference created.");
   }
 
-  async function uploadEvidence(sourceReference=reference){
+  async function uploadEvidence(sourceReference=reference, sourceModule=journal.source_module){
     if(!evidenceFile)return "";
     const safe=evidenceFile.name.replace(/[^A-Za-z0-9._-]+/g,"_");
     const path=(reference||"UNREFERENCED")+"/"+crypto.randomUUID()+"-"+safe;
     const up=await supabase.storage.from("accounting-evidence").upload(path,evidenceFile,{upsert:false,contentType:evidenceFile.type||undefined});
     if(up.error)throw up.error;
-    const reg=await (supabase as any).rpc("be_accounting_evidence_register_v1",{p_payload:{source_module:journal.source_module,source_reference:sourceReference,journal_reference:reference||null,file_name:evidenceFile.name,mime_type:evidenceFile.type||null,storage_path:path,description:journal.description}});
+    const reg=await (supabase as any).rpc("be_accounting_evidence_register_v1",{p_payload:{source_module:sourceModule,source_reference:sourceReference,journal_reference:reference||null,file_name:evidenceFile.name,mime_type:evidenceFile.type||null,storage_path:path,description:journal.description}});
     if(reg.error||reg.data?.ok===false)throw reg.error||new Error(reg.data?.code||"Evidence registration failed.");
     setEvidenceId(reg.data.id);return reg.data.id;
   }
@@ -114,7 +114,14 @@ export default function AccountingMasterWorkspacePage(){
 
   async function saveAsset(){
     setBusy(true);
-    const {data,error}=await (supabase as any).rpc("be_accounting_register_asset_v1",{p_payload:asset});
+    let payload:any={...asset};
+    try{
+      if(evidenceFile){
+        const eid=await uploadEvidence(asset.asset_code||"ASSET","FIXED_ASSET");
+        payload={...asset,metadata:{evidence_id:eid}};
+      }
+    }catch(e:any){setMessage(e?.message||"Asset evidence upload failed.");setBusy(false);return;}
+    const {data,error}=await (supabase as any).rpc("be_accounting_register_asset_v1",{p_payload:payload});
     if(error||data?.ok===false)setMessage(error?.message||data?.code||"Asset save failed.");
     else setMessage("Asset "+data.asset_code+" registered in the fixed-asset backend.");
     setBusy(false);
@@ -122,7 +129,11 @@ export default function AccountingMasterWorkspacePage(){
 
   async function saveOpenItem(){
     setBusy(true);
-    const payload={...openItem,account_code:openAccount?.account_code||openItem.account_code,offset_account_code:openOffset?.account_code||openItem.offset_account_code,outstanding_amount:openItem.outstanding_amount||openItem.amount,evidence_id:evidenceId||null};
+    let eid=evidenceId||"";
+    try{
+      if(evidenceFile&&!eid) eid=await uploadEvidence(openItem.document_reference||openItem.counterparty_name,openItem.item_type==="AR"?"ACCOUNTS_RECEIVABLE":"ACCOUNTS_PAYABLE");
+    }catch(e:any){setMessage(e?.message||"AR/AP evidence upload failed.");setBusy(false);return;}
+    const payload={...openItem,account_code:openAccount?.account_code||openItem.account_code,offset_account_code:openOffset?.account_code||openItem.offset_account_code,outstanding_amount:openItem.outstanding_amount||openItem.amount,evidence_id:eid||null};
     const {data,error}=await (supabase as any).rpc("be_accounting_open_item_upsert_v1",{p_payload:payload});
     if(error||data?.ok===false)setMessage(error?.message||data?.code||"AR/AP save failed.");
     else setMessage((payload.item_type==="AR"?"Accounts Receivable":"Accounts Payable")+" item saved to Supabase.");
@@ -172,14 +183,14 @@ export default function AccountingMasterWorkspacePage(){
       <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Input Principle</h2><div className="mt-4 space-y-2 text-sm text-[#9cc2d9]"><div className="rounded-xl bg-[#061524] p-3">Type <b>cash</b>, <b>ငွေသား</b>, or <b>111</b> to find cash accounts.</div><div className="rounded-xl bg-[#061524] p-3">Type <b>merchant</b> to find Merchant AR, Advances and Payables.</div><div className="rounded-xl bg-[#061524] p-3">Journal number is read-only and generated as <b>TYPE-YYYYMMDD-BRANCH-SEQUENCE</b>.</div><div className="rounded-xl bg-[#061524] p-3">Attachments are stored in the private Accounting Evidence vault.</div><div className="rounded-xl bg-[#061524] p-3">Non-Superadmin makers cannot post their own draft; maker-checker is enforced in Supabase.</div></div></section>
     </div>}
 
-    {tab==="assets"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="flex items-center gap-2 font-black"><Landmark size={18} className="text-[#38bdf8]"/>Company Asset Register / ကုမ္ပဏီပိုင်ဆိုင်မှု</h2><div className="mt-4 grid gap-3 md:grid-cols-3">{[["asset_code","Asset Code"],["asset_name","Asset Name"],["category","Category"],["acquisition_date","Acquisition Date"],["acquisition_cost","Acquisition Cost"],["residual_value","Residual Value"],["useful_life_months","Useful Life (Months)"],["department_code","Department"],["branch_code","Branch"],["supplier_reference","Supplier / Invoice Reference"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input type={k==="acquisition_date"?"date":k.includes("cost")||k.includes("value")||k.includes("months")?"number":"text"} value={asset[k]} onChange={e=>setAsset({...asset,[k]:e.target.value})} className={input}/></label>)}</div><button onClick={()=>void saveAsset()} disabled={busy||!asset.asset_code||!asset.asset_name||!asset.acquisition_cost} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#f6b84b] px-5 font-black text-[#061524] disabled:opacity-40"><Archive size={16}/>Save Asset to Supabase</button></section>}
+    {tab==="assets"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="flex items-center gap-2 font-black"><Landmark size={18} className="text-[#38bdf8]"/>Company Asset Register / ကုမ္ပဏီပိုင်ဆိုင်မှု</h2><div className="mt-4 grid gap-3 md:grid-cols-3">{[["asset_code","Asset Code"],["asset_name","Asset Name"],["category","Category"],["acquisition_date","Acquisition Date"],["acquisition_cost","Acquisition Cost"],["residual_value","Residual Value"],["useful_life_months","Useful Life (Months)"],["department_code","Department"],["branch_code","Branch"],["supplier_reference","Supplier / Invoice Reference"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input type={k==="acquisition_date"?"date":k.includes("cost")||k.includes("value")||k.includes("months")?"number":"text"} value={asset[k]} onChange={e=>setAsset({...asset,[k]:e.target.value})} className={input}/></label>)}</div><label className="mt-4 block text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Asset Purchase / Ownership Evidence</span><input type="file" accept="image/*,.pdf" onChange={e=>setEvidenceFile(e.target.files?.[0]||null)} className="w-full rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"/></label><button onClick={()=>void saveAsset()} disabled={busy||!asset.asset_code||!asset.asset_name||!asset.acquisition_cost} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#f6b84b] px-5 font-black text-[#061524] disabled:opacity-40"><Archive size={16}/>Save Asset + Evidence to Supabase</button></section>}
 
     {tab==="openitems"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Accounts Receivable / Payable</h2><div className="mt-4 grid gap-3 md:grid-cols-3">
       <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Type</span><select value={openItem.item_type} onChange={e=>{const type=e.target.value;setOpenItem({...openItem,item_type:type,account_code:type==="AR"?"113001":"211001"});setOpenAccount(null)}} className={input}><option value="AR">Accounts Receivable / ရရန်</option><option value="AP">Accounts Payable / ပေးရန်</option></select></label>
       {[["counterparty_type","Counterparty Type"],["counterparty_code","Counterparty Code"],["counterparty_name","Counterparty Name"],["document_reference","Invoice / Document Reference"],["journal_reference","Journal Reference"],["amount","Amount"],["due_date","Due Date"],["branch_code","Branch"],["department_code","Department"],["cost_center_code","Cost Center"],["way_id","Way ID"],["merchant_code","Merchant Code"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input type={k==="amount"?"number":k==="due_date"?"date":"text"} value={openItem[k]} onChange={e=>setOpenItem({...openItem,[k]:e.target.value})} className={input}/></label>)}
       <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">AR / AP Account</span><SearchMaster kind="ACCOUNT" value={openAccount} onSelect={r=>{setOpenAccount(r);setOpenItem({...openItem,account_code:r.account_code})}} placeholder="Type merchant, payable, receivable..."/></label>
       <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Offset Account</span><SearchMaster kind="ACCOUNT" value={openOffset} onSelect={r=>{setOpenOffset(r);setOpenItem({...openItem,offset_account_code:r.account_code})}} placeholder="Type revenue / expense account..."/></label>
-    </div><button onClick={()=>void saveOpenItem()} disabled={busy||!openItem.counterparty_name||!openItem.amount} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#38bdf8] px-5 font-black text-[#061524] disabled:opacity-40"><Save size={16}/>Save {openItem.item_type}</button></section>}
+    </div><label className="mt-4 block text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Invoice / Bill / Supporting Evidence</span><input type="file" accept="image/*,.pdf" onChange={e=>setEvidenceFile(e.target.files?.[0]||null)} className="w-full rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"/></label><button onClick={()=>void saveOpenItem()} disabled={busy||!openItem.counterparty_name||!openItem.amount} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#38bdf8] px-5 font-black text-[#061524] disabled:opacity-40"><Save size={16}/>Save {openItem.item_type} + Evidence</button></section>}
 
     {tab==="history"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Manual Journal Register</h2><div className="mt-4 max-h-[700px] overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td className="font-mono font-black text-[#38bdf8]">{r.journal_reference}</td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div></section>}
   </div>;
