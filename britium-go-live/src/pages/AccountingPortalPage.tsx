@@ -143,6 +143,7 @@ export default function AccountingPortalPage() {
               {authority?.can_entry || authority?.can_review ? (
                 <div className="flex flex-wrap gap-2">
                   <Link to="/finance" className={buttonClass}>Finance Portal</Link>
+                  <Link to="/finance/accounting-master" className={buttonClass}>Accounting Masters / Codes</Link>
                   {authority?.can_review ? <Link to="/finance/data-entry-review" className={buttonClass}>Data Entry Review</Link> : null}
                 </div>
               ) : authority?.can_reports ? (
