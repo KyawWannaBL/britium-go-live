@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from "react";
-import { Download, FileText, RefreshCw, Search, UploadCloud, Users } from "lucide-react";
+import { Download, Edit3, FileText, RefreshCw, Search, Trash2, UploadCloud, Users, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const DOC_TYPES=[
@@ -26,6 +26,8 @@ export default function AdminHRPage(){
   const [docSearch,setDocSearch]=useState("");
   const [file,setFile]=useState<File|null>(null);
   const [form,setForm]=useState({employee_code:"",document_type:"EMPLOYMENT_CONTRACT",title:"",effective_date:"",expiry_date:"",notes:""});
+  const [employeeEdit,setEmployeeEdit]=useState<any>(null);
+  const [employeeBusy,setEmployeeBusy]=useState(false);
 
   async function load(){
     setLoading(true);setMessage("");
@@ -56,6 +58,34 @@ export default function AdminHRPage(){
     setFile(null);setForm({...form,title:"",notes:""});await load();
   }
 
+  async function saveEmployee(){
+    if(!employeeEdit)return;
+    setEmployeeBusy(true);setMessage("");
+    const {data:{user}}=await supabase.auth.getUser();
+    const {data,error}=await (supabase as any).rpc("be_hr_employee_save_audited",{
+      p_record:employeeEdit,
+      p_actor_email:user?.email||"hr@britiumexpress.com"
+    });
+    if(error||data?.ok===false){setMessage(error?.message||data?.message||data?.code||"Employee save failed.");setEmployeeBusy(false);return;}
+    setMessage("Employee record updated in Supabase with audit trail.");
+    setEmployeeEdit(null);setEmployeeBusy(false);await load();
+  }
+
+  async function deleteEmployee(row:any){
+    const id=String(row.employee_code||row.employee_id||row.id||"").trim();
+    if(!id)return setMessage("Employee ID is missing.");
+    if(!window.confirm("Delete employee "+id+"? This action is audited."))return;
+    setEmployeeBusy(true);setMessage("");
+    const {data:{user}}=await supabase.auth.getUser();
+    const {data,error}=await (supabase as any).rpc("be_hr_employee_delete_audited",{
+      p_employee_id:id,
+      p_actor_email:user?.email||"hr@britiumexpress.com"
+    });
+    if(error||data?.ok===false){setMessage(error?.message||data?.message||data?.code||"Employee delete failed.");setEmployeeBusy(false);return;}
+    setMessage("Employee "+id+" deleted with audit trail.");
+    setEmployeeBusy(false);await load();
+  }
+
   async function downloadDoc(row:any){
     const {data,error}=await supabase.storage.from("hr-documents").createSignedUrl(row.storage_path,120);
     if(error||!data?.signedUrl)return setMessage(error?.message||"Could not create secure download link.");
@@ -82,8 +112,8 @@ export default function AdminHRPage(){
         <div className="flex items-center gap-2"><UploadCloud size={18} className="text-[#38bdf8]"/><h2 className="font-black">Collect / Upload HR Document</h2></div>
         <p className="mt-1 text-xs text-[#8fb2c9]">Corporate policies may be stored without an employee code. Employee-specific records should select the employee code.</p>
         <div className="mt-4 grid gap-3 md:grid-cols-2">
-          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Employee</span><select value={form.employee_code} onChange={e=>setForm({...form,employee_code:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option value="">Corporate / All Staff</option>{employees.map((e:any)=><option key={e.employee_code||e.employee_id} value={e.employee_code||e.employee_id}>{e.employee_code||e.employee_id} · {e.display_name||e.employee_name||e.full_name}</option>)}</select></label>
-          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Document Type</span><select value={form.document_type} onChange={e=>setForm({...form,document_type:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3">{DOC_TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Employee</span><input list="hr-employee-options" value={form.employee_code} onChange={e=>setForm({...form,employee_code:e.target.value})} placeholder="Type employee code/name or select..." className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><datalist id="hr-employee-options"><option value="">Corporate / All Staff</option>{employees.map((e:any)=><option key={e.employee_code||e.employee_id} value={e.employee_code||e.employee_id}>{e.display_name||e.employee_name||e.full_name}</option>)}</datalist></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Document Type</span><input list="hr-doc-types" value={form.document_type} onChange={e=>setForm({...form,document_type:e.target.value})} placeholder="Type manually or select..." className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><datalist id="hr-doc-types">{DOC_TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</datalist></label>
           <label className="md:col-span-2 text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Title / Document Name</span><input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3" placeholder="e.g. Employment Contract 2026 / HR Leave Policy"/></label>
           <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Effective Date</span><input type="date" value={form.effective_date} onChange={e=>setForm({...form,effective_date:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>
           <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Expiry Date</span><input type="date" value={form.expiry_date} onChange={e=>setForm({...form,expiry_date:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>
@@ -101,7 +131,11 @@ export default function AdminHRPage(){
 
     <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><Users size={18} className="text-[#38bdf8]"/><h2 className="font-black">Employee Master</h2></div><div className="relative"><Search size={15} className="absolute left-3 top-3 text-[#6f91aa]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employee, department, branch..." className="h-10 min-w-[340px] rounded-xl border border-[#1a3a5c] bg-[#061524] pl-9 pr-3"/></div></div>
-      <div className="mt-4 max-h-[650px] overflow-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Employee</th><th>Name</th><th>Department</th><th>Role</th><th>Branch</th><th>Email</th><th>Status</th></tr></thead><tbody>{filtered.map((e:any)=><tr key={e.employee_code||e.employee_id||e.email} className="border-t border-[#1a3a5c]/60"><td className="p-3 font-mono text-[#38bdf8]">{e.employee_code||e.employee_id||"-"}</td><td className="font-black">{e.display_name||e.employee_name||e.full_name||"-"}</td><td>{e.department||"-"}</td><td>{e.role_label||e.role_id||"-"}</td><td>{e.branch_code||"-"}</td><td>{e.email||"-"}</td><td>{e.status||"-"}</td></tr>)}</tbody></table>{!filtered.length&&<div className="p-10 text-center text-[#6f91aa]">No employees match the search.</div>}</div>
+      <div className="mt-4 max-h-[650px] overflow-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Employee</th><th>Name</th><th>Department</th><th>Role</th><th>Branch</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.map((e:any)=><tr key={e.employee_code||e.employee_id||e.email} className="border-t border-[#1a3a5c]/60"><td className="p-3 font-mono text-[#38bdf8]">{e.employee_code||e.employee_id||"-"}</td><td className="font-black">{e.display_name||e.employee_name||e.full_name||"-"}</td><td>{e.department||"-"}</td><td>{e.role_label||e.role_id||"-"}</td><td>{e.branch_code||"-"}</td><td>{e.email||"-"}</td><td>{e.status||"-"}</td><td><div className="flex gap-2"><button onClick={()=>setEmployeeEdit({...e})} className="inline-flex items-center gap-1 rounded-lg border border-[#38bdf8]/40 px-2 py-1.5 font-black text-[#38bdf8]"><Edit3 size={13}/>Edit</button><button onClick={()=>void deleteEmployee(e)} className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 px-2 py-1.5 font-black text-rose-300"><Trash2 size={13}/>Delete</button></div></td></tr>)}</tbody></table>{!filtered.length&&<div className="p-10 text-center text-[#6f91aa]">No employees match the search.</div>}</div>
     </section>
+
+    {employeeEdit&&<div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-[#f6b84b]">EDIT EMPLOYEE</div><h3 className="mt-1 text-xl font-black">{employeeEdit.display_name||employeeEdit.employee_name||employeeEdit.full_name||employeeEdit.employee_code||employeeEdit.employee_id}</h3></div><button onClick={()=>setEmployeeEdit(null)}><X size={20}/></button></div><p className="mt-2 text-xs text-[#8fb2c9]">All fields below accept manual text. Type a new value directly where required.</p><div className="mt-5 grid gap-3 md:grid-cols-2">{[
+      ["employee_code","Employee Code"],["employee_name","Employee Name"],["display_name","Display Name"],["department","Department"],["role_id","Role"],["branch_code","Branch"],["email","Email"],["phone_primary","Phone"],["status","Status"]
+    ].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input value={employeeEdit[k]??""} onChange={e=>setEmployeeEdit({...employeeEdit,[k]:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-white"/></label>)}</div><div className="mt-5 flex justify-end gap-2"><button onClick={()=>setEmployeeEdit(null)} className="h-11 rounded-xl border border-[#1a3a5c] px-5 font-black">Cancel</button><button onClick={()=>void saveEmployee()} disabled={employeeBusy} className="h-11 rounded-xl bg-[#f6b84b] px-6 font-black text-[#061524] disabled:opacity-50">{employeeBusy?"Saving...":"Save Employee"}</button></div></div></div>}
   </div>;
 }
