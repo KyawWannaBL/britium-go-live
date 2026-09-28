@@ -5,6 +5,7 @@ const ELEVATED_ROLES = new Set(['super-admin', 'superadmin', 'app-owner', 'sys',
 const rule = (...roles: string[]) => new Set(roles.map(normalizeRole));
 
 const PATH_ROLES: Array<[string, Set<string>]> = [
+  ['/dashboard', rule('management','director','finance','finance-user','accountant','operation-manager','operations','operations-admin','supervisor','warehouse','warehouse-staff','sorter','dispatch','wayplan-manager','customer-service','cs','support','data-entry','encoder','marketing','business-development','biz-dev','hr-admin','branch-office','branch-manager','branch-staff','branch-admin')],
   ['/admin-hr', rule('hr-admin')],
   ['/audit-logs', rule('management', 'director')],
   ['/settings', rule('management', 'director')],
