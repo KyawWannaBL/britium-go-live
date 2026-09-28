@@ -52,6 +52,7 @@ const CustomerServicePortalPage = safeLazy(() => import("@/pages/CustomerService
 const DataEntryFinancialV2Page = safeLazy(() => import("@/pages/DataEntryFinancialV2Page"));
 const FinanceDataEntryReviewPage = safeLazy(() => import("@/pages/FinanceDataEntryReviewPage"));
 const AccountingPortalPage = safeLazy(() => import("@/pages/AccountingPortalPage"));
+const AccountingMasterWorkspacePage = safeLazy(() => import("@/pages/AccountingMasterWorkspacePage"));
 const DispatchCommandCenterPage = safeLazy(() => import("@/pages/DispatchCommandCenterPage"));
 const DocumentPrintRoomPage = safeLazy(() => import("@/pages/DocumentPrintRoomPage"));
 const DocumentPrintStudioPage = safeLazy(() => import("@/pages/DocumentPrintStudioPage"));
@@ -175,6 +176,7 @@ function AppRoutes() {
             <Route path="/data-entry" element={<DataEntryFinancialV2Page />} />
             <Route path="/finance/data-entry-review" element={<FinanceDataEntryReviewPage />} />
             <Route path="/finance/accounting" element={<AccountingPortalPage />} />
+            <Route path="/finance/accounting-master" element={<AccountingMasterWorkspacePage />} />
             <Route path="/accounts" element={<AccountsPage />} />
             <Route path="/admin-hr" element={<AdminHRPage />} />
             <Route path="/analytics" element={<AnalyticsPage />} />
