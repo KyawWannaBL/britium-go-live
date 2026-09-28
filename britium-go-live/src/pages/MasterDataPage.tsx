@@ -116,6 +116,11 @@ export default function MasterDataPage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [lastSynced, setLastSynced] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editorOpen,setEditorOpen]=useState(false);
+  const [editingRow,setEditingRow]=useState<any>(null);
+  const [recordKey,setRecordKey]=useState("");
+  const [draft,setDraft]=useState<Record<string,any>>({});
+  const [saving,setSaving]=useState(false);
 
   const loadSnapshot = async () => {
     setLoading(true);
@@ -186,6 +191,55 @@ export default function MasterDataPage() {
     if (!query) return activeData;
     return activeData.filter((row: any) => JSON.stringify(row.payload || row).toLowerCase().includes(query));
   }, [activeData, searchQuery]);
+
+  const actorEmail = async () => {
+    const {data}=await supabase.auth.getUser();
+    return data.user?.email || "masterdata@britiumexpress.com";
+  };
+
+  const openCreate = () => {
+    const empty:Record<string,any>={};
+    columns.forEach((col:any)=>{ empty[col.field_key]=""; });
+    setEditingRow(null);setRecordKey("");setDraft(empty);setEditorOpen(true);
+  };
+
+  const openEdit = (row:any) => {
+    setEditingRow(row);
+    setRecordKey(String(row.record_key || row.id || ""));
+    setDraft({...row.payload});
+    setEditorOpen(true);
+  };
+
+  const saveRecord = async () => {
+    if(!activeDatasetKey)return;
+    const key=recordKey.trim() || String(draft?.[activeTabConfig.primary_key] || draft?.code || draft?.id || "").trim();
+    if(!key){setErrorMessage("Record key / code is required.");return;}
+    setSaving(true);setErrorMessage("");
+    const {error}=await supabase.rpc("be_master_data_upsert_record",{
+      p_dataset_key:activeDatasetKey,
+      p_record_key:key,
+      p_payload:draft,
+      p_actor_email:await actorEmail(),
+    });
+    if(error){setErrorMessage(error.message);setSaving(false);return;}
+    setMessage((editingRow?"Updated ":"Created ")+key+" successfully.");
+    setEditorOpen(false);setEditingRow(null);setSaving(false);await loadSnapshot();
+  };
+
+  const deleteRecord = async (row:any) => {
+    const key=String(row.record_key || row.id || "").trim();
+    if(!key)return setErrorMessage("Cannot delete this row because it has no record key.");
+    if(!window.confirm("Delete "+key+" from "+activeDatasetKey+"? This action is audited."))return;
+    setLoading(true);setErrorMessage("");
+    const {error}=await supabase.rpc("be_master_data_delete_record",{
+      p_dataset_key:activeDatasetKey,
+      p_record_key:key,
+      p_actor_email:await actorEmail(),
+    });
+    if(error)setErrorMessage(error.message);
+    else setMessage("Deleted "+key+" successfully.");
+    setLoading(false);await loadSnapshot();
+  };
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -309,6 +363,7 @@ export default function MasterDataPage() {
               </button>
               <button
                 type="button"
+                onClick={openCreate}
                 disabled={!activeDatasetKey}
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border-2 border-[#061524] bg-[#22c55e] px-4 text-xs font-black uppercase tracking-wider text-[#061524] hover:bg-[#4ade80] disabled:opacity-60"
               >
@@ -345,10 +400,10 @@ export default function MasterDataPage() {
                       <tr key={row.record_key || row.id || index} className="border-b border-slate-200 font-bold hover:bg-[#fff7dc]">
                         <td className="whitespace-nowrap border-b border-r border-slate-300 bg-white px-3 py-3">
                           <div className="flex gap-2">
-                            <button type="button" className="rounded p-1.5 text-blue-700 hover:bg-[#f6b84b] hover:text-[#061524]" title={t.edit}>
+                            <button type="button" onClick={()=>openEdit(row)} className="rounded p-1.5 text-blue-700 hover:bg-[#f6b84b] hover:text-[#061524]" title={t.edit}>
                               <Edit size={16} />
                             </button>
-                            <button type="button" className="rounded p-1.5 text-rose-700 hover:bg-rose-600 hover:text-[#061524]" title={t.delete}>
+                            <button type="button" onClick={()=>void deleteRecord(row)} className="rounded p-1.5 text-rose-700 hover:bg-rose-600 hover:text-[#061524]" title={t.delete}>
                               <Trash2 size={16} />
                             </button>
                           </div>
@@ -377,6 +432,24 @@ export default function MasterDataPage() {
             )}
           </div>
         </section>
+
+        {editorOpen&&<div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 p-4">
+          <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5 shadow-2xl">
+            <div className="flex items-center justify-between gap-4">
+              <div><div className="text-[10px] font-black uppercase tracking-[.2em] text-[#f6b84b]">{editingRow?"EDIT RECORD":"ADD RECORD"}</div><h3 className="mt-1 text-xl font-black">{activeTabConfig.display_name_en||activeDatasetKey}</h3><p className="mt-1 text-xs text-[#9cc2d9]">Every field accepts manual typing. Where predefined choices exist, type your own value or choose a suggestion.</p></div>
+              <button onClick={()=>setEditorOpen(false)} className="rounded-xl border border-[#1a3a5c] px-4 py-2 font-black">Close</button>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-2">
+              <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Record Key / Code *</span><input value={recordKey} onChange={e=>setRecordKey(e.target.value)} disabled={Boolean(editingRow)} placeholder="Type code or unique key" className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-white disabled:opacity-60"/></label>
+              {columns.map((col:any)=>{
+                const opts=asArray(col.options).map((x:any)=>typeof x==="string"?x:String(x?.value??x?.label??"")).filter(Boolean);
+                const listId="md-"+activeDatasetKey+"-"+col.field_key;
+                return <label key={col.field_key} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{col.label_en||col.field_key}{col.required?" *":""}</span><input list={opts.length?listId:undefined} value={draft[col.field_key]??""} onChange={e=>setDraft({...draft,[col.field_key]:e.target.value})} placeholder={opts.length?"Type manually or select...":"Type value..."} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-white outline-none focus:border-[#f6b84b]"/>{opts.length?<datalist id={listId}>{opts.map((o:string)=><option key={o} value={o}/>)}</datalist>:null}</label>
+              })}
+            </div>
+            <div className="mt-5 flex justify-end gap-2"><button onClick={()=>setEditorOpen(false)} className="h-11 rounded-xl border border-[#1a3a5c] px-5 font-black">Cancel</button><button onClick={()=>void saveRecord()} disabled={saving} className="h-11 rounded-xl bg-[#f6b84b] px-6 font-black text-[#061524] disabled:opacity-50">{saving?"Saving...":"Save to Supabase"}</button></div>
+          </div>
+        </div>}
       </div>
     </main>
   );
