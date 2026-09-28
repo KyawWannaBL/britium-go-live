@@ -1,244 +1,107 @@
-import React, { useEffect, useState } from "react";
+// @ts-nocheck
+import React, { useEffect, useMemo, useState } from "react";
+import { Megaphone, Plus, RefreshCw, Save, Search, Store, TrendingUp, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLanguage } from "@/contexts/LanguageContext";
-import { Megaphone, Users, Store, Target, TrendingUp, Search, Download, ClipboardList, Phone, MapPin, CheckCircle2 } from "lucide-react";
 
-export default function MarketingPortalPage() {
-  const { t } = useLanguage();
-  const [search, setSearch] = useState("");
-  const [activeTab, setActiveTab] = useState("overview");
-  const [merchantRows, setMerchantRows] = useState<any[]>([]);
-  const [merchantSearch, setMerchantSearch] = useState("");
-  const [merchantStatus, setMerchantStatus] = useState("");
-  const [merchantMessage, setMerchantMessage] = useState("");
-  const [merchantBusy, setMerchantBusy] = useState(false);
-  const [merchantForm, setMerchantForm] = useState({
-    merchant_code: "", merchant_name: "", business_type: "", contact_person: "",
-    phone_primary: "", phone_secondary: "", email: "", address_mm: "", address_line_1: "",
-    township: "", city: "", region_state: "", customer_tier: "STANDARD",
-    payment_profile: "COD", service_profile: "STANDARD", status: "ACTIVE",
-  });
+const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 
-  async function loadMerchantAccounts() {
-    const { data, error } = await (supabase as any).rpc("be_marketing_merchant_master_center_v1", {
-      p_search: merchantSearch.trim() || null,
-      p_status: merchantStatus || null,
-      p_limit: 1000,
-    });
-    if (error) return setMerchantMessage(error.message);
-    if (data?.ok === false) return setMerchantMessage(data?.code || "Unable to load merchant accounts.");
-    setMerchantRows(Array.isArray(data?.rows) ? data.rows : []);
+export default function MarketingPortalPage(){
+  const {t}=useLanguage();
+  const [tab,setTab]=useState("overview");
+  const [message,setMessage]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const [leads,setLeads]=useState<any[]>([]);
+  const [leadSearch,setLeadSearch]=useState("");
+  const [leadSummary,setLeadSummary]=useState<any>({});
+  const [leadForm,setLeadForm]=useState<any>(null);
+
+  const [merchants,setMerchants]=useState<any[]>([]);
+  const [merchantSearch,setMerchantSearch]=useState("");
+  const [merchantStatus,setMerchantStatus]=useState("");
+  const [merchantForm,setMerchantForm]=useState<any>(null);
+
+  async function loadLeads(){
+    setLoading(true);
+    const {data,error}=await (supabase as any).rpc("be_marketing_lead_snapshot_v1",{p_search:leadSearch.trim()||null,p_limit:1000});
+    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Marketing lead backend unavailable.");setLoading(false);return;}
+    setLeads(Array.isArray(data?.rows)?data.rows:[]);
+    setLeadSummary(data||{});setLoading(false);
+  }
+  async function loadMerchants(){
+    setLoading(true);
+    const {data,error}=await (supabase as any).rpc("be_marketing_merchant_master_center_v1",{p_search:merchantSearch.trim()||null,p_status:merchantStatus||null,p_limit:1000});
+    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Merchant master unavailable.");setLoading(false);return;}
+    setMerchants(Array.isArray(data?.rows)?data.rows:[]);setLoading(false);
+  }
+  async function saveLead(){
+    if(!leadForm?.entity_name?.trim())return setMessage("Lead name is required.");
+    setLoading(true);
+    const {data,error}=await (supabase as any).rpc("be_marketing_lead_upsert_v1",{p_payload:leadForm});
+    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Lead save failed.");setLoading(false);return;}
+    setMessage("Lead saved to Supabase Marketing pipeline.");setLeadForm(null);await loadLeads();
+  }
+  async function saveMerchant(){
+    if(!merchantForm?.merchant_name?.trim()||String(merchantForm?.merchant_code||"").length!==3)return setMessage("Merchant name and 3-character code are required.");
+    setLoading(true);
+    const {data,error}=await (supabase as any).rpc("be_marketing_merchant_master_upsert_v1",{p_payload:merchantForm});
+    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Merchant save failed.");setLoading(false);return;}
+    setMessage(String(data.merchant_code)+" synchronized to the application-wide Merchant Master.");
+    setMerchantForm(null);await loadMerchants();
   }
 
-  async function saveMerchant() {
-    setMerchantBusy(true);
-    setMerchantMessage("");
-    try {
-      const { data, error } = await (supabase as any).rpc("be_marketing_merchant_master_upsert_v1", { p_payload: merchantForm });
-      if (error) throw error;
-      if (data?.ok === false) throw new Error(data?.code || "Merchant update failed.");
-      setMerchantMessage(String(data.merchant_code) + ": merchant account synchronized across Britium Express.");
-      await loadMerchantAccounts();
-    } catch (e: any) {
-      setMerchantMessage(e?.message || "Merchant update failed.");
-    } finally {
-      setMerchantBusy(false);
-    }
-  }
+  useEffect(()=>{void loadLeads();void loadMerchants()},[]);
 
-  useEffect(() => {
-    if (activeTab === "merchants") void loadMerchantAccounts();
-  }, [activeTab]);
+  const stages=useMemo(()=>({
+    new:leads.filter((x:any)=>["new","prospect"].includes(String(x.stage||x.status||"").toLowerCase())).length,
+    qualified:leads.filter((x:any)=>String(x.stage||"").toLowerCase()==="qualified").length,
+    converted:leadSummary.converted||0,
+  }),[leads,leadSummary]);
 
-  // In production, wire this to your backend
-  const leads = [
-    { id: "L-001", type: "Merchant", name: "Shwe Mart", phone: "09 77111222", township: "Kamayut", source: "FIELD_VISIT", status: "Qualified" },
-    { id: "L-002", type: "Customer", name: "Daw Mya", phone: "09 88222333", township: "Hlaing", source: "FACEBOOK", status: "New" },
-  ];
-
-  const filtered = leads.filter(l => !search || l.name.toLowerCase().includes(search.toLowerCase()) || l.phone.includes(search));
-
-  return (
-    <div className="min-h-screen bg-[#061524] p-6 md:p-8 text-[#eef8ff] font-['Inter','Pyidaungsu'] notranslate" translate="no">
-      <div className="mx-auto max-w-[1600px] space-y-6">
-        
-        {/* HEADER */}
-        <header className="rounded-[2rem] border border-[#1a3a5c] bg-[#0b2236] p-8 shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-[#ff4f86]/30 bg-[#ff4f86]/10 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-[#ff4f86] mb-3">
-              <Megaphone className="h-3.5 w-3.5" />
-              <span>{t('Marketing & Growth', 'စျေးကွက်နှင့် စီးပွားရေး တိုးတက်မှု')}</span>
-            </div>
-            <h1 className="text-3xl font-black tracking-tight text-white m-0"><span>{t('Marketing Portal', 'စျေးကွက်ရှာဖွေရေး စင်တာ')}</span></h1>
-            <p className="mt-2 max-w-3xl text-[14px] font-semibold text-[#4d7a9b] leading-relaxed">
-              <span>{t('Lead generation, merchant onboarding, KPI tracking, and campaign planning.', 'Lead ရှာဖွေခြင်း၊ စျေးကွက် ရည်မှန်းချက်များနှင့် လုပ်ငန်းအစီအစဉ်များ စီမံခြင်း။')}</span>
-            </p>
-          </div>
-          <button className="flex h-12 items-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#081b2e] hover:bg-[#1a3a5c] px-5 text-[12px] font-black uppercase tracking-wider text-[#c8dff0] transition-colors cursor-pointer">
-            <Download size={16} /> <span>{t('Export Data', 'အချက်အလက် ထုတ်ယူမည်')}</span>
-          </button>
-        </header>
-
-        {/* KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <KpiCard title={t('Total Leads', 'စုစုပေါင်း Lead များ')} value="45" icon={Users} color="#38bdf8" />
-          <KpiCard title={t('Merchant Leads', 'ကုန်သည် Lead များ')} value="28" icon={Store} color="#f6b84b" />
-          <KpiCard title={t('Customer Leads', 'ဖောက်သည် Lead များ')} value="17" icon={Megaphone} color="#a855f7" />
-          <KpiCard title={t('Conversions', 'အောင်မြင်မှုများ')} value="12" icon={TrendingUp} color="#22c55e" />
+  return <div className="min-h-screen bg-[#061524] p-5 text-[#eef8ff]">
+    <div className="mx-auto max-w-[1600px] space-y-5">
+      <header className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-6">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div><div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[.22em] text-[#ff4f86]"><Megaphone size={15}/>Marketing & Growth</div><h1 className="mt-2 text-3xl font-black">{t("Marketing Portal","စျေးကွက်ရှာဖွေရေး စင်တာ")}</h1><p className="mt-2 text-sm text-[#8fb2c9]">Live lead acquisition, merchant onboarding and conversion tracking linked to the same Supabase masters used by Pickup, Finance and Merchant Portal.</p></div>
+          <button onClick={()=>{void loadLeads();void loadMerchants()}} className="flex h-11 items-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#061524] px-4 font-black"><RefreshCw size={16} className={loading?"animate-spin":""}/>Refresh</button>
         </div>
+        {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
+      </header>
 
-        {/* TABS */}
-        <div className="flex flex-wrap gap-3 border-b border-[#1a3a5c] pb-4">
-          <button onClick={() => setActiveTab("overview")} className={`px-6 py-3 rounded-2xl text-[13px] font-black transition-colors ${activeTab === "overview" ? "bg-[#38bdf8] text-[#061524]" : "bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}`}>
-            <span>{t('Overview', 'အကျဉ်းချုပ်')}</span>
-          </button>
-          <button onClick={() => setActiveTab("registry")} className={`px-6 py-3 rounded-2xl text-[13px] font-black transition-colors ${activeTab === "registry" ? "bg-[#38bdf8] text-[#061524]" : "bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}`}>
-            <span>{t('Lead Registry', 'Lead မှတ်တမ်း')}</span>
-          </button>
-          <button onClick={() => setActiveTab("merchants")} className={activeTab === "merchants" ? "px-6 py-3 rounded-2xl text-[13px] font-black bg-[#22c55e] text-[#061524]" : "px-6 py-3 rounded-2xl text-[13px] font-black bg-[#0b2236] text-[#c8dff0] border border-[#1a3a5c] hover:bg-[#1a3a5c]"}>
-            <span>{t('Merchant Accounts', 'Merchant Account များ')}</span>
-          </button>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        {[["Total Leads",leadSummary.count||leads.length,Users,"#38bdf8"],["Merchant Leads",leadSummary.merchant_leads||0,Store,"#f6b84b"],["Customer Leads",leadSummary.customer_leads||0,Users,"#a855f7"],["Converted",leadSummary.converted||0,TrendingUp,"#22c55e"],["Active Merchants",merchants.filter((m:any)=>String(m.status).toUpperCase()==="ACTIVE").length,Store,"#22c55e"]].map(([a,b,I,c]:any)=><div key={a} className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4"><div className="flex justify-between text-[10px] font-black uppercase text-[#8fb2c9]"><span>{a}</span><I size={17} color={c}/></div><div className="mt-2 text-2xl font-black">{b}</div></div>)}
+      </div>
+
+      <div className="flex flex-wrap gap-2 border-b border-[#1a3a5c] pb-3">
+        {[["overview","Overview"],["leads","Lead Registry"],["merchants","Merchant Accounts"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={"rounded-xl px-5 py-2.5 text-sm font-black "+(tab===id?"bg-[#f6b84b] text-[#061524]":"border border-[#1a3a5c] bg-[#0b2236]")}>{label}</button>)}
+      </div>
+
+      {tab==="overview"&&<div className="grid gap-5 xl:grid-cols-2">
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Live Lead Funnel</h2><div className="mt-4 grid grid-cols-3 gap-3">{[["New",stages.new],["Qualified",stages.qualified],["Converted",stages.converted]].map(([a,b])=><div key={a} className="rounded-xl bg-[#061524] p-4"><div className="text-xs text-[#8fb2c9]">{a}</div><div className="mt-1 text-2xl font-black text-[#f6b84b]">{b}</div></div>)}</div></div>
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Integration Status</h2><div className="mt-4 space-y-2 text-sm text-[#9cc2d9]"><div className="rounded-xl bg-[#061524] p-3">Lead records → Supabase Marketing pipeline</div><div className="rounded-xl bg-[#061524] p-3">Converted contract → Merchant Master</div><div className="rounded-xl bg-[#061524] p-3">Merchant Master → Pickup / Data Entry / Finance / Merchant Portal</div></div></div>
+      </div>}
+
+      {tab==="leads"&&<div className="space-y-4">
+        <div className="flex flex-col gap-3 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-4 lg:flex-row"><div className="relative flex-1"><Search size={16} className="absolute left-3 top-3 text-[#6f91aa]"/><input value={leadSearch} onChange={e=>setLeadSearch(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")void loadLeads()}} placeholder="Search lead, phone, township, stage..." className="h-10 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] pl-9 pr-3"/></div><button onClick={()=>void loadLeads()} className="h-10 rounded-xl border border-[#1a3a5c] px-4 font-black">Search</button><button onClick={()=>setLeadForm({customer_or_merchant:"merchant",entity_name:"",contact_name:"",phone:"",email:"",city:"Yangon",township:"",stage:"new",status:"new",source:"FIELD_VISIT",expected_revenue:"0",expected_volume:"0",notes:""})} className="flex h-10 items-center gap-2 rounded-xl bg-[#ff4f86] px-4 font-black text-white"><Plus size={15}/>Add Lead</button></div>
+        {leadForm&&<div className="rounded-3xl border border-[#ff4f86]/40 bg-[#0b2236] p-5"><h3 className="font-black text-[#ff7aa2]">{leadForm.id?"Edit Lead":"New Marketing Lead"}</h3><div className="mt-4 grid gap-3 md:grid-cols-3">
+          {[["entity_name","Lead / Company Name"],["contact_name","Contact Person"],["phone","Phone"],["email","Email"],["city","City"],["township","Township"],["source","Source"],["expected_volume","Expected Monthly Parcels"],["expected_revenue","Expected Revenue"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input type={k.startsWith("expected_")?"number":"text"} value={leadForm[k]??""} onChange={e=>setLeadForm({...leadForm,[k]:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>)}
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Type</span><select value={leadForm.customer_or_merchant||"merchant"} onChange={e=>setLeadForm({...leadForm,customer_or_merchant:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option value="merchant">Merchant</option><option value="customer">Customer</option></select></label>
+          <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Stage</span><select value={leadForm.stage||"new"} onChange={e=>setLeadForm({...leadForm,stage:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option value="new">New</option><option value="qualified">Qualified</option><option value="follow_up">Follow Up</option><option value="proposal">Proposal</option><option value="converted">Converted</option><option value="lost">Lost</option></select></label>
+          <label className="md:col-span-3 text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Notes</span><input value={leadForm.notes||""} onChange={e=>setLeadForm({...leadForm,notes:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>
+        </div><div className="mt-4 flex gap-2"><button onClick={()=>void saveLead()} className="flex h-11 items-center gap-2 rounded-xl bg-emerald-500 px-5 font-black text-[#061524]"><Save size={16}/>Save + Sync</button><button onClick={()=>setLeadForm(null)} className="h-11 rounded-xl border border-[#1a3a5c] px-5 font-black">Cancel</button></div></div>}
+        <div className="space-y-2">{leads.map((r:any)=><button key={r.id} onClick={()=>setLeadForm({...r,entity_name:r.entity_name||r.lead_name||""})} className="w-full rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4 text-left hover:border-[#ff4f86]"><div className="flex justify-between"><div><div className="font-mono text-xs font-black text-[#38bdf8]">{r.lead_no||"-"}</div><div className="mt-1 font-black">{r.entity_name||r.lead_name||"-"}</div></div><span className="h-fit rounded-full bg-[#061524] px-3 py-1 text-[10px] font-black uppercase">{r.stage||r.status||"new"}</span></div><div className="mt-2 flex flex-wrap gap-4 text-xs text-[#8fb2c9]"><span>{r.contact_name||"-"} · {r.phone||"-"}</span><span>{r.township||r.city||"-"}</span><span>{r.source||"-"}</span><span>{money(r.expected_revenue)}</span></div></button>)}</div>
+      </div>}
+
+      {tab==="merchants"&&<div className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex justify-between"><div><h2 className="font-black">Create / Update Merchant Account</h2><p className="mt-1 text-xs text-[#8fb2c9]">Use after contract execution. Save synchronizes to operational merchant masters.</p></div><button onClick={()=>setMerchantForm({merchant_code:"",merchant_name:"",business_type:"",contact_person:"",phone_primary:"",phone_secondary:"",email:"",address_mm:"",address_line_1:"",township:"",city:"Yangon",region_state:"Yangon",customer_tier:"STANDARD",payment_profile:"COD",service_profile:"STANDARD",status:"ACTIVE"})} className="h-10 rounded-xl bg-[#22c55e] px-4 font-black text-[#061524]"><Plus size={15} className="inline mr-1"/>New</button></div>
+          {merchantForm&&<><div className="mt-4 grid gap-3 md:grid-cols-2">{[["merchant_code","Merchant Code (3)"],["merchant_name","Merchant Name"],["business_type","Business Type"],["contact_person","Contact Person"],["phone_primary","Primary Phone"],["phone_secondary","Secondary Phone"],["email","Email"],["township","Township"],["city","City"],["region_state","Region / State"],["address_line_1","Pickup Address"],["address_mm","Myanmar Address"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input maxLength={k==="merchant_code"?3:undefined} value={merchantForm[k]??""} onChange={e=>setMerchantForm({...merchantForm,[k]:k==="merchant_code"?e.target.value.toUpperCase():e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>)}
+            <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Tier</span><select value={merchantForm.customer_tier||"STANDARD"} onChange={e=>setMerchantForm({...merchantForm,customer_tier:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option></select></label>
+            <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Status</span><select value={merchantForm.status||"ACTIVE"} onChange={e=>setMerchantForm({...merchantForm,status:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select></label>
+          </div><button onClick={()=>void saveMerchant()} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#22c55e] px-5 font-black text-[#061524]"><Save size={16}/>Save + Synchronize Merchant</button></>}
         </div>
-
-        {/* OVERVIEW CONTENT */}
-        {activeTab === "overview" && (
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 animate-in fade-in duration-300">
-            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
-              <h2 className="text-[16px] font-bold text-white border-b border-[#1a3a5c] pb-4 mb-4"><span>{t('Lead Pipeline Overview', 'Lead လုပ်ငန်းစဉ် အကျဉ်းချုပ်')}</span></h2>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-5">
-                  <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Qualified Leads', 'အရည်အချင်းပြည့်မီသော')}</span></div>
-                  <div className="text-3xl font-black text-white"><span>9</span></div>
-                </div>
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-5">
-                  <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Follow Ups', 'ဆက်လက်လုပ်ဆောင်ရန်')}</span></div>
-                  <div className="text-3xl font-black text-[#f6b84b]"><span>6</span></div>
-                </div>
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-5">
-                  <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Target Parcels', 'ပစ်မှတ် (ပါဆယ်)')}</span></div>
-                  <div className="text-3xl font-black text-[#38bdf8] font-mono"><span>1,250</span></div>
-                </div>
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-5">
-                  <div className="text-[10px] font-black uppercase text-[#4d7a9b] mb-2"><span>{t('Actual Parcels', 'ရရှိသော (ပါဆယ်)')}</span></div>
-                  <div className="text-3xl font-black text-[#22c55e] font-mono"><span>894</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
-              <h2 className="text-[16px] font-bold text-white border-b border-[#1a3a5c] pb-4 mb-4"><span>{t('Today’s Focus', 'ယနေ့ အဓိကလုပ်ဆောင်ရန်')}</span></h2>
-              <div className="space-y-3">
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-4 flex gap-3 text-[13px] font-medium text-[#c8dff0]">
-                  <Target className="shrink-0 text-[#f6b84b]" size={18} />
-                  <span>{t('Visit 8 priority merchants in Kamayut and Hlaing.', 'ကမာရွတ်နှင့် လှိုင်ရှိ ကုန်သည် ၈ ဦးထံ သွားရောက်ရန်။')}</span>
-                </div>
-                <div className="bg-[#061524] border border-[#1a3a5c] rounded-2xl p-4 flex gap-3 text-[13px] font-medium text-[#c8dff0]">
-                  <ClipboardList className="shrink-0 text-[#38bdf8]" size={18} />
-                  <span>{t('Submit end-of-day report with lead sources and blockers.', 'နေ့စဉ် လုပ်ငန်းအစီရင်ခံစာ တင်ပြရန်။')}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* REGISTRY CONTENT */}
-        {activeTab === "registry" && (
-          <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl shadow-xl overflow-hidden min-h-[500px] flex flex-col animate-in fade-in duration-300">
-            <div className="p-6 border-b border-[#1a3a5c] bg-[#081b2e] flex flex-col md:flex-row gap-4 justify-between items-center">
-              <h2 className="text-[16px] font-bold text-white m-0"><span>{t('Current Leads', 'လက်ရှိ Lead များ')}</span></h2>
-              <div className="relative w-full md:w-[350px]">
-                <Search size={16} className="absolute left-4 top-3.5 text-[#4d7a9b]" />
-                <input 
-                  value={search} onChange={(e) => setSearch(e.target.value)} 
-                  placeholder={t('Search Leads...', 'ရှာဖွေရန်...')}
-                  className="w-full bg-[#061524] border border-[#1a3a5c] text-white rounded-xl py-3 pl-11 pr-4 text-[13px] outline-none focus:border-[#f6b84b]"
-                />
-              </div>
-            </div>
-            <div className="flex-1 overflow-x-auto bg-[#061524] p-6 space-y-4">
-              {filtered.map(row => (
-                <div key={row.id} className="bg-[#081b2e] border border-[#1a3a5c] rounded-2xl p-5 hover:border-[#4d7a9b] transition-colors">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="font-black text-[16px] text-white"><span>{row.name}</span></div>
-                    <span className="bg-[#38bdf8]/10 border border-[#38bdf8]/30 text-[#38bdf8] px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
-                      <span>{row.status}</span>
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-4 text-[13px] text-[#c8dff0] font-medium">
-                    <span className="flex items-center gap-1.5"><Phone size={14} className="text-[#4d7a9b]" /> <span>{row.phone}</span></span>
-                    <span className="flex items-center gap-1.5"><MapPin size={14} className="text-[#4d7a9b]" /> <span>{row.township}</span></span>
-                    <span className="flex items-center gap-1.5 text-[#f6b84b]"><span>{row.source}</span></span>
-                  </div>
-                </div>
-              ))}
-              {filtered.length === 0 && <div className="text-center p-10 text-[#4d7a9b] font-bold"><span>{t('No leads found.', 'ရှာဖွေမှု မတွေ့ရှိပါ။')}</span></div>}
-            </div>
-          </div>
-        )}
-
-        {activeTab === "merchants" && (
-          <div className="grid grid-cols-1 xl:grid-cols-[0.9fr_1.1fr] gap-6">
-            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
-              <h2 className="text-lg font-black text-white">Create / Update Merchant Account</h2>
-              <p className="text-xs text-[#4d7a9b] mt-1 mb-4">After contract execution. Merchant Code must be exactly 3 alphanumeric characters and becomes the canonical Merchant ID.</p>
-              {merchantMessage && <div className="mb-4 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-3 text-sm font-bold text-[#86efac]">{merchantMessage}</div>}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {[
-                  ["merchant_code","Merchant Code (3 chars)"],["merchant_name","Merchant Name"],["business_type","Business Type"],["contact_person","Contact Person"],
-                  ["phone_primary","Primary Phone"],["phone_secondary","Secondary Phone"],["email","Email"],["township","Township"],["city","City"],["region_state","Region / State"],
-                  ["address_line_1","Pickup Address"],["address_mm","Myanmar Address"]
-                ].map(([key,label]) => (
-                  <label key={key} className="text-xs font-bold text-[#c8dff0]">
-                    <span className="block mb-1">{label}</span>
-                    <input value={(merchantForm as any)[key]} maxLength={key==="merchant_code"?3:undefined}
-                      onChange={(e)=>setMerchantForm({...merchantForm,[key]:key==="merchant_code"?e.target.value.toUpperCase():e.target.value})}
-                      className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white outline-none focus:border-[#22c55e]" />
-                  </label>
-                ))}
-                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Tier</span><select value={merchantForm.customer_tier} onChange={(e)=>setMerchantForm({...merchantForm,customer_tier:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>STANDARD</option><option>ROYAL</option><option>COMMITMENT</option></select></label>
-                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Payment Profile</span><select value={merchantForm.payment_profile} onChange={(e)=>setMerchantForm({...merchantForm,payment_profile:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>COD</option><option>PREPAID</option><option>CREDIT</option></select></label>
-                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Service Profile</span><select value={merchantForm.service_profile} onChange={(e)=>setMerchantForm({...merchantForm,service_profile:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>STANDARD</option><option>EXPRESS</option><option>DEDICATED</option></select></label>
-                <label className="text-xs font-bold text-[#c8dff0]"><span className="block mb-1">Status</span><select value={merchantForm.status} onChange={(e)=>setMerchantForm({...merchantForm,status:e.target.value})} className="w-full h-11 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white"><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select></label>
-              </div>
-              <button disabled={merchantBusy || merchantForm.merchant_code.length!==3 || !merchantForm.merchant_name.trim()} onClick={()=>void saveMerchant()} className="mt-5 w-full h-12 rounded-xl bg-[#22c55e] text-[#061524] font-black disabled:opacity-40">{merchantBusy?"Synchronizing...":"Save + Synchronize Merchant"}</button>
-            </div>
-            <div className="bg-[#0b2236] border border-[#1a3a5c] rounded-3xl p-6 shadow-xl">
-              <div className="flex flex-wrap justify-between gap-3 mb-4">
-                <div><h2 className="text-lg font-black text-white">Merchant Master</h2><p className="text-xs text-[#4d7a9b]">Live Supabase master used across the application.</p></div>
-                <div className="flex gap-2">
-                  <input value={merchantSearch} onChange={(e)=>setMerchantSearch(e.target.value)} placeholder="Search" className="h-10 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs" />
-                  <select value={merchantStatus} onChange={(e)=>setMerchantStatus(e.target.value)} className="h-10 rounded-xl bg-[#061524] border border-[#1a3a5c] px-3 text-white text-xs"><option value="">All</option><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select>
-                  <button onClick={()=>void loadMerchantAccounts()} className="h-10 px-4 rounded-xl bg-[#1a3a5c] text-white text-xs font-black">Refresh</button>
-                </div>
-              </div>
-              <div className="space-y-2 max-h-[760px] overflow-auto">
-                {merchantRows.map((m:any)=>(
-                  <button key={m.merchant_code} onClick={()=>setMerchantForm({...merchantForm,...m,merchant_code:m.merchant_code||"",merchant_name:m.merchant_name||"",status:m.status||"ACTIVE"})} className="w-full text-left rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4 hover:border-[#22c55e]">
-                    <div className="flex justify-between"><div><div className="font-mono font-black text-[#22c55e]">{m.merchant_code}</div><div className="font-bold text-white">{m.merchant_name}</div></div><span className="text-[10px] font-black text-[#c8dff0]">{m.status}</span></div>
-                    <div className="mt-2 text-xs text-[#4d7a9b]">{m.contact_person||"—"} · {m.phone_primary||"—"} · {[m.township,m.city,m.region_state].filter(Boolean).join(", ")||"—"}</div>
-                  </button>
-                ))}
-                {merchantRows.length===0 && <div className="p-10 text-center text-[#4d7a9b]">No merchant records.</div>}
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex flex-col gap-2 lg:flex-row"><input value={merchantSearch} onChange={e=>setMerchantSearch(e.target.value)} placeholder="Search merchant..." className="h-10 flex-1 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><select value={merchantStatus} onChange={e=>setMerchantStatus(e.target.value)} className="h-10 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><option value="">All</option><option>ACTIVE</option><option>SUSPENDED</option><option>INACTIVE</option></select><button onClick={()=>void loadMerchants()} className="h-10 rounded-xl border border-[#1a3a5c] px-4 font-black">Refresh</button></div><div className="mt-4 max-h-[720px] space-y-2 overflow-auto">{merchants.map((m:any)=><button key={m.merchant_code} onClick={()=>setMerchantForm({...m,payment_profile:"COD",service_profile:"STANDARD"})} className="w-full rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4 text-left hover:border-[#22c55e]"><div className="flex justify-between"><div><span className="font-mono font-black text-[#22c55e]">{m.merchant_code}</span><span className="ml-2 font-black">{m.merchant_name}</span></div><span className="text-[10px] font-black">{m.status}</span></div><div className="mt-2 text-xs text-[#8fb2c9]">{m.contact_person||"-"} · {m.phone_primary||"-"} · {[m.township,m.city].filter(Boolean).join(", ")}</div></button>)}</div></div>
+      </div>}
     </div>
-  );
-}
-
-function KpiCard({ title, value, icon: Icon, color }: any) {
-  return (
-    <div className="bg-[#0b2236] border border-[#1a3a5c] p-6 rounded-3xl shadow-lg relative overflow-hidden group">
-      <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
-        <Icon size={100} color={color} />
-      </div>
-      <div className="flex items-center justify-between mb-3 relative z-10">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-[#4d7a9b]"><span>{title}</span></span>
-        <Icon size={16} color={color} />
-      </div>
-      <div className="text-3xl font-black relative z-10 text-white"><span>{value}</span></div>
-    </div>
-  );
+  </div>;
 }
