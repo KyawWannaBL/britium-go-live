@@ -36,7 +36,8 @@ export function defaultPortalForRole(role: string | null | undefined): string {
       return '/supervisor';
     case 'rider':
     case 'driver':
-      return '/rider-app'; // Directs to their mobile sandbox
+    case 'helper':
+      return '/rider-app';
     case 'warehouse':
     case 'warehouse-staff':
     case 'sorter':
@@ -50,6 +51,13 @@ export function defaultPortalForRole(role: string | null | undefined): string {
     case 'customer-service':
     case 'support':
       return '/cs-command';
+    case 'marketing':
+      return '/marketing-portal';
+    case 'business-development':
+    case 'biz-dev':
+      return '/biz-dev';
+    case 'hr-admin':
+      return '/admin-hr';
       
     // 💰 Finance & Data
     case 'finance':
