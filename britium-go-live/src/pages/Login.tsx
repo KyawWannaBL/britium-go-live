@@ -775,26 +775,24 @@ export default function Login() {
               <div className="mt-6 rounded-[20px] border border-[#17486b] bg-[#061b2d] p-4">
                 <div className="mb-3 flex items-center gap-2 text-[13px] font-black text-[#ffb82e]">
                   <Download className="h-4 w-4" />
-                  Mobile APK downloads
+                  {t("Britium Rider Android App", "Britium Rider Android App")}
                 </div>
 
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    ["Rider APK", "/downloads/britium-rider.apk"],
-                    ["Driver APK", "/downloads/britium-driver.apk"],
-                    ["Helper APK", "/downloads/britium-helper.apk"],
-                  ].map(([label, href]) => (
-                    <a
-                      key={label}
-                      href={href}
-                      download
-                      className="flex min-h-11 items-center justify-center gap-2 rounded-xl border border-[#17486b] bg-[#0c2b45] px-2 text-center text-[12px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
-                    >
-                      <Download className="h-4 w-4 shrink-0" />
-                      {label}
-                    </a>
-                  ))}
-                </div>
+                <p className="mb-3 text-[11px] leading-5 text-[#8eb3ca]">
+                  {t(
+                    "Install the official Rider App for pickup verification, delivery workflow, COD handover and field settlement.",
+                    "Pickup Verification၊ Delivery Workflow၊ COD Handover နှင့် Field Settlement အတွက် Official Rider App ကို ထည့်သွင်းနိုင်ပါသည်။"
+                  )}
+                </p>
+
+                <a
+                  href="https://britiumexpress.app/downloads/Britium-Express-Rider.apk"
+                  download="Britium-Express-Rider.apk"
+                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#2f84b7] bg-[#0c2b45] px-4 text-center text-[13px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
+                >
+                  <Download className="h-4 w-4 shrink-0" />
+                  {t("Download Rider App APK", "Rider App APK ဒေါင်းလုဒ်")}
+                </a>
               </div>
 
               <p className="mt-4 text-center text-[10px] leading-5 text-[#66879c]">
