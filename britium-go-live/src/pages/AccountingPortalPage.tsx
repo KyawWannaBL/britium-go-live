@@ -202,7 +202,7 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
     cod_cash_collected_in_hand: "",
     accounts_receivable_invoiced: "",
     accounts_payable_incurred: "",
-    funding_account_code: "1010",
+    funding_account_code: "111002",
     payment_method: "PETTY_CASH",
     payment_mobile_number: "",
     payment_reference: "",
@@ -210,10 +210,10 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
     petty_cash_description: "",
     ar_counterparty: "",
     ar_reference: "",
-    ar_offset_account_code: "4000",
+    ar_offset_account_code: "412003",
     ap_counterparty: "",
     ap_reference: "",
-    ap_offset_account_code: "6700",
+    ap_offset_account_code: "619010",
   });
 
   const numericKeys = [
@@ -320,12 +320,12 @@ function DailyFinanceEntry({ setMessage }: { setMessage: (value: string) => void
                 setForm({ ...form, payment_method, payment_mobile_number, funding_account_code, payment_reference: "" });
               }}
             >
-              <option value="CASH||1000">Cash on Hand · 1000</option>
-              <option value="PETTY_CASH||1010">Petty Cash · 1010</option>
-              <option value="BANK||1100">Bank Accounts · 1100</option>
-              <option value="MMQR|09897447722|1110">MMQR · 09897447722</option>
-              <option value="KBZ_PAY|09897447722|1120">KBZ Pay · 09897447722</option>
-              <option value="KBZ_PAY|09897447733|1121">KBZ Pay · 09897447733</option>
+              <option value="CASH||111001">111001 · Cash on Hand / လက်ဝယ်ငွေသား</option>
+              <option value="PETTY_CASH||111002">111002 · Petty Cash / အသေးသုံးငွေ</option>
+              <option value="BANK||112001">112001 · Main Operating Bank / အဓိကဘဏ်</option>
+              <option value="MMQR|09897447722|112005">112005 · MMQR · 09897447722</option>
+              <option value="KBZ_PAY|09897447722|112006">112006 · KBZ Pay · 09897447722</option>
+              <option value="KBZ_PAY|09897447733|112007">112007 · KBZ Pay · 09897447733</option>
             </select>
           </Field>
 
