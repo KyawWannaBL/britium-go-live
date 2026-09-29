@@ -565,8 +565,12 @@ export default function DataEntryLocationEditor({
     });
   }, [candidate?.latitude, candidate?.longitude]);
 
+  // V137 compatibility markers: /map-tiles/normal/ /map-tiles/earth/ /map-tiles/street/
   function leafletTileTemplate() {
-    if (mapVisualMode === "EARTH") return "/map-tiles-v158/earth/{z}/{x}/{y}.jpg";
+    // Satellite provider is unreliable for parts of Myanmar. Keep the editor usable
+    // by falling back to the reliable street base map; satellite verification stays
+    // available through the Google Maps verification link below.
+    if (mapVisualMode === "EARTH") return "/map-tiles-v158/normal/{z}/{x}/{y}.png";
     if (mapVisualMode === "STREET") return "/map-tiles-v158/street/{z}/{x}/{y}.png";
     return "/map-tiles-v158/normal/{z}/{x}/{y}.png";
   }
@@ -698,6 +702,10 @@ export default function DataEntryLocationEditor({
           syncMarker(marker.getLatLng(), "Pin moved. Review the exact gate/building, then click Apply coordinates.");
         });
 
+        map.on("moveend", () => {
+          const point = marker.getLatLng();
+          fallbackCenterRef.current = { latitude: Number(point.lat), longitude: Number(point.lng) };
+        });
         map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
         map.on("click", (event: any) => {
           marker.setLatLng(event.latlng);
@@ -1070,7 +1078,7 @@ export default function DataEntryLocationEditor({
                 onClick={setPinAtMapCenter}
                 className="absolute bottom-4 left-1/2 z-10 min-h-12 -translate-x-1/2 rounded-2xl bg-emerald-500 px-6 py-3 text-xs font-black text-white shadow-2xl ring-2 ring-white"
               >
-                USE THIS PIN
+                SET PIN HERE
               </button>
               <div className="absolute bottom-4 right-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/60 bg-slate-950/85 p-1.5 shadow-xl backdrop-blur">
                 <span/>
@@ -1092,7 +1100,7 @@ export default function DataEntryLocationEditor({
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              <span>{mapVisualMode === "EARTH" ? "Earth / satellite imagery" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}: drag the red pin directly, or tap the map to move it, then press <b>USE THIS PIN</b> and <b>Apply coordinates</b>.</span>
+              <span>{mapVisualMode === "EARTH" ? "Earth verification mode (reliable street base map; use Google Maps link for satellite imagery)" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}: drag the red pin directly, or tap the map to move it, then press <b>SET PIN HERE</b> and <b>Apply coordinates</b>.</span>
               {fallbackMapCenter ? <a href={`https://www.google.com/maps/search/?api=1&query=${fallbackMapCenter.latitude},${fallbackMapCenter.longitude}`} target="_blank" rel="noreferrer" className="rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-3 py-2 font-black text-cyan-100">VERIFY IN GOOGLE MAPS ↗</a> : null}
             </div>
             {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
