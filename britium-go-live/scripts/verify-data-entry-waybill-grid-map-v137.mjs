@@ -45,8 +45,21 @@ assert.match(deferredBlock, /externallySynced/, "deferred UI must distinguish sy
 assert.match(deferredBlock, /openRelocationMap\(\)/, "synchronized deferred rows must still expose the editable Google pin workflow");
 assert.match(deferredBlock, /EDIT|MOVE|MAP/i, "manual pin control must be visibly labeled");
 
-assert.match(editor, /draggable:\s*true/, "Google pin must remain draggable");
-assert.match(editor, /map\.addListener\(["']click["']/, "Google map click must continue moving the pin");
-assert.match(editor, /setManualMapCoordinate\(point\.lat\(\),\s*point\.lng\(\),\s*["']clicked["']\)/, "map clicks must copy coordinates into the Data Entry location state");
+const legacyGoogleEditor =
+  /draggable:\s*true/.test(editor)
+  && /map\.addListener\(["']click["']/.test(editor)
+  && /setManualMapCoordinate\(point\.lat\(\),\s*point\.lng\(\),\s*["']clicked["']\)/.test(editor);
+
+const keylessGoogleEditor =
+  /handleFallbackPointerDown/.test(editor)
+  && /handleFallbackPointerUp/.test(editor)
+  && /offsetMapCoordinate/.test(editor)
+  && /setManualMapCoordinate\(selected\.latitude,\s*selected\.longitude,\s*["']clicked["']\)/.test(editor)
+  && /keylessEditorUrl/.test(editor);
+
+assert.ok(
+  legacyGoogleEditor || keylessGoogleEditor,
+  "Data Entry must provide either the legacy draggable Google editor or the V148 keyless click/drag Google map editor.",
+);
 
 console.log("Data Entry waybill/grid/map V137 contract PASS");
