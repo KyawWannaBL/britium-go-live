@@ -2,6 +2,14 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/map-lib/leaflet.js",
+      "destination": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    },
+    {
+      "source": "/map-lib/leaflet.css",
+      "destination": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    },
+    {
       "source": "/map-tiles/normal/:z/:x/:y.png",
       "destination": "https://a.basemaps.cartocdn.com/light_all/:z/:x/:y.png"
     },

@@ -32,14 +32,23 @@ assert.match(
 const keylessEditorStart = editor.indexOf("function handleFallbackPointerDown");
 const realInteractiveEditorStart = editor.indexOf("new mapboxgl.Map");
 const domTileEditorStart = editor.indexOf("function handleDomMapPointerDown");
+const leafletEditorStart = editor.indexOf("loadLeafletRuntime");
 assert.ok(
   keylessEditorStart >= 0
     || realInteractiveEditorStart >= 0
     || domTileEditorStart >= 0
+    || leafletEditorStart >= 0
     || /\(!enabled\s*&&\s*!manualOpen\)/.test(editor),
   "Manual map mode must remain available even when mapping is not routing-required.",
 );
-if (domTileEditorStart >= 0) {
+if (leafletEditorStart >= 0) {
+  assert.match(editor, /L\.map\(/, "Leaflet editor must initialize a real interactive map.");
+  assert.match(editor, /L\.tileLayer\(/, "Leaflet editor must use a raster tile layer.");
+  assert.match(editor, /map\.on\(["']moveend["']/, "Leaflet editor must track pan movement.");
+  assert.match(editor, /map\.on\(["']click["']/, "Leaflet editor must support tap-to-recenter.");
+  assert.match(editor, /SET PIN HERE/, "Leaflet editor must expose explicit pin confirmation.");
+  assert.match(editor, /setManualMapCoordinate/, "Confirmed Leaflet center must copy into Data Entry coordinates.");
+} else if (domTileEditorStart >= 0) {
   const domTileBlock = editor.slice(domTileEditorStart, domTileEditorStart + 7600);
   assert.match(domTileBlock, /handleDomMapPointerMove/, "DOM tile editor must pan continuously while dragging.");
   assert.match(domTileBlock, /handleDomMapPointerUp/, "DOM tile editor must support tap-to-recenter.");
