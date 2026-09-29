@@ -473,6 +473,7 @@ export default function DataEntryLocationEditor({
     setManualOpen(true);
     setMapFocus(true);
     setMapError("");
+    window.setTimeout(() => fallbackMapContainer.current?.scrollIntoView?.({ behavior: "smooth", block: "center" }), 80);
 
     if (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)) {
       setFallbackMapCenter({
@@ -553,9 +554,8 @@ export default function DataEntryLocationEditor({
     }
 
     setFallbackMapCenter(selected);
-    setManualMapCoordinate(selected.latitude, selected.longitude, "clicked");
     setMapError("");
-    setMessage(`Drop-off pin moved to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. Latitude and Longitude were updated immediately. Verify the point, then click Apply coordinates.`);
+    setMessage(`Map center moved to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. If the center crosshair is on the exact gate/building, press SET PIN HERE.`);
   }
 
   function setPinAtMapCenter() {
@@ -864,7 +864,7 @@ export default function DataEntryLocationEditor({
           <div>
             <div
               ref={fallbackMapContainer}
-              className="relative h-[360px] min-h-[260px] w-full touch-none overflow-hidden rounded-xl border border-cyan-500/70 bg-[#061524] shadow-xl"
+              className="relative h-[min(68vh,720px)] min-h-[480px] w-full touch-none overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#061524] shadow-2xl"
               onPointerDown={handleFallbackPointerDown}
               onPointerMove={handleFallbackPointerMove}
               onPointerUp={handleFallbackPointerUp}
@@ -881,7 +881,7 @@ export default function DataEntryLocationEditor({
                 <Crosshair className="h-10 w-10 text-rose-500 drop-shadow-xl" strokeWidth={2.6}/>
               </div>
               <div className="pointer-events-none absolute left-3 top-3 max-w-[75%] rounded-lg border border-amber-300/60 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-amber-100 shadow-xl">
-                DRAG MAP UNDER THE CENTER PIN · THEN PRESS SET PIN HERE
+                DRAG MAP UNDER CENTER CROSSHAIR · TAP MAP TO RECENTER · PRESS SET PIN HERE
               </div>
               {validMyanmarCoordinate(lng, lat) && (
                 <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/50 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-cyan-100 shadow-xl">
@@ -929,7 +929,7 @@ export default function DataEntryLocationEditor({
               </div>
             </div>
             <div className="mt-2 rounded-lg border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              This editor does not depend on the Google Maps JavaScript API key. Drag the map under the fixed center pin, use the small arrow controls for roughly 10 m adjustments, then press <b>SET PIN HERE</b>. Latitude and Longitude update immediately. Click <b>Apply coordinates</b> only after checking the point.
+              Use the fixed center crosshair instead of dragging a marker. Drag the map to pan, tap anywhere to recenter, use the arrow controls for small ~10 m adjustments, then press <b>SET PIN HERE</b>. Latitude and Longitude update only when you set the pin. Click <b>Apply coordinates</b> after verifying the exact gate/building.
             </div>
             {mapError && (
               <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">
