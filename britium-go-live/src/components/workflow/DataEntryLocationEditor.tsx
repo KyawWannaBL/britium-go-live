@@ -171,6 +171,7 @@ export default function DataEntryLocationEditor({
   const fallbackMapContainer = useRef<HTMLDivElement | null>(null);
   const leafletMapRef = useRef<any>(null);
   const leafletTileLayerRef = useRef<any>(null);
+  const leafletMarkerRef = useRef<any>(null);
   const fallbackCenterRef = useRef<{latitude:number;longitude:number}|null>(null);
   const mapPointers = useRef(new Map<number,{x:number;y:number;startX:number;startY:number;moved:boolean}>());
   const pinchDistanceRef = useRef<number | null>(null);
@@ -572,19 +573,22 @@ export default function DataEntryLocationEditor({
 
   function mapModeAttribution() {
     if (mapVisualMode === "EARTH") return "Satellite imagery © Esri and contributors";
-    if (mapVisualMode === "STREET") return "© OpenStreetMap contributors";
-    return "© OpenStreetMap contributors © CARTO";
+    if (mapVisualMode === "EARTH") return "Satellite imagery © Esri and contributors";
+    return "© OpenStreetMap contributors";
   }
 
   function setPinAtMapCenter() {
+    const markerPoint = leafletMarkerRef.current?.getLatLng?.();
     const leafletCenter = leafletMapRef.current?.getCenter?.();
-    const center = leafletCenter
-      ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
-      : (fallbackCenterRef.current || fallbackMapCenter);
+    const center = markerPoint
+      ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
+      : leafletCenter
+        ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
+        : (fallbackCenterRef.current || fallbackMapCenter);
     if (!center) return;
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
-    setMessage(`Drop-off pin set at map center: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
+    setMessage(`Drop-off pin set: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
   }
 
   function moveMapByPixels(horizontalPixels: number, verticalPixels: number) {
@@ -627,6 +631,7 @@ export default function DataEntryLocationEditor({
           leafletMapRef.current.remove();
           leafletMapRef.current = null;
           leafletTileLayerRef.current = null;
+          leafletMarkerRef.current = null;
         }
 
         const map = L.map(fallbackMapContainer.current, {
@@ -665,15 +670,29 @@ export default function DataEntryLocationEditor({
         leafletMapRef.current = map;
         leafletTileLayerRef.current = tileLayer;
 
-        map.on("moveend", () => {
-          const center = map.getCenter();
-          const next = { latitude: Number(center.lat), longitude: Number(center.lng) };
+        const marker = L.marker([initial.latitude, initial.longitude], {
+          draggable: true,
+          autoPan: true,
+          title: "Drag to exact drop-off point",
+        }).addTo(map);
+        leafletMarkerRef.current = marker;
+
+        const syncMarker = (latlng:any, messageText:string) => {
+          const next = { latitude: Number(latlng.lat), longitude: Number(latlng.lng) };
           fallbackCenterRef.current = next;
           setFallbackMapCenter(next);
+          setManualMapCoordinate(next.latitude, next.longitude, "clicked");
+          setMessage(messageText);
+        };
+
+        marker.on("dragend", () => {
+          syncMarker(marker.getLatLng(), "Pin moved. Review the exact gate/building, then click Apply coordinates.");
         });
+
         map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
         map.on("click", (event: any) => {
-          map.panTo(event.latlng, { animate: true, duration: 0.2 });
+          marker.setLatLng(event.latlng);
+          syncMarker(event.latlng, "Pin moved to the tapped location. Review it, then click Apply coordinates.");
         });
 
         window.setTimeout(() => map.invalidateSize(true), 60);
@@ -689,6 +708,7 @@ export default function DataEntryLocationEditor({
         leafletMapRef.current.remove();
         leafletMapRef.current = null;
         leafletTileLayerRef.current = null;
+        leafletMarkerRef.current = null;
       }
     };
   }, [mapExpanded, mapVisualMode]);
@@ -1033,21 +1053,15 @@ export default function DataEntryLocationEditor({
                   </div>
                 </div>
               )}
-              <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <div className="relative -translate-y-4">
-                  <MapPin className="h-12 w-12 fill-rose-600 text-white drop-shadow-xl" strokeWidth={2.3}/>
-                  <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-2 rounded-full bg-rose-600/30 blur-sm" />
-                </div>
-              </div>
-              <div className="pointer-events-none absolute left-3 top-3 max-w-[70%] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-black text-slate-800 shadow-xl">
-                DRAG / PINCH / WHEEL TO MOVE MAP · TAP TO RECENTER
+              <div className="pointer-events-none absolute left-3 top-3 max-w-[78%] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-black text-slate-800 shadow-xl">
+                DRAG THE RED PIN TO THE EXACT POINT · OR TAP MAP TO MOVE PIN
               </div>
               <button
                 type="button"
                 onClick={setPinAtMapCenter}
                 className="absolute bottom-4 left-1/2 z-10 min-h-12 -translate-x-1/2 rounded-2xl bg-emerald-500 px-6 py-3 text-xs font-black text-white shadow-2xl ring-2 ring-white"
               >
-                SET PIN HERE
+                USE THIS PIN
               </button>
               <div className="absolute bottom-4 right-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/60 bg-slate-950/85 p-1.5 shadow-xl backdrop-blur">
                 <span/>
@@ -1069,7 +1083,7 @@ export default function DataEntryLocationEditor({
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              <span>{mapVisualMode === "EARTH" ? "Google Earth / satellite-style imagery" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>.</span>
+              <span>{mapVisualMode === "EARTH" ? "Earth / satellite imagery" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}: drag the red pin directly, or tap the map to move it, then press <b>USE THIS PIN</b> and <b>Apply coordinates</b>.</span>
               {fallbackMapCenter ? <a href={`https://www.google.com/maps/search/?api=1&query=${fallbackMapCenter.latitude},${fallbackMapCenter.longitude}`} target="_blank" rel="noreferrer" className="rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-3 py-2 font-black text-cyan-100">VERIFY IN GOOGLE MAPS ↗</a> : null}
             </div>
             {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
