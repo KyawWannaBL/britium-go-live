@@ -30,22 +30,23 @@ assert.match(
 );
 
 const keylessEditorStart = editor.indexOf("function handleFallbackPointerDown");
-const keylessEditorBlock = editor.slice(keylessEditorStart, keylessEditorStart + 5200);
+const realInteractiveEditorStart = editor.indexOf("new mapboxgl.Map");
 assert.ok(
-  keylessEditorStart >= 0 || /\(!enabled\s*&&\s*!manualOpen\)/.test(editor),
+  keylessEditorStart >= 0
+    || realInteractiveEditorStart >= 0
+    || /\(!enabled\s*&&\s*!manualOpen\)/.test(editor),
   "Manual map mode must remain available even when mapping is not routing-required.",
 );
-if (keylessEditorStart >= 0) {
-  assert.match(
-    keylessEditorBlock,
-    /handleFallbackPointerUp/,
-    "The keyless manual map must handle pointer interaction for pin placement.",
-  );
-  assert.match(
-    keylessEditorBlock,
-    /setManualMapCoordinate/,
-    "The keyless manual map must copy the clicked location into Data Entry coordinates.",
-  );
+if (realInteractiveEditorStart >= 0) {
+  const interactiveBlock = editor.slice(realInteractiveEditorStart, realInteractiveEditorStart + 6200);
+  assert.match(interactiveBlock, /map\.on\(["']move["']/, "Interactive map must update its center while the user drags.");
+  assert.match(interactiveBlock, /map\.on\(["']click["']/, "Interactive map must support tap-to-recenter.");
+  assert.match(editor, /SET PIN HERE/, "Interactive map must expose an explicit SET PIN HERE confirmation.");
+  assert.match(editor, /setManualMapCoordinate/, "Confirmed map center must copy into Data Entry coordinates.");
+} else if (keylessEditorStart >= 0) {
+  const keylessEditorBlock = editor.slice(keylessEditorStart, keylessEditorStart + 5200);
+  assert.match(keylessEditorBlock, /handleFallbackPointerUp/);
+  assert.match(keylessEditorBlock, /setManualMapCoordinate/);
 }
 
 const applyStart = editor.indexOf("async function apply()");
