@@ -539,13 +539,13 @@ export default function DataEntryLocationEditor({
         latitude: Number(candidate.latitude),
         longitude: Number(candidate.longitude),
       });
-      setMessage("Interactive map is ready. Click the exact gate/building to replace the auto pin. Latitude and Longitude will update immediately.");
+      setMessage("Street Map View is ready. Move the map to the exact gate/building, press SET PIN HERE, then Apply coordinates.");
       return;
     }
 
     if (validMyanmarCoordinate(lng, lat)) {
       setFallbackMapCenter({ latitude: Number(lat), longitude: Number(lng) });
-      setMessage("Interactive map is ready from the current coordinates. Click the exact drop-off point to correct them.");
+      setMessage("Street Map View is ready from the current coordinates. Move to the exact drop-off point, press SET PIN HERE, then Apply coordinates.");
       return;
     }
 
@@ -869,7 +869,7 @@ export default function DataEntryLocationEditor({
           </div>
         </div>
         <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/60 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-50">
-          OPEN MANUAL MAP / SET PIN
+          STREET MAP VIEW
         </button>
       </div>
     </div>;
@@ -885,7 +885,7 @@ export default function DataEntryLocationEditor({
           <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Validated coordinates are ready for Wayplan. You can still move the pin manually when the exact drop-off point needs correction.":externallyReviewRequired?"This row failed automatic validation and is included in the consolidated review Excel. You can set the pin manually now.":"The controlled background queue is checking this row without loading an interactive map. Manual pin placement remains available."}</div>
         </div>
         <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-50">
-          {externallySynced?"EDIT / MOVE PIN ON MAP":"SET PIN MANUALLY ON MAP"}
+          STREET MAP VIEW
         </button>
       </div>
     </div>;
@@ -910,12 +910,12 @@ export default function DataEntryLocationEditor({
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate on interactive map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
+          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>STREET MAP VIEW</span><ChevronDown size={14} className={mapExpanded?"rotate-180":""}/></button>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" onClick={()=>setMapFocus(!mapExpanded)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
-            {mapExpanded ? "MINIMIZE MAP" : "SHOW MAP"}
+          <button type="button" onClick={()=>mapExpanded ? setMapFocus(false) : void openRelocationMap()} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
+            {mapExpanded ? "CLOSE STREET MAP" : "STREET MAP VIEW"}
           </button>
           {mapExpanded ? <>
             <span className="self-center text-[10px] font-semibold text-emerald-300">MAP FOCUS MODE · Registration Grid is hidden automatically for a larger map.</span>
@@ -937,7 +937,7 @@ export default function DataEntryLocationEditor({
       <div data-location-map-panel-v131="true" className="min-w-0 overflow-hidden">
         {!mapExpanded ? (
           <div className="grid min-h-[72px] place-items-center rounded-lg border border-dashed border-slate-600 px-4 text-center text-xs font-semibold text-slate-400">
-            Map minimized. Click SHOW MAP only when you need to inspect or move the pin.
+            Street Map View is optional. Open it only when you need to inspect or correct the drop-off pin.
           </div>
         ) : fallbackMapCenter || candidate ? (
           <div>
@@ -1027,7 +1027,7 @@ export default function DataEntryLocationEditor({
               className="pointer-events-none aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 opacity-90"
             />
             <button type="button" onClick={()=>void openRelocationMap()} className="mt-2 w-full rounded-xl border border-cyan-300/60 bg-[#061524] px-4 py-3 text-xs font-black text-cyan-100 shadow-xl">
-              EDIT DROP-OFF PIN — CLICK / DRAG MAP
+              STREET MAP VIEW
             </button>
           </div>
         ) : (
