@@ -640,7 +640,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, onMapFocusChange }: any) {
   const c = row.calculation || {};
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -1007,6 +1007,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 reloadToken={locationReloadToken}
                 onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
                 onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
+                onMapFocusChange={onMapFocusChange}
               />
             </div>
           </details>
@@ -1349,6 +1350,7 @@ export default function DataEntryFinancialV2Page() {
   const [staffProgressLoading,setStaffProgressLoading]=useState(false);
   const [staffProgressMessage,setStaffProgressMessage]=useState("");
   const [gridSearch,setGridSearch]=useState("");
+  const [mapFocusMode,setMapFocusMode]=useState(false);
   const [gridFilter,setGridFilter]=useState<"ALL"|"REGISTERED"|"PENDING">("ALL");
   // Recycled editor model: render one editable parcel form at a time.
   // All other parcels stay as lightweight state/table rows instead of mounting hundreds of text inputs.
@@ -3153,8 +3155,8 @@ export default function DataEntryFinancialV2Page() {
     <div data-data-entry-split-workspace-v82="true">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       rows.length?
-      <div className={`grid min-w-0 gap-4 ${fullRegistration?"xl:grid-cols-[minmax(520px,35%)_minmax(0,65%)]":"xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]"}`}>
-        <aside className="min-w-0 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
+      <div className={`grid min-w-0 gap-4 ${mapFocusMode ? "grid-cols-1" : fullRegistration?"xl:grid-cols-[minmax(520px,35%)_minmax(0,65%)]":"xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]"}`}>
+        <aside className={mapFocusMode ? "min-w-0" : "min-w-0 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1"}>
           <div className="mb-3 rounded-2xl border border-[#f6b84b]/35 bg-[#0b2236] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -3201,9 +3203,13 @@ export default function DataEntryFinancialV2Page() {
             tierAccess={tierAccess}
             locationReloadToken={locationReloadToken}
             fullMode={fullRegistration}
+            onMapFocusChange={setMapFocusMode}
           />)}
         </aside>
 
+{mapFocusMode ? (
+        <div className="hidden" aria-hidden="true" />
+      ) : (
         <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#0b2236]">
           <div className="border-b border-[#1a3a5c] bg-[#102741] p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
