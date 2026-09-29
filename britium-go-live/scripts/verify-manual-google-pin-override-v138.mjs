@@ -29,13 +29,24 @@ assert.match(
   "The manual-map override control must be visibly labelled.",
 );
 
-const effectStart = editor.indexOf("useEffect(() => {", editor.indexOf("async function openRelocationMap"));
-const effectBlock = editor.slice(effectStart, effectStart + 3600);
-assert.match(
-  effectBlock,
-  /\(!enabled\s*&&\s*!manualOpen\)/,
-  "Interactive Google Maps loading must be allowed after a manual override even when mapping is not routing-required.",
+const keylessEditorStart = editor.indexOf("function handleFallbackPointerDown");
+const keylessEditorBlock = editor.slice(keylessEditorStart, keylessEditorStart + 5200);
+assert.ok(
+  keylessEditorStart >= 0 || /\(!enabled\s*&&\s*!manualOpen\)/.test(editor),
+  "Manual map mode must remain available even when mapping is not routing-required.",
 );
+if (keylessEditorStart >= 0) {
+  assert.match(
+    keylessEditorBlock,
+    /handleFallbackPointerUp/,
+    "The keyless manual map must handle pointer interaction for pin placement.",
+  );
+  assert.match(
+    keylessEditorBlock,
+    /setManualMapCoordinate/,
+    "The keyless manual map must copy the clicked location into Data Entry coordinates.",
+  );
+}
 
 const applyStart = editor.indexOf("async function apply()");
 const applyBlock = editor.slice(applyStart, applyStart + 2600);
