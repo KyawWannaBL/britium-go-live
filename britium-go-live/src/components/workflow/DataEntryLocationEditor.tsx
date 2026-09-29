@@ -126,7 +126,7 @@ export default function DataEntryLocationEditor({
   const [mapError, setMapError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
-  const [mapVisualMode, setMapVisualMode] = useState<"NORMAL"|"EARTH">("NORMAL");
+  const [mapVisualMode, setMapVisualMode] = useState<"NORMAL"|"EARTH"|"STREET">("NORMAL");
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
   const operatorEditedRef = useRef(false);
@@ -188,7 +188,7 @@ export default function DataEntryLocationEditor({
 
   const visibleMapTiles = useMemo(() => {
     const center = fallbackMapCenter;
-    if (!center || !mapExpanded) return [] as Array<{key:string;src:string;fallbackSrc:string;left:number;top:number}>;
+    if (!center || !mapExpanded) return [] as Array<{key:string;src:string;fallbackSrc:string;left:number;top:number;attribution:string}>;
     const zoom = Math.max(11, Math.min(20, Math.round(fallbackMapZoom)));
     const world = latLngToWorld(center.latitude, center.longitude, zoom);
     const tileSize = 256;
@@ -199,15 +199,32 @@ export default function DataEntryLocationEditor({
     const minY = Math.floor(topWorld / tileSize) - 1;
     const maxY = Math.floor((topWorld + mapViewportSize.height) / tileSize) + 1;
     const tileCount = Math.pow(2, zoom);
-    const tiles: Array<{key:string;src:string;fallbackSrc:string;left:number;top:number}> = [];
+    const tiles: Array<{key:string;src:string;fallbackSrc:string;left:number;top:number;attribution:string}> = [];
     for (let tileY = minY; tileY <= maxY; tileY += 1) {
       if (tileY < 0 || tileY >= tileCount) continue;
       for (let tileX = minX; tileX <= maxX; tileX += 1) {
         const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
+        const source = mapVisualMode === "EARTH"
+          ? {
+              src: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
+              fallbackSrc: `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
+              attribution: "Satellite imagery © Esri and contributors",
+            }
+          : mapVisualMode === "NORMAL"
+            ? {
+                src: `https://a.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `https://b.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
+                attribution: "© OpenStreetMap contributors © CARTO",
+              }
+            : {
+                src: `https://a.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `https://b.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+                attribution: "© OpenStreetMap contributors",
+              };
+
         tiles.push({
-          key: `${zoom}/${wrappedX}/${tileY}`,
-          src: `https://a.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
-          fallbackSrc: `https://b.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+          key: `${mapVisualMode}/${zoom}/${wrappedX}/${tileY}`,
+          ...source,
           left: Math.round(tileX * tileSize - leftWorld),
           top: Math.round(tileY * tileSize - topWorld),
         });
@@ -221,6 +238,7 @@ export default function DataEntryLocationEditor({
     mapViewportSize.width,
     mapViewportSize.height,
     mapExpanded,
+    mapVisualMode,
   ]);
 
   useEffect(() => {
@@ -928,24 +946,36 @@ export default function DataEntryLocationEditor({
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
           <button
             type="button"
-            onClick={()=>{ setMapVisualMode("NORMAL"); if(mapExpanded) setMapFocus(false); }}
-            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="NORMAL" && !mapExpanded ? "border-cyan-300 bg-cyan-400 text-[#061524]" : "border-cyan-300/40 bg-[#12314a] text-cyan-100"}`}
+            onClick={()=>{ setMapVisualMode("NORMAL"); void openRelocationMap(); }}
+            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="NORMAL" && mapExpanded ? "border-cyan-300 bg-cyan-400 text-[#061524]" : "border-cyan-300/40 bg-[#12314a] text-cyan-100"}`}
           >
             NORMAL MAP VIEW
           </button>
           <button
             type="button"
-            onClick={()=>{ setMapVisualMode("EARTH"); if(mapExpanded) setMapFocus(false); }}
-            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="EARTH" && !mapExpanded ? "border-amber-300 bg-amber-300 text-[#061524]" : "border-amber-300/40 bg-[#12314a] text-amber-100"}`}
+            onClick={()=>{ setMapVisualMode("EARTH"); void openRelocationMap(); }}
+            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="EARTH" && mapExpanded ? "border-amber-300 bg-amber-300 text-[#061524]" : "border-amber-300/40 bg-[#12314a] text-amber-100"}`}
           >
             GOOGLE EARTH VIEW
           </button>
+          <button
+            type="button"
+            onClick={()=>{ setMapVisualMode("STREET"); void openRelocationMap(); }}
+            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="STREET" && mapExpanded ? "border-emerald-300 bg-emerald-400 text-[#061524]" : "border-emerald-300/40 bg-[#12314a] text-emerald-100"}`}
+          >
+            STREET MAP VIEW
+          </button>
         </div>
-        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>EDIT DROP-OFF PIN</span><ChevronDown size={14} className={mapExpanded?"rotate-180":""}/></button>
+        <div className="mt-2 rounded-xl border border-slate-700 bg-slate-950/35 px-3 py-2 text-[11px] font-semibold leading-5 text-slate-300">
+          All three views use the same coordinate editor. Drag/pan/zoom the selected map, place the fixed center pin on the exact gate or building, press <b>SET PIN HERE</b>, then press <b>Apply coordinates</b>.
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[11px] font-bold text-slate-400">
+            Active editor: {mapVisualMode === "EARTH" ? "Google Earth View" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}
+          </div>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -953,7 +983,7 @@ export default function DataEntryLocationEditor({
             {mapExpanded ? "CLOSE PIN EDITOR" : "EDIT DROP-OFF PIN"}
           </button>
           {mapExpanded ? <>
-            <span className="self-center text-[10px] font-semibold text-emerald-300">PIN EDITOR MODE · Registration Grid is hidden automatically for a larger editing area.</span>
+            <span className="self-center text-[10px] font-semibold text-emerald-300">{mapVisualMode === "EARTH" ? "GOOGLE EARTH VIEW" : mapVisualMode === "STREET" ? "STREET MAP VIEW" : "NORMAL MAP VIEW"} · Registration Grid is hidden automatically while correcting coordinates.</span>
             <button type="button" onClick={()=>setMapFocus(false)} className="rounded-lg border border-emerald-300/50 bg-emerald-400/10 px-4 py-2 text-[10px] font-black text-emerald-100">RETURN TO TABLE</button>
           </> : null}
         </div>
@@ -971,27 +1001,10 @@ export default function DataEntryLocationEditor({
       </div>
       <div data-location-map-panel-v131="true" className="min-w-0 overflow-hidden">
         {!mapExpanded ? (
-          <div className="overflow-hidden rounded-2xl border border-cyan-500/40 bg-slate-100">
-            {(mapVisualMode === "EARTH" ? earthMapViewUrl : normalMapViewUrl) ? (
-              <iframe
-                key={mapVisualMode + ":" + visualMapQuery}
-                src={mapVisualMode === "EARTH" ? earthMapViewUrl : normalMapViewUrl}
-                title={mapVisualMode === "EARTH" ? "Google Earth View" : "Normal Map View"}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="h-[360px] min-h-[280px] w-full border-0"
-              />
-            ) : (
-              <div className="grid min-h-[280px] place-items-center px-6 text-center text-sm font-semibold text-slate-500">
-                Enter or resolve an address to show the map.
-              </div>
-            )}
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600">
-              <span>{mapVisualMode === "EARTH" ? "Satellite imagery for checking the actual building, gate and compound." : "Standard road-map view for normal Data Entry work."}</span>
-              <button type="button" onClick={()=>void openRelocationMap()} className="rounded-lg bg-slate-900 px-3 py-2 font-black text-white">
-                EDIT DROP-OFF PIN
-              </button>
-            </div>
+          <div className="rounded-2xl border border-cyan-500/40 bg-[#0b2236] p-5 text-center">
+            <MapPin className="mx-auto h-9 w-9 text-cyan-300" />
+            <p className="mt-3 text-sm font-black text-white">Choose a map view above to inspect or correct the drop-off coordinates.</p>
+            <p className="mt-2 text-xs font-semibold leading-5 text-slate-300">Normal Map View, Google Earth View and Street Map View all support the same SET PIN HERE → Apply coordinates workflow.</p>
           </div>
         ) : fallbackMapCenter || candidate ? (
           <div>
@@ -1027,7 +1040,7 @@ export default function DataEntryLocationEditor({
                   />
                 ))}
                 <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-[9px] font-bold text-slate-600 shadow">
-                  © OpenStreetMap contributors
+                  {visibleMapTiles[0]?.attribution || "Map data"}
                 </div>
               </div>
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
@@ -1066,7 +1079,7 @@ export default function DataEntryLocationEditor({
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              <span>Tablet-safe map editor: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>. Google Maps remains available for final verification.</span>
+              <span>{mapVisualMode === "EARTH" ? "Google Earth / satellite-style imagery" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"}: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>.</span>
               {fallbackMapCenter ? <a href={`https://www.google.com/maps/search/?api=1&query=${fallbackMapCenter.latitude},${fallbackMapCenter.longitude}`} target="_blank" rel="noreferrer" className="rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-3 py-2 font-black text-cyan-100">VERIFY IN GOOGLE MAPS ↗</a> : null}
             </div>
             {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
