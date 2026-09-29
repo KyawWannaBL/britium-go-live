@@ -67,9 +67,20 @@ const realInteractiveEditor =
   && /setManualMapCoordinate\(center\.latitude,\s*center\.longitude,\s*["']clicked["']\)/.test(editor)
   && /SET PIN HERE/.test(editor);
 
+const domTileEditor =
+  /visibleMapTiles/.test(editor)
+  && /tile\.openstreetmap\.org/.test(editor)
+  && /handleDomMapPointerDown/.test(editor)
+  && /handleDomMapPointerMove/.test(editor)
+  && /handleDomMapPointerUp/.test(editor)
+  && /handleDomMapWheel/.test(editor)
+  && /moveMapByPixels/.test(editor)
+  && /function setPinAtMapCenter/.test(editor)
+  && /SET PIN HERE/.test(editor);
+
 assert.ok(
-  legacyGoogleEditor || keylessGoogleEditor || realInteractiveEditor,
-  "Data Entry must provide a real interactive or supported manual drop-off pin editor.",
+  legacyGoogleEditor || keylessGoogleEditor || realInteractiveEditor || domTileEditor,
+  "Data Entry must provide a supported interactive manual drop-off pin editor.",
 );
 
 console.log("Data Entry waybill/grid/map V137 contract PASS");

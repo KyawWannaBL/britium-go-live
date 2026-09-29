@@ -2,8 +2,6 @@
 // BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
 import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, Loader2, MapPin, Minus, MousePointer2, Plus, Search, SkipForward } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
@@ -134,13 +132,79 @@ export default function DataEntryLocationEditor({
   const resolutionCallback = useRef(onResolutionChange);
   const candidateCallback = useRef(onCandidateChange);
   const fallbackMapContainer = useRef<HTMLDivElement | null>(null);
-  const liveMap = useRef<mapboxgl.Map | null>(null);
+  const fallbackCenterRef = useRef<{latitude:number;longitude:number}|null>(null);
+  const mapPointers = useRef(new Map<number,{x:number;y:number;startX:number;startY:number;moved:boolean}>());
+  const pinchDistanceRef = useRef<number | null>(null);
   const [fallbackMapCenter, setFallbackMapCenter] = useState<{latitude:number;longitude:number}|null>(null);
   const [fallbackMapZoom, setFallbackMapZoom] = useState(18);
+  const [mapViewportSize, setMapViewportSize] = useState({ width: 900, height: 560 });
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
   const addressMapUrl = useMemo(() => googleMapsAddressUrl(query || address, township), [query, address, township]);
+  useEffect(() => {
+    fallbackCenterRef.current = fallbackMapCenter;
+  }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
+
+  useEffect(() => {
+    if (!mapExpanded || !fallbackMapContainer.current) return;
+    const element = fallbackMapContainer.current;
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        setMapViewportSize({
+          width: Math.max(320, Math.round(rect.width)),
+          height: Math.max(320, Math.round(rect.height)),
+        });
+      }
+    };
+    update();
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    observer?.observe(element);
+    window.addEventListener("resize", update);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [mapExpanded]);
+
+  const visibleMapTiles = useMemo(() => {
+    const center = fallbackMapCenter;
+    if (!center || !mapExpanded) return [] as Array<{key:string;src:string;fallbackSrc:string;left:number;top:number}>;
+    const zoom = Math.max(11, Math.min(20, Math.round(fallbackMapZoom)));
+    const world = latLngToWorld(center.latitude, center.longitude, zoom);
+    const tileSize = 256;
+    const leftWorld = world.x - mapViewportSize.width / 2;
+    const topWorld = world.y - mapViewportSize.height / 2;
+    const minX = Math.floor(leftWorld / tileSize) - 1;
+    const maxX = Math.floor((leftWorld + mapViewportSize.width) / tileSize) + 1;
+    const minY = Math.floor(topWorld / tileSize) - 1;
+    const maxY = Math.floor((topWorld + mapViewportSize.height) / tileSize) + 1;
+    const tileCount = Math.pow(2, zoom);
+    const tiles: Array<{key:string;src:string;fallbackSrc:string;left:number;top:number}> = [];
+    for (let tileY = minY; tileY <= maxY; tileY += 1) {
+      if (tileY < 0 || tileY >= tileCount) continue;
+      for (let tileX = minX; tileX <= maxX; tileX += 1) {
+        const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
+        tiles.push({
+          key: `${zoom}/${wrappedX}/${tileY}`,
+          src: `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+          fallbackSrc: `https://a.tile.openstreetmap.fr/hot/${zoom}/${wrappedX}/${tileY}.png`,
+          left: tileX * tileSize - leftWorld,
+          top: tileY * tileSize - topWorld,
+        });
+      }
+    }
+    return tiles;
+  }, [
+    fallbackMapCenter?.latitude,
+    fallbackMapCenter?.longitude,
+    fallbackMapZoom,
+    mapViewportSize.width,
+    mapViewportSize.height,
+    mapExpanded,
+  ]);
+
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
   }, [onResolutionChange]);
@@ -500,101 +564,97 @@ export default function DataEntryLocationEditor({
   }, [candidate?.latitude, candidate?.longitude]);
 
   function setPinAtMapCenter() {
-    const map = liveMap.current;
-    const center = map
-      ? { latitude: map.getCenter().lat, longitude: map.getCenter().lng }
-      : fallbackMapCenter;
+    const center = fallbackCenterRef.current || fallbackMapCenter;
     if (!center) return;
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
     setMessage(`Drop-off pin set at map center: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
   }
 
-  function nudgeFallbackMap(horizontalPixels: number, verticalPixels: number) {
-    const map = liveMap.current;
-    if (!map) return;
-    map.panBy([horizontalPixels, verticalPixels], { duration: 180 });
+  function moveMapByPixels(horizontalPixels: number, verticalPixels: number) {
+    const center = fallbackCenterRef.current || fallbackMapCenter;
+    if (!center) return;
+    const next = offsetMapCoordinate(center, horizontalPixels, verticalPixels, fallbackMapZoom);
+    if (!validMyanmarCoordinate(next.longitude, next.latitude)) return;
+    fallbackCenterRef.current = next;
+    setFallbackMapCenter(next);
   }
 
-  useEffect(() => {
-    if (!mapExpanded) {
-      if (liveMap.current) {
-        liveMap.current.remove();
-        liveMap.current = null;
+  function nudgeFallbackMap(horizontalPixels: number, verticalPixels: number) {
+    moveMapByPixels(horizontalPixels, verticalPixels);
+  }
+
+  function handleDomMapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    mapPointers.current.set(event.pointerId, {
+      x: event.clientX,
+      y: event.clientY,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+    });
+    if (mapPointers.current.size === 2) {
+      const points = [...mapPointers.current.values()];
+      pinchDistanceRef.current = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    }
+  }
+
+  function handleDomMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
+    const point = mapPointers.current.get(event.pointerId);
+    if (!point) return;
+    event.preventDefault();
+
+    const dx = event.clientX - point.x;
+    const dy = event.clientY - point.y;
+    point.x = event.clientX;
+    point.y = event.clientY;
+    if (Math.hypot(event.clientX - point.startX, event.clientY - point.startY) > 5) {
+      point.moved = true;
+    }
+    mapPointers.current.set(event.pointerId, point);
+
+    if (mapPointers.current.size >= 2) {
+      const points = [...mapPointers.current.values()].slice(0,2);
+      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+      const previous = pinchDistanceRef.current;
+      if (previous && distance > previous * 1.18) {
+        setFallbackMapZoom((zoom) => Math.min(20, zoom + 1));
+        pinchDistanceRef.current = distance;
+      } else if (previous && distance < previous * 0.84) {
+        setFallbackMapZoom((zoom) => Math.max(11, zoom - 1));
+        pinchDistanceRef.current = distance;
       }
       return;
     }
-    if (!fallbackMapContainer.current) return;
 
-    const initial = fallbackMapCenter
-      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
-        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
-        : { latitude: 16.8409, longitude: 96.1735 });
+    // Move the map continuously under the fixed center pin.
+    moveMapByPixels(-dx, -dy);
+  }
 
-    if (!liveMap.current) {
-      const map = new mapboxgl.Map({
-        container: fallbackMapContainer.current,
-        center: [initial.longitude, initial.latitude],
-        zoom: fallbackMapZoom,
-        minZoom: 11,
-        maxZoom: 20,
-        attributionControl: true,
-        style: {
-          version: 8,
-          sources: {
-            osm: {
-              type: "raster",
-              tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-              tileSize: 256,
-              attribution: "© OpenStreetMap contributors",
-            },
-          },
-          layers: [{ id: "osm", type: "raster", source: "osm" }],
-        },
-      });
+  function handleDomMapPointerUp(event: React.PointerEvent<HTMLDivElement>) {
+    const point = mapPointers.current.get(event.pointerId);
+    mapPointers.current.delete(event.pointerId);
+    if (mapPointers.current.size < 2) pinchDistanceRef.current = null;
+    if (!point || point.moved) return;
 
-      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
-      map.on("move", () => {
-        const center = map.getCenter();
-        setFallbackMapCenter({ latitude: center.lat, longitude: center.lng });
-      });
-      map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
-      map.on("click", (event) => {
-        map.easeTo({ center: event.lngLat, duration: 220 });
-      });
-      map.on("error", () => {
-        setMapError("Interactive map tiles could not load. Check the internet connection and try again.");
-      });
-      liveMap.current = map;
-      window.setTimeout(() => map.resize(), 80);
-    } else {
-      liveMap.current.resize();
-      liveMap.current.easeTo({
-        center: [initial.longitude, initial.latitude],
-        zoom: fallbackMapZoom,
-        duration: 0,
-      });
-    }
+    const container = fallbackMapContainer.current;
+    const center = fallbackCenterRef.current || fallbackMapCenter;
+    if (!container || !center) return;
+    const rect = container.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left - rect.width / 2;
+    const offsetY = event.clientY - rect.top - rect.height / 2;
+    const selected = offsetMapCoordinate(center, offsetX, offsetY, fallbackMapZoom);
+    if (!validMyanmarCoordinate(selected.longitude, selected.latitude)) return;
+    fallbackCenterRef.current = selected;
+    setFallbackMapCenter(selected);
+    setMessage(`Map recentered to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. Press SET PIN HERE when the fixed pin is on the exact gate/building.`);
+  }
 
-    return () => {
-      if (liveMap.current) {
-        liveMap.current.remove();
-        liveMap.current = null;
-      }
-    };
-  }, [mapExpanded]);
-
-  useEffect(() => {
-    const map = liveMap.current;
-    if (!map || !fallbackMapCenter) return;
-    const current = map.getCenter();
-    if (Math.abs(current.lat - fallbackMapCenter.latitude) < 0.000001
-      && Math.abs(current.lng - fallbackMapCenter.longitude) < 0.000001) return;
-    map.easeTo({
-      center: [fallbackMapCenter.longitude, fallbackMapCenter.latitude],
-      duration: 220,
-    });
-  }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
+  function handleDomMapWheel(event: React.WheelEvent<HTMLDivElement>) {
+    event.preventDefault();
+    setFallbackMapZoom((zoom) => Math.max(11, Math.min(20, zoom + (event.deltaY < 0 ? 1 : -1))));
+  }
 
   async function find(value = query, automatic = false) {
     if (!enabled && !manualOpen) {
@@ -880,8 +940,38 @@ export default function DataEntryLocationEditor({
             <div className="relative">
               <div
                 ref={fallbackMapContainer}
-                className="h-[min(68vh,720px)] min-h-[480px] w-full overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#dbeafe] shadow-2xl"
-              />
+                onPointerDown={handleDomMapPointerDown}
+                onPointerMove={handleDomMapPointerMove}
+                onPointerUp={handleDomMapPointerUp}
+                onPointerCancel={handleDomMapPointerUp}
+                onWheel={handleDomMapWheel}
+                className="relative h-[min(68vh,720px)] min-h-[480px] w-full cursor-grab touch-none select-none overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#dbeafe] shadow-2xl active:cursor-grabbing"
+              >
+                {visibleMapTiles.map((tile) => (
+                  <img
+                    key={tile.key}
+                    src={tile.src}
+                    alt=""
+                    draggable={false}
+                    data-fallback="0"
+                    onError={(event) => {
+                      const image = event.currentTarget;
+                      if (image.dataset.fallback === "0") {
+                        image.dataset.fallback = "1";
+                        image.src = tile.fallbackSrc;
+                      } else {
+                        image.style.visibility = "hidden";
+                        setMapError("Some map tiles could not load. You can still move the map or verify the selected point in Google Maps.");
+                      }
+                    }}
+                    className="pointer-events-none absolute h-64 w-64 max-w-none select-none"
+                    style={{ left: tile.left, top: tile.top }}
+                  />
+                ))}
+                <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-[9px] font-bold text-slate-600 shadow">
+                  © OpenStreetMap contributors
+                </div>
+              </div>
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="relative -translate-y-4">
                   <MapPin className="h-12 w-12 fill-rose-600 text-white drop-shadow-xl" strokeWidth={2.3}/>
@@ -906,8 +996,9 @@ export default function DataEntryLocationEditor({
                 <button type="button" onClick={()=>{
                   if(candidate) {
                     const next={latitude:Number(candidate.latitude),longitude:Number(candidate.longitude)};
+                    fallbackCenterRef.current=next;
                     setFallbackMapCenter(next);
-                    liveMap.current?.easeTo({center:[next.longitude,next.latitude],zoom:18,duration:250});
+                    setFallbackMapZoom(18);
                   }
                 }} className="h-10 rounded-xl bg-amber-300 px-2 text-[10px] font-black text-slate-900">PIN</button>
                 <button type="button" onClick={()=>nudgeFallbackMap(12,0)} className="h-10 rounded-xl bg-white px-3 text-sm font-black text-slate-800">→</button>
@@ -917,7 +1008,7 @@ export default function DataEntryLocationEditor({
               </div>
             </div>
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              <span>Real interactive map: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>.</span>
+              <span>Tablet-safe map editor: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>. Google Maps remains available for final verification.</span>
               {fallbackMapCenter ? <a href={`https://www.google.com/maps/search/?api=1&query=${fallbackMapCenter.latitude},${fallbackMapCenter.longitude}`} target="_blank" rel="noreferrer" className="rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-3 py-2 font-black text-cyan-100">VERIFY IN GOOGLE MAPS ↗</a> : null}
             </div>
             {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}

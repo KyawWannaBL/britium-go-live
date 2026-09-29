@@ -1064,7 +1064,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
     </section>
   );
 });
-function BritiumQuickTools() {
+function BritiumQuickTools({ hidden = false }: { hidden?: boolean }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [statusText, setStatusText] = useState('');
   const [customPickupId, setCustomPickupId] = useState('');
@@ -1243,6 +1243,8 @@ function BritiumQuickTools() {
     link.click();
     window.URL.revokeObjectURL(url);
   };
+
+  if (hidden) return null;
 
   return (
     <>
@@ -3550,7 +3552,7 @@ export default function DataEntryFinancialV2Page() {
         <div data-full-registration-layout-v85="true" className="mx-auto max-w-none p-4">{workspace}</div>
       </div>:null}
 
-      <BritiumQuickTools />
+      <BritiumQuickTools hidden={mapFocusMode} />
     </div>
   );
 }
