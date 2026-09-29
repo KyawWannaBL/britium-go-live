@@ -78,8 +78,20 @@ const domTileEditor =
   && /function setPinAtMapCenter/.test(editor)
   && /SET PIN HERE/.test(editor);
 
+const leafletEditor =
+  /loadLeafletRuntime/.test(editor)
+  && /L\.map\(/.test(editor)
+  && /L\.tileLayer\(/.test(editor)
+  && /map\.on\(["']moveend["']/.test(editor)
+  && /map\.on\(["']click["']/.test(editor)
+  && /\/map-tiles\/normal\/.test(editor)
+  && /\/map-tiles\/earth\/.test(editor)
+  && /\/map-tiles\/street\/.test(editor)
+  && /function setPinAtMapCenter/.test(editor)
+  && /SET PIN HERE/.test(editor);
+
 assert.ok(
-  legacyGoogleEditor || keylessGoogleEditor || realInteractiveEditor || domTileEditor,
+  legacyGoogleEditor || keylessGoogleEditor || realInteractiveEditor || domTileEditor || leafletEditor,
   "Data Entry must provide a supported interactive manual drop-off pin editor.",
 );
 
