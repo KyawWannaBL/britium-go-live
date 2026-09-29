@@ -282,6 +282,9 @@ export default function GlobalNextProcessGuide() {
   });
 
   const [openStepKey, setOpenStepKey] = useState<string>(currentKey);
+  const [mapFocusHidden, setMapFocusHidden] = useState(() =>
+    typeof document !== "undefined" && document.documentElement.dataset.dataEntryMapFocus === "true"
+  );
 
   useEffect(() => {
     if (currentKey) setOpenStepKey(currentKey);
@@ -293,7 +296,14 @@ export default function GlobalNextProcessGuide() {
     }
   }, [viewMode]);
 
-  if (!currentKey || currentIndex < 0) return null;
+  useEffect(() => {
+    const sync = () => setMapFocusHidden(document.documentElement.dataset.dataEntryMapFocus === "true");
+    sync();
+    window.addEventListener("britium:data-entry-map-focus", sync as EventListener);
+    return () => window.removeEventListener("britium:data-entry-map-focus", sync as EventListener);
+  }, []);
+
+  if (!currentKey || currentIndex < 0 || mapFocusHidden) return null;
 
   const current = PROCESS_FLOW[currentIndex];
   const previous = currentIndex > 0 ? PROCESS_FLOW[currentIndex - 1] : null;
