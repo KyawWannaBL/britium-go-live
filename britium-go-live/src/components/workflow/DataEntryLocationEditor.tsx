@@ -206,19 +206,19 @@ export default function DataEntryLocationEditor({
         const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
         const source = mapVisualMode === "EARTH"
           ? {
-              src: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
-              fallbackSrc: `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
+              src: `/map-tiles/earth/${zoom}/${wrappedX}/${tileY}.jpg`,
+              fallbackSrc: `/map-tiles/earth-fallback/${zoom}/${wrappedX}/${tileY}.jpg`,
               attribution: "Satellite imagery © Esri and contributors",
             }
           : mapVisualMode === "NORMAL"
             ? {
-                src: `https://a.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `https://b.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
+                src: `/map-tiles/normal/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `/map-tiles/normal-fallback/${zoom}/${wrappedX}/${tileY}.png`,
                 attribution: "© OpenStreetMap contributors © CARTO",
               }
             : {
-                src: `https://a.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `https://b.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+                src: `/map-tiles/street/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `/map-tiles/street-fallback/${zoom}/${wrappedX}/${tileY}.png`,
                 attribution: "© OpenStreetMap contributors",
               };
 

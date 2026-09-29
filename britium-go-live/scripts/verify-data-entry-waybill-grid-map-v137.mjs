@@ -69,7 +69,7 @@ const realInteractiveEditor =
 
 const domTileEditor =
   /visibleMapTiles/.test(editor)
-  && /tile\.openstreetmap\.org/.test(editor)
+  && (/tile\.openstreetmap\.org/.test(editor) || /\/map-tiles\/street\//.test(editor))
   && /handleDomMapPointerDown/.test(editor)
   && /handleDomMapPointerMove/.test(editor)
   && /handleDomMapPointerUp/.test(editor)

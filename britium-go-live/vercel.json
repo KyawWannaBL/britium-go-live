@@ -2,6 +2,30 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/map-tiles/normal/:z/:x/:y.png",
+      "destination": "https://a.basemaps.cartocdn.com/light_all/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles/normal-fallback/:z/:x/:y.png",
+      "destination": "https://b.basemaps.cartocdn.com/light_all/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles/street/:z/:x/:y.png",
+      "destination": "https://a.tile.openstreetmap.org/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles/street-fallback/:z/:x/:y.png",
+      "destination": "https://b.tile.openstreetmap.org/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles/earth/:z/:x/:y.jpg",
+      "destination": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/:z/:y/:x"
+    },
+    {
+      "source": "/map-tiles/earth-fallback/:z/:x/:y.jpg",
+      "destination": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/:z/:y/:x"
+    },
+    {
       "source": "/supabase/:path*",
       "destination": "https://dltavabvjwocknkyvwgz.supabase.co/:path*"
     },
@@ -11,6 +35,19 @@
     }
   ],
   "headers": [
+    {
+      "source": "/map-tiles/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600, stale-while-revalidate=86400"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
     {
       "source": "/supabase/:path*",
       "headers": [
