@@ -139,6 +139,9 @@ export default function DataEntryLocationEditor({
   const [fallbackMapCenter, setFallbackMapCenter] = useState<{latitude:number;longitude:number}|null>(null);
   const [fallbackMapZoom, setFallbackMapZoom] = useState(18);
   const [mapViewportSize, setMapViewportSize] = useState({ width: 900, height: 560 });
+  const [tileLoadState, setTileLoadState] = useState<"IDLE"|"LOADING"|"READY"|"ERROR">("IDLE");
+  const tileLoadCountRef = useRef(0);
+  const tileErrorCountRef = useRef(0);
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
@@ -206,19 +209,19 @@ export default function DataEntryLocationEditor({
         const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
         const source = mapVisualMode === "EARTH"
           ? {
-              src: `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
-              fallbackSrc: `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tileY}/${wrappedX}`,
+              src: `/map-tiles/earth/${zoom}/${wrappedX}/${tileY}.jpg`,
+              fallbackSrc: `/map-tiles/earth-fallback/${zoom}/${wrappedX}/${tileY}.jpg`,
               attribution: "Satellite imagery © Esri and contributors",
             }
           : mapVisualMode === "NORMAL"
             ? {
-                src: `https://a.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `https://b.basemaps.cartocdn.com/light_all/${zoom}/${wrappedX}/${tileY}.png`,
+                src: `/map-tiles/normal/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `/map-tiles/normal-fallback/${zoom}/${wrappedX}/${tileY}.png`,
                 attribution: "© OpenStreetMap contributors © CARTO",
               }
             : {
-                src: `https://a.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `https://b.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+                src: `/map-tiles/street/${zoom}/${wrappedX}/${tileY}.png`,
+                fallbackSrc: `/map-tiles/street-fallback/${zoom}/${wrappedX}/${tileY}.png`,
                 attribution: "© OpenStreetMap contributors",
               };
 
@@ -240,6 +243,23 @@ export default function DataEntryLocationEditor({
     mapExpanded,
     mapVisualMode,
   ]);
+
+  useEffect(() => {
+    if (!mapExpanded) {
+      setTileLoadState("IDLE");
+      return;
+    }
+    tileLoadCountRef.current = 0;
+    tileErrorCountRef.current = 0;
+    setTileLoadState("LOADING");
+    const timer = window.setTimeout(() => {
+      if (tileLoadCountRef.current === 0) {
+        setTileLoadState("ERROR");
+        setMapError("Map imagery could not be loaded through the Britium map proxy. Use Retry Map or Verify in Google Maps.");
+      }
+    }, 5000);
+    return () => window.clearTimeout(timer);
+  }, [mapExpanded, mapVisualMode, fallbackMapZoom, fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
 
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
@@ -575,13 +595,13 @@ export default function DataEntryLocationEditor({
         latitude: Number(candidate.latitude),
         longitude: Number(candidate.longitude),
       });
-      setMessage("Street Map View is ready. Move the map to the exact gate/building, press SET PIN HERE, then Apply coordinates.");
+      setMessage(`${mapVisualMode === "EARTH" ? "Google Earth View" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"} is ready. Move the map to the exact gate/building, press SET PIN HERE, then Apply coordinates.`);
       return;
     }
 
     if (validMyanmarCoordinate(lng, lat)) {
       setFallbackMapCenter({ latitude: Number(lat), longitude: Number(lng) });
-      setMessage("Street Map View is ready from the current coordinates. Move to the exact drop-off point, press SET PIN HERE, then Apply coordinates.");
+      setMessage(`${mapVisualMode === "EARTH" ? "Google Earth View" : mapVisualMode === "STREET" ? "Street Map View" : "Normal Map View"} is ready from the current coordinates. Move to the exact drop-off point, press SET PIN HERE, then Apply coordinates.`);
       return;
     }
 
@@ -1025,20 +1045,54 @@ export default function DataEntryLocationEditor({
                     alt=""
                     draggable={false}
                     data-fallback="0"
+                    onLoad={() => {
+                      tileLoadCountRef.current += 1;
+                      if (tileLoadCountRef.current === 1) {
+                        setTileLoadState("READY");
+                        setMapError("");
+                      }
+                    }}
                     onError={(event) => {
                       const image = event.currentTarget;
                       if (image.dataset.fallback === "0") {
                         image.dataset.fallback = "1";
                         image.src = tile.fallbackSrc;
                       } else {
+                        tileErrorCountRef.current += 1;
                         image.style.visibility = "hidden";
-                        setMapError("Some map tiles could not load. You can still move the map or verify the selected point in Google Maps.");
+                        if (tileLoadCountRef.current === 0 && tileErrorCountRef.current >= 4) {
+                          setTileLoadState("ERROR");
+                          setMapError("Map imagery is unavailable right now. Retry the map or verify the point in Google Maps.");
+                        }
                       }
                     }}
                     className="pointer-events-none absolute h-[257px] w-[257px] max-w-none select-none"
                     style={{ left: tile.left, top: tile.top }}
                   />
                 ))}
+                {tileLoadState === "LOADING" && (
+                  <div className="pointer-events-none absolute inset-0 grid place-items-center bg-slate-100/65 backdrop-blur-[1px]">
+                    <div className="rounded-2xl bg-slate-950/90 px-4 py-3 text-xs font-black text-white shadow-xl">
+                      Loading {mapVisualMode === "EARTH" ? "Google Earth imagery" : mapVisualMode === "STREET" ? "Street Map" : "Normal Map"}…
+                    </div>
+                  </div>
+                )}
+                {tileLoadState === "ERROR" && (
+                  <div className="absolute inset-0 grid place-items-center bg-slate-100/90 p-6">
+                    <div className="max-w-sm text-center">
+                      <AlertTriangle className="mx-auto h-9 w-9 text-amber-600"/>
+                      <p className="mt-3 text-sm font-black text-slate-900">Map imagery did not load.</p>
+                      <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">The coordinate editor is still safe. Retry the map before setting a pin.</p>
+                      <button
+                        type="button"
+                        onClick={()=>{ setTileLoadState("LOADING"); setFallbackMapZoom((z)=>z===20?19:z+1); window.setTimeout(()=>setFallbackMapZoom((z)=>z===11?12:z-1),80); }}
+                        className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white"
+                      >
+                        RETRY MAP
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-[9px] font-bold text-slate-600 shadow">
                   {visibleMapTiles[0]?.attribution || "Map data"}
                 </div>
