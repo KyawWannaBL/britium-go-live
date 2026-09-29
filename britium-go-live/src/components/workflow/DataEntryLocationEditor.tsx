@@ -126,6 +126,7 @@ export default function DataEntryLocationEditor({
   const [mapError, setMapError] = useState("");
   const [manualOpen, setManualOpen] = useState(false);
   const [mapExpanded, setMapExpanded] = useState(false);
+  const [mapVisualMode, setMapVisualMode] = useState<"NORMAL"|"EARTH">("NORMAL");
   const lastAutoKey = useRef("");
   const requestSequence = useRef(0);
   const operatorEditedRef = useRef(false);
@@ -142,6 +143,23 @@ export default function DataEntryLocationEditor({
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
   const addressMapUrl = useMemo(() => googleMapsAddressUrl(query || address, township), [query, address, township]);
+  const visualMapQuery = useMemo(() => {
+    if (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)) {
+      return `${Number(candidate.latitude).toFixed(6)},${Number(candidate.longitude).toFixed(6)}`;
+    }
+    if (validMyanmarCoordinate(lng, lat)) {
+      return `${Number(lat).toFixed(6)},${Number(lng).toFixed(6)}`;
+    }
+    return [query || address, township, "Myanmar"].filter(Boolean).join(", ");
+  }, [candidate?.latitude, candidate?.longitude, lat, lng, query, address, township]);
+  const normalMapViewUrl = useMemo(
+    () => visualMapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(visualMapQuery)}&z=18&output=embed` : "",
+    [visualMapQuery],
+  );
+  const earthMapViewUrl = useMemo(
+    () => visualMapQuery ? `https://maps.google.com/maps?q=${encodeURIComponent(visualMapQuery)}&t=k&z=19&output=embed` : "",
+    [visualMapQuery],
+  );
   useEffect(() => {
     fallbackCenterRef.current = fallbackMapCenter;
   }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
@@ -869,7 +887,7 @@ export default function DataEntryLocationEditor({
           </div>
         </div>
         <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/60 bg-[#12314a] px-4 py-2.5 text-[10px] font-black text-cyan-100 disabled:opacity-50">
-          STREET MAP VIEW
+          EDIT DROP-OFF PIN
         </button>
       </div>
     </div>;
@@ -885,7 +903,7 @@ export default function DataEntryLocationEditor({
           <div className="mt-1 text-[11px] leading-5 text-slate-200">{externallySynced?"Validated coordinates are ready for Wayplan. You can still move the pin manually when the exact drop-off point needs correction.":externallyReviewRequired?"This row failed automatic validation and is included in the consolidated review Excel. You can set the pin manually now.":"The controlled background queue is checking this row without loading an interactive map. Manual pin placement remains available."}</div>
         </div>
         <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100 disabled:opacity-50">
-          STREET MAP VIEW
+          EDIT DROP-OFF PIN
         </button>
       </div>
     </div>;
@@ -909,16 +927,33 @@ export default function DataEntryLocationEditor({
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Source:</b> {candidate?.coordinateSource || "Not resolved"}</div>
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={()=>{ setMapVisualMode("NORMAL"); if(mapExpanded) setMapFocus(false); }}
+            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="NORMAL" && !mapExpanded ? "border-cyan-300 bg-cyan-400 text-[#061524]" : "border-cyan-300/40 bg-[#12314a] text-cyan-100"}`}
+          >
+            NORMAL MAP VIEW
+          </button>
+          <button
+            type="button"
+            onClick={()=>{ setMapVisualMode("EARTH"); if(mapExpanded) setMapFocus(false); }}
+            className={`rounded-xl border px-4 py-3 text-xs font-black transition ${mapVisualMode==="EARTH" && !mapExpanded ? "border-amber-300 bg-amber-300 text-[#061524]" : "border-amber-300/40 bg-[#12314a] text-amber-100"}`}
+          >
+            GOOGLE EARTH VIEW
+          </button>
+        </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>STREET MAP VIEW</span><ChevronDown size={14} className={mapExpanded?"rotate-180":""}/></button>
+          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>EDIT DROP-OFF PIN</span><ChevronDown size={14} className={mapExpanded?"rotate-180":""}/></button>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
           <button type="button" onClick={()=>mapExpanded ? setMapFocus(false) : void openRelocationMap()} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
-            {mapExpanded ? "CLOSE STREET MAP" : "STREET MAP VIEW"}
+            {mapExpanded ? "CLOSE PIN EDITOR" : "EDIT DROP-OFF PIN"}
           </button>
           {mapExpanded ? <>
-            <span className="self-center text-[10px] font-semibold text-emerald-300">MAP FOCUS MODE · Registration Grid is hidden automatically for a larger map.</span>
+            <span className="self-center text-[10px] font-semibold text-emerald-300">PIN EDITOR MODE · Registration Grid is hidden automatically for a larger editing area.</span>
             <button type="button" onClick={()=>setMapFocus(false)} className="rounded-lg border border-emerald-300/50 bg-emerald-400/10 px-4 py-2 text-[10px] font-black text-emerald-100">RETURN TO TABLE</button>
           </> : null}
         </div>
@@ -936,8 +971,27 @@ export default function DataEntryLocationEditor({
       </div>
       <div data-location-map-panel-v131="true" className="min-w-0 overflow-hidden">
         {!mapExpanded ? (
-          <div className="grid min-h-[72px] place-items-center rounded-lg border border-dashed border-slate-600 px-4 text-center text-xs font-semibold text-slate-400">
-            Street Map View is optional. Open it only when you need to inspect or correct the drop-off pin.
+          <div className="overflow-hidden rounded-2xl border border-cyan-500/40 bg-slate-100">
+            {(mapVisualMode === "EARTH" ? earthMapViewUrl : normalMapViewUrl) ? (
+              <iframe
+                key={mapVisualMode + ":" + visualMapQuery}
+                src={mapVisualMode === "EARTH" ? earthMapViewUrl : normalMapViewUrl}
+                title={mapVisualMode === "EARTH" ? "Google Earth View" : "Normal Map View"}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                className="h-[360px] min-h-[280px] w-full border-0"
+              />
+            ) : (
+              <div className="grid min-h-[280px] place-items-center px-6 text-center text-sm font-semibold text-slate-500">
+                Enter or resolve an address to show the map.
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-600">
+              <span>{mapVisualMode === "EARTH" ? "Satellite imagery for checking the actual building, gate and compound." : "Standard road-map view for normal Data Entry work."}</span>
+              <button type="button" onClick={()=>void openRelocationMap()} className="rounded-lg bg-slate-900 px-3 py-2 font-black text-white">
+                EDIT DROP-OFF PIN
+              </button>
+            </div>
           </div>
         ) : fallbackMapCenter || candidate ? (
           <div>
@@ -1027,7 +1081,7 @@ export default function DataEntryLocationEditor({
               className="pointer-events-none aspect-[16/7] min-h-[230px] w-full rounded-lg border border-cyan-600/60 opacity-90"
             />
             <button type="button" onClick={()=>void openRelocationMap()} className="mt-2 w-full rounded-xl border border-cyan-300/60 bg-[#061524] px-4 py-3 text-xs font-black text-cyan-100 shadow-xl">
-              STREET MAP VIEW
+              EDIT DROP-OFF PIN
             </button>
           </div>
         ) : (
