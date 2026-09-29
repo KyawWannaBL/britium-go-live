@@ -517,7 +517,14 @@ export default function DataEntryLocationEditor({
   }
 
   useEffect(() => {
-    if (!mapExpanded || !fallbackMapContainer.current) return;
+    if (!mapExpanded) {
+      if (liveMap.current) {
+        liveMap.current.remove();
+        liveMap.current = null;
+      }
+      return;
+    }
+    if (!fallbackMapContainer.current) return;
 
     const initial = fallbackMapCenter
       || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
@@ -570,7 +577,7 @@ export default function DataEntryLocationEditor({
     }
 
     return () => {
-      if (!mapExpanded && liveMap.current) {
+      if (liveMap.current) {
         liveMap.current.remove();
         liveMap.current = null;
       }
