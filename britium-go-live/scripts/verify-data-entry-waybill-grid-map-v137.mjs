@@ -84,9 +84,9 @@ const leafletEditor =
   && /L\.tileLayer\(/.test(editor)
   && /map\.on\(["']moveend["']/.test(editor)
   && /map\.on\(["']click["']/.test(editor)
-  && /\/map-tiles\/normal\/.test(editor)
-  && /\/map-tiles\/earth\/.test(editor)
-  && /\/map-tiles\/street\/.test(editor)
+  && /\/map-tiles\/normal\//.test(editor)
+  && /\/map-tiles\/earth\//.test(editor)
+  && /\/map-tiles\/street\//.test(editor)
   && /function setPinAtMapCenter/.test(editor)
   && /SET PIN HERE/.test(editor);
 
