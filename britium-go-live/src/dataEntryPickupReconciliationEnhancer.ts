@@ -332,9 +332,10 @@ let scheduled = false;
 function reconcileDom(): void {
   scheduled = false;
   const active = hideLegacyJsonButton();
+  const mapFocus = document.documentElement.dataset.dataEntryMapFocus === "true";
   let panel = document.getElementById(PANEL_ID);
   let toggle = document.getElementById(RECONCILIATION_TOGGLE_ID);
-  if (!active) {
+  if (!active || mapFocus) {
     if (panel) panel.style.display = "none";
     if (toggle) toggle.style.display = "none";
     return;
@@ -362,5 +363,6 @@ if (typeof window !== "undefined" && typeof document !== "undefined") {
   document.addEventListener("change", (event) => {
     if (event.target === pickupSelect()) window.setTimeout(() => void refreshSummary(), 0);
   }, true);
+  window.addEventListener("britium:data-entry-map-focus", scheduleDomReconcile as EventListener);
   window.setTimeout(() => void refreshSummary(), 400);
 }
