@@ -31,13 +31,22 @@ assert.match(
 
 const keylessEditorStart = editor.indexOf("function handleFallbackPointerDown");
 const realInteractiveEditorStart = editor.indexOf("new mapboxgl.Map");
+const domTileEditorStart = editor.indexOf("function handleDomMapPointerDown");
 assert.ok(
   keylessEditorStart >= 0
     || realInteractiveEditorStart >= 0
+    || domTileEditorStart >= 0
     || /\(!enabled\s*&&\s*!manualOpen\)/.test(editor),
   "Manual map mode must remain available even when mapping is not routing-required.",
 );
-if (realInteractiveEditorStart >= 0) {
+if (domTileEditorStart >= 0) {
+  const domTileBlock = editor.slice(domTileEditorStart, domTileEditorStart + 7600);
+  assert.match(domTileBlock, /handleDomMapPointerMove/, "DOM tile editor must pan continuously while dragging.");
+  assert.match(domTileBlock, /handleDomMapPointerUp/, "DOM tile editor must support tap-to-recenter.");
+  assert.match(domTileBlock, /handleDomMapWheel/, "DOM tile editor must support wheel zoom.");
+  assert.match(editor, /SET PIN HERE/, "DOM tile editor must expose explicit pin confirmation.");
+  assert.match(editor, /setManualMapCoordinate/, "Confirmed center must copy into Data Entry coordinates.");
+} else if (realInteractiveEditorStart >= 0) {
   const interactiveBlock = editor.slice(realInteractiveEditorStart, realInteractiveEditorStart + 6200);
   assert.match(interactiveBlock, /map\.on\(["']move["']/, "Interactive map must update its center while the user drags.");
   assert.match(interactiveBlock, /map\.on\(["']click["']/, "Interactive map must support tap-to-recenter.");
