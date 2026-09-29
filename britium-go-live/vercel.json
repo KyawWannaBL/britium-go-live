@@ -11,11 +11,11 @@
     },
     {
       "source": "/map-tiles/normal/:z/:x/:y.png",
-      "destination": "https://a.basemaps.cartocdn.com/light_all/:z/:x/:y.png"
+      "destination": "https://a.tile.openstreetmap.org/:z/:x/:y.png"
     },
     {
       "source": "/map-tiles/normal-fallback/:z/:x/:y.png",
-      "destination": "https://b.basemaps.cartocdn.com/light_all/:z/:x/:y.png"
+      "destination": "https://b.tile.openstreetmap.org/:z/:x/:y.png"
     },
     {
       "source": "/map-tiles/street/:z/:x/:y.png",
