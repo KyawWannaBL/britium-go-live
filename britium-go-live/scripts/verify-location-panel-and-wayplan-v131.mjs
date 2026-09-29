@@ -7,12 +7,12 @@ const editor=fs.readFileSync(path.join(root,"src/components/workflow/DataEntryLo
 const planner=fs.readFileSync(path.join(root,"src/components/MultiVanPlanner.tsx"),"utf8");
 
 assert.match(editor,/mapExpanded/,"location editor must have explicit map expansion state");
-assert.match(editor,/SHOW MAP|EXPAND MAP|STREET MAP VIEW/,"location editor must expose a deliberate optional map-view control");
+assert.match(editor,/SHOW MAP|EXPAND MAP|STREET MAP VIEW|NORMAL MAP VIEW|GOOGLE EARTH VIEW|EDIT DROP-OFF PIN/,"location editor must expose a deliberate optional map-view control");
 assert.doesNotMatch(editor,/xl:grid-cols-\[\.9fr_1\.1fr\]/,"location editor must not split inside the narrow recycled-form column");
 assert.match(editor,/data-location-map-panel-v131/,"map panel must have a bounded non-overflowing hook");
 assert.match(editor,/savedMapboxExact/,"validated exact Mapbox pins must be restored without a Google reverse-geocode dependency");
 assert.doesNotMatch(editor,/WARD_APPROXIMATE\|STREET_APPROXIMATE\/.test\(savedSource\).*MAPBOX/s,"saved exact Mapbox pins must not be blanket-rejected");
-assert.match(editor,/COLLAPSE MAP|MINIMIZE MAP|CLOSE STREET MAP|RETURN TO TABLE/,"expanded Street Map View must be closable");
+assert.match(editor,/COLLAPSE MAP|MINIMIZE MAP|CLOSE STREET MAP|CLOSE PIN EDITOR|RETURN TO TABLE/,"expanded Street Map View must be closable");
 
 assert.match(planner,/LOCATION_RECOVERY_INTERACTIVE_LIMIT/,"Wayplan planner must cap synchronous location recovery");
 assert.match(planner,/deferred road optimization/i,"Wayplan must explicitly proceed when location recovery is deferred");
