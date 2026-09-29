@@ -3271,6 +3271,7 @@ export default function DataEntryFinancialV2Page() {
             </table>
           </div>
         </section>
+      )}
       </div>
       :<div className="rounded-2xl border border-dashed border-[#31506a] bg-[#0b2236] p-10 text-center text-sm text-[#8db4ce]">Select a pickup request or upload a batch to start Data Entry.</div>}
     </div>
