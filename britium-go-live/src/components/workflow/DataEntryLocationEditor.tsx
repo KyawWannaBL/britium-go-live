@@ -566,9 +566,9 @@ export default function DataEntryLocationEditor({
   }, [candidate?.latitude, candidate?.longitude]);
 
   function leafletTileTemplate() {
-    if (mapVisualMode === "EARTH") return "/map-tiles/earth/{z}/{x}/{y}.jpg";
-    if (mapVisualMode === "STREET") return "/map-tiles/street/{z}/{x}/{y}.png";
-    return "/map-tiles/normal/{z}/{x}/{y}.png";
+    if (mapVisualMode === "EARTH") return "/map-tiles-v158/earth/{z}/{x}/{y}.jpg";
+    if (mapVisualMode === "STREET") return "/map-tiles-v158/street/{z}/{x}/{y}.png";
+    return "/map-tiles-v158/normal/{z}/{x}/{y}.png";
   }
 
   function mapModeAttribution() {
@@ -650,6 +650,7 @@ export default function DataEntryLocationEditor({
         const tileLayer = L.tileLayer(leafletTileTemplate(), {
           minZoom: 11,
           maxZoom: 20,
+          maxNativeZoom: mapVisualMode === "EARTH" ? 18 : 19,
           tileSize: 256,
           updateWhenIdle: false,
           updateWhenZooming: false,
@@ -670,10 +671,18 @@ export default function DataEntryLocationEditor({
         leafletMapRef.current = map;
         leafletTileLayerRef.current = tileLayer;
 
+        const markerIcon = L.divIcon({
+          className: "britium-dropoff-marker",
+          html: '<div style="width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#e11d48;border:4px solid #fff;box-shadow:0 8px 22px rgba(15,23,42,.38);position:relative"><div style="position:absolute;width:10px;height:10px;border-radius:999px;background:#fff;left:8px;top:8px"></div></div>',
+          iconSize: [34, 42],
+          iconAnchor: [17, 38],
+        });
         const marker = L.marker([initial.latitude, initial.longitude], {
           draggable: true,
           autoPan: true,
           title: "Drag to exact drop-off point",
+          icon: markerIcon,
+          keyboard: true,
         }).addTo(map);
         leafletMarkerRef.current = marker;
 
