@@ -2,6 +2,18 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
+      "source": "/map-tiles-v158/normal/:z/:x/:y.png",
+      "destination": "https://a.tile.openstreetmap.org/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles-v158/street/:z/:x/:y.png",
+      "destination": "https://b.tile.openstreetmap.org/:z/:x/:y.png"
+    },
+    {
+      "source": "/map-tiles-v158/earth/:z/:x/:y.jpg",
+      "destination": "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/:z/:y/:x"
+    },
+    {
       "source": "/map-lib/leaflet.js",
       "destination": "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     },
@@ -43,6 +55,19 @@
     }
   ],
   "headers": [
+    {
+      "source": "/map-tiles-v158/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=300, stale-while-revalidate=900"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    },
     {
       "source": "/map-tiles/:path*",
       "headers": [
