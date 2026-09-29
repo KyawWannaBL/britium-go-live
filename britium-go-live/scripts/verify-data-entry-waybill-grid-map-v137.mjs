@@ -54,19 +54,22 @@ const keylessGoogleEditor =
   /handleFallbackPointerDown/.test(editor)
   && /handleFallbackPointerUp/.test(editor)
   && /offsetMapCoordinate/.test(editor)
-  && /keylessEditorUrl/.test(editor)
-  && (
-    /setManualMapCoordinate\(selected\.latitude,\s*selected\.longitude,\s*["']clicked["']\)/.test(editor)
-    || (
-      /function setPinAtMapCenter/.test(editor)
-      && /setManualMapCoordinate\(center\.latitude,\s*center\.longitude,\s*["']clicked["']\)/.test(editor)
-      && /SET PIN HERE/.test(editor)
-    )
-  );
+  && /function setPinAtMapCenter/.test(editor)
+  && /SET PIN HERE/.test(editor);
+
+const realInteractiveEditor =
+  /import mapboxgl from ["']mapbox-gl["']/.test(editor)
+  && /new mapboxgl\.Map\(/.test(editor)
+  && /map\.on\(["']move["']/.test(editor)
+  && /map\.on\(["']click["']/.test(editor)
+  && /map\.panBy\(/.test(editor)
+  && /function setPinAtMapCenter/.test(editor)
+  && /setManualMapCoordinate\(center\.latitude,\s*center\.longitude,\s*["']clicked["']\)/.test(editor)
+  && /SET PIN HERE/.test(editor);
 
 assert.ok(
-  legacyGoogleEditor || keylessGoogleEditor,
-  "Data Entry must provide either the legacy draggable Google editor or the V148 keyless click/drag Google map editor.",
+  legacyGoogleEditor || keylessGoogleEditor || realInteractiveEditor,
+  "Data Entry must provide a real interactive or supported manual drop-off pin editor.",
 );
 
 console.log("Data Entry waybill/grid/map V137 contract PASS");

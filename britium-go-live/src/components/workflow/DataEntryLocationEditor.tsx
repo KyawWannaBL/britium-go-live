@@ -2,6 +2,8 @@
 // BRITIUM_BILINGUAL_LOCATION_REVIEW_UI_V12_6
 // BRITIUM_AUTOMATIC_POSTAL_MAP_WORKFLOW_V11
 import { useEffect, useMemo, useRef, useState } from "react";
+import mapboxgl from "mapbox-gl";
+import "mapbox-gl/dist/mapbox-gl.css";
 import { AlertTriangle, CheckCircle2, ChevronDown, Crosshair, Loader2, MapPin, Minus, MousePointer2, Plus, Search, SkipForward } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { convertMyanmarAddressToEnglish } from "@/lib/myanmarAddressConverter";
@@ -132,24 +134,13 @@ export default function DataEntryLocationEditor({
   const resolutionCallback = useRef(onResolutionChange);
   const candidateCallback = useRef(onCandidateChange);
   const fallbackMapContainer = useRef<HTMLDivElement | null>(null);
-  const fallbackPointer = useRef<{x:number;y:number;moved:boolean}|null>(null);
+  const liveMap = useRef<mapboxgl.Map | null>(null);
   const [fallbackMapCenter, setFallbackMapCenter] = useState<{latitude:number;longitude:number}|null>(null);
   const [fallbackMapZoom, setFallbackMapZoom] = useState(18);
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
   const addressMapUrl = useMemo(() => googleMapsAddressUrl(query || address, township), [query, address, township]);
-  const keylessEditorUrl = useMemo(() => {
-    const center = fallbackMapCenter
-      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
-        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
-        : null);
-    if (!center) return "";
-    const lat = Number(center.latitude).toFixed(6);
-    const lng = Number(center.longitude).toFixed(6);
-    return `https://www.google.com/maps?q=${lat},${lng}&z=${fallbackMapZoom}&output=embed`;
-  }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude, candidate?.latitude, candidate?.longitude, fallbackMapZoom]);
-
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
   }, [onResolutionChange]);
@@ -480,13 +471,13 @@ export default function DataEntryLocationEditor({
         latitude: Number(candidate.latitude),
         longitude: Number(candidate.longitude),
       });
-      setMessage("Editable Google Map is ready. Click the exact gate/building to replace the auto pin. Latitude and Longitude will update immediately.");
+      setMessage("Interactive map is ready. Click the exact gate/building to replace the auto pin. Latitude and Longitude will update immediately.");
       return;
     }
 
     if (validMyanmarCoordinate(lng, lat)) {
       setFallbackMapCenter({ latitude: Number(lat), longitude: Number(lng) });
-      setMessage("Editable Google Map is ready from the current coordinates. Click the exact drop-off point to correct them.");
+      setMessage("Interactive map is ready from the current coordinates. Click the exact drop-off point to correct them.");
       return;
     }
 
@@ -497,7 +488,7 @@ export default function DataEntryLocationEditor({
         : { latitude: 16.8409, longitude: 96.1735 };
 
     setFallbackMapCenter(fallback);
-    setMessage("No reliable auto pin was available. The editable Google Map is centered on the delivery area. Drag to pan, zoom if needed, then click the exact drop-off point.");
+    setMessage("No reliable auto pin was available. The interactive map is centered on the delivery area. Drag to pan, zoom if needed, then click the exact drop-off point.");
   }
 
   useEffect(() => {
@@ -508,61 +499,11 @@ export default function DataEntryLocationEditor({
     });
   }, [candidate?.latitude, candidate?.longitude]);
 
-  function handleFallbackPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    fallbackPointer.current = { x: event.clientX, y: event.clientY, moved: false };
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  }
-
-  function handleFallbackPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const pointer = fallbackPointer.current;
-    if (!pointer) return;
-    if (Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > 7) {
-      pointer.moved = true;
-    }
-  }
-
-  function handleFallbackPointerUp(event: React.PointerEvent<HTMLDivElement>) {
-    const pointer = fallbackPointer.current;
-    fallbackPointer.current = null;
-    const container = fallbackMapContainer.current;
-    const center = fallbackMapCenter
-      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
-        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
-        : null);
-
-    if (!pointer || !container || !center) return;
-    const rect = container.getBoundingClientRect();
-
-    if (pointer.moved) {
-      const dx = event.clientX - pointer.x;
-      const dy = event.clientY - pointer.y;
-      const nextCenter = offsetMapCoordinate(center, -dx, -dy, fallbackMapZoom);
-      if (validMyanmarCoordinate(nextCenter.longitude, nextCenter.latitude)) {
-        setFallbackMapCenter(nextCenter);
-        setMessage("Map moved. Now click the exact gate/building to set the corrected drop-off pin.");
-      }
-      return;
-    }
-
-    const pixelX = event.clientX - rect.left - rect.width / 2;
-    const pixelY = event.clientY - rect.top - rect.height / 2;
-    const selected = offsetMapCoordinate(center, pixelX, pixelY, fallbackMapZoom);
-
-    if (!validMyanmarCoordinate(selected.longitude, selected.latitude)) {
-      setMapError("The selected point is outside the supported Myanmar coordinate area.");
-      return;
-    }
-
-    setFallbackMapCenter(selected);
-    setMapError("");
-    setMessage(`Map center moved to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. If the center crosshair is on the exact gate/building, press SET PIN HERE.`);
-  }
-
   function setPinAtMapCenter() {
-    const center = fallbackMapCenter
-      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
-        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
-        : null);
+    const map = liveMap.current;
+    const center = map
+      ? { latitude: map.getCenter().lat, longitude: map.getCenter().lng }
+      : fallbackMapCenter;
     if (!center) return;
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
@@ -570,16 +511,90 @@ export default function DataEntryLocationEditor({
   }
 
   function nudgeFallbackMap(horizontalPixels: number, verticalPixels: number) {
-    const center = fallbackMapCenter
+    const map = liveMap.current;
+    if (!map) return;
+    map.panBy([horizontalPixels, verticalPixels], { duration: 180 });
+  }
+
+  useEffect(() => {
+    if (!mapExpanded) {
+      if (liveMap.current) {
+        liveMap.current.remove();
+        liveMap.current = null;
+      }
+      return;
+    }
+    if (!fallbackMapContainer.current) return;
+
+    const initial = fallbackMapCenter
       || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
         ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
-        : null);
-    if (!center) return;
-    const next = offsetMapCoordinate(center, horizontalPixels, verticalPixels, fallbackMapZoom);
-    if (validMyanmarCoordinate(next.longitude, next.latitude)) {
-      setFallbackMapCenter(next);
+        : { latitude: 16.8409, longitude: 96.1735 });
+
+    if (!liveMap.current) {
+      const map = new mapboxgl.Map({
+        container: fallbackMapContainer.current,
+        center: [initial.longitude, initial.latitude],
+        zoom: fallbackMapZoom,
+        minZoom: 11,
+        maxZoom: 20,
+        attributionControl: true,
+        style: {
+          version: 8,
+          sources: {
+            osm: {
+              type: "raster",
+              tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+              tileSize: 256,
+              attribution: "© OpenStreetMap contributors",
+            },
+          },
+          layers: [{ id: "osm", type: "raster", source: "osm" }],
+        },
+      });
+
+      map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+      map.on("move", () => {
+        const center = map.getCenter();
+        setFallbackMapCenter({ latitude: center.lat, longitude: center.lng });
+      });
+      map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
+      map.on("click", (event) => {
+        map.easeTo({ center: event.lngLat, duration: 220 });
+      });
+      map.on("error", () => {
+        setMapError("Interactive map tiles could not load. Check the internet connection and try again.");
+      });
+      liveMap.current = map;
+      window.setTimeout(() => map.resize(), 80);
+    } else {
+      liveMap.current.resize();
+      liveMap.current.easeTo({
+        center: [initial.longitude, initial.latitude],
+        zoom: fallbackMapZoom,
+        duration: 0,
+      });
     }
-  }
+
+    return () => {
+      if (liveMap.current) {
+        liveMap.current.remove();
+        liveMap.current = null;
+      }
+    };
+  }, [mapExpanded]);
+
+  useEffect(() => {
+    const map = liveMap.current;
+    if (!map || !fallbackMapCenter) return;
+    const current = map.getCenter();
+    if (Math.abs(current.lat - fallbackMapCenter.latitude) < 0.000001
+      && Math.abs(current.lng - fallbackMapCenter.longitude) < 0.000001) return;
+    map.easeTo({
+      center: [fallbackMapCenter.longitude, fallbackMapCenter.latitude],
+      duration: 220,
+    });
+  }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
 
   async function find(value = query, automatic = false) {
     if (!enabled && !manualOpen) {
@@ -831,7 +846,7 @@ export default function DataEntryLocationEditor({
         </div>
         {message && <div className={`mt-2 text-xs ${candidate?.reviewStatus === "ACCEPTED" ? "text-emerald-300" : "text-amber-200"}`}>{candidate?.reviewStatus === "ACCEPTED"?<CheckCircle2 size={14} className="mr-1 inline"/>:<AlertTriangle size={14} className="mr-1 inline"/>}{message}</div>}
         <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate directly on Google Map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
+          <button type="button" onClick={()=>void openRelocationMap()} disabled={busy} className="flex w-full items-center justify-between rounded-lg border border-cyan-400/50 bg-cyan-400/10 px-3 py-2 text-xs font-black text-cyan-100 disabled:opacity-50"><span className="flex items-center gap-2"><MousePointer2 size={14}/>{candidate ? "Relocate on interactive map" : "Show pin and select location on this map"}</span><ChevronDown size={14} className={manualOpen?"rotate-180":""}/></button>
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
@@ -860,82 +875,52 @@ export default function DataEntryLocationEditor({
           <div className="grid min-h-[72px] place-items-center rounded-lg border border-dashed border-slate-600 px-4 text-center text-xs font-semibold text-slate-400">
             Map minimized. Click SHOW MAP only when you need to inspect or move the pin.
           </div>
-        ) : keylessEditorUrl ? (
+        ) : fallbackMapCenter || candidate ? (
           <div>
-            <div
-              ref={fallbackMapContainer}
-              className="relative h-[min(68vh,720px)] min-h-[480px] w-full touch-none overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#061524] shadow-2xl"
-              onPointerDown={handleFallbackPointerDown}
-              onPointerMove={handleFallbackPointerMove}
-              onPointerUp={handleFallbackPointerUp}
-            >
-              <iframe
-                key={keylessEditorUrl}
-                src={keylessEditorUrl}
-                title={`Google Maps editable drop-off location for ${deliveryWayId || "new parcel"}`}
-                loading="lazy"
-                referrerPolicy="no-referrer-when-downgrade"
-                className="pointer-events-none h-full w-full border-0"
+            <div className="relative">
+              <div
+                ref={fallbackMapContainer}
+                className="h-[min(68vh,720px)] min-h-[480px] w-full overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#dbeafe] shadow-2xl"
               />
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
-                <Crosshair className="h-10 w-10 text-rose-500 drop-shadow-xl" strokeWidth={2.6}/>
-              </div>
-              <div className="pointer-events-none absolute left-3 top-3 max-w-[75%] rounded-lg border border-amber-300/60 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-amber-100 shadow-xl">
-                DRAG MAP UNDER CENTER CROSSHAIR · TAP MAP TO RECENTER · PRESS SET PIN HERE
-              </div>
-              {validMyanmarCoordinate(lng, lat) && (
-                <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/50 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-cyan-100 shadow-xl">
-                  SAVED CANDIDATE: {Number(lat).toFixed(6)}, {Number(lng).toFixed(6)}
+                <div className="relative -translate-y-4">
+                  <MapPin className="h-12 w-12 fill-rose-600 text-white drop-shadow-xl" strokeWidth={2.3}/>
+                  <span className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-2 rounded-full bg-rose-600/30 blur-sm" />
                 </div>
-              )}
-              <div className="absolute right-3 top-3 grid gap-2">
-                <button
-                  type="button"
-                  aria-label="Zoom in"
-                  onPointerDown={(event)=>event.stopPropagation()}
-                  onClick={()=>setFallbackMapZoom((zoom)=>Math.min(20, zoom + 1))}
-                  className="grid h-11 w-11 place-items-center rounded-xl border border-white/70 bg-white/95 text-slate-900 shadow-lg"
-                >
-                  <Plus size={18}/>
-                </button>
-                <button
-                  type="button"
-                  aria-label="Zoom out"
-                  onPointerDown={(event)=>event.stopPropagation()}
-                  onClick={()=>setFallbackMapZoom((zoom)=>Math.max(12, zoom - 1))}
-                  className="grid h-11 w-11 place-items-center rounded-xl border border-white/70 bg-white/95 text-slate-900 shadow-lg"
-                >
-                  <Minus size={18}/>
-                </button>
+              </div>
+              <div className="pointer-events-none absolute left-3 top-3 max-w-[70%] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-black text-slate-800 shadow-xl">
+                DRAG / PINCH / WHEEL TO MOVE MAP · TAP TO RECENTER
               </div>
               <button
                 type="button"
-                onPointerDown={(event)=>event.stopPropagation()}
                 onClick={setPinAtMapCenter}
-                className="absolute bottom-3 left-1/2 z-10 min-h-11 -translate-x-1/2 rounded-xl bg-emerald-400 px-5 py-2 text-[11px] font-black text-[#04111d] shadow-xl ring-2 ring-white/70"
+                className="absolute bottom-4 left-1/2 z-10 min-h-12 -translate-x-1/2 rounded-2xl bg-emerald-500 px-6 py-3 text-xs font-black text-white shadow-2xl ring-2 ring-white"
               >
                 SET PIN HERE
               </button>
-              <div className="absolute bottom-3 right-3 grid grid-cols-3 gap-1 rounded-xl border border-white/50 bg-[#061524]/90 p-1.5 shadow-xl">
+              <div className="absolute bottom-4 right-4 grid grid-cols-3 gap-1 rounded-2xl border border-white/60 bg-slate-950/85 p-1.5 shadow-xl backdrop-blur">
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,-16)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↑</button>
+                <button type="button" onClick={()=>nudgeFallbackMap(0,-12)} className="h-10 rounded-xl bg-white px-3 text-sm font-black text-slate-800">↑</button>
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(-16,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">←</button>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>candidate&&setFallbackMapCenter({latitude:Number(candidate.latitude),longitude:Number(candidate.longitude)})} className="h-9 rounded-lg bg-amber-300 px-2 text-[10px] font-black text-slate-900">PIN</button>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(16,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">→</button>
+                <button type="button" onClick={()=>nudgeFallbackMap(-12,0)} className="h-10 rounded-xl bg-white px-3 text-sm font-black text-slate-800">←</button>
+                <button type="button" onClick={()=>{
+                  if(candidate) {
+                    const next={latitude:Number(candidate.latitude),longitude:Number(candidate.longitude)};
+                    setFallbackMapCenter(next);
+                    liveMap.current?.easeTo({center:[next.longitude,next.latitude],zoom:18,duration:250});
+                  }
+                }} className="h-10 rounded-xl bg-amber-300 px-2 text-[10px] font-black text-slate-900">PIN</button>
+                <button type="button" onClick={()=>nudgeFallbackMap(12,0)} className="h-10 rounded-xl bg-white px-3 text-sm font-black text-slate-800">→</button>
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,16)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↓</button>
+                <button type="button" onClick={()=>nudgeFallbackMap(0,12)} className="h-10 rounded-xl bg-white px-3 text-sm font-black text-slate-800">↓</button>
                 <span/>
               </div>
             </div>
-            <div className="mt-2 rounded-lg border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              Use the fixed center crosshair instead of dragging a marker. Drag the map to pan, tap anywhere to recenter, use the arrow controls for small ~10 m adjustments, then press <b>SET PIN HERE</b>. Latitude and Longitude update only when you set the pin. Click <b>Apply coordinates</b> after verifying the exact gate/building.
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
+              <span>Real interactive map: drag continuously, pinch/wheel zoom, tap to recenter, then press <b>SET PIN HERE</b>.</span>
+              {fallbackMapCenter ? <a href={`https://www.google.com/maps/search/?api=1&query=${fallbackMapCenter.latitude},${fallbackMapCenter.longitude}`} target="_blank" rel="noreferrer" className="rounded-lg border border-cyan-300/50 bg-cyan-400/10 px-3 py-2 font-black text-cyan-100">VERIFY IN GOOGLE MAPS ↗</a> : null}
             </div>
-            {mapError && (
-              <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">
-                {mapError}
-              </div>
-            )}
+            {mapError && <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">{mapError}</div>}
           </div>
         ) : addressMapUrl || mapUrl ? (
           <div>
