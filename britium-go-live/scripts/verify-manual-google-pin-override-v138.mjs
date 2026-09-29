@@ -25,7 +25,7 @@ assert.match(
 );
 assert.match(
   disabledBranch,
-  /OPEN MANUAL MAP|SET PIN MANUALLY|EDIT PIN|STREET MAP VIEW/i,
+  /OPEN MANUAL MAP|SET PIN MANUALLY|EDIT PIN|STREET MAP VIEW|EDIT DROP-OFF PIN/i,
   "The manual-map override control must be visibly labelled, including the optional STREET MAP VIEW caption.",
 );
 
