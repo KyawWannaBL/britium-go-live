@@ -97,6 +97,42 @@ function offsetMapCoordinate(
   return worldToLatLng(world.x + pixelX, world.y + pixelY, zoom);
 }
 
+let leafletRuntimePromise: Promise<any> | null = null;
+
+function loadLeafletRuntime() {
+  if (typeof window === "undefined") return Promise.reject(new Error("Leaflet requires a browser."));
+  const existing = (window as any).L;
+  if (existing) return Promise.resolve(existing);
+  if (leafletRuntimePromise) return leafletRuntimePromise;
+
+  leafletRuntimePromise = new Promise((resolve, reject) => {
+    if (!document.querySelector('link[data-britium-leaflet="true"]')) {
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "/map-lib/leaflet.css";
+      link.dataset.britiumLeaflet = "true";
+      document.head.appendChild(link);
+    }
+
+    const existingScript = document.querySelector('script[data-britium-leaflet="true"]') as HTMLScriptElement | null;
+    if (existingScript) {
+      existingScript.addEventListener("load", () => resolve((window as any).L), { once: true });
+      existingScript.addEventListener("error", () => reject(new Error("Leaflet runtime failed to load.")), { once: true });
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "/map-lib/leaflet.js";
+    script.async = true;
+    script.dataset.britiumLeaflet = "true";
+    script.onload = () => (window as any).L ? resolve((window as any).L) : reject(new Error("Leaflet runtime was not available after loading."));
+    script.onerror = () => reject(new Error("Leaflet runtime failed to load."));
+    document.head.appendChild(script);
+  });
+
+  return leafletRuntimePromise;
+}
+
 export default function DataEntryLocationEditor({
   pickupId,
   parcelSequence,
@@ -133,12 +169,13 @@ export default function DataEntryLocationEditor({
   const resolutionCallback = useRef(onResolutionChange);
   const candidateCallback = useRef(onCandidateChange);
   const fallbackMapContainer = useRef<HTMLDivElement | null>(null);
+  const leafletMapRef = useRef<any>(null);
+  const leafletTileLayerRef = useRef<any>(null);
   const fallbackCenterRef = useRef<{latitude:number;longitude:number}|null>(null);
   const mapPointers = useRef(new Map<number,{x:number;y:number;startX:number;startY:number;moved:boolean}>());
   const pinchDistanceRef = useRef<number | null>(null);
   const [fallbackMapCenter, setFallbackMapCenter] = useState<{latitude:number;longitude:number}|null>(null);
   const [fallbackMapZoom, setFallbackMapZoom] = useState(18);
-  const [mapViewportSize, setMapViewportSize] = useState({ width: 900, height: 560 });
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
@@ -163,83 +200,6 @@ export default function DataEntryLocationEditor({
   useEffect(() => {
     fallbackCenterRef.current = fallbackMapCenter;
   }, [fallbackMapCenter?.latitude, fallbackMapCenter?.longitude]);
-
-  useEffect(() => {
-    if (!mapExpanded || !fallbackMapContainer.current) return;
-    const element = fallbackMapContainer.current;
-    const update = () => {
-      const rect = element.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        setMapViewportSize({
-          width: Math.max(320, Math.round(rect.width)),
-          height: Math.max(320, Math.round(rect.height)),
-        });
-      }
-    };
-    update();
-    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
-    observer?.observe(element);
-    window.addEventListener("resize", update);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener("resize", update);
-    };
-  }, [mapExpanded]);
-
-  const visibleMapTiles = useMemo(() => {
-    const center = fallbackMapCenter;
-    if (!center || !mapExpanded) return [] as Array<{key:string;src:string;fallbackSrc:string;left:number;top:number;attribution:string}>;
-    const zoom = Math.max(11, Math.min(20, Math.round(fallbackMapZoom)));
-    const world = latLngToWorld(center.latitude, center.longitude, zoom);
-    const tileSize = 256;
-    const leftWorld = world.x - mapViewportSize.width / 2;
-    const topWorld = world.y - mapViewportSize.height / 2;
-    const minX = Math.floor(leftWorld / tileSize) - 1;
-    const maxX = Math.floor((leftWorld + mapViewportSize.width) / tileSize) + 1;
-    const minY = Math.floor(topWorld / tileSize) - 1;
-    const maxY = Math.floor((topWorld + mapViewportSize.height) / tileSize) + 1;
-    const tileCount = Math.pow(2, zoom);
-    const tiles: Array<{key:string;src:string;fallbackSrc:string;left:number;top:number;attribution:string}> = [];
-    for (let tileY = minY; tileY <= maxY; tileY += 1) {
-      if (tileY < 0 || tileY >= tileCount) continue;
-      for (let tileX = minX; tileX <= maxX; tileX += 1) {
-        const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
-        const source = mapVisualMode === "EARTH"
-          ? {
-              src: `/map-tiles/earth/${zoom}/${wrappedX}/${tileY}.jpg`,
-              fallbackSrc: `/map-tiles/earth-fallback/${zoom}/${wrappedX}/${tileY}.jpg`,
-              attribution: "Satellite imagery © Esri and contributors",
-            }
-          : mapVisualMode === "NORMAL"
-            ? {
-                src: `/map-tiles/normal/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `/map-tiles/normal-fallback/${zoom}/${wrappedX}/${tileY}.png`,
-                attribution: "© OpenStreetMap contributors © CARTO",
-              }
-            : {
-                src: `/map-tiles/street/${zoom}/${wrappedX}/${tileY}.png`,
-                fallbackSrc: `/map-tiles/street-fallback/${zoom}/${wrappedX}/${tileY}.png`,
-                attribution: "© OpenStreetMap contributors",
-              };
-
-        tiles.push({
-          key: `${mapVisualMode}/${zoom}/${wrappedX}/${tileY}`,
-          ...source,
-          left: Math.round(tileX * tileSize - leftWorld),
-          top: Math.round(tileY * tileSize - topWorld),
-        });
-      }
-    }
-    return tiles;
-  }, [
-    fallbackMapCenter?.latitude,
-    fallbackMapCenter?.longitude,
-    fallbackMapZoom,
-    mapViewportSize.width,
-    mapViewportSize.height,
-    mapExpanded,
-    mapVisualMode,
-  ]);
 
   useEffect(() => {
     resolutionCallback.current = onResolutionChange;
@@ -603,8 +563,23 @@ export default function DataEntryLocationEditor({
     });
   }, [candidate?.latitude, candidate?.longitude]);
 
+  function leafletTileTemplate() {
+    if (mapVisualMode === "EARTH") return "/map-tiles/earth/{z}/{x}/{y}.jpg";
+    if (mapVisualMode === "STREET") return "/map-tiles/street/{z}/{x}/{y}.png";
+    return "/map-tiles/normal/{z}/{x}/{y}.png";
+  }
+
+  function mapModeAttribution() {
+    if (mapVisualMode === "EARTH") return "Satellite imagery © Esri and contributors";
+    if (mapVisualMode === "STREET") return "© OpenStreetMap contributors";
+    return "© OpenStreetMap contributors © CARTO";
+  }
+
   function setPinAtMapCenter() {
-    const center = fallbackCenterRef.current || fallbackMapCenter;
+    const leafletCenter = leafletMapRef.current?.getCenter?.();
+    const center = leafletCenter
+      ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
+      : (fallbackCenterRef.current || fallbackMapCenter);
     if (!center) return;
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
@@ -621,80 +596,101 @@ export default function DataEntryLocationEditor({
   }
 
   function nudgeFallbackMap(horizontalPixels: number, verticalPixels: number) {
+    const map = leafletMapRef.current;
+    if (map?.panBy) {
+      map.panBy([horizontalPixels, verticalPixels], { animate: true, duration: 0.18 });
+      return;
+    }
     moveMapByPixels(horizontalPixels, verticalPixels);
   }
 
-  function handleDomMapPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    mapPointers.current.set(event.pointerId, {
-      x: event.clientX,
-      y: event.clientY,
-      startX: event.clientX,
-      startY: event.clientY,
-      moved: false,
-    });
-    if (mapPointers.current.size === 2) {
-      const points = [...mapPointers.current.values()];
-      pinchDistanceRef.current = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-    }
-  }
+  useEffect(() => {
+    if (!mapExpanded || !fallbackMapContainer.current) return;
 
-  function handleDomMapPointerMove(event: React.PointerEvent<HTMLDivElement>) {
-    const point = mapPointers.current.get(event.pointerId);
-    if (!point) return;
-    event.preventDefault();
+    let cancelled = false;
+    const initial = fallbackMapCenter
+      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
+        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
+        : validMyanmarCoordinate(lng, lat)
+          ? { latitude: Number(lat), longitude: Number(lng) }
+          : { latitude: 16.8409, longitude: 96.1735 });
 
-    const dx = event.clientX - point.x;
-    const dy = event.clientY - point.y;
-    point.x = event.clientX;
-    point.y = event.clientY;
-    if (Math.hypot(event.clientX - point.startX, event.clientY - point.startY) > 5) {
-      point.moved = true;
-    }
-    mapPointers.current.set(event.pointerId, point);
+    setTileLoadState("LOADING");
+    setMapError("");
 
-    if (mapPointers.current.size >= 2) {
-      const points = [...mapPointers.current.values()].slice(0,2);
-      const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-      const previous = pinchDistanceRef.current;
-      if (previous && distance > previous * 1.18) {
-        setFallbackMapZoom((zoom) => Math.min(20, zoom + 1));
-        pinchDistanceRef.current = distance;
-      } else if (previous && distance < previous * 0.84) {
-        setFallbackMapZoom((zoom) => Math.max(11, zoom - 1));
-        pinchDistanceRef.current = distance;
+    void loadLeafletRuntime()
+      .then((L) => {
+        if (cancelled || !fallbackMapContainer.current) return;
+
+        if (leafletMapRef.current) {
+          leafletMapRef.current.remove();
+          leafletMapRef.current = null;
+          leafletTileLayerRef.current = null;
+        }
+
+        const map = L.map(fallbackMapContainer.current, {
+          zoomControl: true,
+          attributionControl: true,
+          preferCanvas: false,
+          inertia: true,
+          dragging: true,
+          touchZoom: true,
+          scrollWheelZoom: true,
+          doubleClickZoom: true,
+          boxZoom: false,
+          keyboard: true,
+        }).setView([initial.latitude, initial.longitude], Math.max(11, Math.min(20, fallbackMapZoom)));
+
+        const tileLayer = L.tileLayer(leafletTileTemplate(), {
+          minZoom: 11,
+          maxZoom: 20,
+          tileSize: 256,
+          updateWhenIdle: false,
+          updateWhenZooming: false,
+          keepBuffer: 3,
+          attribution: mapModeAttribution(),
+        });
+
+        tileLayer.on("load", () => {
+          setTileLoadState("READY");
+          setMapError("");
+        });
+        tileLayer.on("tileerror", () => {
+          setTileLoadState("ERROR");
+          setMapError("Map imagery failed to load. Retry or switch map view.");
+        });
+
+        tileLayer.addTo(map);
+        leafletMapRef.current = map;
+        leafletTileLayerRef.current = tileLayer;
+
+        map.on("moveend", () => {
+          const center = map.getCenter();
+          const next = { latitude: Number(center.lat), longitude: Number(center.lng) };
+          fallbackCenterRef.current = next;
+          setFallbackMapCenter(next);
+        });
+        map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
+        map.on("click", (event: any) => {
+          map.panTo(event.latlng, { animate: true, duration: 0.2 });
+        });
+
+        window.setTimeout(() => map.invalidateSize(true), 60);
+      })
+      .catch((error) => {
+        setTileLoadState("ERROR");
+        setMapError(error?.message || "Interactive map engine failed to load.");
+      });
+
+    return () => {
+      cancelled = true;
+      if (leafletMapRef.current) {
+        leafletMapRef.current.remove();
+        leafletMapRef.current = null;
+        leafletTileLayerRef.current = null;
       }
-      return;
-    }
-
-    // Move the map continuously under the fixed center pin.
-    moveMapByPixels(-dx, -dy);
-  }
-
-  function handleDomMapPointerUp(event: React.PointerEvent<HTMLDivElement>) {
-    const point = mapPointers.current.get(event.pointerId);
-    mapPointers.current.delete(event.pointerId);
-    if (mapPointers.current.size < 2) pinchDistanceRef.current = null;
-    if (!point || point.moved) return;
-
-    const container = fallbackMapContainer.current;
-    const center = fallbackCenterRef.current || fallbackMapCenter;
-    if (!container || !center) return;
-    const rect = container.getBoundingClientRect();
-    const offsetX = event.clientX - rect.left - rect.width / 2;
-    const offsetY = event.clientY - rect.top - rect.height / 2;
-    const selected = offsetMapCoordinate(center, offsetX, offsetY, fallbackMapZoom);
-    if (!validMyanmarCoordinate(selected.longitude, selected.latitude)) return;
-    fallbackCenterRef.current = selected;
-    setFallbackMapCenter(selected);
-    setMessage(`Map recentered to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. Press SET PIN HERE when the fixed pin is on the exact gate/building.`);
-  }
-
-  function handleDomMapWheel(event: React.WheelEvent<HTMLDivElement>) {
-    event.preventDefault();
-    setFallbackMapZoom((zoom) => Math.max(11, Math.min(20, zoom + (event.deltaY < 0 ? 1 : -1))));
-  }
+    };
+  }, [mapExpanded, mapVisualMode]);
 
   async function find(value = query, automatic = false) {
     if (!enabled && !manualOpen) {
@@ -1011,38 +1007,31 @@ export default function DataEntryLocationEditor({
             <div className="relative">
               <div
                 ref={fallbackMapContainer}
-                onPointerDown={handleDomMapPointerDown}
-                onPointerMove={handleDomMapPointerMove}
-                onPointerUp={handleDomMapPointerUp}
-                onPointerCancel={handleDomMapPointerUp}
-                onWheel={handleDomMapWheel}
-                className="relative h-[min(68vh,720px)] min-h-[480px] w-full cursor-grab touch-none select-none overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#dbeafe] shadow-2xl active:cursor-grabbing"
-              >
-                {visibleMapTiles.map((tile) => (
-                  <img
-                    key={tile.key}
-                    src={tile.src}
-                    alt=""
-                    draggable={false}
-                    data-fallback="0"
-                    onError={(event) => {
-                      const image = event.currentTarget;
-                      if (image.dataset.fallback === "0") {
-                        image.dataset.fallback = "1";
-                        image.src = tile.fallbackSrc;
-                      } else {
-                        image.style.visibility = "hidden";
-                        setMapError("Some map tiles could not load. You can still move the map or verify the selected point in Google Maps.");
-                      }
-                    }}
-                    className="pointer-events-none absolute h-[257px] w-[257px] max-w-none select-none"
-                    style={{ left: tile.left, top: tile.top }}
-                  />
-                ))}
-                <div className="pointer-events-none absolute bottom-2 left-2 rounded bg-white/90 px-2 py-1 text-[9px] font-bold text-slate-600 shadow">
-                  {visibleMapTiles[0]?.attribution || "Map data"}
+                className="relative h-[min(68vh,720px)] min-h-[480px] w-full overflow-hidden rounded-2xl border border-cyan-500/70 bg-slate-100 shadow-2xl"
+              />
+              {tileLoadState === "LOADING" && (
+                <div className="pointer-events-none absolute inset-0 grid place-items-center bg-slate-100/65 backdrop-blur-[1px]">
+                  <div className="rounded-2xl bg-slate-950/90 px-4 py-3 text-xs font-black text-white shadow-xl">
+                    Loading {mapVisualMode === "EARTH" ? "Google Earth imagery" : mapVisualMode === "STREET" ? "Street Map" : "Normal Map"}…
+                  </div>
                 </div>
-              </div>
+              )}
+              {tileLoadState === "ERROR" && (
+                <div className="absolute inset-0 z-20 grid place-items-center bg-slate-100/92 p-6">
+                  <div className="max-w-sm text-center">
+                    <AlertTriangle className="mx-auto h-9 w-9 text-amber-600"/>
+                    <p className="mt-3 text-sm font-black text-slate-900">Map imagery did not load.</p>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Retry this view or switch to another map mode.</p>
+                    <button
+                      type="button"
+                      onClick={()=>{ setTileLoadState("LOADING"); setMapError(""); const current = fallbackCenterRef.current || fallbackMapCenter; setMapFocus(false); window.setTimeout(()=>{ if(current){ fallbackCenterRef.current=current; setFallbackMapCenter(current); } setMapFocus(true); },80); }}
+                      className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white"
+                    >
+                      RETRY MAP
+                    </button>
+                  </div>
+                </div>
+              )}
               <div className="pointer-events-none absolute inset-0 grid place-items-center">
                 <div className="relative -translate-y-4">
                   <MapPin className="h-12 w-12 fill-rose-600 text-white drop-shadow-xl" strokeWidth={2.3}/>
