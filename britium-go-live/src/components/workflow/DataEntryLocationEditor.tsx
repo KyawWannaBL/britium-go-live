@@ -54,6 +54,7 @@ type DataEntryLocationEditorProps = {
   reloadToken?: number;
   onResolutionChange?: (status: DataEntryLocationResolution) => void;
   onCandidateChange?: (candidate: DeliveryLocation | null) => void;
+  onMapFocusChange?: (focused: boolean) => void;
 };
 
 function addressKey(value: unknown) {
@@ -114,6 +115,7 @@ export default function DataEntryLocationEditor({
   reloadToken = 0,
   onResolutionChange,
   onCandidateChange,
+  onMapFocusChange,
 }: DataEntryLocationEditorProps) {
   const [query, setQuery] = useState(address || "");
   const [candidate, setCandidate] = useState<DeliveryLocation | null>(null);
@@ -309,6 +311,7 @@ export default function DataEntryLocationEditor({
     setMessage("");
     setMapError("");
     setMapExpanded(false);
+    onMapFocusChange?.(false);
     setFallbackMapCenter(null);
     setFallbackMapZoom(18);
     lastAutoKey.current = "";
@@ -461,10 +464,16 @@ export default function DataEntryLocationEditor({
     void autoPersistManualPin(synced.next, action);
   }
 
+  function setMapFocus(focused: boolean) {
+    setMapExpanded(focused);
+    onMapFocusChange?.(focused);
+  }
+
   async function openRelocationMap() {
     setManualOpen(true);
-    setMapExpanded(true);
+    setMapFocus(true);
     setMapError("");
+    window.setTimeout(() => fallbackMapContainer.current?.scrollIntoView?.({ behavior: "smooth", block: "center" }), 80);
 
     if (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)) {
       setFallbackMapCenter({
@@ -545,9 +554,19 @@ export default function DataEntryLocationEditor({
     }
 
     setFallbackMapCenter(selected);
-    setManualMapCoordinate(selected.latitude, selected.longitude, "clicked");
     setMapError("");
-    setMessage(`Drop-off pin moved to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. Latitude and Longitude were updated immediately. Verify the point, then click Apply coordinates.`);
+    setMessage(`Map center moved to ${selected.latitude.toFixed(6)}, ${selected.longitude.toFixed(6)}. If the center crosshair is on the exact gate/building, press SET PIN HERE.`);
+  }
+
+  function setPinAtMapCenter() {
+    const center = fallbackMapCenter
+      || (candidate && validMyanmarCoordinate(candidate.longitude, candidate.latitude)
+        ? { latitude: Number(candidate.latitude), longitude: Number(candidate.longitude) }
+        : null);
+    if (!center) return;
+    setManualMapCoordinate(center.latitude, center.longitude, "clicked");
+    setMapError("");
+    setMessage(`Drop-off pin set at map center: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
   }
 
   function nudgeFallbackMap(horizontalPixels: number, verticalPixels: number) {
@@ -816,10 +835,13 @@ export default function DataEntryLocationEditor({
           <button type="button" onClick={()=>void skipReview()} disabled={busy||!deliveryWayId||candidate?.reviewStatus==="ACCEPTED"} className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs font-black text-amber-100 disabled:opacity-40"><SkipForward size={14}/>SKIP REVIEW</button>
         </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" onClick={()=>setMapExpanded((value)=>!value)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
+          <button type="button" onClick={()=>setMapFocus(!mapExpanded)} className="rounded-lg border border-cyan-300/50 bg-[#12314a] px-4 py-2 text-[10px] font-black text-cyan-100">
             {mapExpanded ? "MINIMIZE MAP" : "SHOW MAP"}
           </button>
-          {mapExpanded ? <span className="self-center text-[10px] font-semibold text-slate-400">Map is expanded only for location review and cannot cover the registration table.</span> : null}
+          {mapExpanded ? <>
+            <span className="self-center text-[10px] font-semibold text-emerald-300">MAP FOCUS MODE · Registration Grid is hidden automatically for a larger map.</span>
+            <button type="button" onClick={()=>setMapFocus(false)} className="rounded-lg border border-emerald-300/50 bg-emerald-400/10 px-4 py-2 text-[10px] font-black text-emerald-100">RETURN TO TABLE</button>
+          </> : null}
         </div>
         {(enabled || manualOpen) && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
@@ -842,7 +864,7 @@ export default function DataEntryLocationEditor({
           <div>
             <div
               ref={fallbackMapContainer}
-              className="relative h-[360px] min-h-[260px] w-full touch-none overflow-hidden rounded-xl border border-cyan-500/70 bg-[#061524] shadow-xl"
+              className="relative h-[min(68vh,720px)] min-h-[480px] w-full touch-none overflow-hidden rounded-2xl border border-cyan-500/70 bg-[#061524] shadow-2xl"
               onPointerDown={handleFallbackPointerDown}
               onPointerMove={handleFallbackPointerMove}
               onPointerUp={handleFallbackPointerUp}
@@ -859,7 +881,7 @@ export default function DataEntryLocationEditor({
                 <Crosshair className="h-10 w-10 text-rose-500 drop-shadow-xl" strokeWidth={2.6}/>
               </div>
               <div className="pointer-events-none absolute left-3 top-3 max-w-[75%] rounded-lg border border-amber-300/60 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-amber-100 shadow-xl">
-                DRAG TO PAN · CLICK EXACT GATE / BUILDING TO SET PIN
+                DRAG MAP UNDER CENTER CROSSHAIR · TAP MAP TO RECENTER · PRESS SET PIN HERE
               </div>
               {validMyanmarCoordinate(lng, lat) && (
                 <div className="pointer-events-none absolute bottom-3 left-3 rounded-lg border border-cyan-400/50 bg-[#061524]/95 px-3 py-2 text-[11px] font-black text-cyan-100 shadow-xl">
@@ -886,20 +908,28 @@ export default function DataEntryLocationEditor({
                   <Minus size={18}/>
                 </button>
               </div>
+              <button
+                type="button"
+                onPointerDown={(event)=>event.stopPropagation()}
+                onClick={setPinAtMapCenter}
+                className="absolute bottom-3 left-1/2 z-10 min-h-11 -translate-x-1/2 rounded-xl bg-emerald-400 px-5 py-2 text-[11px] font-black text-[#04111d] shadow-xl ring-2 ring-white/70"
+              >
+                SET PIN HERE
+              </button>
               <div className="absolute bottom-3 right-3 grid grid-cols-3 gap-1 rounded-xl border border-white/50 bg-[#061524]/90 p-1.5 shadow-xl">
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,-90)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↑</button>
+                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,-16)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↑</button>
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(-90,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">←</button>
+                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(-16,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">←</button>
                 <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>candidate&&setFallbackMapCenter({latitude:Number(candidate.latitude),longitude:Number(candidate.longitude)})} className="h-9 rounded-lg bg-amber-300 px-2 text-[10px] font-black text-slate-900">PIN</button>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(90,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">→</button>
+                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(16,0)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">→</button>
                 <span/>
-                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,90)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↓</button>
+                <button type="button" onPointerDown={(e)=>e.stopPropagation()} onClick={()=>nudgeFallbackMap(0,16)} className="h-9 rounded-lg bg-white/95 px-2 text-xs font-black text-slate-800">↓</button>
                 <span/>
               </div>
             </div>
             <div className="mt-2 rounded-lg border border-emerald-500/35 bg-emerald-950/20 px-3 py-2 text-[11px] font-semibold leading-5 text-emerald-100">
-              This editor does not depend on the Google Maps JavaScript API key. Drag the map to the correct area, zoom as needed, then click the exact gate/building. Latitude and Longitude update immediately. Click <b>Apply coordinates</b> only after checking the pin.
+              Use the fixed center crosshair instead of dragging a marker. Drag the map to pan, tap anywhere to recenter, use the arrow controls for small ~10 m adjustments, then press <b>SET PIN HERE</b>. Latitude and Longitude update only when you set the pin. Click <b>Apply coordinates</b> after verifying the exact gate/building.
             </div>
             {mapError && (
               <div className="mt-2 rounded-lg border border-rose-500/40 bg-rose-950/20 px-3 py-2 text-xs font-semibold text-rose-100">

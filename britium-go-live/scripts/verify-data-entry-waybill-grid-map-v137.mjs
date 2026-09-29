@@ -54,8 +54,15 @@ const keylessGoogleEditor =
   /handleFallbackPointerDown/.test(editor)
   && /handleFallbackPointerUp/.test(editor)
   && /offsetMapCoordinate/.test(editor)
-  && /setManualMapCoordinate\(selected\.latitude,\s*selected\.longitude,\s*["']clicked["']\)/.test(editor)
-  && /keylessEditorUrl/.test(editor);
+  && /keylessEditorUrl/.test(editor)
+  && (
+    /setManualMapCoordinate\(selected\.latitude,\s*selected\.longitude,\s*["']clicked["']\)/.test(editor)
+    || (
+      /function setPinAtMapCenter/.test(editor)
+      && /setManualMapCoordinate\(center\.latitude,\s*center\.longitude,\s*["']clicked["']\)/.test(editor)
+      && /SET PIN HERE/.test(editor)
+    )
+  );
 
 assert.ok(
   legacyGoogleEditor || keylessGoogleEditor,
