@@ -176,6 +176,7 @@ export default function DataEntryLocationEditor({
   const pinchDistanceRef = useRef<number | null>(null);
   const [fallbackMapCenter, setFallbackMapCenter] = useState<{latitude:number;longitude:number}|null>(null);
   const [fallbackMapZoom, setFallbackMapZoom] = useState(18);
+  const [tileLoadState, setTileLoadState] = useState<"IDLE"|"LOADING"|"READY"|"ERROR">("IDLE");
   const english = useMemo(() => convertMyanmarAddressToEnglish(query || address, township), [query, address, township]);
   const postal = useMemo(() => resolvePostalCode(query || address, township), [query, address, township]);
   const mapUrl = candidate ? googleMapsLocationUrl(candidate) : "";
