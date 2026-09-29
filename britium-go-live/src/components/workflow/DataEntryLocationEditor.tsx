@@ -188,10 +188,10 @@ export default function DataEntryLocationEditor({
         const wrappedX = ((tileX % tileCount) + tileCount) % tileCount;
         tiles.push({
           key: `${zoom}/${wrappedX}/${tileY}`,
-          src: `https://tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
-          fallbackSrc: `https://a.tile.openstreetmap.fr/hot/${zoom}/${wrappedX}/${tileY}.png`,
-          left: tileX * tileSize - leftWorld,
-          top: tileY * tileSize - topWorld,
+          src: `https://a.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+          fallbackSrc: `https://b.tile.openstreetmap.org/${zoom}/${wrappedX}/${tileY}.png`,
+          left: Math.round(tileX * tileSize - leftWorld),
+          top: Math.round(tileY * tileSize - topWorld),
         });
       }
     }
@@ -522,6 +522,10 @@ export default function DataEntryLocationEditor({
   function setMapFocus(focused: boolean) {
     setMapExpanded(focused);
     onMapFocusChange?.(focused);
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.dataEntryMapFocus = focused ? "true" : "false";
+      window.dispatchEvent(new CustomEvent("britium:data-entry-map-focus", { detail: { focused } }));
+    }
   }
 
   async function openRelocationMap() {
@@ -964,7 +968,7 @@ export default function DataEntryLocationEditor({
                         setMapError("Some map tiles could not load. You can still move the map or verify the selected point in Google Maps.");
                       }
                     }}
-                    className="pointer-events-none absolute h-64 w-64 max-w-none select-none"
+                    className="pointer-events-none absolute h-[257px] w-[257px] max-w-none select-none"
                     style={{ left: tile.left, top: tile.top }}
                   />
                 ))}
