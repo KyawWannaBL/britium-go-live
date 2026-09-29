@@ -139,8 +139,7 @@
     "xlsx": "^0.18.5",
     "zod": "^4.4.3",
     "zustand": "^5.0.14",
-    "jsbarcode": "3.12.3",
-    "leaflet": "^1.9.4"
+    "jsbarcode": "3.12.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
@@ -153,7 +152,6 @@
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.3",
     "vite": "^8.0.16",
-    "vite-tsconfig-paths": "^6.1.1",
-    "@types/leaflet": "^1.9.15"
+    "vite-tsconfig-paths": "^6.1.1"
   }
 }
