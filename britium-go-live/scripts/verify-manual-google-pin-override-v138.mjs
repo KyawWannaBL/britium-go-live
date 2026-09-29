@@ -25,8 +25,8 @@ assert.match(
 );
 assert.match(
   disabledBranch,
-  /OPEN MANUAL MAP|SET PIN MANUALLY|EDIT PIN/i,
-  "The manual-map override control must be visibly labelled.",
+  /OPEN MANUAL MAP|SET PIN MANUALLY|EDIT PIN|STREET MAP VIEW/i,
+  "The manual-map override control must be visibly labelled, including the optional STREET MAP VIEW caption.",
 );
 
 const keylessEditorStart = editor.indexOf("function handleFallbackPointerDown");
