@@ -34,7 +34,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   // limited by Supabase RLS; this rule only makes the screen reachable.
   ['/pickup-form', rule('customer-service', 'cs', 'support', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'branch-office', 'branch-manager')],
 
-  ['/warehouse', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin')],
+  ['/warehouse', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin', 'finance', 'finance-user', 'accountant')],
   ['/proof-gallery', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'supervisor', 'operations', 'operations-admin')],
   ['/exceptions', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'dispatch', 'supervisor', 'operations', 'operations-admin')],
 
