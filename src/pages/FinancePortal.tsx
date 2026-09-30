@@ -27,6 +27,11 @@ export default function FinancePortal() {
   const [fieldDaily, setFieldDaily] = useState<any>({ summary: {}, rows: [] });
   const [fieldLoading, setFieldLoading] = useState(false);
   const [fieldError, setFieldError] = useState("");
+  const [partyWallets, setPartyWallets] = useState<any>({ summary: {}, rows: [] });
+  const [partyWalletLoading, setPartyWalletLoading] = useState(false);
+  const [partyWalletError, setPartyWalletError] = useState("");
+  const [partyType, setPartyType] = useState("");
+  const [partySearch, setPartySearch] = useState("");
 
   const overview = useFinanceOverview();
   const cod = useCodReconciliation(dateFrom && dateTo ? { date_from: dateFrom, date_to: dateTo } : undefined);
@@ -40,7 +45,7 @@ export default function FinancePortal() {
     { id: "field-delivery", label: "🚚 Field Delivery Daily" },
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
-    { id: "wallets", label: "👛 Rider Wallets" },
+    { id: "wallets", label: "👛 Settlement Wallets" },
     { id: "vouchers", label: "🧾 Vouchers" },
   ];
 
@@ -57,8 +62,24 @@ export default function FinancePortal() {
     setFieldLoading(false);
   }
 
+  async function loadPartyWallets() {
+    setPartyWalletLoading(true);
+    setPartyWalletError("");
+    await (supabase as any).rpc("be_refresh_party_wallets_v1");
+    const { data, error } = await (supabase as any).rpc("be_finance_party_wallet_center_v1", {
+      p_party_type: partyType || null,
+      p_search: partySearch.trim() || null,
+      p_limit: 2000,
+    });
+    if (error) setPartyWalletError(error.message);
+    else if (data?.ok === false) setPartyWalletError(data?.code || "Unable to load settlement wallets.");
+    else setPartyWallets(data || { summary: {}, rows: [] });
+    setPartyWalletLoading(false);
+  }
+
   useEffect(() => {
     if (tab === "field-delivery") void loadFieldDaily();
+    if (tab === "wallets") void loadPartyWallets();
   }, [tab]);
 
   return (
@@ -165,23 +186,48 @@ export default function FinancePortal() {
           </div>
         )}
 
-        {/* RIDER WALLETS */}
+        {/* UNIFIED SETTLEMENT WALLETS */}
         {tab === "wallets" && (
           <div>
-            <h2 style={S.h2}>Rider Wallets</h2>
+            <h2 style={S.h2}>Unified Settlement Wallets</h2>
+            <div style={S.filterBar}>
+              <label style={S.filterLabel}>Party Type
+                <select style={S.filterInput} value={partyType} onChange={(e) => setPartyType(e.target.value)}>
+                  <option value="">All</option>
+                  {["RIDER","DRIVER","HELPER","MARKETING_EMPLOYEE","MERCHANT","DK","ROYAL","NPT","ALLIED_COMPANY","SERVICE_PROVIDER"].map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <label style={S.filterLabel}>Search
+                <input style={S.filterInput} value={partySearch} onChange={(e) => setPartySearch(e.target.value)} placeholder="Name / code / email" />
+              </label>
+              <button onClick={() => void loadPartyWallets()} style={S.approveBtn} disabled={partyWalletLoading}>
+                {partyWalletLoading ? "Refreshing..." : "Refresh Wallets"}
+              </button>
+            </div>
+            {partyWalletError && <ErrBanner msg={partyWalletError} />}
+            <div style={{...S.statsGrid,marginBottom:18}}>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{partyWallets?.summary?.wallet_count ?? 0}</div><div style={{fontSize:12,color:"#64748b"}}>Wallet Accounts</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(partyWallets?.summary?.britium_owes ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Britium Owes</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(partyWallets?.summary?.owes_britium ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Owes Britium</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(partyWallets?.summary?.net_position ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Net Settlement Position</div></div>
+            </div>
             <DataTable
-              loading={wallets.isLoading}
-              error={wallets.error?.message}
-              data={wallets.data as unknown[]}
-              cols={["Rider", "Balance", "Commission", "Bonus", "Fines"]}
+              loading={partyWalletLoading}
+              data={(partyWallets?.rows || []) as unknown[]}
+              cols={["Type","Party","Key","Britium Owes","Owes Britium","Net Position","Status"]}
               rowFn={(r: Record<string, unknown>) => [
-                r.rider_id,
-                fmt(r.current_balance),
-                fmt(r.success_commission),
-                fmt(r.performance_bonus),
-                fmt(r.fines),
+                r.party_type,
+                r.party_name || "—",
+                r.party_key,
+                fmt(r.britium_owes),
+                fmt(r.owes_britium),
+                fmt(r.net_position),
+                badge(String(r.status || "")),
               ]}
             />
+            <div style={{marginTop:12,fontSize:12,color:"#64748b"}}>
+              Commission policy: Delivery Rider 300 / Driver 150 / Helper 150 MMK per successful way. Pickup Rider 150 / Driver 75 / Helper 75 MMK per parcel with 7,000 MMK cap per pickup point/merchant/OS. Marketing-supported business: 100 MMK per successfully delivered parcel, accrued monthly while employee and business remain eligible.
+            </div>
           </div>
         )}
 
