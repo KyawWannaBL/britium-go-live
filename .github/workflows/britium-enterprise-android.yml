@@ -1,66 +1,129 @@
-name: Britium Enterprise Android APK
+name: Britium Enterprise Portal Android APK
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "src/**"
-      - "public/**"
-      - "index.html"
-      - "package.json"
-      - "package-lock.json"
-      - "capacitor.config.ts"
-      - "android/**"
+      - "britium-go-live/src/**"
+      - "britium-go-live/index.html"
+      - "britium-go-live/package.json"
+      - "britium-go-live/package-lock.json"
+      - "britium-go-live/vite.config.ts"
+      - "britium-go-live/capacitor.config.ts"
+      - "britium-go-live/android/**"
       - ".github/workflows/britium-enterprise-android.yml"
+      - "!britium-go-live/public/downloads/**"
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: britium-enterprise-android-release
+  cancel-in-progress: false
 
 jobs:
   build-enterprise-apk:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: britium-go-live
+
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
           cache: npm
+          cache-dependency-path: britium-go-live/package-lock.json
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "21"
 
-      - name: Install web dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: Build Enterprise web app
-        run: npx vite build
+      - name: Build packaged Enterprise Portal web application
+        run: |
+          set -euo pipefail
+          npx vite build
+          rm -rf dist/downloads
+          test -s dist/index.html
+          test -d dist/assets
 
       - name: Sync Capacitor Android project
         run: npx -y @capacitor/cli@8.4.0 sync android
 
-      - name: Build installable APK
-        working-directory: android
+      - name: Configure Enterprise app identity and version
+        env:
+          ENTERPRISE_VERSION_CODE: ${{ github.run_number }}
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          run_number = int(os.environ["ENTERPRISE_VERSION_CODE"])
+          version_code = 200000 + run_number
+          version_name = f"2.0.{run_number}"
 
-      - name: Prepare APK
+          gradle = Path("android/app/build.gradle")
+          source = gradle.read_text()
+          source, count_code = re.subn(r"versionCode\s+\d+", f"versionCode {version_code}", source, count=1)
+          source, count_name = re.subn(r'versionName\s+"[^"]+"', f'versionName "{version_name}"', source, count=1)
+          if count_code != 1 or count_name != 1:
+              raise SystemExit("Could not set Enterprise Android versionCode/versionName")
+          gradle.write_text(source)
+
+          strings = Path("android/app/src/main/res/values/strings.xml")
+          if strings.exists():
+              s = strings.read_text()
+              s = re.sub(r"<string name=\"app_name\">.*?</string>", '<string name="app_name">Britium Enterprise Portal</string>', s)
+              s = re.sub(r"<string name=\"title_activity_main\">.*?</string>", '<string name="title_activity_main">Britium Enterprise Portal</string>', s)
+              strings.write_text(s)
+
+          print(f"Enterprise Android versionCode={version_code}, versionName={version_name}")
+          PY
+
+      - name: Build installable Enterprise APK
         run: |
-          mkdir -p release
-          cp android/app/build/outputs/apk/debug/app-debug.apk release/Britium-Enterprise.apk
+          set -euo pipefail
+          chmod +x android/gradlew
+          cd android
+          ./gradlew --no-daemon assembleDebug
 
-      - name: Upload Enterprise APK
+      - name: Publish Enterprise Portal APK
+        run: |
+          set -euo pipefail
+          mkdir -p public/downloads
+          cp android/app/build/outputs/apk/debug/app-debug.apk public/downloads/Britium-Enterprise-Portal.apk
+          test -s public/downloads/Britium-Enterprise-Portal.apk
+          sha256sum public/downloads/Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
+
+      - name: Commit Enterprise Portal APK
+        working-directory: .
+        run: |
+          cd ..
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
+          if git diff --cached --quiet; then
+            echo "Enterprise APK unchanged; no repository commit needed."
+          else
+            git commit -m "build: publish Enterprise Portal Android APK"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload Enterprise Portal APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Britium-Enterprise-APK
-          path: release/Britium-Enterprise.apk
-          if-no-files-found: error
+          name: Britium-Enterprise-Portal-Android
+          path: |
+            britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
+            britium-go-live/enterprise-apk-sha256.txt
           retention-days: 30
