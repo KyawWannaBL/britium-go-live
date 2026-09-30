@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "britium-go-live/src/**"
+      - "britium-go-live/public/**"
       - "britium-go-live/index.html"
       - "britium-go-live/package.json"
       - "britium-go-live/package-lock.json"
@@ -26,9 +27,6 @@ jobs:
   build-enterprise-apk:
     runs-on: ubuntu-24.04
     timeout-minutes: 35
-    defaults:
-      run:
-        working-directory: britium-go-live
 
     steps:
       - name: Checkout
@@ -48,9 +46,11 @@ jobs:
           java-version: "21"
 
       - name: Install dependencies
+        working-directory: britium-go-live
         run: npm ci
 
       - name: Build packaged Enterprise Portal web application
+        working-directory: britium-go-live
         run: |
           set -euo pipefail
           npx vite build
@@ -59,15 +59,18 @@ jobs:
           test -d dist/assets
 
       - name: Sync Capacitor Android project
+        working-directory: britium-go-live
         run: npx -y @capacitor/cli@8.4.0 sync android
 
       - name: Configure Enterprise app identity and version
+        working-directory: britium-go-live
         env:
           ENTERPRISE_VERSION_CODE: ${{ github.run_number }}
         run: |
           python3 - <<'PY'
           import os, re
           from pathlib import Path
+
           run_number = int(os.environ["ENTERPRISE_VERSION_CODE"])
           version_code = 200000 + run_number
           version_name = f"2.0.{run_number}"
@@ -83,21 +86,22 @@ jobs:
           strings = Path("android/app/src/main/res/values/strings.xml")
           if strings.exists():
               s = strings.read_text()
-              s = re.sub(r"<string name=\"app_name\">.*?</string>", '<string name="app_name">Britium Enterprise Portal</string>', s)
-              s = re.sub(r"<string name=\"title_activity_main\">.*?</string>", '<string name="title_activity_main">Britium Enterprise Portal</string>', s)
+              s = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">Britium Enterprise Portal</string>', s)
+              s = re.sub(r'<string name="title_activity_main">.*?</string>', '<string name="title_activity_main">Britium Enterprise Portal</string>', s)
               strings.write_text(s)
 
           print(f"Enterprise Android versionCode={version_code}, versionName={version_name}")
           PY
 
       - name: Build installable Enterprise APK
+        working-directory: britium-go-live/android
         run: |
           set -euo pipefail
-          chmod +x android/gradlew
-          cd android
+          chmod +x gradlew
           ./gradlew --no-daemon assembleDebug
 
-      - name: Publish Enterprise Portal APK
+      - name: Prepare Enterprise Portal APK
+        working-directory: britium-go-live
         run: |
           set -euo pipefail
           mkdir -p public/downloads
@@ -105,10 +109,9 @@ jobs:
           test -s public/downloads/Britium-Enterprise-Portal.apk
           sha256sum public/downloads/Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
-      - name: Commit Enterprise Portal APK
-        working-directory: .
+      - name: Commit Enterprise Portal APK to main
         run: |
-          cd ..
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
@@ -126,4 +129,5 @@ jobs:
           path: |
             britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
             britium-go-live/enterprise-apk-sha256.txt
+          if-no-files-found: error
           retention-days: 30
