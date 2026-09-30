@@ -41,7 +41,7 @@ jobs:
         run: npm ci
 
       - name: Build Enterprise web app
-        run: npm run build
+        run: npx vite build
 
       - name: Sync Capacitor Android project
         run: npx -y @capacitor/cli@8.4.0 sync android
