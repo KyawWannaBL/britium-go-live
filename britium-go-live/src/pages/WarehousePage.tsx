@@ -17,6 +17,8 @@ import {
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
 import { normalizeWarehouseScan } from "@/lib/warehouseScan";
+import { useAuth } from "@/contexts/AuthContext";
+import { normalizeRole } from "@/lib/portalRegistry";
 const fmt = (v: any) =>
   v ? new Date(v).toLocaleString("en-GB", { timeZone: "Asia/Yangon" }) : "-";
 
@@ -36,6 +38,9 @@ function statusClass(status?: string) {
 }
 
 export default function WarehousePage() {
+  const { profile } = useAuth();
+  const currentRole = normalizeRole(profile?.role);
+  const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, rows: [], reasons: [] });
   const scanBusy=useRef(false);
@@ -78,7 +83,9 @@ export default function WarehousePage() {
     try {
       const [snapshotResult,archiveResult] = await Promise.all([
         supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v164"),
-        (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
+        isFinanceReadOnly
+          ? Promise.resolve({ data: { rows: [], count: 0 }, error: null })
+          : (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
       ]);
       if (snapshotResult.error) throw snapshotResult.error;
       const data=snapshotResult.data;
@@ -90,7 +97,7 @@ export default function WarehousePage() {
     } finally {
       if(!quiet) setLoading(false);
     }
-  }, []);
+  }, [isFinanceReadOnly]);
 
   useEffect(() => {
     void loadAll(false);
@@ -483,9 +490,11 @@ export default function WarehousePage() {
 
   const progressOf=(r:any)=>{
     const delivery=String(r.delivery_status||r.rider_status||r.stop_status||"").toUpperCase();
+    const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
+    const whStatus=String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase();
+    if(delivery==="DELIVERED" || stage==="DELIVERED" || whStatus==="DELIVERED") return "DELIVERED";
     if(["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return "DISPATCH_SCANNED";
     if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)) return "AWAITING_RETURN_SCAN";
-    const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
     if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
     if(stage==="RTO") return "RTO";
     if(stage==="SCHEDULED_HOLD") return "SCHEDULED_HOLD";
@@ -670,6 +679,7 @@ export default function WarehousePage() {
           ["SCHEDULED HOLD", stats.scheduled_hold],
           ["AWAIT RETURN SCAN", stats.awaiting_return_scan],
           ["RETURN / REPLAN", stats.returned_waiting_replan],
+          ["DELIVERED", operationalRows.filter((r:any)=>progressOf(r)==="DELIVERED").length],
           ["RTO", stats.rto],
         ].map(([k, v]: any) => (
           <div key={k} className={`rounded-xl border p-3 ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "border-amber-500 bg-amber-950/25" : "border-slate-800 bg-[#0B2133]"}`}>
@@ -679,6 +689,16 @@ export default function WarehousePage() {
         ))}
       </div>
 
+      {isFinanceReadOnly && (
+        <div className="mb-4 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 text-sm text-emerald-100">
+          <div className="font-black uppercase tracking-wide">Finance Surveillance — Read Only</div>
+          <div className="mt-1 text-emerald-200/80">
+            Live Warehouse Queue conditions are visible for Finance monitoring. Scan, dispatch, return, Wayplan handoff and end-day actions remain Warehouse-only.
+          </div>
+        </div>
+      )}
+
+      {!isFinanceReadOnly && <>
       {dispatchRequiredRows.length ? (
         <section className="mb-4 rounded-xl border border-amber-500 bg-amber-950/20 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -893,6 +913,7 @@ export default function WarehousePage() {
           Only parcels with Dispatch Scan / OUT_FOR_DELIVERY and no return scan are converted to DROP_OFF.
         </div>
       </section>
+      </>}
 
       <section className="rounded-xl border border-slate-800 bg-[#0B2133]">
         <div className="border-b border-slate-800 p-3">
@@ -956,6 +977,7 @@ export default function WarehousePage() {
                   <option value="WAITING_SUPERVISOR">In Wayplan / waiting Supervisor release</option>
                   <option value="DISPATCH_SCAN_REQUIRED">Dispatch Scan required now</option>
                   <option value="DISPATCH_SCANNED">Dispatch scanned</option>
+                  <option value="DELIVERED">Delivered / successful ways</option>
                   <option value="SCHEDULED_HOLD">Scheduled hold</option>
                   <option value="AWAITING_RETURN_SCAN">Failed delivery / awaiting Return Scan</option>
                   <option value="RETURNED_WAITING_REPLAN">Returned / waiting replan</option>
