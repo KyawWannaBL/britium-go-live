@@ -9,7 +9,25 @@ style.textContent = `
   html, body, #root {
     margin: 0;
     padding: 0;
-    height: 100%;
+    min-height: 100%;
+    width: 100%;
+  }
+  html { min-height: 100dvh; background: #f0f4f8; }
+  body {
+    min-height: 100dvh;
+    padding-top: env(safe-area-inset-top);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    overscroll-behavior-y: none;
+  }
+  @media (display-mode: standalone) {
+    body { user-select: none; -webkit-tap-highlight-color: transparent; }
+    input, textarea { user-select: text; }
+  }
+  @media (max-width: 768px) {
+    button, input, select, textarea { min-height: 42px; }
+    table { font-size: 12px; }
   }
   body {
     font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
@@ -31,3 +49,12 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <App />
   </React.StrictMode>
 );
+
+
+if ("serviceWorker" in navigator && import.meta.env.PROD) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((error) => {
+      console.warn("Britium Enterprise service worker registration failed", error);
+    });
+  });
+}
