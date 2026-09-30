@@ -1,0 +1,112 @@
+name: Britium Enterprise Portal Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "index.html"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - "capacitor.config.ts"
+      - "android/**"
+      - ".github/workflows/britium-enterprise-android.yml"
+      - "!public/downloads/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: britium-enterprise-android-release
+  cancel-in-progress: false
+
+jobs:
+  build-enterprise-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build packaged Enterprise Portal web application
+        run: |
+          set -euo pipefail
+          npx vite build
+          rm -rf dist/downloads
+          test -s dist/index.html
+          test -d dist/assets
+
+      - name: Sync Capacitor Android project
+        run: npx -y @capacitor/cli@8.4.0 sync android
+
+      - name: Configure monotonic Android version
+        env:
+          ENTERPRISE_VERSION_CODE: ${{ github.run_number }}
+        run: |
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+          run_number = int(os.environ["ENTERPRISE_VERSION_CODE"])
+          version_code = 200000 + run_number
+          version_name = f"2.0.{run_number}"
+          gradle = Path("android/app/build.gradle")
+          source = gradle.read_text()
+          source, count_code = re.subn(r"versionCode\s+\d+", f"versionCode {version_code}", source, count=1)
+          source, count_name = re.subn(r'versionName\s+"[^"]+"', f'versionName "{version_name}"', source, count=1)
+          if count_code != 1 or count_name != 1:
+              raise SystemExit("Could not set Enterprise Android versionCode/versionName")
+          gradle.write_text(source)
+          print(f"Enterprise Android versionCode={version_code}, versionName={version_name}")
+          PY
+
+      - name: Build installable Enterprise APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Publish Enterprise Portal APK
+        run: |
+          set -euo pipefail
+          mkdir -p public/downloads
+          cp android/app/build/outputs/apk/debug/app-debug.apk public/downloads/Britium-Enterprise-Portal.apk
+          sha256sum public/downloads/Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
+
+      - name: Commit Enterprise Portal APK
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add public/downloads/Britium-Enterprise-Portal.apk
+          if git diff --cached --quiet; then
+            echo "Enterprise APK unchanged; no repository commit needed."
+          else
+            git commit -m "build: publish Enterprise Portal Android APK"
+            git push origin HEAD:main
+          fi
+
+      - name: Upload Enterprise Portal APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Britium-Enterprise-Portal-Android
+          path: |
+            public/downloads/Britium-Enterprise-Portal.apk
+            enterprise-apk-sha256.txt
+          retention-days: 30
