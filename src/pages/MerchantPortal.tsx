@@ -7,15 +7,22 @@ import { useShipments, useCreateShipment, useCreatePickup, useSettlements, useBu
 import { useAuth } from "../contexts/AuthContext";
 import { useTrackShipment } from "../hooks/useApi";
 
-type Tab = "dashboard" | "create" | "pickups" | "track" | "settlements" | "bulk";
+type Tab = "dashboard" | "create" | "pickups" | "track" | "settlements" | "bulk" | "policy";
 
 const EMPTY_FORM = { receiver_name: "", receiver_phone: "", receiver_address: "", receiver_township: "", receiver_city: "", cod_amount: "", service_type: "standard", notes: "" };
+
+function codServiceFee(amountRaw: string | number) {
+  const amount = Math.max(0, Number(amountRaw || 0));
+  if (amount <= 100000) return 0;
+  if (amount <= 300000) return 200;
+  return Math.round(amount * 0.002);
+}
 
 export default function MerchantPortal() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("dashboard");
   const [form, setForm] = useState(EMPTY_FORM);
-  const [pickupForm, setPickupForm] = useState({ pickup_date: "", pickup_window: "morning", parcel_count: "" });
+  const [pickupForm, setPickupForm] = useState({ pickup_date: "", pickup_window: "morning", parcel_count: "", pickup_township: "" });
   const [trackInput, setTrackInput] = useState("");
   const [trackAWB, setTrackAWB] = useState("");
   const bulkRef = useRef<HTMLInputElement>(null);
@@ -34,6 +41,7 @@ export default function MerchantPortal() {
     { id: "track" as Tab, label: "🔍 Track" },
     { id: "settlements" as Tab, label: "💳 COD Settlement" },
     { id: "bulk" as Tab, label: "📊 Bulk Upload" },
+    { id: "policy" as Tab, label: "📘 Service Policy" },
   ];
 
   const handleBulk = async (e: React.FormEvent) => {
@@ -89,6 +97,13 @@ export default function MerchantPortal() {
                 <label key={String(f)} style={S.label}>{String(l)}<input type={String(t)} required={Boolean(r)} style={S.input} value={(form as Record<string,string>)[String(f)]} onChange={(e) => setForm((s) => ({...s,[String(f)]:e.target.value}))} /></label>
               ))}
               <label style={S.label}>COD Amount (MMK)<input type="number" min={0} style={S.input} value={form.cod_amount} onChange={(e) => setForm((s) => ({...s,cod_amount:e.target.value}))} /></label>
+              <div style={{...S.label,justifyContent:"flex-end"}}>
+                <span>COD Service Fee</span>
+                <strong style={{padding:"9px 12px",border:"1.5px solid #d1d5db",borderRadius:7,background:"#f8fafc"}}>
+                  {codServiceFee(form.cod_amount).toLocaleString()} MMK
+                </strong>
+                <small style={{fontWeight:400,color:"#64748b"}}>≤100,000 free · 100,001–300,000: 200/parcel · &gt;300,000: 0.2%</small>
+              </div>
               <label style={S.label}>Service Type<select style={S.input} value={form.service_type} onChange={(e) => setForm((s) => ({...s,service_type:e.target.value}))}>{["standard","express","same_day","cod_express"].map((t) => <option key={t} value={t}>{t}</option>)}</select></label>
               <label style={{...S.label,gridColumn:"1/-1"}}>Notes<textarea style={{...S.input,height:56,resize:"vertical"}} value={form.notes} onChange={(e) => setForm((s) => ({...s,notes:e.target.value}))} /></label>
               <button type="submit" style={{...S.btn,gridColumn:"1/-1"}} disabled={createShipment.isPending}>{createShipment.isPending?"Booking…":"Book Shipment →"}</button>
@@ -102,10 +117,14 @@ export default function MerchantPortal() {
             <h2 style={S.h2}>Request Pickup</h2>
             {createPickup.isError && <Err msg={createPickup.error?.message} />}
             {createPickup.isSuccess && <Succ msg="Pickup scheduled ✓" />}
-            <form style={{display:"flex",flexDirection:"column",gap:14,maxWidth:420}} onSubmit={async (e) => { e.preventDefault(); await createPickup.mutateAsync({...pickupForm,parcel_count:Number(pickupForm.parcel_count)}); setPickupForm({pickup_date:"",pickup_window:"morning",parcel_count:""}); }}>
+            <form style={{display:"flex",flexDirection:"column",gap:14,maxWidth:520}} onSubmit={async (e) => { e.preventDefault(); await createPickup.mutateAsync({...pickupForm,parcel_count:Number(pickupForm.parcel_count)}); setPickupForm({pickup_date:"",pickup_window:"morning",parcel_count:"",pickup_township:""}); }}>
               <label style={S.label}>Pickup Date *<input type="date" required style={S.input} value={pickupForm.pickup_date} onChange={(e) => setPickupForm((f) => ({...f,pickup_date:e.target.value}))} /></label>
+              <label style={S.label}>Pickup Township *<input required style={S.input} value={pickupForm.pickup_township} onChange={(e) => setPickupForm((f) => ({...f,pickup_township:e.target.value}))} placeholder="e.g. North Dagon" /></label>
               <label style={S.label}>Pickup Window<select style={S.input} value={pickupForm.pickup_window} onChange={(e) => setPickupForm((f) => ({...f,pickup_window:e.target.value}))}>{["morning","afternoon","evening"].map((w) => <option key={w} value={w}>{w}</option>)}</select></label>
               <label style={S.label}>Parcel Count *<input type="number" min={1} required style={S.input} value={pickupForm.parcel_count} onChange={(e) => setPickupForm((f) => ({...f,parcel_count:e.target.value}))} /></label>
+              <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:9,padding:12,fontSize:12,lineHeight:1.6}}>
+                <strong>Pickup rule:</strong> Same-day requests must be submitted before 1:00 PM Myanmar time. North/East Dagon are free for any quantity; other townships are free for 3+ parcels, otherwise 1,500 MMK. Item list and voucher photos must be sent in advance via Viber 09-897447744.
+              </div>
               <button type="submit" style={S.btn} disabled={createPickup.isPending}>{createPickup.isPending?"Scheduling…":"Schedule Pickup"}</button>
             </form>
           </div>
@@ -143,6 +162,32 @@ export default function MerchantPortal() {
               cols={["Batch No.", "Gross COD", "Service Fee", "Net Payable", "Transfer Status", "Created"]}
               rowFn={(r: Record<string,unknown>) => [r.batch_no, fmt(r.gross_amount), fmt(r.fee_amount), fmt(r.net_amount), <SBadge key="s" s={String(r.transfer_status??"")}/>, fmtDate(r.created_at as string)]}
             />
+          </div>
+        )}
+
+        {/* SERVICE POLICY */}
+        {tab === "policy" && (
+          <div style={{display:"grid",gap:16}}>
+            <div style={S.formCard}>
+              <h2 style={S.h2}>Britium Express Service Policy</h2>
+              <div style={{fontSize:13,lineHeight:1.75,color:"#334155"}}>
+                <p><strong>COD fee:</strong> 1–100,000 MMK: free; 100,001–300,000 MMK: 200 MMK per parcel; above 300,000 MMK: 0.2% of COD. Applies to Cash Advance and Pay on Delivery.</p>
+                <p><strong>Delivery SLA:</strong> Yangon 1–3 days; other cities 3–5 days. Traffic, weather and fuel shortages may cause delays.</p>
+                <p><strong>PoD:</strong> Recipient signature, Driver App verification, handover photo or OTP. Address changes during delivery may incur additional charges.</p>
+                <p><strong>Re-delivery:</strong> Up to 3 free attempts within 7 days in Yangon / 15 days in other cities. Cancellation by sender or receiver is charged one full one-way delivery fee.</p>
+                <p><strong>Returns:</strong> Return charges are automatically deducted within 24 hours or from the next parcel settlement. Office storage is limited to 14 days; parcels beyond 30 days may be destroyed or auctioned.</p>
+                <p><strong>Payouts:</strong> Non-advance parcels are settled twice weekly. Outstation COD is transferred within 24 hours after delivery, subject to banking/mobile-wallet, bank-holiday and internet outage exceptions.</p>
+                <p><strong>Claims:</strong> Compensation is capped at 300,000 MMK or the original value, whichever is lower. Claims require evidence within 7 days. Official-channel resolution is attempted for 14 days before litigation.</p>
+              </div>
+            </div>
+            <div style={{...S.formCard,maxWidth:700}}>
+              <h2 style={S.h2}>Customer Service</h2>
+              <div style={{display:"grid",gap:8,fontSize:14}}>
+                <div><strong>Call Center:</strong> 09-897447755 · 09-897447766</div>
+                <div><strong>Viber:</strong> 09-897447744</div>
+                <div><strong>Facebook:</strong> Britium Express Official</div>
+              </div>
+            </div>
           </div>
         )}
 
