@@ -775,23 +775,23 @@ export default function Login() {
               <div className="mt-6 rounded-[20px] border border-[#17486b] bg-[#061b2d] p-4">
                 <div className="mb-3 flex items-center gap-2 text-[13px] font-black text-[#ffb82e]">
                   <Download className="h-4 w-4" />
-                  {t("Britium Rider Android App", "Britium Rider Android App")}
+                  {t("Britium Enterprise Portal Android App", "Britium Enterprise Portal Android App")}
                 </div>
 
                 <p className="mb-3 text-[11px] leading-5 text-[#8eb3ca]">
                   {t(
-                    "Install the official Rider App for pickup verification, delivery workflow, COD handover and field settlement.",
-                    "Pickup Verification၊ Delivery Workflow၊ COD Handover နှင့် Field Settlement အတွက် Official Rider App ကို ထည့်သွင်းနိုင်ပါသည်။"
+                    "Install the official Enterprise Portal App for secure access to Operations, Customer Service, Warehouse, Branch, Admin, Finance, Accounting, Marketing and management workspaces.",
+                    "Operations၊ Customer Service၊ Warehouse၊ Branch၊ Admin၊ Finance၊ Accounting၊ Marketing နှင့် Management Workspace များကို လုံခြုံစွာ အသုံးပြုရန် Official Enterprise Portal App ကို ထည့်သွင်းနိုင်ပါသည်။"
                   )}
                 </p>
 
                 <a
-                  href="https://britiumexpress.app/downloads/Britium-Express-Rider.apk"
-                  download="Britium-Express-Rider.apk"
+                  href="/downloads/Britium-Enterprise-Portal.apk"
+                  download="Britium-Enterprise-Portal.apk"
                   className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#2f84b7] bg-[#0c2b45] px-4 text-center text-[13px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
                 >
                   <Download className="h-4 w-4 shrink-0" />
-                  {t("Download Rider App APK", "Rider App APK ဒေါင်းလုဒ်")}
+                  {t("Download Enterprise Portal App APK", "Enterprise Portal App APK ဒေါင်းလုဒ်")}
                 </a>
               </div>
 
