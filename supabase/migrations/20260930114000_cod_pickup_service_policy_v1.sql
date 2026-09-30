@@ -238,4 +238,77 @@ on conflict (config_key) do update set
   description=excluded.description,
   updated_at=excluded.updated_at;
 
+
+update public.be_portal_pickup_requests
+set
+  cod_policy_status = coalesce((public.be_finance_cod_policy_v2(
+    coalesce(nullif(payment_type,''),nullif(payment_method,''),nullif(payment_terms,''),'COD'),
+    greatest(coalesce(total_cod,0),coalesce(cod_amount,0),coalesce(declared_item_value,0),0),
+    greatest(coalesce(parcel_count,expected_parcels,1),1)
+  )->>'cod_policy_status'),'NOT_EVALUATED'),
+  cod_service_fee_rate = coalesce((public.be_finance_cod_policy_v2(
+    coalesce(nullif(payment_type,''),nullif(payment_method,''),nullif(payment_terms,''),'COD'),
+    greatest(coalesce(total_cod,0),coalesce(cod_amount,0),coalesce(declared_item_value,0),0),
+    greatest(coalesce(parcel_count,expected_parcels,1),1)
+  )->>'fee_rate')::numeric,0),
+  cod_service_fee_amount = coalesce((public.be_finance_cod_policy_v2(
+    coalesce(nullif(payment_type,''),nullif(payment_method,''),nullif(payment_terms,''),'COD'),
+    greatest(coalesce(total_cod,0),coalesce(cod_amount,0),coalesce(declared_item_value,0),0),
+    greatest(coalesce(parcel_count,expected_parcels,1),1)
+  )->>'fee_amount')::numeric,0),
+  finance_pre_dispatch_status = coalesce((public.be_finance_cod_policy_v2(
+    coalesce(nullif(payment_type,''),nullif(payment_method,''),nullif(payment_terms,''),'COD'),
+    greatest(coalesce(total_cod,0),coalesce(cod_amount,0),coalesce(declared_item_value,0),0),
+    greatest(coalesce(parcel_count,expected_parcels,1),1)
+  )->>'finance_status'),'NOT_REQUIRED'),
+  pickup_service_fee_amount = coalesce((public.be_pickup_service_policy_v1(
+    coalesce(nullif(pickup_township,''),nullif(township,'')),
+    greatest(coalesce(parcel_count,expected_parcels,1),1),
+    coalesce(created_at,now()),
+    pickup_date
+  )->>'pickup_fee_amount')::numeric,0),
+  pickup_same_day_eligible = coalesce((public.be_pickup_service_policy_v1(
+    coalesce(nullif(pickup_township,''),nullif(township,'')),
+    greatest(coalesce(parcel_count,expected_parcels,1),1),
+    coalesce(created_at,now()),
+    pickup_date
+  )->>'same_day_eligible')::boolean,false),
+  pickup_cutoff_status = coalesce((public.be_pickup_service_policy_v1(
+    coalesce(nullif(pickup_township,''),nullif(township,'')),
+    greatest(coalesce(parcel_count,expected_parcels,1),1),
+    coalesce(created_at,now()),
+    pickup_date
+  )->>'cutoff_status'),'NOT_EVALUATED'),
+  pickup_policy_version='PICKUP_2026_09_30',
+  metadata = coalesce(metadata,'{}'::jsonb)
+    || jsonb_build_object(
+      'cod_fee_policy',
+      public.be_finance_cod_policy_v2(
+        coalesce(nullif(payment_type,''),nullif(payment_method,''),nullif(payment_terms,''),'COD'),
+        greatest(coalesce(total_cod,0),coalesce(cod_amount,0),coalesce(declared_item_value,0),0),
+        greatest(coalesce(parcel_count,expected_parcels,1),1)
+      ),
+      'pickup_service_policy',
+      public.be_pickup_service_policy_v1(
+        coalesce(nullif(pickup_township,''),nullif(township,'')),
+        greatest(coalesce(parcel_count,expected_parcels,1),1),
+        coalesce(created_at,now()),
+        pickup_date
+      )
+    ),
+  updated_at=now();
+
+update public.be_data_entry_parcel_details
+set
+  cod_service_fee_rate = coalesce((public.be_finance_cod_policy_v2(
+    'COD',greatest(coalesce(actual_collect,0),coalesce(cod_amount,0),0),1
+  )->>'fee_rate')::numeric,0),
+  cod_service_fee_amount = coalesce((public.be_finance_cod_policy_v2(
+    'COD',greatest(coalesce(actual_collect,0),coalesce(cod_amount,0),0),1
+  )->>'fee_amount')::numeric,0),
+  cod_fee_policy_status = coalesce((public.be_finance_cod_policy_v2(
+    'COD',greatest(coalesce(actual_collect,0),coalesce(cod_amount,0),0),1
+  )->>'cod_policy_status'),'NOT_EVALUATED'),
+  updated_at=now();
+
 commit;
