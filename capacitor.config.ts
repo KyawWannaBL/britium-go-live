@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.britiumexpress.app',
-  appName: 'Britium Express',
+  appId: 'com.britiumexpress.enterprise',
+  appName: 'Britium Enterprise',
   webDir: 'dist',
   bundledWebRuntime: false,
   server: {
