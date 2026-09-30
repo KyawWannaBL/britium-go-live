@@ -3,14 +3,15 @@
 // MarketingPortal.tsx — Production Marketing Portal
 // API: /api/v1/marketing-portal/*   Role: marketing / marketer
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import {
   useMarketingOverview, useCampaigns, useCreateCampaign,
   useLeads, useUpdateLead, usePromoCodes, usePartnerships, useZoneLaunches,
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "campaigns" | "leads" | "promos" | "partnerships" | "zones";
+type Tab = "overview" | "campaigns" | "leads" | "promos" | "partnerships" | "zones" | "support";
 
 export default function MarketingPortal() {
   const { user, logout } = useAuth();
@@ -18,6 +19,14 @@ export default function MarketingPortal() {
   const [showCampaignForm, setShowCampaignForm] = useState(false);
   const [campForm, setCampForm] = useState({
     campaign_name: "", objective: "", audience: "", budget_mmk: "", start_date: "", end_date: "",
+  });
+  const [supportRows, setSupportRows] = useState<any[]>([]);
+  const [supportLoading, setSupportLoading] = useState(false);
+  const [supportError, setSupportError] = useState("");
+  const [supportSuccess, setSupportSuccess] = useState("");
+  const [supportSearch, setSupportSearch] = useState("");
+  const [supportForm, setSupportForm] = useState({
+    merchant_id: "", employee_email: "", effective_from: new Date().toISOString().slice(0,10),
   });
 
   const overview = useMarketingOverview();
@@ -36,9 +45,45 @@ export default function MarketingPortal() {
     { id: "promos", label: "🏷️ Promo Codes" },
     { id: "partnerships", label: "🤝 Partnerships" },
     { id: "zones", label: "🗺️ Zone Launches" },
+    { id: "support", label: "💼 Supported Business Commission" },
   ];
 
   const LEAD_STAGES = ["new", "qualified", "demo_scheduled", "proposal_sent", "activated", "lost"];
+
+  async function loadSupportAssignments() {
+    setSupportLoading(true);
+    setSupportError("");
+    const { data, error } = await (supabase as any).rpc("be_marketing_support_assignment_snapshot_v1", {
+      p_search: supportSearch.trim() || null,
+      p_limit: 2000,
+    });
+    if (error) setSupportError(error.message);
+    else if (data?.ok === false) setSupportError(data?.code || "Unable to load supported-business assignments.");
+    else setSupportRows(data?.rows || []);
+    setSupportLoading(false);
+  }
+
+  async function saveSupportAssignment(e: React.FormEvent) {
+    e.preventDefault();
+    setSupportLoading(true);
+    setSupportError("");
+    setSupportSuccess("");
+    const { data, error } = await (supabase as any).rpc("be_marketing_support_assignment_upsert_v1", {
+      p_payload: supportForm,
+    });
+    if (error) setSupportError(error.message);
+    else if (data?.ok === false) setSupportError(data?.code || "Unable to save assignment.");
+    else {
+      setSupportSuccess(`Assigned ${data?.employee_name || supportForm.employee_email} to ${data?.merchant_name || supportForm.merchant_id} at 100 MMK per delivered parcel/month.`);
+      setSupportForm({ merchant_id: "", employee_email: "", effective_from: new Date().toISOString().slice(0,10) });
+      await loadSupportAssignments();
+    }
+    setSupportLoading(false);
+  }
+
+  useEffect(() => {
+    if (tab === "support") void loadSupportAssignments();
+  }, [tab]);
 
   return (
     <div style={S.page}>
@@ -176,6 +221,53 @@ export default function MarketingPortal() {
               loading={partnerships.isLoading} error={partnerships.error?.message} data={partnerships.data as unknown[]}
               cols={["Partner", "Category", "Stage", "Expected Monthly Shipments"]}
               rowFn={(r: Record<string, unknown>) => [r.partner_name, r.category, stageBadge(String(r.stage ?? "")), r.expected_monthly_shipments]}
+            />
+          </div>
+        )}
+
+        {/* SUPPORTED BUSINESS COMMISSION */}
+        {tab === "support" && (
+          <div>
+            <h2 style={S.h2}>Supported Business Commission</h2>
+            <div style={S.formCard}>
+              <div style={{fontSize:13,color:"#475569",lineHeight:1.7,marginBottom:14}}>
+                Employees who originate/support a merchant business earn <strong>100 MMK per successfully delivered parcel</strong>, accumulated monthly, while both the employee remains employed by Britium Express and the supported merchant remains active.
+              </div>
+              {supportError && <ErrBanner msg={supportError} />}
+              {supportSuccess && <SuccBanner msg={supportSuccess} />}
+              <form style={S.form} onSubmit={saveSupportAssignment}>
+                <label style={S.formLabel}>Merchant Code *
+                  <input required style={S.formInput} value={supportForm.merchant_id} onChange={(e) => setSupportForm((v) => ({...v,merchant_id:e.target.value}))} placeholder="e.g. BCC" />
+                </label>
+                <label style={S.formLabel}>Supporting Employee Email *
+                  <input required type="email" style={S.formInput} value={supportForm.employee_email} onChange={(e) => setSupportForm((v) => ({...v,employee_email:e.target.value}))} placeholder="employee@britiumventures.com" />
+                </label>
+                <label style={S.formLabel}>Effective From *
+                  <input required type="date" style={S.formInput} value={supportForm.effective_from} onChange={(e) => setSupportForm((v) => ({...v,effective_from:e.target.value}))} />
+                </label>
+                <button type="submit" style={{...S.addBtn,alignSelf:"end"}} disabled={supportLoading}>{supportLoading ? "Saving…" : "Assign Supported Business"}</button>
+              </form>
+            </div>
+
+            <div style={{display:"flex",gap:10,marginBottom:14,alignItems:"end",flexWrap:"wrap"}}>
+              <label style={S.formLabel}>Search
+                <input style={S.formInput} value={supportSearch} onChange={(e) => setSupportSearch(e.target.value)} placeholder="Merchant / employee" />
+              </label>
+              <button style={S.addBtn} onClick={() => void loadSupportAssignments()} disabled={supportLoading}>Refresh</button>
+            </div>
+            <DTable
+              loading={supportLoading}
+              data={supportRows}
+              cols={["Merchant","Employee","Rate","Effective","Employee Eligible","Merchant Eligible","Active"]}
+              rowFn={(r:any) => [
+                `${r.merchant_code || r.merchant_id} — ${r.merchant_name || ""}`,
+                `${r.referrer_name || ""} (${r.referrer_email || ""})`,
+                `${Number(r.rate_mmk_per_parcel || 100).toLocaleString()} MMK / delivered parcel / month`,
+                `${r.effective_from || "—"} → ${r.effective_to || "ongoing"}`,
+                stageBadge(r.employee_eligible ? "active" : "inactive"),
+                stageBadge(r.merchant_eligible ? "active" : "inactive"),
+                stageBadge(r.active ? "active" : "inactive"),
+              ]}
             />
           </div>
         )}
