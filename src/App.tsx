@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ErrorBoundary from "./components/ErrorBoundary";
+import AppInstallPrompt from "./components/AppInstallPrompt";
 
 // ── Lazy-load portals (code-split per role) ───────────────────────────────────
 const LoginPage          = React.lazy(() => import("./pages/LoginPage"));
@@ -171,6 +172,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>
+            <AppInstallPrompt />
             <Suspense fallback={<PageSpinner />}>
               <Routes>
                 {/* ── Public ── */}
