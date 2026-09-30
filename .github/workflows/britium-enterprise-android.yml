@@ -93,23 +93,104 @@ jobs:
           print(f"Enterprise Android versionCode={version_code}, versionName={version_name}")
           PY
 
-      - name: Build installable Enterprise APK
+      - name: Require permanent Britium signing secrets
+        env:
+          RIDER_ANDROID_KEYSTORE_BASE64: ${{ secrets.RIDER_ANDROID_KEYSTORE_BASE64 }}
+          RIDER_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RIDER_ANDROID_KEYSTORE_PASSWORD }}
+          RIDER_ANDROID_KEY_ALIAS: ${{ secrets.RIDER_ANDROID_KEY_ALIAS }}
+          RIDER_ANDROID_KEY_PASSWORD: ${{ secrets.RIDER_ANDROID_KEY_PASSWORD }}
+          RIDER_ANDROID_CERT_SHA256: ${{ secrets.RIDER_ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for name in \
+            RIDER_ANDROID_KEYSTORE_BASE64 \
+            RIDER_ANDROID_KEYSTORE_PASSWORD \
+            RIDER_ANDROID_KEY_ALIAS \
+            RIDER_ANDROID_KEY_PASSWORD \
+            RIDER_ANDROID_CERT_SHA256
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required GitHub Actions secret: ${name}"
+              exit 1
+            fi
+          done
+
+      - name: Restore permanent Britium release keystore
+        working-directory: britium-go-live
+        env:
+          RIDER_ANDROID_KEYSTORE_BASE64: ${{ secrets.RIDER_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$RIDER_ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/britium-enterprise-release.jks
+          test -s android/app/britium-enterprise-release.jks
+          chmod 600 android/app/britium-enterprise-release.jks
+
+      - name: Configure permanent Enterprise release signing
+        working-directory: britium-go-live
+        run: |
+          cat >> android/app/build.gradle <<'GRADLE'
+
+          // Britium Enterprise permanent release signing.
+          android {
+              signingConfigs {
+                  britiumEnterpriseRelease {
+                      storeFile file(System.getenv("ENTERPRISE_ANDROID_KEYSTORE_PATH"))
+                      storePassword System.getenv("ENTERPRISE_ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ENTERPRISE_ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ENTERPRISE_ANDROID_KEYSTORE_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.britiumEnterpriseRelease
+                      minifyEnabled false
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Build signed Enterprise release APK and Play AAB
         working-directory: britium-go-live/android
+        env:
+          ENTERPRISE_ANDROID_KEYSTORE_PATH: britium-enterprise-release.jks
+          ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.RIDER_ANDROID_KEYSTORE_PASSWORD }}
+          ENTERPRISE_ANDROID_KEY_ALIAS: ${{ secrets.RIDER_ANDROID_KEY_ALIAS }}
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
+          ./gradlew --no-daemon assembleRelease bundleRelease
 
-      - name: Prepare Enterprise Portal APK
+      - name: Verify Enterprise release certificate
+        working-directory: britium-go-live
+        env:
+          RIDER_ANDROID_CERT_SHA256: ${{ secrets.RIDER_ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee enterprise-signing-info.txt
+          ACTUAL="$($APKSIGNER verify --print-certs "$APK" | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          EXPECTED="$(printf '%s' "$RIDER_ANDROID_CERT_SHA256" | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Enterprise APK signing certificate does not match the pinned Britium certificate."
+            exit 1
+          fi
+          echo "Enterprise signing certificate verified: $ACTUAL"
+
+      - name: Prepare Enterprise release files
         working-directory: britium-go-live
         run: |
           set -euo pipefail
           mkdir -p public/downloads
-          cp android/app/build/outputs/apk/debug/app-debug.apk public/downloads/Britium-Enterprise-Portal.apk
+          cp android/app/build/outputs/apk/release/app-release.apk Britium-Enterprise-Portal.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab Britium-Enterprise-Portal.aab
+          cp Britium-Enterprise-Portal.apk public/downloads/Britium-Enterprise-Portal.apk
+          sha256sum Britium-Enterprise-Portal.apk Britium-Enterprise-Portal.aab > enterprise-release-sha256.txt
           test -s public/downloads/Britium-Enterprise-Portal.apk
-          sha256sum public/downloads/Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
-      - name: Commit Enterprise Portal APK to main
+      - name: Commit signed Enterprise APK to main
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -118,16 +199,18 @@ jobs:
           if git diff --cached --quiet; then
             echo "Enterprise APK unchanged; no repository commit needed."
           else
-            git commit -m "build: publish Enterprise Portal Android APK"
+            git commit -m "build: publish signed Enterprise Portal Android APK"
             git push origin HEAD:main
           fi
 
-      - name: Upload Enterprise Portal APK artifact
+      - name: Upload signed Enterprise release artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: Britium-Enterprise-Portal-Android
+          name: Britium-Enterprise-Portal-Android-Release
           path: |
-            britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
-            britium-go-live/enterprise-apk-sha256.txt
+            britium-go-live/Britium-Enterprise-Portal.apk
+            britium-go-live/Britium-Enterprise-Portal.aab
+            britium-go-live/enterprise-signing-info.txt
+            britium-go-live/enterprise-release-sha256.txt
           if-no-files-found: error
           retention-days: 30
