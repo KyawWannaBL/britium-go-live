@@ -53,7 +53,7 @@ jobs:
       - name: Build Enterprise Portal UI
         run: |
           set -euo pipefail
-          npm run build
+          npx vite build
           rm -rf dist/downloads
           test -s dist/index.html
           test -d dist/assets
