@@ -786,9 +786,8 @@ export default function Login() {
                 </p>
 
                 <a
-                  href="/downloads/Britium-Enterprise-Portal.apk"
-                  download="Britium-Enterprise-Portal.apk"
-                  className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#2f84b7] bg-[#0c2b45] px-4 text-center text-[13px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
+                  href="https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk"
+                                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#2f84b7] bg-[#0c2b45] px-4 text-center text-[13px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
                 >
                   <Download className="h-4 w-4 shrink-0" />
                   {t("Download Enterprise Portal App APK", "Enterprise Portal App APK ဒေါင်းလုဒ်")}
