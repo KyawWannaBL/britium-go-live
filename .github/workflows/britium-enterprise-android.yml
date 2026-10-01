@@ -71,7 +71,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p assets
-          cp android-assets/enterprise-app-icon.png assets/logo.png
+          node - <<'NODE'
+          const sharp = require('sharp');
+          sharp('android-assets/enterprise-app-icon.webp')
+            .png({ palette: false })
+            .toFile('assets/logo.png')
+            .catch((error) => { console.error(error); process.exit(1); });
+          NODE
           test -s assets/logo.png
           npx @capacitor/assets generate --android \
             --assetPath assets \
