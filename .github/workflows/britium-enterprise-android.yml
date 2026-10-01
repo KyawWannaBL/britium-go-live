@@ -48,7 +48,7 @@ jobs:
 
       - name: Install Capacitor CLI
         working-directory: britium-go-live
-        run: npm install --no-save @capacitor/cli@8.4.0
+        run: npm install --no-save @capacitor/cli@8.4.0 @capacitor/assets sharp
 
       - name: Build production Enterprise Portal UI
         working-directory: britium-go-live
@@ -65,6 +65,52 @@ jobs:
           rm -rf android
           npx cap add android
           npx cap copy android
+
+      - name: Generate supplied blue Enterprise launcher icon
+        working-directory: britium-go-live
+        run: |
+          set -euo pipefail
+          mkdir -p assets
+          curl -fsSL "https://raw.githubusercontent.com/KyawWannaBL/Britium_Enterprise_Portal/main/android-assets/enterprise-app-icon.png" -o assets/logo.png
+          test -s assets/logo.png
+          npx @capacitor/assets generate --android \
+            --assetPath assets \
+            --iconBackgroundColor '#0759D6' \
+            --iconBackgroundColorDark '#0649B8' \
+            --splashBackgroundColor '#07111F' \
+            --splashBackgroundColorDark '#07111F'
+
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const sharp = require('sharp');
+          (async () => {
+            const root = 'android/app/src/main/res';
+            for (const dir of fs.readdirSync(root).filter((name) => name.startsWith('mipmap-'))) {
+              const full = path.join(root, dir);
+              if (!fs.statSync(full).isDirectory()) continue;
+              for (const file of fs.readdirSync(full).filter((name) => /^ic_launcher.*\.png$/.test(name))) {
+                const src = path.join(full, file);
+                const tmp = src + '.truecolor.png';
+                await sharp(src).toColourspace('srgb').png({ palette: false, compressionLevel: 9 }).toFile(tmp);
+                fs.renameSync(tmp, src);
+              }
+            }
+          })().catch((error) => { console.error(error); process.exit(1); });
+          NODE
+
+          python3 - <<'PY'
+          from pathlib import Path
+          root = Path("android/app/src/main/res")
+          for png in root.glob("mipmap-*/ic_launcher_foreground.png"):
+              png.unlink(missing_ok=True)
+          for name in ("ic_launcher.xml", "ic_launcher_round.xml"):
+              (root / "mipmap-anydpi-v26" / name).unlink(missing_ok=True)
+          legacy = root / "mipmap-xxxhdpi" / "ic_launcher.png"
+          if not legacy.is_file() or legacy.stat().st_size == 0:
+              raise SystemExit("Enterprise launcher icon was not generated")
+          print("Blue Enterprise launcher icon prepared for Android 8+.")
+          PY
 
       - name: Configure Enterprise Android app
         working-directory: britium-go-live
