@@ -198,7 +198,7 @@ jobs:
           grep -q "sdkVersion:'24'" enterprise-apk-badging.txt
           grep -q "uses-permission: name='android.permission.CAMERA'" enterprise-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs Britium-Enterprise-Portal.apk | tee enterprise-apk-signing.txt
-          grep -q "Verified using v1 scheme (JAR signing): true" enterprise-apk-signing.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" enterprise-apk-signing.txt
 
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
