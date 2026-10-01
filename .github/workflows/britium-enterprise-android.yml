@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: britium-enterprise-android-release
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-enterprise-apk:
@@ -103,13 +103,24 @@ jobs:
           ./gradlew --no-daemon assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Prepare Enterprise Portal APK
+      - name: Prepare and verify Enterprise Portal APK
         working-directory: britium-go-live
         run: |
           set -euo pipefail
           cp android/app/build/outputs/apk/debug/app-debug.apk Britium-Enterprise-Portal.apk
           test -s Britium-Enterprise-Portal.apk
           ls -lh Britium-Enterprise-Portal.apk
+
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$AAPT"
+          test -x "$APKSIGNER"
+
+          "$AAPT" dump badging Britium-Enterprise-Portal.apk | tee enterprise-apk-badging.txt
+          grep -q "package: name='com.britiumexpress.enterpriseportal'" enterprise-apk-badging.txt
+          grep -q "sdkVersion:'23'" enterprise-apk-badging.txt
+          "$APKSIGNER" verify --verbose --print-certs Britium-Enterprise-Portal.apk | tee enterprise-apk-signing.txt
+
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
       - name: Publish APK to stable GitHub Release
@@ -133,5 +144,7 @@ jobs:
           path: |
             britium-go-live/Britium-Enterprise-Portal.apk
             britium-go-live/enterprise-apk-sha256.txt
+            britium-go-live/enterprise-apk-badging.txt
+            britium-go-live/enterprise-apk-signing.txt
           if-no-files-found: error
           retention-days: 30

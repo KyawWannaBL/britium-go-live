@@ -36,7 +36,7 @@ export default function PublicApkDownloadPrompt() {
 
         <div className="min-w-0 flex-1">
           <div className="text-sm font-bold text-white">
-            Download Android APK
+            Britium Enterprise Portal
           </div>
           <div className="text-xs text-slate-300">
             Android app ကို တိုက်ရိုက်ဒေါင်းလုဒ်လုပ်နိုင်ပါသည်
@@ -44,8 +44,8 @@ export default function PublicApkDownloadPrompt() {
         </div>
 
         <a
-          href="/britium-express.apk"
-          download="britium-express.apk"
+          href="https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk"
+          download="Britium-Enterprise-Portal.apk"
           className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:scale-[1.02]"
         >
           <Download size={16} />
