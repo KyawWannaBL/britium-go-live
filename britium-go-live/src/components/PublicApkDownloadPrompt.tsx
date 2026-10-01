@@ -44,7 +44,7 @@ export default function PublicApkDownloadPrompt() {
         </div>
 
         <a
-          href="https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk"
+          href="/downloads/Britium-Enterprise-Portal.apk"
           download="Britium-Enterprise-Portal.apk"
           className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:scale-[1.02]"
         >

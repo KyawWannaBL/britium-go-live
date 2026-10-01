@@ -5,7 +5,6 @@ on:
     branches: [main]
     paths:
       - "britium-go-live/src/**"
-      - "britium-go-live/public/**"
       - "britium-go-live/index.html"
       - "britium-go-live/package.json"
       - "britium-go-live/package-lock.json"
@@ -118,10 +117,31 @@ jobs:
 
           "$AAPT" dump badging Britium-Enterprise-Portal.apk | tee enterprise-apk-badging.txt
           grep -q "package: name='com.britiumexpress.enterpriseportal'" enterprise-apk-badging.txt
-          grep -q "sdkVersion:'23'" enterprise-apk-badging.txt
+          grep -q "sdkVersion:'24'" enterprise-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs Britium-Enterprise-Portal.apk | tee enterprise-apk-signing.txt
 
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
+
+      - name: Publish APK directly on britiumexpress.com
+        working-directory: britium-go-live
+        run: |
+          set -euo pipefail
+          mkdir -p public/downloads
+          cp Britium-Enterprise-Portal.apk public/downloads/Britium-Enterprise-Portal.apk
+          test -s public/downloads/Britium-Enterprise-Portal.apk
+
+      - name: Commit direct Enterprise APK download
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add britium-go-live/public/downloads/Britium-Enterprise-Portal.apk
+          if git diff --cached --quiet; then
+            echo "Enterprise APK unchanged; no repository commit needed."
+          else
+            git commit -m "build: publish Enterprise Portal APK [skip ci]"
+            git push origin HEAD:main
+          fi
 
       - name: Publish APK to stable GitHub Release
         working-directory: britium-go-live
