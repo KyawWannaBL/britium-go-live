@@ -71,10 +71,13 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p assets
+          base64 -d android-assets/enterprise-app-icon-user.b64 > assets/logo.jpg
+          test -s assets/logo.jpg
           node - <<'NODE'
           const sharp = require('sharp');
-          sharp('android-assets/enterprise-app-icon.webp')
-            .png({ palette: false })
+          sharp('assets/logo.jpg')
+            .resize(1024, 1024, { fit: 'cover' })
+            .png({ palette: false, compressionLevel: 9 })
             .toFile('assets/logo.png')
             .catch((error) => { console.error(error); process.exit(1); });
           NODE
