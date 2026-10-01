@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { Capacitor } from "@capacitor/core";
 
 // These are public browser connection values, not the Supabase service-role
 // secret. Vercel Production normally overrides them through VITE_* variables;
@@ -9,8 +10,14 @@ const DEFAULT_SUPABASE_URL = "https://dltavabvjwocknkyvwgz.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExMTMxOTQsImV4cCI6MjA4NjY4OTE5NH0.7-9BK6L9dpCYIB-pp1WOeQxCI1DVxnSykoTRXNUHYIo";
 
 const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
-const supabaseUrl = import.meta.env.PROD && typeof window !== "undefined" ? `${window.location.origin}/supabase` : directSupabaseUrl;
+const isNativeApp = Capacitor.isNativePlatform();
+const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
+const supabaseUrl = shouldUseWebProxy ? `${window.location.origin}/supabase` : directSupabaseUrl;
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+
+if (isNativeApp) {
+  console.info("[Britium Supabase] Native app detected; using direct Supabase HTTPS endpoint.");
+}
 
 const authStorageKey = (() => {
   try {
