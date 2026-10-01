@@ -92,6 +92,23 @@ jobs:
           s = re.sub(r'<string name="app_name">.*?</string>', '<string name="app_name">Britium Enterprise Portal</string>', s)
           s = re.sub(r'<string name="title_activity_main">.*?</string>', '<string name="title_activity_main">Britium Enterprise Portal</string>', s)
           strings.write_text(s)
+
+          manifest = Path("android/app/src/main/AndroidManifest.xml")
+          m = manifest.read_text()
+          if 'android.permission.CAMERA' not in m:
+              m = m.replace(
+                  '<uses-permission android:name="android.permission.INTERNET" />',
+                  '<uses-permission android:name="android.permission.INTERNET" />\n'
+                  '    <uses-permission android:name="android.permission.CAMERA" />\n'
+                  '    <uses-feature android:name="android.hardware.camera.any" android:required="false" />'
+              )
+          m = m.replace(
+              'android:theme="@style/AppTheme">',
+              'android:theme="@style/AppTheme"\n'
+              '        android:hardwareAccelerated="true"\n'
+              '        android:usesCleartextTraffic="false">'
+          )
+          manifest.write_text(m)
           PY
 
       - name: Build installable APK
@@ -115,10 +132,27 @@ jobs:
           test -x "$AAPT"
           test -x "$APKSIGNER"
 
+          python3 - <<'PY'
+          import zipfile
+          apk = "Britium-Enterprise-Portal.apk"
+          with zipfile.ZipFile(apk, "r") as z:
+              bad = z.testzip()
+              if bad:
+                  raise SystemExit(f"Corrupt APK member: {bad}")
+              names = set(z.namelist())
+              required = {"AndroidManifest.xml", "classes.dex"}
+              missing = required - names
+              if missing:
+                  raise SystemExit(f"APK missing required entries: {sorted(missing)}")
+          print("APK ZIP integrity: OK")
+          PY
+
           "$AAPT" dump badging Britium-Enterprise-Portal.apk | tee enterprise-apk-badging.txt
           grep -q "package: name='com.britiumexpress.enterpriseportal'" enterprise-apk-badging.txt
           grep -q "sdkVersion:'24'" enterprise-apk-badging.txt
+          grep -q "uses-permission: name='android.permission.CAMERA'" enterprise-apk-badging.txt
           "$APKSIGNER" verify --verbose --print-certs Britium-Enterprise-Portal.apk | tee enterprise-apk-signing.txt
+          grep -q "Verified using v1 scheme (JAR signing): true" enterprise-apk-signing.txt
 
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
