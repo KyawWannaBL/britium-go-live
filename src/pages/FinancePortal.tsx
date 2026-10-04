@@ -15,7 +15,7 @@ import {
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "field-delivery" | "cod" | "settlements" | "wallets" | "vouchers";
+type Tab = "overview" | "field-delivery" | "cod" | "settlements" | "wallets" | "payouts" | "vouchers";
 
 export default function FinancePortal() {
   const { user, logout } = useAuth();
@@ -32,6 +32,18 @@ export default function FinancePortal() {
   const [partyWalletError, setPartyWalletError] = useState("");
   const [partyType, setPartyType] = useState("");
   const [partySearch, setPartySearch] = useState("");
+  const [payoutQueue, setPayoutQueue] = useState<any>({ summary: {}, rows: [] });
+  const [payoutLoading, setPayoutLoading] = useState(false);
+  const [payoutError, setPayoutError] = useState("");
+  const [payoutSuccess, setPayoutSuccess] = useState("");
+  const [payoutPartyType, setPayoutPartyType] = useState("");
+  const [selectedWalletId, setSelectedWalletId] = useState("");
+  const [selectedLedgerIds, setSelectedLedgerIds] = useState<string[]>([]);
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("BANK_TRANSFER");
+  const [paymentRecipient, setPaymentRecipient] = useState("");
+  const [paymentNote, setPaymentNote] = useState("");
+  const [payoutConfirming, setPayoutConfirming] = useState(false);
 
   const overview = useFinanceOverview();
   const cod = useCodReconciliation(dateFrom && dateTo ? { date_from: dateFrom, date_to: dateTo } : undefined);
@@ -46,6 +58,7 @@ export default function FinancePortal() {
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
     { id: "wallets", label: "👛 Settlement Wallets" },
+    { id: "payouts", label: "💸 Payout Queue" },
     { id: "vouchers", label: "🧾 Vouchers" },
   ];
 
@@ -60,6 +73,78 @@ export default function FinancePortal() {
     else if (data?.ok === false) setFieldError(data?.error || "Unable to load field delivery daily reconciliation.");
     else setFieldDaily(data || { summary: {}, rows: [] });
     setFieldLoading(false);
+  }
+
+  async function loadPayoutQueue() {
+    setPayoutLoading(true);
+    setPayoutError("");
+    const { data, error } = await (supabase as any).rpc("be_party_wallet_payout_queue_v193", {
+      p_party_type: payoutPartyType || null,
+      p_limit: 2000,
+    });
+    if (error) setPayoutError(error.message);
+    else if (data?.ok === false) setPayoutError(data?.error || "Unable to load payout queue.");
+    else setPayoutQueue(data || { summary: {}, rows: [] });
+    setPayoutLoading(false);
+  }
+
+  async function confirmPayout() {
+    setPayoutError("");
+    setPayoutSuccess("");
+    const rows = Array.isArray(payoutQueue?.rows) ? payoutQueue.rows : [];
+    const selectedRows = rows.filter((r: any) => selectedLedgerIds.includes(String(r.ledger_id)));
+    const amount = selectedRows.reduce((sum: number, r: any) => sum + Number(r.amount || 0), 0);
+
+    if (!selectedWalletId || selectedLedgerIds.length === 0) {
+      setPayoutError("Select at least one eligible payout row.");
+      return;
+    }
+    if (!paymentReference.trim() || !paymentMethod.trim() || !paymentRecipient.trim()) {
+      setPayoutError("Payment reference, method and recipient are required.");
+      return;
+    }
+
+    setPayoutConfirming(true);
+    const { data, error } = await (supabase as any).rpc("be_party_wallet_confirm_payout_v193", {
+      p_wallet_id: selectedWalletId,
+      p_ledger_ids: selectedLedgerIds,
+      p_payment_reference: paymentReference.trim(),
+      p_payment_method: paymentMethod.trim(),
+      p_recipient: paymentRecipient.trim(),
+      p_paid_amount: amount,
+      p_note: paymentNote.trim() || null,
+    });
+    if (error) setPayoutError(error.message);
+    else if (data?.ok === false) setPayoutError(data?.error || "Payout confirmation failed.");
+    else {
+      setPayoutSuccess(`Payment confirmed: ${data?.payment_reference || paymentReference} — ${fmt(data?.amount || amount)}`);
+      setSelectedWalletId("");
+      setSelectedLedgerIds([]);
+      setPaymentReference("");
+      setPaymentRecipient("");
+      setPaymentNote("");
+      await Promise.all([loadPayoutQueue(), loadPartyWallets()]);
+    }
+    setPayoutConfirming(false);
+  }
+
+  function togglePayoutRow(row: any) {
+    const walletId = String(row.wallet_id || "");
+    const ledgerId = String(row.ledger_id || "");
+    if (!walletId || !ledgerId) return;
+    if (selectedWalletId && selectedWalletId !== walletId) {
+      setSelectedWalletId(walletId);
+      setSelectedLedgerIds([ledgerId]);
+      setPaymentRecipient(String(row.party_name || row.party_key || ""));
+      setPayoutSuccess("");
+      return;
+    }
+    const exists = selectedLedgerIds.includes(ledgerId);
+    const next = exists ? selectedLedgerIds.filter((id) => id !== ledgerId) : [...selectedLedgerIds, ledgerId];
+    setSelectedWalletId(next.length ? walletId : "");
+    setSelectedLedgerIds(next);
+    if (!paymentRecipient && !exists) setPaymentRecipient(String(row.party_name || row.party_key || ""));
+    setPayoutSuccess("");
   }
 
   async function loadPartyWallets() {
@@ -80,6 +165,7 @@ export default function FinancePortal() {
   useEffect(() => {
     if (tab === "field-delivery") void loadFieldDaily();
     if (tab === "wallets") void loadPartyWallets();
+    if (tab === "payouts") void loadPayoutQueue();
   }, [tab]);
 
   return (
@@ -226,7 +312,97 @@ export default function FinancePortal() {
               ]}
             />
             <div style={{marginTop:12,fontSize:12,color:"#64748b"}}>
-              Commission policy: Delivery Rider 300 / Driver 150 / Helper 150 MMK per successful way. Pickup Rider 150 / Driver 75 / Helper 75 MMK per parcel with 7,000 MMK cap per pickup point/merchant/OS. Marketing-supported business: 100 MMK per successfully delivered parcel, accrued monthly while employee and business remain eligible.
+              Commission policy: Delivery Rider 300 / Driver 150 / Helper 150 MMK per successful way. Pickup Rider 150 / Driver 75 / Helper 75 MMK per parcel with 7,500 MMK cap per pickup point/merchant/OS. Marketing-supported business: 100 MMK per successfully delivered parcel, accrued monthly while employee and business remain eligible.
+            </div>
+          </div>
+        )}
+
+        {/* PAYOUT QUEUE */}
+        {tab === "payouts" && (
+          <div>
+            <h2 style={S.h2}>Payout Queue</h2>
+            <div style={S.filterBar}>
+              <label style={S.filterLabel}>Party Type
+                <select style={S.filterInput} value={payoutPartyType} onChange={(e) => setPayoutPartyType(e.target.value)}>
+                  <option value="">All</option>
+                  {["MERCHANT","ROYAL","DK","NPT","ALLIED_COMPANY","SERVICE_PROVIDER","RIDER","DRIVER","HELPER","MARKETING_EMPLOYEE"].map((v) => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+              <button onClick={() => void loadPayoutQueue()} style={S.approveBtn} disabled={payoutLoading}>
+                {payoutLoading ? "Refreshing..." : "Refresh Queue"}
+              </button>
+            </div>
+
+            {payoutError && <ErrBanner msg={payoutError} />}
+            {payoutSuccess && <SuccBanner msg={payoutSuccess} />}
+
+            <div style={{...S.statsGrid,marginBottom:18}}>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{payoutQueue?.summary?.row_count ?? 0}</div><div style={{fontSize:12,color:"#64748b"}}>Eligible Rows</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(payoutQueue?.summary?.merchant_amount ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Merchant</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(payoutQueue?.summary?.provider_amount ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Royal / DK / NPT / Allied</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(payoutQueue?.summary?.workforce_amount ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Workforce</div></div>
+              <div style={S.statCard}><div style={{fontSize:20,fontWeight:900}}>{fmt(payoutQueue?.summary?.total_amount ?? 0)}</div><div style={{fontSize:12,color:"#64748b"}}>Total Payable</div></div>
+            </div>
+
+            <DataTable
+              loading={payoutLoading}
+              data={(payoutQueue?.rows || []) as unknown[]}
+              cols={["Select","Type","Party","Source","Date","Amount","Status"]}
+              rowFn={(r: Record<string, unknown>) => [
+                <input
+                  key="select"
+                  type="checkbox"
+                  checked={selectedLedgerIds.includes(String(r.ledger_id || ""))}
+                  onChange={() => togglePayoutRow(r)}
+                />,
+                r.party_type,
+                r.party_name || r.party_key,
+                `${r.source_type || "—"} / ${r.source_key || "—"}`,
+                r.transaction_date || "—",
+                fmt(r.amount),
+                badge(String(r.status || "")),
+              ]}
+            />
+
+            <div style={{...S.statCard,marginTop:18}}>
+              <div style={{fontWeight:800,marginBottom:12}}>Confirm Payment</div>
+              <div style={S.filterBar}>
+                <label style={S.filterLabel}>Payment Reference
+                  <input style={S.filterInput} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} placeholder="Bank slip / transfer ref" />
+                </label>
+                <label style={S.filterLabel}>Payment Method
+                  <select style={S.filterInput} value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)}>
+                    <option value="BANK_TRANSFER">BANK TRANSFER</option>
+                    <option value="MOBILE_BANKING">MOBILE BANKING</option>
+                    <option value="CASH">CASH</option>
+                    <option value="CHEQUE">CHEQUE</option>
+                  </select>
+                </label>
+                <label style={S.filterLabel}>Recipient
+                  <input style={S.filterInput} value={paymentRecipient} onChange={(e) => setPaymentRecipient(e.target.value)} placeholder="Recipient name / account" />
+                </label>
+                <label style={S.filterLabel}>Proof / Note
+                  <input style={S.filterInput} value={paymentNote} onChange={(e) => setPaymentNote(e.target.value)} placeholder="Proof URL, slip note or remarks" />
+                </label>
+              </div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                <div style={{fontWeight:800}}>
+                  Selected: {selectedLedgerIds.length} row(s) · {fmt((payoutQueue?.rows || []).filter((r:any)=>selectedLedgerIds.includes(String(r.ledger_id))).reduce((s:number,r:any)=>s+Number(r.amount||0),0))}
+                </div>
+                <button
+                  onClick={() => void confirmPayout()}
+                  style={S.approveBtn}
+                  disabled={payoutConfirming || !payoutQueue?.summary?.can_confirm_payout || selectedLedgerIds.length === 0}
+                >
+                  {payoutConfirming ? "Confirming..." : "Confirm Payment"}
+                </button>
+              </div>
+              {!payoutQueue?.summary?.can_confirm_payout && (
+                <div style={{marginTop:10,fontSize:12,color:"#991b1b"}}>Journal-post authority is required to confirm payout.</div>
+              )}
+              <div style={{marginTop:10,fontSize:12,color:"#64748b"}}>
+                A confirmation settles the selected wallet entries, marks linked commissions PAID, posts the accounting event, refreshes wallet balances, and resolves matching notifications.
+              </div>
             </div>
           </div>
         )}
