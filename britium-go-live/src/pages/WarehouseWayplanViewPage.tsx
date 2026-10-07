@@ -18,7 +18,7 @@ export default function WarehouseWayplanViewPage(){
   async function load(){
     setLoading(true); setError("");
     try{
-      const {data,error}=await (supabase as any).rpc("be_wayplan_command_center",{p_limit:500});
+      const {data,error}=await (supabase as any).rpc("be_warehouse_wayplan_view_v199",{p_limit:500});
       if(error) throw error;
       const rows=Array.isArray(data?.wayplans)?data.wayplans:Array.isArray(data?.data)?data.data:[];
       setWayplans(rows);
