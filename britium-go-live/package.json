@@ -72,7 +72,8 @@
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
     "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
     "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
-    "prebuild": "npm run verify:accounting-portal-v1"
+    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200",
+    "verify:merchant-settlement-v200": "node scripts/verify-merchant-settlement-v200.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
@@ -117,6 +118,7 @@
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.40.0",
     "input-otp": "^1.4.2",
+    "jsbarcode": "3.12.3",
     "lucide-react": "^0.468.0",
     "mapbox-gl": "^3.29.0",
     "next-themes": "^0.4.6",
@@ -138,8 +140,7 @@
     "vaul": "^1.1.2",
     "xlsx": "^0.18.5",
     "zod": "^4.4.3",
-    "zustand": "^5.0.14",
-    "jsbarcode": "3.12.3"
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.0",
@@ -149,6 +150,7 @@
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.1.1",
+    "react-test-renderer": "^18.3.1",
     "tailwindcss": "^4.3.1",
     "typescript": "^5.9.3",
     "vite": "^8.0.16",

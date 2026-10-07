@@ -15,6 +15,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/reporting', rule('management', 'director', 'operations', 'operations-admin', 'finance', 'supervisor')],
 
   ['/finance/data-entry-review', rule('finance', 'finance-user', 'accountant')],
+  ['/finance/merchant-settlement', rule('finance', 'finance-user', 'accountant', 'finance-creator', 'finance-reviewer', 'finance-approver', 'payment-officer', 'finance-admin', 'finance-manager', 'accounts')],
   ['/finance/accounting', rule('finance', 'finance-user', 'accountant', 'management', 'director')],
   ['/finance/accounting-master', rule('finance', 'finance-user', 'accountant', 'management', 'director')],
   ['/finance', rule('finance', 'finance-user', 'accountant')],

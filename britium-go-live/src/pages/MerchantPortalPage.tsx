@@ -55,9 +55,11 @@ export default function MerchantPortalPage(){
   const pickups=Array.isArray(snapshot?.pickups)?snapshot.pickups:[];
   const shipments=Array.isArray(snapshot?.shipments)?snapshot.shipments:[];
   const settlements=Array.isArray(snapshot?.settlements)?snapshot.settlements:[];
+  const payments=Array.isArray(snapshot?.payments)?snapshot.payments:[];
+  const wallet=snapshot?.wallet||{};
   const tickets=Array.isArray(snapshot?.tickets)?snapshot.tickets:[];
   const identity=snapshot?.identity||{};
-  const current=tab==="pickups"?pickups:tab==="shipments"?shipments:tab==="settlements"?settlements:tickets;
+  const current=tab==="pickups"?pickups:tab==="shipments"?shipments:tab==="settlements"?settlements:tab==="payments"?payments:tickets;
   const filtered=useMemo(()=>{
     const q=search.trim().toLowerCase();
     if(!q)return current;
@@ -81,7 +83,7 @@ export default function MerchantPortalPage(){
     <section className="grid gap-4 md:grid-cols-4">
       <div className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-5"><p className="text-xs uppercase text-[#8ab0c9]">Pickup Requests</p><p className="mt-2 text-3xl font-black text-[#f6b84b]">{pickups.length}</p></div>
       <div className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-5"><p className="text-xs uppercase text-[#8ab0c9]">Shipments</p><p className="mt-2 text-3xl font-black text-[#38bdf8]">{shipments.length}</p></div>
-      <div className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-5"><p className="text-xs uppercase text-[#8ab0c9]">Settlement Rows</p><p className="mt-2 text-3xl font-black text-[#22c55e]">{settlements.length}</p></div>
+      <div className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-5"><p className="text-xs uppercase text-[#8ab0c9]">Outstanding merchant payable</p><p className="mt-2 text-3xl font-black text-[#22c55e]">{money(wallet.britium_owes)}</p><p className="mt-2 text-sm">Confirmed payments: {money(wallet.paid_amount)}</p><p className="mt-1 text-sm">Owed to Britium: {money(wallet.owes_britium)}</p></div>
       <div className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-5"><p className="text-xs uppercase text-[#8ab0c9]">Support Tickets</p><p className="mt-2 text-3xl font-black text-[#ff7aa2]">{tickets.length}</p></div>
     </section>
 
@@ -117,16 +119,18 @@ export default function MerchantPortalPage(){
 
     <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] overflow-hidden">
       <div className="flex flex-wrap gap-2 border-b border-[#1a3a5c] p-4">
-        {[["pickups","Pickup Requests"],["shipments","Live Shipments"],["settlements","Settlement"],["tickets","Support"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={`rounded-xl px-4 py-2 text-sm font-black ${tab===id?"bg-[#f6b84b] text-[#061524]":"bg-[#061524] text-white"}`}>{label}</button>)}
+        {[["pickups","Pickup Requests"],["shipments","Live Shipments"],["settlements","Settlement"],["payments","Payment History"],["tickets","Support"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={`rounded-xl px-4 py-2 text-sm font-black ${tab===id?"bg-[#f6b84b] text-[#061524]":"bg-[#061524] text-white"}`}>{label}</button>)}
         <div className="ml-auto flex min-w-[320px] items-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"><Search size={16} className="text-[#8ab0c9]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search records..." className="w-full bg-transparent py-2 outline-none"/></div>
       </div>
       <div className="max-h-[560px] overflow-auto p-4 space-y-3">
         {filtered.length===0?<div className="p-10 text-center text-[#8ab0c9]">No live records found.</div>:filtered.map((r:any,i:number)=><div key={r.id||r.pickup_id||r.delivery_way_id||i} className="rounded-2xl border border-[#1a3a5c] bg-[#071827] p-4">
           <div className="flex items-start justify-between gap-3">
-            <div><p className="font-mono text-sm font-black text-[#38bdf8]">{r.delivery_way_id||r.pickup_id||r.settlement_id||r.ticket_no||r.id||"-"}</p><p className="mt-1 font-bold">{r.recipient_name||r.subject||r.status||r.merchant_name||"-"}</p></div>
+            <div><p className="font-mono text-sm font-black text-[#38bdf8]">{r.batch_number||r.delivery_way_id||r.pickup_id||r.settlement_id||r.ticket_no||r.id||"-"}</p><p className="mt-1 font-bold">{r.recipient_name||r.subject||r.status||r.merchant_name||"-"}</p></div>
             <span className="rounded-full bg-[#061524] px-3 py-1 text-xs font-black">{r.delivery_status||r.settlement_status||r.status||r.workflow_stage||"-"}</span>
           </div>
           <div className="mt-2 text-sm text-[#8ab0c9]">{r.cod_amount!==undefined?money(r.cod_amount):r.gross_cod!==undefined?money(r.gross_cod):r.description||r.pickup_address||"-"}</div>
+          {tab==="settlements"&&<div className="mt-3 grid gap-2 text-sm sm:grid-cols-3"><p>Payable: <b>{money(r.batch_net_payable)}</b></p><p>Paid: <b>{money(r.paid_amount)}</b></p><p>Outstanding: <b>{money(r.outstanding_amount)}</b></p></div>}
+          {tab==="payments"&&<div className="mt-3 space-y-2 text-sm"><p>Confirmed amount: <b>{money(r.amount)}</b> · {r.payment_method}</p><p>Reference: <b>{r.payment_group_reference||r.payment_reference}</b></p><p>Account: {r.bank_account||"—"}</p><p>Confirmed by: {r.confirmed_by||"—"}</p>{/^https:\/\//.test(r.evidence_url||"")&&<a href={r.evidence_url} target="_blank" rel="noreferrer" className="text-[#38bdf8] underline">Payment receipt / evidence</a>}</div>}
           <div className="mt-2 text-xs text-[#4d7a9b]">{fmt(r.updated_at||r.created_at||r.delivered_at)}</div>
         </div>)}
       </div>
