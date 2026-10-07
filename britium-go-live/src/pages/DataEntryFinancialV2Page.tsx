@@ -259,6 +259,20 @@ function routeForRow(row: ParcelRow, options: TariffOption[]): DataEntryProvider
     itemPrice:row.item_price,
   });
 }
+function automaticDeliveryCharge(row: ParcelRow, options: TariffOption[]): number | null {
+  if (row.amount_entry_type !== "ITEM_PRICE_PLUS_DECLARED_DELIVERY") return null;
+  if (num(row.delivery_charges) > 0) return null;
+  const route = routeForRow(row, options);
+  if (route.providerCode !== "BRITIUM" || !route.option) return null;
+  const approved = tariffRate(route.option as TariffOption, row.customer_tier);
+  return Number.isFinite(approved) && approved > 0 ? approved : null;
+}
+function codFeePreview(codValue: unknown) {
+  const cod = Math.max(0, num(codValue));
+  if (cod <= 100000) return { amount: 0, rate: 0, status: "COD_FEE_FREE_0_TO_100000" };
+  if (cod <= 300000) return { amount: 200, rate: 0, status: "COD_FEE_FLAT_200_PER_PARCEL_100001_TO_300000" };
+  return { amount: Math.round(cod * 0.002), rate: 0.002, status: "COD_FEE_0_2_PERCENT_ABOVE_300000" };
+}
 function routingPatch(route: DataEntryProviderRouting,row: ParcelRow): Partial<ParcelRow> {
   return {
     township:route.township||row.township,
@@ -964,20 +978,28 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#2b2416]">Financial Calculation Details · click only when needed</summary>
             <div className="border-t border-[#8d7b55] p-3 text-[11px]">
               <div className="space-y-1">
-                <div className="flex justify-between gap-4"><span>Calculated COD</span><b>{money(c.cod_amount)}</b></div>
+                <div className="flex justify-between gap-4 text-[13px]"><span className="font-black">Receiver Total to Collect</span><b>{money(c.cod_amount)}</b></div>
+                <div className="flex justify-between gap-4"><span>Item Price</span><b>{money(row.item_price)}</b></div>
+                <div className="flex justify-between gap-4"><span>Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
                 <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount)}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount).status}</b></div>
                 <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
                 <div className="flex justify-between gap-4"><span>Delivery Difference</span><b>{money(c.delivery_difference)}</b></div>
-                <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
+                <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement (not customer total)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
               </div>
             </div>
           </details> : <div className="rounded-xl border border-[#f6b84b]/35 bg-[#071b2b] p-3">
             <div className="mb-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#f6b84b]">Current Calculation Summary</div>
             <div className="space-y-1 text-[11px]">
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Calculated COD</span><b>{money(c.cod_amount)}</b></div>
+              <div className="flex justify-between gap-4 text-[13px]"><span className="font-black text-[#f6b84b]">Receiver Total to Collect</span><b className="text-[#f6b84b]">{money(c.cod_amount)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Item Price</span><b>{money(row.item_price)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount).status}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
-              <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2 text-[13px]"><span className="font-black text-[#f6b84b]">Merchant Settlement</span><b className="text-[#f6b84b]">{money(c.merchant_final_settlement_amount)}</b></div>
+              <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2"><span className="font-black text-[#8db4ce]">Merchant Settlement (internal)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
           </div>}
 
@@ -1018,8 +1040,10 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </summary>
             <div className="border-t border-[#31506a] p-3">
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <MoneyBox label="Calculated COD" value={c.cod_amount} highlight />
-                <MoneyBox label="Declared Delivery" value={c.delivery_charges ?? row.delivery_charges} />
+                <MoneyBox label="Receiver Total to Collect" value={c.cod_amount} highlight />
+                <MoneyBox label="Customer Delivery Charge" value={c.effective_declared_delivery_charge ?? c.delivery_charges ?? row.delivery_charges} />
+                <MoneyBox label="COD Service Fee" value={c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount} />
+                <MoneyBox label="COD Fee Policy" value={c.cod_fee_policy_status || codFeePreview(c.cod_amount).status} />
                 <MoneyBox label="Backend Surcharges" value={c.backend_calculated_delivery_surcharges} />
                 <MoneyBox label="Base Tariff" value={c.base_tariff} />
                 <MoneyBox label="Weight Surcharge" value={c.weight_surcharge} />
@@ -1838,9 +1862,11 @@ export default function DataEntryFinancialV2Page() {
   async function calculateRow(index:number):Promise<boolean>{
     if(!selectedPickup) return false;
     const row=rows[index]; if(!row || row.skipped) return false;
-    updateRow(index,{calculating:true,calculation:{},message:""});
+    const autoDelivery=automaticDeliveryCharge(row,tariffOptions);
+    const pricingRow=autoDelivery==null?row:{...row,delivery_charges:autoDelivery};
+    updateRow(index,{calculating:true,calculation:{},message:autoDelivery==null?"":`Approved Britium delivery tariff ${money(autoDelivery)} applied automatically.`,...(autoDelivery==null?{}:{delivery_charges:autoDelivery})});
     try{
-      const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(row,selectedPickup)}));
+      const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(pricingRow,selectedPickup)}));
       if(r.error) throw r.error;
       const e=envelope(r.data);
       const resolution=e.raw?.server_resolution||{};
@@ -2040,7 +2066,10 @@ export default function DataEntryFinancialV2Page() {
       let completed=0;
       let cursor=0;
       const total=rows.length;
-      const sourceRows=[...rows];
+      const sourceRows=rows.map(row=>{
+        const autoDelivery=automaticDeliveryCharge(row,tariffOptions);
+        return autoDelivery==null?row:{...row,delivery_charges:autoDelivery};
+      });
       const sourcePickup=selectedPickup!;
       const sourcePayloads=sourceRows.map(row=>JSON.stringify(payload(row,sourcePickup)));
       const failures:string[]=[];
