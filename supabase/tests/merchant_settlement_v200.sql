@@ -82,6 +82,26 @@ begin
  v_failed:=false;
  begin perform public.be_finance_record_payment_v3(v_batch,30001,'CASH',v_ref||'-OVER',null,'https://example.test/cash-receipt',true); exception when others then v_failed:=true; end;
  if not v_failed then raise exception 'Overpayment accepted'; end if;
+ -- Cross-API transfer reuse and canonical UUID duplicates must be rejected.
+ v_failed:=false;
+ begin perform public.be_finance_record_bulk_payment_v200(
+   jsonb_build_array(jsonb_build_object('batch_id',v_batch,'amount',1)),v_ref||'-PART','CASH',null,'https://example.test/cash-receipt');
+ exception when others then v_failed:=true; end;
+ if not v_failed then raise exception 'Individual reference reused by bulk transfer'; end if;
+ v_failed:=false;
+ begin perform public.be_finance_record_bulk_payment_v200(
+   jsonb_build_array(jsonb_build_object('batch_id',lower(v_batch::text),'amount',1),jsonb_build_object('batch_id',upper(v_batch::text),'amount',1)),
+   v_ref||'-CASE','CASH',null,'https://example.test/cash-receipt');
+ exception when others then v_failed:=true; end;
+ if not v_failed then raise exception 'Alternate UUID spelling bypassed duplicate allocation guard'; end if;
+ -- A dispute against the whole batch blocks payment even with no parcel ID.
+ insert into public.be_finance_settlement_disputes_v3(batch_id,merchant_id,dispute_category,merchant_explanation)
+ values(v_batch,'TSW','OTHER','Rollback-only batch dispute');
+ v_failed:=false;
+ begin perform public.be_finance_record_payment_v3(v_batch,1,'CASH',v_ref||'-DISPUTE',null,'https://example.test/dispute-receipt',true);
+ exception when others then v_failed:=true; end;
+ if not v_failed then raise exception 'Batch-wide dispute failed to block payment'; end if;
+ update public.be_finance_settlement_disputes_v3 set status='RESOLVED' where batch_id=v_batch;
  -- All methods require receipt evidence; missing method/bank details are rejected.
  v_failed:=false;
  begin perform public.be_finance_record_payment_v3(v_batch,1,'BANK_TRANSFER',v_ref||'-NO-EVIDENCE',null,null,true); exception when others then v_failed:=true; end;
@@ -91,6 +111,15 @@ begin
  v_result:=public.be_finance_create_settlement_batch_v3(array[v_parcel]);
  v_batch2:=(v_result#>>'{batch,id}')::uuid;
  update public.be_finance_settlement_batches_v3 set status='APPROVED',approved_by=v_checker_email,approved_at=now() where id=v_batch2;
+ -- Reject an invalid allocation without posting any other part of its bulk transfer.
+ v_failed:=false;
+ begin perform public.be_finance_record_bulk_payment_v200(
+   jsonb_build_array(jsonb_build_object('batch_id',v_batch,'amount',1000),jsonb_build_object('batch_id',v_batch2,'amount',16000)),
+   v_ref||'-INVALID-BULK','BANK_TRANSFER','UAT merchant bank','https://example.test/bulk-receipt');
+ exception when others then v_failed:=true; end;
+ if not v_failed or (select count(*) from public.be_finance_settlement_payments_v3 where batch_id in(v_batch,v_batch2))<>1 then
+   raise exception 'Failed bulk payment retained an allocation';
+ end if;
  v_result:=public.be_finance_record_bulk_payment_v200(
    jsonb_build_array(jsonb_build_object('batch_id',v_batch,'amount',30000),jsonb_build_object('batch_id',v_batch2,'amount',15000)),
    v_ref||'-BULK','BANK_TRANSFER','UAT merchant bank','https://example.test/bulk-receipt');
@@ -103,6 +132,16 @@ begin
  if (select count(*) from public.be_finance_settlement_payments_v3 where batch_id in (v_batch,v_batch2))<>3 then
   raise exception 'Bulk retry duplicated payments';
  end if;
+ v_failed:=false;
+ begin perform public.be_finance_record_bulk_payment_v200(
+   jsonb_build_array(jsonb_build_object('batch_id',v_batch,'amount',30000)),
+   v_ref||'-BULK','BANK_TRANSFER','UAT merchant bank','https://example.test/bulk-receipt');
+ exception when others then v_failed:=true; end;
+ if not v_failed then raise exception 'Bulk reference reused with changed allocation set'; end if;
+ v_failed:=false;
+ begin perform public.be_finance_record_payment_v3(v_batch,1,'CASH',v_ref||'-BULK',null,'https://example.test/cash-receipt',true);
+ exception when others then v_failed:=true; end;
+ if not v_failed then raise exception 'Bulk reference reused by individual payment'; end if;
  v_snapshot:=public.be_finance_settlement_snapshot_v3('TSW');
  v_history:=private.be_merchant_payment_history_v200('TSW');
  if (v_snapshot->'wallet') is distinct from (v_history->'wallet') then raise exception 'Finance/Merchant wallet mismatch'; end if;
