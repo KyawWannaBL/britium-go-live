@@ -83,6 +83,8 @@ const UATGoLiveCommandCenterPage = safeLazy(() => import("@/pages/UATGoLiveComma
 const UnifiedOperationsWorkflowPage = safeLazy(() => import("@/pages/UnifiedOperationsWorkflowPage"));
 const WarehouseOperationPage = safeLazy(() => import("@/pages/WarehouseOperationPage"));
 const WarehousePage = safeLazy(() => import("@/pages/WarehousePage"));
+const WarehouseWayplanViewPage = safeLazy(() => import("@/pages/WarehouseWayplanViewPage"));
+const WarehouseRtoReportPage = safeLazy(() => import("@/pages/WarehouseRtoReportPage"));
 const WaybillStudioPage = safeLazy(() => import("@/pages/WaybillStudioPage"));
 const WayplanCreatePage = safeLazy(() => import("@/pages/WayplanCreatePage"));
 const WayplanCommandCenterPage = safeLazy(() => import("@/pages/WayplanCommandCenterPage"));
@@ -216,6 +218,8 @@ function AppRoutes() {
             <Route path="/tariff" element={<TariffPage />} />
             <Route path="/warehouse" element={<WarehousePage />} />
             <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
+            <Route path="/wayplan-view" element={<WarehouseWayplanViewPage />} />
+            <Route path="/rto-report" element={<WarehouseRtoReportPage />} />
             <Route path="/waybill-studio" element={<WaybillStudioPage />} />
             <Route path="/wayplan/create" element={<WayplanCreatePage />} />
             <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
