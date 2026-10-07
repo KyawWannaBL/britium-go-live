@@ -1940,6 +1940,7 @@ function FieldPortal() {
   const [source, setSource] = useState("not synced");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [finishingAssignment, setFinishingAssignment] = useState(false);
   const [deliveryActionKey, setDeliveryActionKey] = useState("");
   const deliveryActionInFlight = useRef(new Set<string>());
   const [uploadingAll, setUploadingAll] = useState(false);
@@ -2216,6 +2217,66 @@ function FieldPortal() {
       setError(err?.message || "Could not synchronize Rider App.");
     } finally {
       if (!silent) setLoading(false);
+    }
+  }
+
+  async function finishAssignment() {
+    if (!session || finishingAssignment || busy) return;
+
+    const confirmed = window.confirm(
+      "All assigned tasks are complete. Finish this assignment and become available for the next assignment?"
+    );
+    if (!confirmed) return;
+
+    setFinishingAssignment(true);
+    setError("");
+    setMessage("");
+
+    try {
+      const client = getRiderSupabase();
+      if (!client) throw new Error("Supabase/session is missing.");
+
+      const { data, error: finishError } = await client.rpc(
+        "be_field_finish_assignments_v196"
+      );
+      if (finishError) throw finishError;
+
+      const result = (data || {}) as any;
+      const blocked = Array.isArray(result.blocked_wayplans)
+        ? result.blocked_wayplans
+        : [];
+
+      if (result.ok === false || blocked.length > 0) {
+        const details = blocked
+          .map((row: any) => {
+            const wayplan = text(row?.wayplan_id, "Wayplan");
+            const openStops = Number(row?.open_stops || 0);
+            return `${wayplan}: ${openStops} active stop${openStops === 1 ? "" : "s"}`;
+          })
+          .join(" · ");
+
+        setError(
+          details
+            ? `Assignment cannot be completed. ${details}`
+            : "Assignment cannot be completed because unfinished stops remain."
+        );
+        await load(session, true);
+        return;
+      }
+
+      const availability = text(result.availability, "AVAILABLE");
+      setMessage(
+        `Assignment completed. You are now ${availability} for another assignment.`
+      );
+      await load(session, true);
+    } catch (err: any) {
+      setError(
+        workforceErrorMessage(err) ||
+        err?.message ||
+        "Could not complete the assignment."
+      );
+    } finally {
+      setFinishingAssignment(false);
     }
   }
 
@@ -3177,7 +3238,23 @@ function FieldPortal() {
             role={session.role}
             onNewNotification={() => void load(session, true)}
           />
-            <button onClick={() => void load(session)} style={buttonStyle("plain")} disabled={loading || busy}><RefreshCw size={16} className={loading ? "be-spin" : ""} /> Sync</button>
+            <button onClick={() => void load(session)} style={buttonStyle("plain")} disabled={loading || busy || finishingAssignment}><RefreshCw size={16} className={loading ? "be-spin" : ""} /> Sync</button>
+            <button
+              type="button"
+              onClick={() => void finishAssignment()}
+              disabled={busy || loading || finishingAssignment}
+              style={{
+                ...buttonStyle("green"),
+                opacity: busy || loading || finishingAssignment ? 0.58 : 1,
+                fontWeight: 900,
+              }}
+              title="Complete current assignment and become available for the next assignment"
+            >
+              <ShieldCheck size={16} />
+              {finishingAssignment
+                ? "FINISHING..."
+                : "COMPLETE ASSIGNMENT & BECOME AVAILABLE"}
+            </button>
             <button onClick={() => navigate("profile")} style={buttonStyle(view === "profile" ? "gold" : "plain")}><User size={16} /> Profile</button>
             <button onClick={logout} style={buttonStyle("red")}><LogOut size={16} /> Logout</button>
           </div>
