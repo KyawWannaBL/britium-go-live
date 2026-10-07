@@ -37,13 +37,14 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
 
   ['/warehouse', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin', 'finance', 'finance-user', 'accountant')],
   ['/wayplan-view', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin')],
+  ['/warehouse-dispatch-command', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin')],
   ['/rto-report', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin', 'customer-service', 'cs', 'support')],
   ['/proof-gallery', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'supervisor', 'operations', 'operations-admin')],
   ['/exceptions', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'dispatch', 'supervisor', 'operations', 'operations-admin')],
 
   ['/ops-workflow', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/wayplan', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
-  ['/dispatch-command', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director', 'warehouse', 'warehouse-staff', 'sorter')],
+  ['/dispatch-command', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/supervisor', rule('supervisor', 'operations', 'operations-admin')],
 
   ['/rider-app', rule('rider', 'driver', 'helper')],
