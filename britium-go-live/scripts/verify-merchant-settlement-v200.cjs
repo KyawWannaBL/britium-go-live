@@ -65,7 +65,18 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  await act(async()=>receiptInput.props.onChange({target:{files:[{name:'kbz.png',type:'image/png',size:30}],value:'kbz.png'}}));
  assert.ok(tree.root.findAllByProps({role:'alert'}).some(n=>text(n).includes('Upload denied')));
  assert.equal(button(tree,'Record ').props.disabled,true,'failed upload must not enable payment');
- tree.unmount();tree=await render('FINANCE_CREATOR');
+ tree.unmount();
+ uploadReply=null;
+ for(const financeRole of ['FINANCE','FINANCE_CREATOR','FINANCE_REVIEWER','FINANCE_APPROVER']){
+  tree=await render(financeRole);
+  const picker=tree.root.findByProps({'aria-label':'Upload receipt'});
+  assert.equal(picker.props.disabled,false,financeRole+' can upload receipts');
+  await act(async()=>picker.props.onChange({target:{files:[{name:'staff.png',type:'image/png',size:30}],value:'staff.png'}}));
+  assert.match(input(tree,'Receipt / evidence').props.value,/object\/authenticated\/merchant-settlement-receipts/);
+  assert.equal(button(tree,'Record ').props.disabled,true,financeRole+' retains payment restriction');
+  tree.unmount();
+ }
+ tree=await render('FINANCE_CREATOR');
  assert.equal(button(tree,'Record ').props.disabled,true,'creator cannot record payment');
  tree.unmount();
  console.log('Merchant settlement V200 UI PASS: COD eligibility, batch selection, partial allocation, overpayment/evidence validation, role gate and double-click guard');
