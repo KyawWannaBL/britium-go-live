@@ -12,7 +12,7 @@ export default function WarehouseRtoReportPage(){
   const [rows,setRows]=useState<any[]>([]);
   const [merchantOptions,setMerchantOptions]=useState<any[]>([]);
   const [query,setQuery]=useState("");
-  const [merchant,setMerchant]=useState("ALL");
+  const [merchant,setMerchant]=useState("");
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
   const [message,setMessage]=useState("");
@@ -35,7 +35,7 @@ export default function WarehouseRtoReportPage(){
       const {data,error}=await (supabase as any).rpc("be_warehouse_rto_report_v199",{
         p_date_from: dateFrom || null,
         p_date_to: dateTo || null,
-        p_merchant: merchant==="ALL" ? null : merchant,
+        p_merchant: merchant.trim() ? merchant.trim() : null,
         p_limit: 5000,
       });
       if(error) throw error;
@@ -65,8 +65,8 @@ export default function WarehouseRtoReportPage(){
   const visible=useMemo(()=>rtoRows.filter((r:any)=>{
     const merchantCode=text(r.merchant_code).toUpperCase();
     const merchantName=text(r.merchant_name).toUpperCase();
-    if(merchant!=="ALL"){
-      const selected=merchant.toUpperCase();
+    if(merchant.trim()){
+      const selected=merchant.trim().toUpperCase();
       if(merchantCode!==selected && merchantName!==selected) return false;
     }
     const raw=r.return_scan_3_at||r.last_return_scan_at||r.updated_at||r.created_at;
@@ -105,7 +105,7 @@ export default function WarehouseRtoReportPage(){
     const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
     const url=URL.createObjectURL(blob);
     const a=document.createElement("a"); a.href=url;
-    const merchantLabel=merchant==="ALL"?"all-merchants":merchant.replace(/[^a-z0-9]+/gi,"-").toLowerCase();
+    const merchantLabel=!merchant.trim()?"all-merchants":merchant.replace(/[^a-z0-9]+/gi,"-").toLowerCase();
     a.download=`RTO_Report_${merchantLabel}_${new Date().toISOString().slice(0,10)}.csv`;
     a.click(); URL.revokeObjectURL(url);
   }
@@ -130,16 +130,28 @@ export default function WarehouseRtoReportPage(){
 
     <section className="no-print mb-4 grid gap-3 md:grid-cols-4">
       <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-black"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Way ID / recipient / reason..." className="min-h-11 w-full bg-white text-black placeholder:text-slate-500 outline-none"/></div>
-      <select value={merchant} onChange={e=>setMerchant(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black">
-        <option value="ALL">All Merchants</option>{merchants.map((m:any)=><option key={m.value} value={m.value}>{m.label}</option>)}
-      </select>
+      <div className="relative">
+        <input
+          list="rto-merchant-options"
+          value={merchant}
+          onChange={e=>setMerchant(e.target.value)}
+          placeholder="All Merchants — type name or code"
+          className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-black placeholder:text-slate-500 outline-none"
+        />
+        <datalist id="rto-merchant-options">
+          {merchants.flatMap((m:any)=>[
+            <option key={m.value+"-code"} value={m.value}>{m.label}</option>,
+            <option key={m.value+"-label"} value={m.label}>{m.value}</option>
+          ])}
+        </datalist>
+      </div>
       <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black"/>
       <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black"/>
     </section>
 
     <section className="print-card rounded-3xl border border-slate-300 bg-white p-4 text-black">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div><b>{visible.length}</b> RTO parcel(s){merchant!=="ALL"?` · Merchant: ${merchant}`:""}</div>
+        <div><b>{visible.length}</b> RTO parcel(s){merchant.trim()?` · Merchant: ${merchant}`:""}</div>
         <div className="text-xs text-black">Generated: {dt(new Date().toISOString())}</div>
       </div>
       <div className="overflow-auto">
