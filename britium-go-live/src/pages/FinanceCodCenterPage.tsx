@@ -167,6 +167,14 @@ export default function FinanceCodCenterPage() {
     setMessage("");
 
     try {
+      const syncResult = await (supabase as any).rpc("be_finance_cod_sync_v48", {
+        p_wayplan_id: null,
+      });
+      if (syncResult.error) throw syncResult.error;
+      if (syncResult.data?.ok === false) {
+        throw new Error(syncResult.data?.message || syncResult.data?.error || "COD synchronization failed.");
+      }
+
       const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center_v92", {
         p_limit: 500,
       });
