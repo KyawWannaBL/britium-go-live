@@ -2,7 +2,6 @@ import React, { useState, useEffect } from "react";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { Wallet, Download, RefreshCw, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { loadRiderCommissionSettlement, loadDriverHelperCommissionSettlement } from "@/lib/commissionApi";
 
 export default function WorkforceCommissionPage() {
   const { t } = useLanguage();
@@ -14,25 +13,25 @@ export default function WorkforceCommissionPage() {
   const fetchPayouts = async () => {
     setLoading(true);
     try {
-      // Fetch both Rider and Driver/Helper Settlements
-      const { data: { session } } = await supabase.auth.getSession();
-      const actorEmail = session?.user?.email || null;
-      const [riderData, driverData] = await Promise.all([
-        loadRiderCommissionSettlement(null),
-        loadDriverHelperCommissionSettlement(actorEmail)
-      ]);
+      const { data, error } = await (supabase as any).rpc("be_workforce_commission_sync_v198", {
+        p_work_date: new Date().toISOString().slice(0, 10),
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.message || data?.error || "Commission synchronization failed.");
 
-      if (riderData?.ok) {
-        // Combine rows from the unified snapshot
-        setLedger([...(riderData.rows || []), ...(driverData?.rows || [])]);
-        setStats({
-           total_commission: (riderData.stats?.total_commission || 0) + (driverData.stats?.total_commission || 0),
-           total_jobs: riderData.stats?.jobs || 0
-        });
-      }
+      setLedger(Array.isArray(data?.rows) ? data.rows : []);
+      setStats({
+        total_commission: Number(data?.stats?.total_commission || 0),
+        total_jobs: Number(data?.stats?.event_rows || 0),
+        rider_commission: Number(data?.stats?.rider_commission || 0),
+        driver_commission: Number(data?.stats?.driver_commission || 0),
+        helper_commission: Number(data?.stats?.helper_commission || 0),
+        pickup_commission: Number(data?.stats?.pickup_commission || 0),
+        delivery_commission: Number(data?.stats?.delivery_commission || 0),
+      });
     } catch (error) {
       console.error(error);
-      alert("Failed to sync payouts from live commission backend.");
+      alert(error?.message || "Failed to sync payouts from live commission backend.");
     } finally {
       setLoading(false);
     }
