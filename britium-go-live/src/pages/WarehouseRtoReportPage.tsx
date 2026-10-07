@@ -19,26 +19,28 @@ export default function WarehouseRtoReportPage(){
   async function load(){
     setLoading(true); setMessage("");
     try{
-      const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
+      const {data,error}=await (supabase as any).rpc("be_warehouse_rto_report_v199",{
+        p_date_from: dateFrom || null,
+        p_date_to: dateTo || null,
+        p_merchant: merchant==="ALL" ? null : merchant,
+        p_limit: 5000,
+      });
       if(error) throw error;
+      if(data?.ok===false) throw new Error(data?.message||data?.error||"RTO report load failed.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
     }catch(e:any){ setMessage(e?.message||"Could not load RTO report data."); }
     finally{ setLoading(false); }
   }
   useEffect(()=>{ void load(); },[]);
 
-  const rtoRows=useMemo(()=>rows.filter((r:any)=>{
-    const status=String(r.dispatch_workflow_stage||r.warehouse_scan_status||r.delivery_status||r.status||"").toUpperCase();
-    return Boolean(r.rto_at) || status==="RTO" || Number(r.return_attempt_count||r.physical_return_scan_count||0)>=3 ||
-      String(r.latest_scan_label||"").toUpperCase().includes("RTO");
-  }),[rows]);
+  const rtoRows=rows;
 
   const merchants=useMemo(()=>Array.from(new Set(rtoRows.map((r:any)=>text(r.merchant_name,r.merchant_code)).filter(Boolean))).sort(),[rtoRows]);
 
   const visible=useMemo(()=>rtoRows.filter((r:any)=>{
     const m=text(r.merchant_name,r.merchant_code);
     if(merchant!=="ALL" && m!==merchant) return false;
-    const raw=r.rto_at||r.return_scan_3_at||r.last_return_scan_at||r.updated_at||r.created_at;
+    const raw=r.return_scan_3_at||r.last_return_scan_at||r.updated_at||r.created_at;
     const d=raw?new Date(raw):null;
     const iso=d && !Number.isNaN(d.getTime()) ? new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(d) : "";
     if(dateFrom && (!iso || iso<dateFrom)) return false;
@@ -54,12 +56,10 @@ export default function WarehouseRtoReportPage(){
 
   function failureReason(r:any){
     return [
-      text(r.return_reason_1_name,r.return_reason_1),
-      text(r.return_reason_2_name,r.return_reason_2),
-      text(r.return_reason_3_name,r.return_reason_3),
-      text(r.last_exception_reason),
-      text(r.pending_return_reason_name),
-      text(r.warehouse_exception_reason)
+      text(r.reason_1_name),
+      text(r.reason_2_name),
+      text(r.reason_3_name),
+      text(r.final_failed_reason)
     ].filter(Boolean).filter((v:string,i:number,a:string[])=>a.indexOf(v)===i).join(" | ");
   }
 
@@ -68,9 +68,9 @@ export default function WarehouseRtoReportPage(){
     const data=[headers,...visible.map((r:any)=>[
       text(r.merchant_name,r.merchant_code),text(r.delivery_way_id),text(r.waybill_no),text(r.pickup_id),
       text(r.recipient_name),text(r.recipient_phone,r.phone_number),text(r.delivery_township,r.township),
-      Number(r.cod_amount||0),text(r.return_reason_1_name,r.return_reason_1),text(r.return_reason_2_name,r.return_reason_2),
-      text(r.return_reason_3_name,r.return_reason_3),failureReason(r),dt(r.rto_at||r.return_scan_3_at||r.last_return_scan_at),
-      text(r.assigned_rider,r.rider_name||r.rider_code),text(r.active_wayplan_id,r.wayplan_id),text(r.warehouse_notes,r.remark)
+      Number(r.cod_amount||0),text(r.reason_1_name),text(r.reason_2_name),
+      text(r.reason_3_name),failureReason(r),dt(r.return_scan_3_at||r.last_return_scan_at),
+      text(r.rider_name,r.rider_code),text(r.wayplan_id),text(r.remarks)
     ])];
     const csv=data.map(row=>row.map(csvCell).join(",")).join("\n");
     const blob=new Blob(["\ufeff"+csv],{type:"text/csv;charset=utf-8"});
@@ -124,13 +124,13 @@ export default function WarehouseRtoReportPage(){
             <td className="p-2"><div>{text(r.recipient_name)}</div><div className="text-[#9cc2d9]">{text(r.recipient_phone,r.phone_number)}</div></td>
             <td className="p-2">{text(r.delivery_township,r.township)}</td>
             <td className="p-2">{Number(r.cod_amount||0).toLocaleString()} MMK</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.return_reason_1_name,r.return_reason_1,"-")}</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.return_reason_2_name,r.return_reason_2,"-")}</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.return_reason_3_name,r.return_reason_3,"-")}</td>
+            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_1_name,"-")}</td>
+            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_2_name,"-")}</td>
+            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_3_name,"-")}</td>
             <td className="max-w-[300px] whitespace-normal p-2 font-bold text-rose-300">{failureReason(r)||"-"}</td>
-            <td className="p-2">{dt(r.rto_at||r.return_scan_3_at||r.last_return_scan_at)}</td>
-            <td className="p-2">{text(r.assigned_rider,r.rider_name||r.rider_code)}</td>
-            <td className="p-2">{text(r.active_wayplan_id,r.wayplan_id)}</td>
+            <td className="p-2">{dt(r.return_scan_3_at||r.last_return_scan_at)}</td>
+            <td className="p-2">{text(r.rider_name,r.rider_code)}</td>
+            <td className="p-2">{text(r.wayplan_id)}</td>
           </tr>)}
           {!visible.length?<tr><td colSpan={12} className="p-12 text-center text-[#9cc2d9]">No RTO parcels match the current filters.</td></tr>:null}</tbody>
         </table>
