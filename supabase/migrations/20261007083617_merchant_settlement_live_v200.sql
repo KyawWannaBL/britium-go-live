@@ -749,6 +749,9 @@ begin
   on conflict(wallet_id,source_type,source_key,direction) do update
     set amount=excluded.amount,status=excluded.status,metadata=excluded.metadata,updated_at=now();
 
+  update public.be_party_wallet_ledger set amount=0,status='VOID',updated_at=now()
+  where source_type='MERCHANT_SETTLEMENT_LIVE';
+
   -- Explicit partner payable where the financial quote exposes a partner share.
   insert into public.be_party_wallet_ledger(
     wallet_id,source_type,source_key,transaction_date,direction,amount,status,description,metadata,updated_at
@@ -1749,4 +1752,117 @@ on public.be_finance_settlement_parcel_control_v3 for each row execute function 
 drop trigger if exists merchant_payment_dispute_v200 on public.be_finance_settlement_disputes_v3;
 create trigger merchant_payment_dispute_v200 before insert or update or delete
 on public.be_finance_settlement_disputes_v3 for each row execute function private.be_lock_merchant_payment_control_v200();
+
+
+-- Prevent COD/CS synchronization recursion and duplicate merchant obligations.
+CREATE OR REPLACE FUNCTION public.be_sync_finance_cod_settled_downstream_v192()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+declare
+  v_way text := upper(btrim(coalesce(new.delivery_way_id,'')));
+  v_merchant text;
+  v_merchant_name text;
+  v_amount numeric := 0;
+  v_provider text;
+  v_wallet_id uuid;
+  v_result jsonb;
+begin
+  if upper(coalesce(new.settlement_status,'')) <> 'SETTLED' then
+    return new;
+  end if;
+
+  -- Reconciliation updates unchanged settled rows; do not recursively re-run downstream sync.
+  if TG_OP='UPDATE' and OLD.settlement_status is not distinct from NEW.settlement_status
+    and OLD.settled_amount is not distinct from NEW.settled_amount
+    and OLD.expected_cod is not distinct from NEW.expected_cod
+    and OLD.reported_collected is not distinct from NEW.reported_collected
+    and OLD.settlement_reference is not distinct from NEW.settlement_reference
+    and OLD.settled_at is not distinct from NEW.settled_at then return NEW; end if;
+  -- Keep live Data Entry record aligned with authoritative Finance V48 settlement.
+  update public.be_data_entry_parcel_details d
+  set finance_status='COD_SETTLED',updated_at=now()
+  where upper(d.delivery_way_id)=v_way and upper(d.parcel_status) in ('DELIVERED','COMPLETED')
+    and d.finance_status is distinct from 'COD_SETTLED';
+
+  -- Refresh wallet account masters/provider positions first.
+  v_result := public.be_refresh_party_wallets_v1();
+
+  select
+    d.merchant_id,
+    coalesce(p.merchant_name,d.merchant_id),
+    coalesce(d.merchant_final_settlement_amount,0)::numeric,
+    nullif(d.financial_quote->>'service_provider_code','')
+  into
+    v_merchant,v_merchant_name,v_amount,v_provider
+  from public.be_data_entry_parcel_details d
+  left join public.be_portal_pickup_requests p on p.pickup_id=d.pickup_id
+  where upper(d.delivery_way_id)=v_way
+  order by d.updated_at desc nulls last,d.saved_at desc nulls last
+  limit 1;
+
+  -- The canonical queue/batch ledger owns merchant balances; retire the duplicate legacy entry.
+  update public.be_party_wallet_ledger set amount=0,status='VOID',updated_at=now()
+  where source_type='MERCHANT_SETTLEMENT_LIVE' and upper(source_key)=v_way;
+
+  -- Provider payable also becomes ready for payout, never auto-paid.
+  update public.be_party_wallet_ledger l
+  set status='READY_FOR_PAYOUT',
+      metadata=coalesce(l.metadata,'{}'::jsonb)||jsonb_build_object(
+        'cod_finance_settled',true,
+        'cod_settlement_reference',new.settlement_reference,
+        'cod_settled_at',new.settled_at,
+        'policy_version','FINANCE_DOWNSTREAM_V192'
+      ),
+      updated_at=now()
+  where l.source_type='SERVICE_PROVIDER_PAYABLE'
+    and upper(l.source_key)=v_way;
+
+  -- Keep reporting/notifications/CS synchronized after Finance confirmation.
+  perform public.be_accounting_sync_cod_v1(
+    coalesce(new.settled_at,new.updated_at,now())::date,
+    coalesce(new.settled_at,new.updated_at,now())::date
+  );
+  perform public.be_cs_closure_sync_v49(new.wayplan_id);
+  perform public.be_refresh_party_wallets_v1();
+
+  -- Re-assert READY_FOR_PAYOUT after generic wallet refresh, which currently
+  -- rebuilds provider rows as PENDING.
+  update public.be_party_wallet_ledger l
+  set status='READY_FOR_PAYOUT',
+      updated_at=now()
+  where (
+      (l.source_type='SERVICE_PROVIDER_PAYABLE' and upper(l.source_key)=v_way)
+
+    );
+
+  update public.be_app_notifications
+  set status='RESOLVED',
+      is_read=true,
+      read_at=coalesce(read_at,now()),
+      metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+        'finance_cod_settled',true,
+        'finance_cod_settlement_reference',new.settlement_reference,
+        'resolved_at',now()
+      )
+  where upper(coalesce(metadata->>'delivery_way_id',entity_id,source_key,''))=v_way
+    and upper(coalesce(notification_type,event_type,'')) in ('COD_HANDOVER','COD_SETTLEMENT_REQUIRED');
+
+  return new;
+exception
+  when others then
+    update public.be_finance_cod_settlements_v48
+    set metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+      'downstream_sync_ok',false,
+      'downstream_sync_error',sqlerrm,
+      'downstream_sync_failed_at',now(),
+      'downstream_sync_build','FINANCE_DOWNSTREAM_V192'
+    )
+    where delivery_way_id=new.delivery_way_id;
+    return new;
+end;
+$function$
+;
 
