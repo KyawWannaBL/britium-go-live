@@ -3,6 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Bell, MessageCircle, PackagePlus, RefreshCw, Search, Wallet } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+import SettlementReceiptLink from "@/components/SettlementReceiptLink";
+
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 const fmt=(v:any)=>v?new Date(v).toLocaleString():"-";
 
@@ -130,7 +132,7 @@ export default function MerchantPortalPage(){
           </div>
           <div className="mt-2 text-sm text-[#8ab0c9]">{r.cod_amount!==undefined?money(r.cod_amount):r.gross_cod!==undefined?money(r.gross_cod):r.description||r.pickup_address||"-"}</div>
           {tab==="settlements"&&<div className="mt-3 grid gap-2 text-sm sm:grid-cols-3"><p>Payable: <b>{money(r.batch_net_payable)}</b></p><p>Paid: <b>{money(r.paid_amount)}</b></p><p>Outstanding: <b>{money(r.outstanding_amount)}</b></p></div>}
-          {tab==="payments"&&<div className="mt-3 space-y-2 text-sm"><p>Confirmed amount: <b>{money(r.amount)}</b> · {r.payment_method}</p><p>Reference: <b>{r.payment_group_reference||r.payment_reference}</b></p><p>Account: {r.bank_account||"—"}</p><p>Confirmed by: {r.confirmed_by||"—"}</p>{/^https:\/\//.test(r.evidence_url||"")&&<a href={r.evidence_url} target="_blank" rel="noreferrer" className="text-[#38bdf8] underline">Payment receipt / evidence</a>}</div>}
+          {tab==="payments"&&<div className="mt-3 space-y-2 text-sm"><p>Confirmed amount: <b>{money(r.amount)}</b> · {r.payment_method}</p><p>Reference: <b>{r.payment_group_reference||r.payment_reference}</b></p><p>Account: {r.bank_account||"—"}</p><p>Confirmed by: {r.confirmed_by||"—"}</p><SettlementReceiptLink url={r.evidence_url||""} label="Payment receipt / evidence"/></div>}
           <div className="mt-2 text-xs text-[#4d7a9b]">{fmt(r.updated_at||r.created_at||r.delivered_at)}</div>
         </div>)}
       </div>
