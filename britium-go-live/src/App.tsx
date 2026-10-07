@@ -5,6 +5,7 @@ import GlobalNextProcessGuide from "@/components/GlobalNextProcessGuide";
 import Sidebar from "@/components/Sidebar";
 import AppErrorBoundary from "@/components/system/AppErrorBoundary";
 import EnvironmentBadge from "@/components/system/EnvironmentBadge";
+import WarehousePendingGlobalAlert from "@/components/WarehousePendingGlobalAlert";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
 import { defaultPortalForRole } from "@/lib/portalRegistry";
@@ -131,6 +132,7 @@ function AppShell({ children }: { children: ReactNode }) {
             <span>{lang === "en" ? "မြန်မာ" : "English"}</span>
           </button>
         </header>
+        <WarehousePendingGlobalAlert />
         <main data-be-main="true" className="custom-scrollbar relative flex-1 overflow-auto">
           <div data-be-content="true" className="h-full min-w-[1200px] p-4 md:p-6">
             {children}
