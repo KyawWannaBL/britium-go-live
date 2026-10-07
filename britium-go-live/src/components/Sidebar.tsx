@@ -103,6 +103,7 @@ const NAV_GROUPS: NavGroup[] = [
       { name: "Warehouse", path: "/warehouse", icon: Package },
       { name: "Warehouse Ops", path: "/warehouse-operations", icon: PackageSearch },
       { name: "Pending Parcels", path: "/warehouse-pending", icon: AlertTriangle },
+      { name: "Dispatch Command (View)", path: "/warehouse-dispatch-command", icon: Truck },
       { name: "Wayplan View", path: "/wayplan-view", icon: MapIcon },
       { name: "RTO Report", path: "/rto-report", icon: FileSpreadsheet },
     ],
