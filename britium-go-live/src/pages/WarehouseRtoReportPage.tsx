@@ -139,10 +139,7 @@ export default function WarehouseRtoReportPage(){
           className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-black placeholder:text-slate-500 outline-none"
         />
         <datalist id="rto-merchant-options">
-          {merchants.flatMap((m:any)=>[
-            <option key={m.value+"-code"} value={m.value}>{m.label}</option>,
-            <option key={m.value+"-label"} value={m.label}>{m.value}</option>
-          ])}
+          {merchants.map((m:any)=><option key={m.value} value={m.value}>{m.label}</option>)}
         </datalist>
       </div>
       <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black"/>
