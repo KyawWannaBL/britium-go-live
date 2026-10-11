@@ -1,3 +1,4 @@
+import { budgetRpc } from '../server/mapbox-budget.mjs';
 const MAPBOX_FORWARD = "https://api.mapbox.com/search/geocode/v6/forward";
 
 function env(...names) {
@@ -39,6 +40,17 @@ export default {
       const token = env("MAPBOX_ACCESS_TOKEN", "VITE_MAPBOX_ACCESS_TOKEN", "VITE_MAPBOX_TOKEN");
       if (!token) return json({ ok: false, error: "mapbox_token_missing" }, 503);
 
+      // Results feed saved delivery addresses, so temporary geocoding cannot
+      // be used here. Claim the permanent cache entry and reserve cost atomically.
+      const canonical = `v6|MM|en|8|${query.toLowerCase().replace(/\s+/g, ' ')}`;
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical));
+      const cacheKey=Array.from(new Uint8Array(digest),b=>b.toString(16).padStart(2,'0')).join('');
+      let claim;
+      try { claim=await budgetRpc('be_mapbox_claim_geocode_v1',{p_cache_key:cacheKey}); }
+      catch { return json({ok:false,error:'mapbox_budget_store_unavailable'},503); }
+      if(claim?.cached===true) return json({ok:true,features:claim.payload?.features||[],cached:true});
+      if(claim?.allowed!==true) return json({ok:false,error:'mapbox_budget_blocked',reason:claim?.reason||'DENIED'},503);
+
       const params = new URLSearchParams({
         q: query,
         country: "MM",
@@ -48,7 +60,7 @@ export default {
         permanent: "true",
         access_token: token,
       });
-      const response = await fetch(`${MAPBOX_FORWARD}?${params.toString()}`, { headers: { Accept: "application/json" } });
+      const response = await fetch(`${MAPBOX_FORWARD}?${params.toString()}`, { headers: { Accept: "application/json" }, signal:AbortSignal.timeout(5500) });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
         return json({
@@ -58,7 +70,9 @@ export default {
         }, 502);
       }
 
-      return json({ ok: true, features: Array.isArray(payload?.features) ? payload.features : [] });
+      if(!Array.isArray(payload?.features)) return json({ok:false,error:'invalid_mapbox_geocode_response'},502);
+      try { await budgetRpc('be_mapbox_complete_geocode_v1',{p_cache_key:cacheKey,p_lease_id:claim.lease_id,p_payload:payload}); } catch { /* Keep reservation charged; never retry Mapbox here. */ }
+      return json({ ok: true, features: payload.features });
     } catch (error) {
       return json({ ok: false, error: "mapbox_geocode_proxy_failed", message: String(error?.message || error) }, 502);
     }

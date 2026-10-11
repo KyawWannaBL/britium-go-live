@@ -5,6 +5,7 @@ import routeHandler from "../api/wayplan-route.mjs";
 
 const originalFetch = globalThis.fetch;
 const originalEnv = {
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
   MAPBOX_ACCESS_TOKEN: process.env.MAPBOX_ACCESS_TOKEN,
@@ -45,6 +46,7 @@ function googleMatrixResponse() {
 }
 
 try {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service";
   process.env.SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_ANON_KEY = "anon";
   process.env.MAPBOX_ACCESS_TOKEN = "mapbox-token";
@@ -55,6 +57,7 @@ try {
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url.includes("/auth/v1/user")) return Response.json({ id: "user-1" }, { status: 200 });
+    if (url.includes("/rpc/be_mapbox_reserve_v1")) return Response.json({allowed:true});
     if (url.includes("api.mapbox.com")) return Response.json({ code: "Temporary", message: "simulated Mapbox outage" }, { status: 503 });
     if (url.includes("routes.googleapis.com")) {
       googleCalls += 1;
@@ -65,15 +68,16 @@ try {
 
   const recoveredResponse = await routeHandler.fetch(request());
   const recoveredBody = await recoveredResponse.json();
-  assert.equal(recoveredResponse.status, 200, "billing-hold mode must fail over to Google instead of returning 503");
+  assert.equal(recoveredResponse.status, 200, "billing-hold mode must use the local fallback instead of returning 503");
   assert.equal(recoveredBody.ok, true);
-  assert.equal(recoveredBody.source, "GOOGLE_ROUTES");
-  assert.ok(googleCalls > 0, "Google must be attempted only after Mapbox fails");
+  assert.equal(recoveredBody.source, "DEFERRED_PROVIDER");
+  assert.equal(googleCalls, 0, "Mapbox outage must not cause unexpected Google fees");
 
   process.env.GOOGLE_ROUTES_API_KEY = "";
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url.includes("/auth/v1/user")) return Response.json({ id: "user-1" }, { status: 200 });
+    if (url.includes("/rpc/be_mapbox_reserve_v1")) return Response.json({allowed:true});
     if (url.includes("api.mapbox.com")) return Response.json({ code: "Temporary", message: "simulated Mapbox outage" }, { status: 503 });
     if (url.includes("routes.googleapis.com")) throw new Error("Google must not be called without a configured key");
     throw new Error("Unexpected URL: " + url);
@@ -84,7 +88,7 @@ try {
   assert.equal(deferredResponse.status, 200, "provider outage must degrade to an assignment-ready response instead of HTTP 503");
   assert.equal(deferredBody.ok, true);
   assert.equal(deferredBody.source, "DEFERRED_PROVIDER");
-  assert.equal(deferredBody.route_mode, "PROVIDER_OUTAGE_OPERATOR_REVIEW");
+  assert.equal(deferredBody.route_mode, "LOCAL_HAVERSINE_ESTIMATE");
   assert.deepEqual(deferredBody.ordered_stops.map((row) => row.delivery_way_id), ["DTEST-001"]);
   assert.match(String(deferredBody.warning || ""), /provider/i);
 
