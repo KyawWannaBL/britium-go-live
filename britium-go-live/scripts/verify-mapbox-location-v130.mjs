@@ -18,11 +18,13 @@ assert.equal(acceptedMapboxRoutingSource("MAPBOX_POSTAL_VALIDATED_ADDRESS_EXACT"
 const originalFetch = globalThis.fetch;
 const originalEnv = {
   MAPBOX_ACCESS_TOKEN: process.env.MAPBOX_ACCESS_TOKEN,
+  SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
   SUPABASE_URL: process.env.SUPABASE_URL,
   SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY,
 };
 
 try {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "service-test-key";
   process.env.MAPBOX_ACCESS_TOKEN = "mapbox-test-token";
   process.env.SUPABASE_URL = "https://example.supabase.co";
   process.env.SUPABASE_ANON_KEY = "anon-test-key";
@@ -31,6 +33,8 @@ try {
   globalThis.fetch = async (input) => {
     const url = String(input);
     if (url.includes("/auth/v1/user")) return Response.json({ id: "user-1" }, { status: 200 });
+    if (url.includes("/rpc/be_mapbox_claim_geocode_v1")) return Response.json({allowed:true,lease_id:"lease-test"});
+    if (url.includes("/rpc/be_mapbox_complete_geocode_v1")) return Response.json({stored:true});
     if (url.includes("api.mapbox.com")) {
       mapboxUrl = url;
       return Response.json({
@@ -63,7 +67,7 @@ try {
   assert.match(resolver, /Promise\.allSettled\(queries\.map/);
 
   const recovery = fs.readFileSync(path.join(root, "src/lib/wayplanLocationRecovery.ts"), "utf8");
-  assert.match(recovery, /acceptedMapboxRoutingSource/);
+  assert.ok(recovery.includes("^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)"), "Validated Mapbox address sources remain acceptable for routing");
   assert.match(recovery, /location\.matchLevel/);
 
   const migrationFiles = fs.readdirSync(path.join(root, "supabase/migrations")).filter((name) => name.includes("mapbox_location_recovery_v130"));
