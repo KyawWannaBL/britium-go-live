@@ -11,10 +11,10 @@ const checks = [
   ["final button exposes readiness state", planner.includes('data-create-reviewed-wayplans-v56="true"')],
   ["missing driver is explained", planner.includes("choose a Driver")],
   ["rider handling is explicit", planner.includes("choose a Rider") || planner.includes("Rider (optional)")],
-  ["auto crew repair exists", planner.includes("Auto-assign missing Driver / Rider") || planner.includes("Auto-assign missing Driver")],
-  ["driver requirement and rider role are explicit", planner.includes("Driver *") && (planner.includes("Rider *") || planner.includes("Rider (optional)"))],
+  ["crew selection starts with vehicle", planner.includes("Choose vehicle first") && planner.includes("Crew is intentionally not auto-assigned")],
+  ["vehicle-specific driver and rider requirements are explicit", planner.includes("choose a Driver for the selected vehicle") && planner.includes("choose a Rider for the Motor Bike/Bicycle")],
   ["button is controlled by readiness issues", planner.includes("const cannotSave = busy || readinessIssues.length > 0")],
-  ["below-50 approval is explicit for Driver/van-only routes", planner.includes("Approve one Driver/van-only route below 50 parcels")],
+  ["below-50 approval is explicit for Driver/van-only routes", planner.includes("Approve one Driver/vehicle-crew route below 50 parcels")],
   ["Rider-selected route minimum exemption is explicit", planner.includes('data-rider-minimum-exempt-v84="true"') && planner.includes("Rider assignment: no minimum parcel count")],
 ];
 
@@ -25,3 +25,5 @@ if (failed.length) {
   process.exit(1);
 }
 console.log("Wayplan create readiness V56 contract PASS");
+
+await import("./verify-wayplan-vehicle-driven-crew-v148.mjs");

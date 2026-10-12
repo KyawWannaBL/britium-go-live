@@ -1,0 +1,36 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+const db = new PGlite();
+try {
+ await db.exec(`CREATE SCHEMA auth;
+ CREATE ROLE authenticated;
+ CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;
+ CREATE FUNCTION auth.jwt() RETURNS jsonb LANGUAGE sql AS $$SELECT '{"email":"operator@test.invalid"}'::jsonb$$;
+ CREATE FUNCTION public.be_current_user_role() RETURNS text LANGUAGE sql AS $$SELECT current_setting('test.role',true)$$;
+ CREATE TABLE public.be_wayplan_dispatches(wayplan_id text PRIMARY KEY, wayplan_status text, dispatched_at timestamptz, loaded_to_vehicle_at timestamptz, handed_over_to_rider_at timestamptz, branch_code text);
+ CREATE TABLE public.be_audit_events(action text,resource_id text,details jsonb);
+ SELECT set_config('test.uid','00000000-0000-4000-8000-000000000001',false),set_config('test.role','dispatch',false);`);
+ const old=fs.readFileSync('supabase/migrations/20260917193000_wayplan_created_revision_v46.sql','utf8');
+ const start=old.indexOf('create or replace function public.be_replace_created_wayplan_v46(');
+ await db.exec(old.slice(start,old.indexOf('\nrevoke all',start)));
+ if (!process.argv.includes('--baseline')) await db.exec(fs.readFileSync('../supabase/migrations/20261012144059_wayplan_revision_policy_v201.sql','utf8'));
+ const payload = (overrides={}) => ({source_wayplan_id:'SOURCE',request_id:'00000000-0000-4000-8000-000000000002',region_code:'YANGON',plan:{vehicle_code:'MOTORBIKE',rider_code:'R1',delivery_way_ids:['TEST-1'],route:{source:'MAPBOX_FALLBACK'}},...overrides});
+ const error = async(p) => {try {await db.query('select public.be_replace_created_wayplan_v46($1::jsonb)',[p]);return '';}catch(e){return e.message;}};
+ assert.match(await error(payload()),/Source Wayplan not found/,'Yangon Mapbox Rider routes below 50 must reach source validation');
+ const estimate=payload();estimate.plan.route={source:'DEFERRED_PROVIDER',route_mode:'LOCAL_HAVERSINE_ESTIMATE',estimated:true,warning:'Approximate local estimate; not road verified'};
+ assert.match(await error(estimate),/Source Wayplan not found/,'Labelled budget estimates are accepted for source validation');
+ estimate.plan.route.estimated=false;assert.match(await error(estimate),/labelled estimate/i);
+ const van=payload();van.plan.vehicle_code='VAN1';van.plan.rider_code=null;van.plan.driver_code='D1';
+ assert.match(await error(van),/below 50 parcels/,'Van minimum approval still enforced');
+ van.approve_below_minimum=true;van.below_minimum_reason='Approved low volume';assert.match(await error(van),/Source Wayplan not found/);
+ van.plan.rider_code='R1';assert.match(await error(van),/Driver.*Helper.*Rider/i);
+ const bike=payload();bike.plan.driver_code='D1';assert.match(await error(bike),/Rider only/);
+ const unknown=payload();unknown.plan.route.source='FAKE_ROAD';assert.match(await error(unknown),/reviewed route/i);
+ await db.exec("SELECT set_config('test.uid','',false)");assert.match(await error(payload()),/Authenticated/);
+ await db.exec("SELECT set_config('test.uid','00000000-0000-4000-8000-000000000001',false),set_config('test.role','rider',false)");assert.match(await error(payload()),/permission/);
+ await db.exec("SELECT set_config('test.role','dispatch',false); INSERT INTO public.be_wayplan_dispatches VALUES('SOURCE','DISPATCHED',null,null,null,'YGN')");assert.match(await error(payload()),/Only a CREATED/);
+ await db.exec("UPDATE public.be_wayplan_dispatches SET wayplan_status='CREATED',loaded_to_vehicle_at=now()");assert.match(await error(payload()),/locked/);
+ await db.exec("UPDATE public.be_wayplan_dispatches SET loaded_to_vehicle_at=null,branch_code='MDY'");assert.match(await error(payload()),/branch/);
+ console.log('PASS: real PL/pgSQL revision guards, Mapbox and labelled estimates, vehicle crew/minimum, auth, status, loading and region locks (disposable database)');
+} finally {await db.close();}

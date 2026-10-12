@@ -36,11 +36,12 @@ try {
 
   for (const township of ["တပ်ကုန်း", "လယ်ဝေး", "တောင်ကြီး"]) {
     const initial = resolve(township);
-    assert.equal(initial.providerCode, "ROYAL EXPRESS", township);
+    const hasRoyalTariff = township === "တောင်ကြီး";
+    assert.equal(initial.providerCode, hasRoyalTariff ? "ROYAL EXPRESS" : "H.TERMINAL DROP-OFF", township);
     assert.equal(initial.routeRegion, "OUTSIDE_CORE", township);
-    assert.equal(initial.deliveryMode, "ROYAL_EXPRESS", township);
+    assert.equal(initial.deliveryMode, hasRoyalTariff ? "ROYAL_EXPRESS" : "HIGHWAY_BUS_STATION", township);
     assert.equal(initial.mapRequired, false, township);
-    assert.equal(initial.stationRequired, false, township);
+    assert.equal(initial.stationRequired, !hasRoyalTariff, township);
 
     const royal = resolve(township, 1);
     assert.equal(royal.providerCode, "ROYAL EXPRESS", township);
@@ -49,10 +50,10 @@ try {
     assert.equal(royal.stationRequired, false, township);
   }
   const terminal = resolve("Unsupported Township");
-  assert.equal(terminal.providerCode, "H.TERMINAL DROP-OFF");
-  assert.equal(terminal.deliveryMode, "HIGHWAY_BUS_STATION");
-  assert.equal(terminal.stationRequired, true);
-  assert.equal(resolve("Unsupported Township", "", "A receiver address").providerCode, "ROYAL EXPRESS");
+  assert.equal(terminal.providerCode, "");
+  assert.equal(terminal.deliveryMode, "UNRESOLVED");
+  assert.equal(terminal.stationRequired, false);
+  assert.equal(resolve("Unsupported Township", "", "A receiver address").providerCode, "");
   for (const outreach of ["Yangon", "ရန်ကုန်", "Thanlyin", "သန်လျင်", "Thongwa", "သုံးခွ"]) {
     const route = resolve(outreach);
     assert.equal(route.providerCode, "BRITIUM", outreach);
@@ -71,12 +72,12 @@ try {
   assert.match(page, /data-highway-station-selection-v19/);
   assert.match(page, /delivery_region: row\.deliveryRegion/);
   assert.match(page, /location_required: row\.deliveryMode === "DOORSTEP_MAP"/);
-  assert.match(page, /route\.mapRequired\?row\.locationStatus==="SYNCED":row\.locationStatus==="NOT_REQUIRED"/);
+  assert.match(page, /locationReadiness\(row,routeForRow\(row,tariffOptions\)\)/);
   assert.match(editor, /DataEntryLocationResolution = [^;]+"NOT_REQUIRED"/);
   assert.match(editor, /if \(!enabled\)[\s\S]*reportResolution\("NOT_REQUIRED"\)/);
 
   assert.match(wayplan, /be_wayplan_region_options_v19/);
-  assert.match(wayplan, /be_dispatch_ready_queue_v19/);
+  assert.match(wayplan, /be_wayplan_visible_queue_v124/);
   assert.match(wayplan, /be_wayplan_region_set_active_v19/);
   assert.match(wayplan, /region_code: selectedRegion/);
   assert.match(wayplan, /Yangon is the current operational focus/);
@@ -92,7 +93,7 @@ try {
   assert.match(migration, /DATA_ENTRY_DELIVERY_ROUTE_ASSIGNED/);
   assert.match(migration, /notify pgrst, 'reload schema'/);
   assert.match(geographyMigration, /DATA_ENTRY_INITIAL_PROVIDER_GEOGRAPHY_V26_20260905/);
-  assert.match(geographyMigration, /v_provider := 'ROYAL EXPRESS'[\s\S]*v_region := 'OUTSIDE_CORE'[\s\S]*v_mode := 'ROYAL_EXPRESS'/);
+  for (const statement of ["v_provider := 'ROYAL EXPRESS'", "v_region := 'OUTSIDE_CORE'", "v_mode := 'ROYAL_EXPRESS'"]) assert.ok(geographyMigration.includes(statement), statement);
   assert.match(geographyMigration, /be_data_entry_delivery_route_v26/);
 
   console.log("Data Entry V19 regional routing and Wayplan contract verified.");

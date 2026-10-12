@@ -1,8 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { assignCrews, type Resource, type Stop, type VanPlan } from "@/lib/multiVanPlanner";
-import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
+import { type Resource, type Stop, type VanPlan } from "@/lib/multiVanPlanner";
 import FullVanRouteMap from "@/components/FullVanRouteMap";
 
 const field: React.CSSProperties = { padding: 10, borderRadius: 8, color: "#102b45", background: "white", border: "1px solid #9cc2d9" };
@@ -23,9 +22,12 @@ type Props = {
 };
 
 function coord(row: any) {
-  const lat = Number(row?.latitude), lng = Number(row?.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng);
+  if (row?.latitude == null || row?.longitude == null || String(row.latitude).trim() === "" || String(row.longitude).trim() === "") return false;
+  const lat = Number(row.latitude), lng = Number(row.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng) && lat >= 9 && lat <= 29 && lng >= 92 && lng <= 102;
 }
+
+function isRiderOnlyVehicle(code: string) { return ["MOTORBIKE", "BICYCLE"].includes(String(code || "").toUpperCase()); }
 
 export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, region, onSaved }: Props) {
   const [context, setContext] = useState<any>(null);
@@ -53,9 +55,11 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
     return () => { alive = false; };
   }, [region]);
 
+  const sourceId = String(sourceWayplan?.wayplan_id || "");
+  const otherBusy = (context?.busy || []).filter((b: any) => !sourceId || ![b.wayplan_id, b.wayplan_code].includes(sourceId));
   const available = (items: any[], key: string): Resource[] => (items || []).map((x) => ({
     ...x,
-    available: !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
+    available: !otherBusy.some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
   const vehicles = available((context?.vehicles || []).filter((v: any) => v.operation_type === "DELIVERY"), "vehicle_code");
@@ -73,12 +77,13 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
     const driver = drivers.find((x) => x.id === sourceWayplan?.driver_code && x.available !== false);
     const rider = riders.find((x) => x.id === sourceWayplan?.rider_code && x.available !== false);
     const helper = helpers.find((x) => x.id === sourceWayplan?.helper_code && x.available !== false);
+    const vehicleCode = vehicle?.id || next.vehicle_code;
+    const riderOnly = isRiderOnlyVehicle(vehicleCode);
     return {
-      ...next,
-      vehicle_code: vehicle?.id || next.vehicle_code,
-      driver_code: driver?.id || next.driver_code,
-      rider_code: rider?.id || next.rider_code,
-      helper_code: helper?.id || next.helper_code,
+      ...next, vehicle_code: vehicleCode,
+      driver_code: riderOnly ? "" : (driver?.id || ""),
+      rider_code: riderOnly ? (rider?.id || "") : "",
+      helper_code: riderOnly ? "" : (helper?.id || ""),
     };
   }
 
@@ -101,10 +106,10 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok || !result?.ok) throw new Error(result?.diagnostics?.join(" | ") || result?.message || result?.error || `Road route service failed (${response.status}).`);
-    if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK"].includes(String(result.source || ""))) throw new Error("A real road-routing source is required before saving a revision.");
+    if (!["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "DEFERRED_PROVIDER"].includes(String(result.source || ""))) throw new Error("A supported reviewed route state is required before saving a revision.");
     const byId = new Map(inputPlan.rows.map((row) => [String(row.delivery_way_id), row]));
     const ordered = (result.ordered_stops || []).map((row: any) => byId.get(String(row.delivery_way_id))).filter(Boolean) as Stop[];
-    if (ordered.length !== inputPlan.rows.length) throw new Error("Road optimizer did not return every revised way exactly once.");
+    if (ordered.length !== inputPlan.rows.length || new Set(ordered.map((row) => row.delivery_way_id)).size !== inputPlan.rows.length) throw new Error("Road optimizer did not return every revised way exactly once.");
     return {
       ...inputPlan,
       rows: ordered,
@@ -116,6 +121,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
         duration_s: Number(result.duration_s || 0),
         request_count: Number(result.request_count || 0),
         fallback: Boolean(result.fallback),
+        estimated: Boolean(result.estimated),
         warning: result.warning || null,
         optimized_at: result.optimized_at || new Date().toISOString(),
       },
@@ -124,7 +130,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
 
   async function prepareRevision() {
     setBusy(true);
-    setMessage("Assigning available Driver / Rider / Helper and optimizing the revised route from Britium Ventures Head Office…");
+    setMessage("Optimizing the revised route and preserving compatible source crew from Britium Ventures Head Office…");
     try {
       if (!context || !origin) throw new Error("Wayplan routing context is not ready.");
       if (!rows.length) throw new Error("Keep at least one way in the revision.");
@@ -142,11 +148,11 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
         rows,
         route: { source: "REVISION_PENDING_ROAD", route_mode: "CREATED_REVISION_V46", fallback: false },
       }];
-      const crewed = assignCrews(strategic, drivers, riders, helpers, convertMyanmarTownshipToEnglish) as RevisionPlan[];
-      const preferred = preferSourceCrew(crewed[0]);
+      // Crew is intentionally not auto-assigned; keep only compatible source crew.
+      const preferred = preferSourceCrew(strategic[0]);
       const optimized = await optimizeOne(preferred);
       setPlan(optimized);
-      setMessage(`Revision ready for review: ${optimized.rows.length} ways · ${optimized.route?.source || "road route"} · Driver/Rider/Helper assigned. No dispatch has occurred.`);
+      setMessage(`Revision ready for review: ${optimized.rows.length} ways · ${optimized.route?.source || "road route"} · check the vehicle-specific crew before saving. No dispatch has occurred.`);
     } catch (e: any) {
       setPlan(null);
       setMessage(e?.message || "Revision planning failed.");
@@ -156,49 +162,58 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
   }
 
   function patchPlan(patch: Partial<RevisionPlan>) {
-    setPlan((current) => current ? { ...current, ...patch } : current);
+    setPlan((current) => {
+      if (!current) return current;
+      const next = { ...current, ...patch };
+      if (patch.vehicle_code !== undefined) {
+        if (isRiderOnlyVehicle(next.vehicle_code)) { next.driver_code = ""; next.helper_code = ""; }
+        else next.rider_code = "";
+      }
+      return next;
+    });
     request.current = null;
   }
 
   async function saveRevision() {
     if (!plan) return;
-    if (plan.rows.length < 50 && (!approved || reason.trim().length < 5)) {
+    if (!isRiderOnlyVehicle(plan.vehicle_code) && plan.rows.length < 50 && (!approved || reason.trim().length < 5)) {
       setMessage("Approve the below-50 revision and enter an operational reason before saving.");
       return;
     }
-    if (!plan.driver_code || !plan.rider_code) {
-      setMessage("Driver and Rider are required before saving the revised Wayplan.");
+    if (!plan.vehicle_code || (isRiderOnlyVehicle(plan.vehicle_code) ? !plan.rider_code : !plan.driver_code)) {
+      setMessage("Choose a vehicle and its required Rider or Driver before saving the revised Wayplan.");
       return;
     }
     setBusy(true);
-    setMessage("Re-optimizing the reviewed route and saving a replacement CREATED Wayplan…");
+    setMessage("Saving the reviewed route and replacement CREATED Wayplan…");
     try {
-      const optimized = await optimizeOne(plan);
+      const reviewed = plan;
       const payload = {
         source_wayplan_id: sourceWayplan.wayplan_id,
         region_code: region,
         plan: {
-          vehicle_code: optimized.vehicle_code,
+          vehicle_code: reviewed.vehicle_code,
           wave_no: 1,
           trip_no: 1,
           crew_mode: "ROSTER",
-          driver_code: optimized.driver_code,
-          rider_code: optimized.rider_code,
-          helper_code: optimized.helper_code || null,
-          driver_name: resourceName(drivers, optimized.driver_code),
-          rider_name: resourceName(riders, optimized.rider_code),
-          helper_name: optimized.helper_code ? resourceName(helpers, optimized.helper_code) : "",
-          delivery_way_ids: optimized.rows.map((row) => row.delivery_way_id),
+          driver_code: reviewed.driver_code || null,
+          rider_code: reviewed.rider_code || null,
+          helper_code: reviewed.helper_code || null,
+          driver_name: resourceName(drivers, reviewed.driver_code),
+          rider_name: resourceName(riders, reviewed.rider_code),
+          helper_name: reviewed.helper_code ? resourceName(helpers, reviewed.helper_code) : "",
+          delivery_way_ids: reviewed.rows.map((row) => row.delivery_way_id),
           route: {
-            source: optimized.route?.source,
-            base_source: optimized.route?.base_source || null,
-            route_mode: optimized.route?.route_mode,
-            distance_m: optimized.route?.distance_m || 0,
-            duration_s: optimized.route?.duration_s || 0,
-            request_count: optimized.route?.request_count || 0,
-            fallback: Boolean(optimized.route?.fallback),
-            warning: optimized.route?.warning || null,
-            optimized_at: optimized.route?.optimized_at || new Date().toISOString(),
+            source: reviewed.route?.source,
+            base_source: reviewed.route?.base_source || null,
+            route_mode: reviewed.route?.route_mode,
+            distance_m: reviewed.route?.distance_m || 0,
+            duration_s: reviewed.route?.duration_s || 0,
+            request_count: reviewed.route?.request_count || 0,
+            fallback: Boolean(reviewed.route?.fallback),
+            estimated: Boolean(reviewed.route?.estimated),
+            warning: reviewed.route?.warning || null,
+            optimized_at: reviewed.route?.optimized_at || new Date().toISOString(),
           },
         },
         approve_below_minimum: approved,
@@ -222,8 +237,9 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
     }
   }
 
-  const short = rows.length > 0 && rows.length < 50;
-  const cannotSave = busy || !plan || !plan.driver_code || !plan.rider_code || plan.rows.length > 75 || (short && (!approved || reason.trim().length < 5));
+  const riderOnly = Boolean(plan && isRiderOnlyVehicle(plan.vehicle_code));
+  const short = !riderOnly && rows.length > 0 && rows.length < 50;
+  const cannotSave = busy || !plan || !plan.vehicle_code || (riderOnly ? !plan.rider_code : !plan.driver_code) || plan.rows.length > 75 || (short && (!approved || reason.trim().length < 5));
 
   return <section style={{ padding: 16, border: "1px solid #8f5a2a", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <div>
@@ -233,19 +249,21 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
 
     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
       <button style={button} disabled={busy || !context || !rows.length || rows.length > 75} onClick={prepareRevision}>{busy ? "Optimizing…" : "Optimize revised route + assign crew"}</button>
-      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · road routing required (temporary Mapbox-first billing-safe mode; Google recovery available)</span>
+      <span style={{ alignSelf: "center" }}>Origin: <strong>Britium Ventures Head Office</strong> · temporary Mapbox-first billing-safe mode; unavailable routing uses an explicitly labelled estimate</span>
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
 
     {plan && <>
       <div style={{ fontWeight: 800 }}>{plan.rows.length} ways · {plan.route?.source} · {plan.route?.duration_s ? `${Math.round(Number(plan.route.duration_s) / 60)} min` : ""} {plan.route?.distance_m ? `· ${(Number(plan.route.distance_m) / 1000).toFixed(1)} km` : ""}</div>
+      {plan.route?.warning && <p role="status" style={{ margin: 0 }}>{plan.route.warning}</p>}
+      <p style={{ margin: 0 }}>{riderOnly ? "Motor Bike/Bicycle: Rider required; Driver and Helper disabled; no minimum parcel count." : "Van/car/truck: Driver required, Helper optional, Rider disabled."}</p>
       <FullVanRouteMap origin={origin} plan={plan} vanLabel={`Revision of ${sourceWayplan?.wayplan_id}`} />
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <label>Vehicle <select style={field} disabled={busy} value={plan.vehicle_code || ""} onChange={(e) => patchPlan({ vehicle_code: e.target.value })}><option value="">Choose</option>{vehicles.filter((x) => x.available !== false || x.id === plan.vehicle_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-        <label>Driver <select style={field} disabled={busy} value={plan.driver_code || ""} onChange={(e) => patchPlan({ driver_code: e.target.value })}><option value="">Choose Driver</option>{drivers.filter((x) => x.available !== false || x.id === plan.driver_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-        <label>Rider <select style={field} disabled={busy} value={plan.rider_code || ""} onChange={(e) => patchPlan({ rider_code: e.target.value })}><option value="">Choose Rider</option>{riders.filter((x) => x.available !== false || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
-        <label>Helper <select style={field} disabled={busy} value={plan.helper_code || ""} onChange={(e) => patchPlan({ helper_code: e.target.value })}><option value="">No Helper</option>{helpers.filter((x) => x.available !== false || x.id === plan.helper_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+        <label>Driver <select style={field} disabled={busy || riderOnly} value={riderOnly ? "" : (plan.driver_code || "")} onChange={(e) => patchPlan({ driver_code: e.target.value })}><option value="">Choose Driver</option>{drivers.filter((x) => x.available !== false || x.id === plan.driver_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+        <label>Rider <select style={field} disabled={busy || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan({ rider_code: e.target.value })}><option value="">Choose Rider</option>{riders.filter((x) => x.available !== false || x.id === plan.rider_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
+        <label>Helper <select style={field} disabled={busy || riderOnly} value={riderOnly ? "" : (plan.helper_code || "")} onChange={(e) => patchPlan({ helper_code: e.target.value })}><option value="">No Helper</option>{helpers.filter((x) => x.available !== false || x.id === plan.helper_code).map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></label>
       </div>
       <details open>
         <summary>Reviewed delivery sequence</summary>
@@ -258,7 +276,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
       <input style={{ ...field, width: "100%", marginTop: 8 }} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Mandatory operational reason" />
     </div>}
 
-    <button style={button} disabled={cannotSave} onClick={saveRevision}>Re-optimize & Save Revision</button>
+    <button style={button} disabled={cannotSave} onClick={saveRevision}>Save Revision</button>
     <button style={secondary} disabled={busy || !plan} onClick={prepareRevision}>Re-optimize road route again</button>
   </section>;
 }

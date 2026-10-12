@@ -24,6 +24,16 @@ collectSourceFiles(sourceRoot);
 for (const sourceFile of sourceFiles) {
   if (sourceFile.endsWith(path.join("integrations", "supabase", "client.ts"))) continue;
 
+  if (sourceFile.endsWith(path.join("lib", "riderPortalSupabase.ts"))) {
+    // Sandbox worker login must not replace the Enterprise admin session.
+    const sandbox = fs.readFileSync(sourceFile, "utf8");
+    assert.equal(sandbox.match(/\bcreateClient(?:<[^>]+>)?\s*\(/g)?.length, 1);
+    assert.match(sandbox, /storageKey:\s*"britium\.field\.sandbox\.auth\.v1"/);
+    assert.match(sandbox, /detectSessionInUrl:\s*false/);
+    assert.doesNotMatch(canonicalClient, /britium\.field\.sandbox\.auth\.v1/);
+    continue;
+  }
+
   assert.doesNotMatch(
     fs.readFileSync(sourceFile, "utf8"),
     /\bcreateClient(?:<[^>]+>)?\s*\(/,

@@ -1,6 +1,6 @@
 export type Stop = { delivery_way_id: string; township: string; latitude?: number; longitude?: number; parcel_weight_kg?: number; [key: string]: unknown };
 export type Resource = { id: string; name: string; zone?: string; capacity_kg?: number; available?: boolean; [key: string]: unknown };
-export type RouteProvenance = { source?: string; route_mode?: string; distance_m?: number; duration_s?: number; request_count?: number; fallback?: boolean; warning?: string; optimized_at?: string; base_source?: string; manual?: boolean };
+export type RouteProvenance = { source?: string; route_mode?: string; distance_m?: number; duration_s?: number; request_count?: number; fallback?: boolean; estimated?: boolean; warning?: string; optimized_at?: string; base_source?: string; manual?: boolean };
 export type VanPlan = {
   vehicle_code: string;
   driver_code: string;
