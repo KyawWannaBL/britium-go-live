@@ -101,7 +101,7 @@ assert.match(page, /activeOperation\.id !== submittedPhotoOperationId/, "stale u
 const dataEntry = readFileSync(new URL("../src/pages/DataEntryFinancialV2Page.tsx", import.meta.url), "utf8");
 assert.match(dataEntry, /Bulk upload staged/);
 assert.match(dataEntry, /SAVE_ALL_BEFORE_GENERATE_WAYBILL/);
-assert.match(dataEntry, /syncWaybillStudioV122/);
+assert.match(dataEntry, /be_data_entry_financial_v2_create_ready_waybill/);
 assert.match(dataEntry, /printable < expected/);
 
 console.log("Verified rider worker compression, approval gates, replacement clearing, 120-second timeout, and bulk upload -> wayplan -> waybill contracts.");

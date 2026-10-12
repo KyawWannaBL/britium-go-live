@@ -51,7 +51,8 @@ begin
         where delivery_way_id=v_way;
     else
       v_result := public.be_warehouse_return_scan(v_way,'CUSTOMER_UNAVAILABLE');
-      if (v_result->>'delivery_failure_count')::integer <> v_attempt
+      if (v_result->>'physical_return_scan_number')::integer <> v_attempt
+        or (v_result->>'delivery_failure_count')::integer <> v_attempt
         or (v_result->>'rto')::boolean is distinct from (v_attempt=3) then
         raise exception 'Return scan % returned incorrect state: %',v_attempt,v_result;
       end if;

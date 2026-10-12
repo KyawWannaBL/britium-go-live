@@ -33,7 +33,7 @@ const requiredMarkers = [
   'const plannerRows = selectedRows;',
   'rows={plannerRows}',
   'groupedReadyRows.map((group)',
-  'filteredReadyRows.length} filtered / {readyRows.length} ready stops',
+  'filteredReadyRows.length} filtered / {readyRows.length} warehouse-ready',
   'No ways match the current filters.',
 ];
 

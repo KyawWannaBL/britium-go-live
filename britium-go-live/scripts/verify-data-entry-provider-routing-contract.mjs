@@ -56,9 +56,9 @@ try {
   assert.equal(providerFor("Pyinoolwin Township", "", { itemPrice: 125000 }), "ROYAL EXPRESS");
   assert.equal(providerFor("တောင်ကြီး"), "ROYAL EXPRESS");
   assert.equal(providerFor("Some Unsupported Township"), "");
-  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true }), "H.TERMINAL DROP-OFF");
-  assert.equal(providerFor("Some Unsupported Township", "Some receiver address", { fallbackUnknownToRoyal: true }), "ROYAL EXPRESS");
-  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true, itemPrice: 1 }), "ROYAL EXPRESS");
+  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true }), "");
+  assert.equal(providerFor("Some Unsupported Township", "Some receiver address", { fallbackUnknownToRoyal: true }), "");
+  assert.equal(providerFor("Some Unsupported Township", "", { fallbackUnknownToRoyal: true, itemPrice: 1 }), "");
 
   assert.equal(providerFor("မြောက်ဒဂုံ"), "BRITIUM", "an exact Britium route must beat its Royal duplicate");
   for (const outreach of ["Yangon", "ရန်ကုန်", "Hlaing Tharyar", "Hlaingtharya (East)", "Hlaingtharya (West)", "လှိုင်သာယာ (အရှေ့)", "လှိုင်သာယာ (အနောက်)", "Thanlyin", "သန်လျင်", "Thongwa", "သုံးခွ"]) {

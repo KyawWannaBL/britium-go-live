@@ -716,27 +716,32 @@ export async function resolveDeliveryLocation(input: { deliveryWayId: string; ad
   };
 
   if (input.client && originalAddress.length >= 3) {
-    const { data: alias, error: aliasError } = await input.client.rpc("be_location_alias_lookup_v28", {
-      p_alias_text: originalAddress,
-      p_merchant_id: input.merchantId || null,
+    const aliasTownship = postal.township || input.township;
+    const { data: aliasResult, error: aliasError } = await input.client.rpc("be_location_alias_resolve_v28", {
+      p_address: originalAddress,
+      p_township: aliasTownship,
     });
-    if (!aliasError && alias?.matched && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
-      const requestedTownship = String(input.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
+    const alias = aliasResult?.ok === true ? aliasResult.location : null;
+    const aliasMatch = String(alias?.match_level || "");
+    const aliasSource = String(alias?.coordinate_source || "").trim();
+    const supportedAliasMatch = ["ADDRESS_EXACT", "POI_EXACT", "STREET_APPROXIMATE", "WARD_APPROXIMATE", "POSTAL_DEFAULT", "TOWNSHIP_DEFAULT", "MANUAL"].includes(aliasMatch);
+    if (!aliasError && alias && aliasSource && supportedAliasMatch && validMyanmarCoordinate(alias.longitude, alias.latitude)) {
+      const requestedTownship = String(aliasTownship || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
       const learnedTownship = String(alias.township || "").toLowerCase().replace(/[^a-z0-9\u1000-\u109f]+/g, "");
       if (!requestedTownship || !learnedTownship || requestedTownship === learnedTownship) {
         return {
           deliveryWayId: input.deliveryWayId,
           latitude: Number(alias.latitude),
           longitude: Number(alias.longitude),
-          label: alias.label || originalAddress,
+          label: alias.provider_label || originalAddress,
           originalAddress,
           englishAddress,
           township: alias.township || input.township,
           postalCode: postal.postalCode,
           postalMatchLevel: postal.matchLevel,
-          matchLevel: "ADDRESS_EXACT" as const,
-          confidence: Number(alias.confidence || 0.95),
-          coordinateSource: "MERCHANT_LOCATION_ALIAS_V28",
+          matchLevel: aliasMatch as DeliveryLocation["matchLevel"],
+          confidence: Number(alias.confidence ?? 0.95),
+          coordinateSource: aliasSource,
           reviewStatus: "ACCEPTED" as const,
           reviewReason: "",
         };

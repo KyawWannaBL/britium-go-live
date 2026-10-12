@@ -183,7 +183,8 @@ try {
     address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
     township: "မြောက်ဒဂုံ",
   }, northDagonPostal, false);
-  assert.equal(approximateStreetCandidate.reviewStatus, "MANUAL_REVIEW", "A street/ward centroid must never auto-save");
+  assert.equal(approximateStreetCandidate.reviewStatus, "ACCEPTED", "V136 accepts validated street evidence within the exact postal quarter");
+  assert.equal(approximateStreetCandidate.matchLevel, "STREET_APPROXIMATE", "Accepted approximations retain their precision label");
 
   const originalFetch = globalThis.fetch;
   const originalGoogle = globalThis.google;
@@ -239,15 +240,14 @@ try {
       false,
       "Conflicting Google reverse evidence must reject an otherwise in-boundary North Dagon point",
     );
-    assert.equal(
-      await resolveDeliveryLocation({
-        deliveryWayId: "POSTAL-CONTRACT-001",
-        address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
-        township: "မြောက်ဒဂုံ",
-      }),
-      null,
-      "A forward North Dagon label must not bypass conflicting reverse-geocoded township evidence",
-    );
+    const rejectedProviderFallback = await resolveDeliveryLocation({
+      deliveryWayId: "POSTAL-CONTRACT-001",
+      address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
+      township: "မြောက်ဒဂုံ",
+    });
+    assert.equal(rejectedProviderFallback.matchLevel, "POSTAL_DEFAULT", "Conflicting provider evidence uses the labelled V136 postal default");
+    assert.equal(rejectedProviderFallback.coordinateSource, "POSTAL_WARD_DEFAULT_V136");
+    assert.notEqual(rejectedProviderFallback.latitude, 16.9, "The rejected provider pin must not be accepted");
 
     reverseTownshipEvidence = "Dagon Myothit (North) Township";
     const reverseValidated = await resolveDeliveryLocation({
@@ -300,15 +300,15 @@ try {
       true,
       "A point inside the audited polygon remains manually applicable if reverse geocoding is unavailable",
     );
-    await assert.rejects(
-      resolveDeliveryLocation({
-        deliveryWayId: "POSTAL-CONTRACT-003",
-        address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
-        township: "မြောက်ဒဂုံ",
-      }),
-      /Application restriction to Websites.*www\.britiumexpress\.com.*No coordinates were saved/,
-      "Google browser-key failures must be shown to the operator instead of becoming an empty map",
-    );
+    const restrictedFallback = await resolveDeliveryLocation({
+      deliveryWayId: "POSTAL-CONTRACT-003",
+      address: "No. 77, Pinlon Road, Ward 32, North Dagon Township, Yangon",
+      township: "မြောက်ဒဂုံ",
+    });
+    assert.equal(restrictedFallback.matchLevel, "POSTAL_DEFAULT", "Denied providers retain labelled postal default precision");
+    assert.equal(restrictedFallback.coordinateSource, "POSTAL_WARD_DEFAULT_V136");
+    assert.ok(Number.isFinite(restrictedFallback.latitude) && Number.isFinite(restrictedFallback.longitude));
+
   } finally {
     if (googleBeforeFailure == null) delete globalThis.google;
     else globalThis.google = googleBeforeFailure;
@@ -347,7 +347,7 @@ try {
       testCase.quarter,
     ]);
     const group = groups.get(groupKey) || { example: testCase, postalCodes: new Set() };
-    group.postalCodes.add(testCase.postalCode);
+    group.postalCodes.add(testCase.postalCode.padStart(7, "0"));
     groups.set(groupKey, group);
   }
 

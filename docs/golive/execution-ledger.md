@@ -1,0 +1,21 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-10-12-go-live-ready-implementation.md
+
+Execution: native, user approved design and reviewed linked implementation plan with proceed on 12 October 2026. No production cutover authorized by a preview yet; none executed.
+
+Pre-flight: Task 2 GoLivePreview consumed by Task 6; exact fields agree. Tasks 3/4 epoch state consumed by Task 5; bigint must be a safe JS integer or transported as string, implementation will reject overflow. Tasks 2/4 share scope-registry inventory; no active reader or writer may remain unclassified when enabling execution.
+
+Ruling: Keep the implementation ledger tracked with the repository rather than a missing cloud-skill helper workspace — preserves progress through workspace pruning; cost is documentation in the PR.
+Ruling: Preview is read-only; do not persist a preview manifest until explicit execution preparation — follows the approved spec; cost is re-computing scope during activation.
+Ruling: A schema inventory is not a cleanup allowlist. Current counts are 1,018 public tables, 15 private tables, 350 foreign keys and 1,157 public be_* functions — unknown active paths block cutover; cost is additional classification work.
+
+Task 1: in progress. Rider repairs merged in PR21, main68d23c7e5c36d01e7da2793bc2b1331d9a15b367. Independent review: no Critical/Important findings; tsc, six verifiers and lint0errors364warnings passed. Android Build88 in progress at last check; no device sign-off.
+Task 1: Mapbox V53/V55 verifier baseline reproduced failure because old assertions deny the user-approved local estimate or expect a removed provider-mode literal. Preserve all remaining assertions and add real guarded API behavior tests; no provider code change.
+Task 1: Portal PR162 published; Supabase Preview failure remains unclassified in this execution until current logs confirm cause. Older duplicate enum migration was previously observed; do not claim fresh migration replay passes.
+Task 1: Minor review follow-up pending — retain both physical-return count and delivery-failure count assertions in RTO fixture. All fixture writes must remain rolled back.
+
+Task 1 update: Android Build88 completed SUCCESS at main68d23c7e (GitHub run38261493191). No phone/tablet evidence supplied.
+Task 1 update: all 67 registered Portal verifiers passed in the sequential full run; production build passed. Alias behavior RED→GREEN reproduced actual nonexistent RPC fallback. Revision component RED→GREEN reproduced second paid routing request; added estimate-provenance and unique ordered-stop guards. V201 real PL/pgSQL guard RED→GREEN reproduced obsolete Yangon Google-only requirement. Full staged backend replacement remains pending.
+Task 1 update: production be_replace_created_wayplan_v46 body compared with repository V46; differences are comments only, so V201 retains every existing transactional replacement/history/idempotency operation.
+Task 1 update: current PR162 Supabase Preview output confirms duplicate public.delivery_status at statement5. April core migration creates it; July remote snapshot creates it again. Broader fresh database chain is not verified. No blind IF NOT EXISTS workaround applied.
+Task 2 inventory checkpoint: docs/golive/schema-inventory.json contains table/column/primary-key/FK metadata only, no row data. 1,033 tables / 350 foreign keys. Classification remains incomplete and is not a deletion allowlist.
+Task 1 update: installed the exact lint dependency versions already used by Rider (instead of leaving lint unavailable). Portal lint now reproducibly reports190errors2670warnings; major categories100 suppressed type-check comments,56 empty blocks,20 redundant escapes and3 malformed legacy source files. They remain an explicit gate, not suppressed by changing lint policy.

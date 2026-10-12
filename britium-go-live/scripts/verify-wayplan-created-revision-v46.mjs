@@ -19,10 +19,10 @@ assert.ok(page.includes("rows={revisionPlannerRows}"), "V46 must send only the r
 
 assert.ok(fs.existsSync(revisionPlannerPath), "V46 must isolate revision planning from the normal multi-van planner");
 const planner = fs.readFileSync(revisionPlannerPath, "utf8");
-assert.ok(planner.includes("Re-optimize & Save Revision"), "V46 must expose the reviewed replacement save action");
+assert.ok(planner.includes("Save Revision"), "V46 must expose the reviewed replacement save action");
 assert.ok(planner.includes("be_replace_created_wayplan_v46"), "V46 revision planner must call the transactional replacement RPC");
 assert.ok(planner.includes('fetch("/api/wayplan-route"'), "V46 revision must reuse authenticated road optimization");
-assert.ok(planner.includes("assignCrews(strategic, drivers, riders, helpers"), "V46 revision must reuse roster assignment");
+assert.ok(planner.includes("Crew is intentionally not auto-assigned"), "Revision must preserve compatible source crew without automatic reassignment");
 assert.ok(planner.includes("GOOGLE_ROUTES"), "V46 Yangon revision must require Google Routes");
 assert.ok(planner.includes("Driver"), "V46 must allow Driver review/assignment");
 assert.ok(planner.includes("Rider"), "V46 must allow Rider review/assignment");

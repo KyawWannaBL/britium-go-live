@@ -12,7 +12,7 @@ const checks = [
   ["Mapbox is tried first in billing-safe mode", route.includes("if (mapboxPreferred)") && route.indexOf("const mapboxResult = await useMapbox()") < route.indexOf("const googleResult = await useGoogle()")],
   ["normal Wayplans can skip Google billing hold", route.includes("normal_wayplans_skip_google_billing_hold")],
   ["Google remains recovery secondary", route.includes('provider_role: mapboxPreferred ? "RECOVERY_SECONDARY" : "PRIMARY"')],
-  ["straight-line fallback remains disabled", route.includes("Straight-line geographic fallback is disabled")],
+  ["budget fallback is explicitly labelled as an estimate", route.includes("LOCAL_HAVERSINE_ESTIMATE") && route.includes("estimated:true") && route.includes("not road-provider verified routes")],
   ["UI explains temporary Mapbox-first mode", planner.includes("Temporary billing-safe mode uses Mapbox road routing first")],
   ["revision UI explains temporary routing mode", revision.includes("temporary Mapbox-first billing-safe mode")],
 ];
@@ -24,3 +24,6 @@ if (failed.length) {
   process.exit(1);
 }
 console.log("Wayplan billing-safe routing V53 contract PASS");
+
+// Behavioral coverage: denied reservations, batching/padding and no paid Google failover.
+await import("./verify-mapbox-budget.mjs");

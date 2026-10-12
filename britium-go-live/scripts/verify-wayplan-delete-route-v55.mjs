@@ -9,7 +9,7 @@ const migration = fs.readFileSync(path.join(root, "supabase/migrations/202609190
 const checks = [
   ["Mapbox diagonal singleton batches are skipped", route.includes("one-element matrices") && route.includes("originIndices[0]===destinationIndices[0]")],
   ["Mapbox singleton non-diagonal batches are padded", route.includes("requestOrigins.length*requestDestinations.length<2") && route.includes("requestDestinations.push(auxiliary)")],
-  ["billing-hold mode does not retry blocked Google", route.includes('!["MAPBOX_ONLY","MAPBOX_PREFERRED_BILLING_HOLD"].includes(providerMode)')],
+  ["billing-hold mode does not retry blocked Google", /if \(mapboxPreferred\) \{[\s\S]*?return localFallback\(\);[\s\S]*?\} else \{/.test(route)],
   ["delete UI calls V55 purge RPC", deletePatch.includes('be_delete_created_wayplan_v55')],
   ["delete confirmation says permanently delete", deletePatch.includes("Permanently delete")],
   ["V55 releases parcels through guarded V47 delete", migration.includes("be_delete_created_wayplan_v47(p_payload)")],
@@ -28,3 +28,6 @@ if (failed.length) {
   process.exit(1);
 }
 console.log("Wayplan delete + routing V55 contract PASS");
+
+// Verify that budget denial cannot cause a paid secondary-provider request.
+await import("./verify-mapbox-budget.mjs");
