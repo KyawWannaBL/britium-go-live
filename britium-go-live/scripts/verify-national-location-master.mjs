@@ -8,7 +8,7 @@ import { stripTypeScriptTypes } from 'node:module';
 const lib = new URL('../src/lib/', import.meta.url);
 const temp = mkdtempSync(join(tmpdir(), 'national-location-'));
 try {
-  for (const name of ['postalCodeData', 'postalCodeResolver', 'myanmarAddressConverter', 'dataEntryServiceProviderRouting']) {
+  for (const name of ['distinctDagonTownship', 'postalCodeData', 'postalCodeResolver', 'myanmarAddressConverter', 'dataEntryServiceProviderRouting']) {
     const source = readFileSync(new URL(`${name}.ts`, lib), 'utf8').replace(/@\/lib\/([A-Za-z0-9]+)/g, './$1.mjs');
     writeFileSync(join(temp, `${name}.mjs`), stripTypeScriptTypes(source));
   }
