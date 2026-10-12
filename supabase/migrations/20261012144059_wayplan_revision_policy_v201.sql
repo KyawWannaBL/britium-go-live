@@ -16,6 +16,9 @@ declare
   v_source public.be_wayplan_dispatches%rowtype;
   v_ctx jsonb;
   v_vehicle jsonb;
+  v_driver jsonb;
+  v_rider jsonb;
+  v_helper jsonb;
   v_result jsonb;
   v_old_event jsonb;
   v_route_result jsonb;
@@ -94,6 +97,9 @@ begin
     return v_old_event->'result';
   end if;
 
+  -- Serialize roster revalidation with dispatch/fleet mutations, including direct writes.
+  lock table public.be_wayplan_dispatches in share row exclusive mode;
+
   select * into v_source
   from public.be_wayplan_dispatches
   where wayplan_id=v_source_id
@@ -150,6 +156,34 @@ begin
   select x into v_vehicle from jsonb_array_elements(v_ctx->'vehicles') x
   where x->>'id'=v_plan->>'vehicle_code' and x->>'operation_type'='DELIVERY';
   if v_vehicle is null then raise exception 'Choose an active delivery fleet for the revised Wayplan.'; end if;
+  if coalesce(v_vehicle->>'branch_code','') not in ('',v_branch) then
+    raise exception 'Selected vehicle belongs to another branch.';
+  end if;
+  if v_rider_only then
+    select x into v_rider from jsonb_array_elements(v_ctx->'riders') x where x->>'id'=v_plan->>'rider_code';
+    if v_rider is null then raise exception 'Choose an active Rider.'; end if;
+    if coalesce(v_rider->>'branch_code','') not in ('',v_branch) then raise exception 'Selected crew belongs to another branch.'; end if;
+  else
+    select x into v_driver from jsonb_array_elements(v_ctx->'drivers') x where x->>'id'=v_plan->>'driver_code';
+    if v_driver is null then raise exception 'Choose an active Driver.'; end if;
+    if nullif(btrim(v_plan->>'helper_code'),'') is not null then
+      select x into v_helper from jsonb_array_elements(v_ctx->'helpers') x where x->>'id'=v_plan->>'helper_code';
+      if v_helper is null then raise exception 'Choose an active Helper or leave Helper empty.'; end if;
+    end if;
+    if coalesce(v_driver->>'branch_code','') not in ('',v_branch)
+       or (v_helper is not null and coalesce(v_helper->>'branch_code','') not in ('',v_branch)) then
+      raise exception 'Selected crew belongs to another branch.';
+    end if;
+  end if;
+  if exists(
+    select 1 from jsonb_array_elements(coalesce(v_ctx->'busy','[]'::jsonb)) b
+    where coalesce(nullif(b->>'wayplan_id',''),b->>'wayplan_code','')<>v_source_id
+      and (b->>'vehicle_code'=v_plan->>'vehicle_code'
+        or exists(select 1 from unnest(array[b->>'driver_code',b->>'rider_code',b->>'helper_code']) worker(code)
+          where nullif(worker.code,'') is not null and worker.code=any(array[v_plan->>'driver_code',v_plan->>'rider_code',v_plan->>'helper_code'])))
+  ) then
+    raise exception 'Selected fleet or crew is active on another dispatched/on-hold Wayplan. Refresh availability.';
+  end if;
   select coalesce(sum(d.weight_kg),0) into v_weight from public.be_data_entry_parcel_details d where d.delivery_way_id=any(v_selected_ids);
   if coalesce((v_vehicle->>'capacity_kg')::numeric,0)>0 and v_weight>(v_vehicle->>'capacity_kg')::numeric then
     raise exception 'Selected parcel weight exceeds vehicle capacity.';
@@ -165,11 +199,11 @@ begin
     'vehicle_code',v_plan->>'vehicle_code',
     'vehicle_name',v_vehicle->>'name',
     'driver_code',nullif(v_plan->>'driver_code',''),
-    'driver_name',nullif(v_plan->>'driver_name',''),
+    'driver_name',v_driver->>'name',
     'rider_code',nullif(v_plan->>'rider_code',''),
-    'rider_name',nullif(v_plan->>'rider_name',''),
+    'rider_name',v_rider->>'name',
     'helper_code',nullif(v_plan->>'helper_code',''),
-    'helper_name',nullif(v_plan->>'helper_name',''),
+    'helper_name',v_helper->>'name',
     'actor',v_actor
   ));
   if not coalesce((v_result->>'ok')::boolean,false) then
@@ -183,7 +217,7 @@ begin
       optimized_sequence=x.ord::int,
       delivery_sequence=x.ord::int,
       rider_code=nullif(v_plan->>'rider_code',''),
-      rider_name=nullif(v_plan->>'rider_name','')
+      rider_name=v_rider->>'name'
   from jsonb_array_elements_text(v_ids) with ordinality x(id,ord)
   where s.wayplan_id=v_new_id and s.delivery_way_id=x.id;
 
@@ -211,9 +245,9 @@ begin
 
   update public.be_wayplan_dispatches
   set vehicle_code=v_plan->>'vehicle_code',vehicle_name=v_vehicle->>'name',
-      driver_code=nullif(v_plan->>'driver_code',''),driver_name=nullif(v_plan->>'driver_name',''),
-      rider_code=nullif(v_plan->>'rider_code',''),rider_name=nullif(v_plan->>'rider_name',''),
-      helper_code=nullif(v_plan->>'helper_code',''),helper_name=nullif(v_plan->>'helper_name',''),
+      driver_code=nullif(v_plan->>'driver_code',''),driver_name=v_driver->>'name',
+      rider_code=nullif(v_plan->>'rider_code',''),rider_name=v_rider->>'name',
+      helper_code=nullif(v_plan->>'helper_code',''),helper_name=v_helper->>'name',
       metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
         'revision_v46',true,'replaces_wayplan_id',v_source_id,'revision_request_id',v_request_id,
         'revision_actor',v_actor,'revision_at',now(),'revision_reason',v_reason,
@@ -224,9 +258,9 @@ begin
 
   update public.be_wayplan_membership_v40
   set membership_status='PLANNED',vehicle_code=v_plan->>'vehicle_code',vehicle_name=v_vehicle->>'name',
-      driver_code=nullif(v_plan->>'driver_code',''),driver_name=nullif(v_plan->>'driver_name',''),
-      rider_code=nullif(v_plan->>'rider_code',''),rider_name=nullif(v_plan->>'rider_name',''),
-      helper_code=nullif(v_plan->>'helper_code',''),helper_name=nullif(v_plan->>'helper_name',''),updated_at=now(),
+      driver_code=nullif(v_plan->>'driver_code',''),driver_name=v_driver->>'name',
+      rider_code=nullif(v_plan->>'rider_code',''),rider_name=v_rider->>'name',
+      helper_code=nullif(v_plan->>'helper_code',''),helper_name=v_helper->>'name',updated_at=now(),
       metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object('revision_v46',true,'replaces_wayplan_id',v_source_id,'revision_request_id',v_request_id)
   where wayplan_id=v_new_id;
 

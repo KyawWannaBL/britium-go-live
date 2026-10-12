@@ -17,3 +17,7 @@ This register records scoped evidence. It does not certify launch readiness. No 
 | DEVICE-01 | No physical Android test evidence against Build88 | APK build succeeded | PENDING phone/tablet camera, audio after first interaction, GPS, offline retry and Finish Assignments. |
 
 Portal lint dependency repair and results are tracked separately in the execution ledger. Build warnings and lint warnings are not silently described as clean.
+
+WP-02 update: independent review found and corrected cross-branch/busy crew/fleet bypass in the legacy generator path. V201 now revalidates server roster/availability under a dispatch-table lock; full revision-wrapper fixture tests cover replacement/order/replay/rollback/history. The function has been applied and its deployed early guards verified without creating records. Production lifecycle acceptance remains PENDING.
+
+SEC-01: Security advisors have an unchanged baseline of83 definer-view errors and54 anonymous-executable definer function warnings, plus439 mutable search-path warnings. This is not a new V201 regression. Active-path authorization and data exposure must be audited before cutover activation; historical unused objects cannot automatically be treated as safe or as active defects.
