@@ -52,6 +52,7 @@ const SIDEBAR_COLLAPSED_STORAGE_KEY = "be_sidebar_collapsed_v1";
 
 function initialSidebarCollapsed(): boolean {
   if (typeof window === "undefined") return false;
+  if (window.innerWidth < 1024) return true;
   try {
     return window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "1";
   } catch {
@@ -196,6 +197,9 @@ export default function Sidebar() {
       // Storage can be unavailable in hardened/private browser contexts.
     }
   },[collapsed]);
+  useEffect(() => {
+    if (window.innerWidth < 1024) setCollapsed(true);
+  }, [location.pathname]);
   const role = profile?.role;
   const visibleGroups = NAV_GROUPS.map((group) => ({
     ...group,

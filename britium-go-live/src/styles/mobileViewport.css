@@ -1,0 +1,41 @@
+/* Fit the actual Enterprise shell; wide worksheets scroll inside main. */
+@media screen {
+  html, body, #root { scrollbar-gutter: auto !important; }
+  [data-be-app-shell="true"] {
+    position: relative;
+    scrollbar-gutter: auto !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  [data-be-sidebar="true"] { height: 100% !important; max-height: 100% !important; }
+  [data-be-sidebar-collapsed="true"] {
+    width: 64px !important; min-width: 64px !important; max-width: 64px !important; flex-basis: 64px !important;
+  }
+  [data-be-main="true"], [data-be-content="true"] {
+    min-width: 0 !important; max-width: 100% !important;
+  }
+  [data-be-content="true"] { width: 100% !important; box-sizing: border-box; }
+  [data-be-content="true"] > * { min-width: 0; max-width: 100%; }
+}
+@media screen and (max-width: 1023px) {
+  html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+  [data-be-sidebar="true"] {
+    position: absolute; top: env(safe-area-inset-top, 0px); bottom: env(safe-area-inset-bottom, 0px);
+    left: env(safe-area-inset-left, 0px); height: auto !important; z-index: 60;
+  }
+  [data-be-sidebar-collapsed="false"] {
+    width: 256px !important; min-width: 0 !important; max-width: calc(100% - 44px) !important;
+    box-shadow: 12px 0 32px rgba(0,0,0,.4);
+  }
+  [data-be-workspace="true"] { margin-left: 64px; }
+  [data-be-content="true"] { padding: 12px !important; }
+  [data-be-sidebar="true"] button, [data-be-sidebar="true"] a { min-height: 44px; }
+  [data-be-content="true"] input, [data-be-content="true"] select, [data-be-content="true"] textarea {
+    max-width: 100%; box-sizing: border-box; font-size: 16px;
+  }
+}

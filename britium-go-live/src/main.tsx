@@ -6,6 +6,7 @@ import "./styles/opsUiPolish.css";
 import "./styles/printActionStudios.css";
 import "./styles/warehouseWayId.css";
 import "./styles/waybill4x6ProductionFix.css";
+import "./styles/mobileViewport.css";
 import "./opsUiPolish";
 import "./enterprisePortalAuthGate";
 import "./enterpriseFinalTouchBootstrap";

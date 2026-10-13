@@ -122,7 +122,7 @@ function AppShell({ children }: { children: ReactNode }) {
   return (
     <div data-be-app-shell="true" className={`flex h-screen w-full overflow-hidden bg-[#061524] ${GLOBAL_FONT}`}>
       <Sidebar />
-      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+      <div data-be-workspace="true" className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         <header className="z-50 flex h-14 w-full shrink-0 items-center justify-end border-b border-[#1a3a5c] bg-[#0a1628] px-6 shadow-md">
           <button
             type="button"
@@ -135,7 +135,7 @@ function AppShell({ children }: { children: ReactNode }) {
         </header>
         <WarehousePendingGlobalAlert />
         <main data-be-main="true" className="custom-scrollbar relative flex-1 overflow-auto">
-          <div data-be-content="true" className="h-full min-w-[1200px] p-4 md:p-6">
+          <div data-be-content="true" className="h-full min-w-0 p-4 md:p-6">
             {children}
           </div>
         </main>
