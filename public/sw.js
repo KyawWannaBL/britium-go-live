@@ -1,4 +1,4 @@
-const CACHE_NAME = "britium-enterprise-v1";
+const CACHE_NAME = "britium-enterprise-v2-recovery";
 const APP_SHELL = ["/", "/index.html", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
@@ -30,6 +30,13 @@ self.addEventListener("fetch", (event) => {
         })
         .catch(() => caches.match("/index.html"))
     );
+    return;
+  }
+
+  // Executable app assets must be network-first, especially for auth callbacks.
+  // A stale JS bundle can redirect a verified password-recovery URL to login.
+  if (url.pathname.startsWith("/assets/") || url.pathname === "/index.html") {
+    event.respondWith(fetch(request).catch(() => caches.match(request)));
     return;
   }
 
