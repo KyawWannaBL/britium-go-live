@@ -17,7 +17,7 @@ function generateID(dateStr: string, mName: string, seq: number) {
   if (mName.toLowerCase().includes("baby genius")) mCode = "BBG";
   else if (mName.toLowerCase().includes("beauty cos") || mName.toLowerCase().includes("bca")) mCode = "BCA";
   else {
-    let alpha = mName.replace(/[^a-zA-Z]/g, '');
+    const alpha = mName.replace(/[^a-zA-Z]/g, '');
     if (alpha.length >= 3) mCode = alpha.substring(0, 3).toUpperCase();
     else mCode = alpha.toUpperCase().padEnd(3, 'X');
   }

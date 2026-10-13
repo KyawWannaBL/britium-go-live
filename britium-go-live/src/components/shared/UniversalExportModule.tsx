@@ -14,7 +14,7 @@ export default function UniversalExportModule({ moduleName }: { moduleName: stri
     try {
       // In production, this would call a dedicated Supabase Edge Function to aggregate the data.
       // For now, we simulate pulling the relevant data table based on the module.
-      let tableName = 'be_portal_pickup_request_items';
+      const tableName = 'be_portal_pickup_request_items';
       
       const { data, error } = await supabase
         .from(tableName)

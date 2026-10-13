@@ -143,7 +143,7 @@ export default function Login() {
   }, [lang]);
 
   useEffect(() => {
-    setConfigMissing(!Boolean(SUPABASE_CONFIGURED));
+    setConfigMissing(!SUPABASE_CONFIGURED);
   }, []);
 
   const toggleLanguage = () => {
