@@ -112,6 +112,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let active = true;
 
     supabase.auth.getSession().then(async ({ data }) => {
+      if (window.location.pathname === "/reset-password") { if (active) { setSession(data.session); setLoading(false); } return; }
       if (!active) return;
       setSession(data.session);
       try {
@@ -135,6 +136,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       setSession(newSession);
+
+      // Password recovery is a temporary authenticated session, not normal
+      // workspace login. Never revoke it when workforce profile checks fail.
+      if (window.location.pathname === "/reset-password" || event === 'PASSWORD_RECOVERY') {
+        setLoading(false);
+        return;
+      }
 
       // A file-picker focus change can coincide with Supabase refreshing the JWT.
       // The existing authorized profile remains valid; do not turn a transient
