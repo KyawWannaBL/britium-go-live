@@ -72,7 +72,7 @@
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
     "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
     "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
-    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
+    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui && npm run verify:resizable-compatibility",
     "verify:merchant-settlement-v200": "node scripts/verify-merchant-settlement-v200.cjs",
     "verify:merchant-receipt-upload": "node scripts/verify-merchant-receipt-upload.cjs",
     "verify:learned-location-alias": "node scripts/verify-learned-location-alias.mjs",
@@ -80,7 +80,8 @@
     "verify:wayplan-revision-policy": "node scripts/verify-wayplan-revision-policy.mjs",
     "verify:wayplan-revision-transaction": "node scripts/verify-wayplan-revision-transaction.mjs",
     "verify:go-live-preview": "node scripts/verify-go-live-preview.mjs",
-    "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs"
+    "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs",
+    "verify:resizable-compatibility": "node scripts/verify-resizable-compatibility.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
@@ -138,7 +139,7 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.79.0",
     "react-qr-code": "^2.2.0",
-    "react-resizable-panels": "^4.11.2",
+    "react-resizable-panels": "2.1.7",
     "react-router-dom": "^6.30.6",
     "react-signature-canvas": "^1.1.0-alpha.2",
     "recharts": "^2.15.4",

@@ -23,7 +23,7 @@ const safeLazy = (importPage: () => Promise<{ default: React.ComponentType }>) =
       if (isChunkError && !hasReloaded) {
         sessionStorage.setItem("vite_chunk_reload", "true");
         window.location.reload();
-        return { default: () => null };
+        return { default: (): null => null };
       }
 
       sessionStorage.removeItem("vite_chunk_reload");

@@ -296,7 +296,7 @@ export function loadGoogleMaps() {
   return googleLoader;
 }
 
-async function reverseGeocode(latitude: number, longitude: number) {
+async function reverseGeocode(latitude: number, longitude: number): Promise<string[]> {
   try {
     const maps = await loadGoogleMaps();
     if (!maps?.Geocoder) throw new Error("Google Maps Geocoder is unavailable");
