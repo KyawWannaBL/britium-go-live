@@ -1,5 +1,7 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
+import GoLiveReadyPreview from '@/components/GoLiveReadyPreview';
+import type { GoLivePreviewClient } from '@/lib/goLiveCutover';
 import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, DatabaseZap, Download, RefreshCw, ShieldAlert } from "lucide-react";
 
@@ -26,7 +28,7 @@ export default function GoLiveControlPanel(){
     const {data,error}=await (supabase as any).rpc("be_go_live_readiness_report_v1");
     if(error||data?.ok===false){setMessage(error?.message||data?.code||"Readiness report failed.");setLoading(false);return;}
     setReport(data);
-    setMessage("Go-Live readiness report generated. No production data was deleted or archived.");
+    setMessage("Data availability report generated. It does not grant launch approval.");
     setLoading(false);await loadHistory();
   }
 
@@ -49,8 +51,10 @@ export default function GoLiveControlPanel(){
       </div>
     </section>
 
+    <GoLiveReadyPreview client={supabase as unknown as GoLivePreviewClient}/>
+
     {report&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
-      <div className="flex items-center justify-between"><div><h2 className="font-black">Current Readiness Result</h2><p className="mt-1 text-xs text-[#8fb2c9]">{report.generated_at}</p></div><span className="rounded-full bg-emerald-500/10 px-4 py-2 text-xs font-black text-emerald-300">{report.overall_status}</span></div>
+      <div className="flex items-center justify-between"><div><h2 className="font-black">Data Availability Report</h2><p className="mt-1 text-xs text-[#8fb2c9]">{report.generated_at}</p></div><span className="rounded-full bg-emerald-500/10 px-4 py-2 text-xs font-black text-emerald-300">{report.overall_status}</span></div>
       <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-3">{(report.checks||[]).map((c:any)=><div key={c.name} className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4"><div className="flex items-center justify-between gap-3"><div className="font-black">{c.name}</div><span className={"rounded-full px-2 py-1 text-[10px] font-black "+(c.status==="PASS"?"bg-emerald-500/10 text-emerald-300":c.status==="FAIL"?"bg-rose-500/10 text-rose-300":"bg-amber-500/10 text-amber-300")}>{c.status}</span></div>{c.records!==undefined&&<div className="mt-2 text-2xl font-black text-[#f6b84b]">{Number(c.records||0).toLocaleString()}</div>}{c.detail&&<div className="mt-2 text-xs text-[#8fb2c9]">{c.detail}</div>}</div>)}</div>
     </section>}
 
