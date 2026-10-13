@@ -12,6 +12,8 @@ on:
       - "britium-go-live/package.json"
       - "britium-go-live/package-lock.json"
       - "britium-go-live/vite.config.ts"
+      - "britium-go-live/postcss.config.mjs"
+      - "britium-go-live/tailwind.config.cjs"
       - "britium-go-live/capacitor.config.ts"
       - ".github/workflows/britium-enterprise-android.yml"
       - "scripts/verify-enterprise-signing.mjs"

@@ -1,5 +1,6 @@
 export default {
   plugins: {
-    "@tailwindcss/postcss": {},
+    tailwindcss: { config: './tailwind.config.cjs' },
+    autoprefixer: { overrideBrowserslist: ['Chrome >= 80'] },
   },
 };

@@ -1,6 +1,8 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   darkMode: ["class"],
+  // Date-stamp regex in FinanceCodCenterPage/ReportDownloadPanel is not a CSS class.
+  blocklist: ["[-:T]"],
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
