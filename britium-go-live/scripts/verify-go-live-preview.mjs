@@ -1,0 +1,34 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+const db=new PGlite();
+try{
+await db.exec(`CREATE SCHEMA auth; CREATE SCHEMA private; CREATE ROLE authenticated; CREATE ROLE anon;
+CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$SELECT nullif(current_setting('test.uid',true),'')::uuid$$;
+CREATE TABLE public.be_user_account_registry(auth_user_id uuid,email text,role text,active boolean,is_active boolean);
+ALTER TABLE public.be_user_account_registry ENABLE ROW LEVEL SECURITY;
+CREATE POLICY be_user_account_registry_write_all ON public.be_user_account_registry FOR ALL USING(true) WITH CHECK(true);
+GRANT SELECT,INSERT,UPDATE,DELETE ON public.be_user_account_registry TO authenticated,anon;
+INSERT INTO public.be_user_account_registry VALUES('00000000-0000-4000-8000-000000000001','admin@test.invalid','SUPERADMIN',true,true),('00000000-0000-4000-8000-000000000002','finance@test.invalid','FINANCE',true,true);
+CREATE TABLE public.be_merchants(id text PRIMARY KEY);INSERT INTO be_merchants VALUES('MASTER');
+CREATE TABLE public.be_data_entry_parcel_details(delivery_way_id text PRIMARY KEY,metadata jsonb);INSERT INTO be_data_entry_parcel_details VALUES('EXPLICIT-TEST','{"test":true}'),('LIVE','{"test":false}');
+CREATE TABLE public.be_wayplan_dispatches(wayplan_id text PRIMARY KEY);
+CREATE TABLE public.be_pickup_requests(pickup_id text PRIMARY KEY);
+CREATE TABLE public.unclassified_transactions(id text PRIMARY KEY);INSERT INTO unclassified_transactions VALUES('KEEP');`);
+await db.exec(fs.readFileSync('../supabase/migrations/20261012173710_go_live_cutover_scope_v2.sql','utf8'));
+const keys=[{table:'be_data_entry_parcel_details',key:'EXPLICIT-TEST'}];
+const call=async(roots=keys)=> (await db.query('SELECT public.be_go_live_cutover_preview_v2(now(),$1::jsonb) result',[roots])).rows[0].result;
+await assert.rejects(call(),/permission|authenticated/i);
+await db.exec("SELECT set_config('test.uid','00000000-0000-4000-8000-000000000002',false); SET ROLE authenticated");await assert.rejects(db.query("UPDATE public.be_user_account_registry SET role='SUPERADMIN' WHERE role='FINANCE'"),/permission denied/i,'Low-privilege users must not promote their registry role');await db.exec("RESET ROLE");await assert.rejects(call(),/permission/i);
+await db.exec("SELECT set_config('test.uid','00000000-0000-4000-8000-000000000001',false)");
+const before=(await db.query('SELECT jsonb_agg(to_jsonb(p) ORDER BY delivery_way_id) parcels FROM be_data_entry_parcel_details p')).rows[0];
+const result=await call();assert.equal(result.mode,'PREVIEW');assert.equal(result.status,'BLOCKED');assert.equal(result.execution_enabled,false);assert.equal(result.manifest_hash,null,'Incomplete dependency inventory must not produce an executable manifest');assert.ok(result.blockers.some(x=>x.code==='DEPENDENCY_SCOPE_INCOMPLETE'));assert.ok(result.gates.some(x=>x.status!=='PASS'));assert.equal(result.table_counts.find(x=>x.table==='be_data_entry_parcel_details').selected_roots,1);
+assert.deepEqual((await db.query('SELECT jsonb_agg(to_jsonb(p) ORDER BY delivery_way_id) parcels FROM be_data_entry_parcel_details p')).rows[0],before);
+assert.equal((await db.query('SELECT count(*)::int count FROM be_merchants')).rows[0].count,1);
+await assert.rejects(call([{table:'be_merchants',key:'MASTER'}]),/protected|supported/i);
+await assert.rejects(call([{table:'unclassified_transactions',key:'KEEP'}]),/supported|classified/i);
+await assert.rejects(call([{table:'be_data_entry_parcel_details;DROP TABLE be_merchants',key:'MASTER'}]),/supported/i);
+await assert.rejects(call([{table:'be_data_entry_parcel_details',key:'MISSING'}]),/not found/i);
+await db.exec("UPDATE be_user_account_registry SET active=false WHERE role='SUPERADMIN'");await assert.rejects(call(),/permission/i);
+console.log('PASS: authenticated fresh admin authority, readonly explicit-root preview, preserved masters/live records, protected/unknown rejection, incomplete graph blocks activation and no executable hash');
+}finally{await db.close();}

@@ -72,13 +72,15 @@
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
     "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
     "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
-    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction",
+    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
     "verify:merchant-settlement-v200": "node scripts/verify-merchant-settlement-v200.cjs",
     "verify:merchant-receipt-upload": "node scripts/verify-merchant-receipt-upload.cjs",
     "verify:learned-location-alias": "node scripts/verify-learned-location-alias.mjs",
     "verify:created-wayplan-revision-flow": "node scripts/verify-created-wayplan-revision-flow.cjs",
     "verify:wayplan-revision-policy": "node scripts/verify-wayplan-revision-policy.mjs",
-    "verify:wayplan-revision-transaction": "node scripts/verify-wayplan-revision-transaction.mjs"
+    "verify:wayplan-revision-transaction": "node scripts/verify-wayplan-revision-transaction.mjs",
+    "verify:go-live-preview": "node scripts/verify-go-live-preview.mjs",
+    "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",

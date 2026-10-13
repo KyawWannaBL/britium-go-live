@@ -2,7 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
-import { clearLocalMockData, GO_LIVE_TEMPLATE_SCHEMAS, GO_LIVE_WORKFLOW_STEPS } from "@/lib/britiumGoLiveTemplateSchemas";
+import { GO_LIVE_TEMPLATE_SCHEMAS, GO_LIVE_WORKFLOW_STEPS } from "@/lib/britiumGoLiveTemplateSchemas";
 
 type CheckResult = {
   key: string;
@@ -75,23 +75,6 @@ export default function UATGoLiveCommandCenterPage() {
     }
   }
 
-  async function clearMockRuntime() {
-    const localCleared = clearLocalMockData();
-    setLoading(true);
-    try {
-      const { data, error } = await (supabase as any).rpc("be_go_live_archive_and_cleanup_runtime", {
-        p_reason: "UAT_GO_LIVE_FRONTEND_CONTROL",
-      });
-      if (error) throw error;
-      setMessage(`Runtime cleanup RPC completed. Local mock keys cleared: ${localCleared}. Backend result: ${JSON.stringify(data || {})}`);
-      await runReadinessCheck();
-    } catch (error: any) {
-      setMessage(`Local mock keys cleared: ${localCleared}. Backend cleanup RPC is not available yet: ${error?.message || "unknown error"}`);
-      setChecks((old) => old.map((check) => check.key === "runtime" ? { ...check, status: "warning", detail: "Local mock/demo runtime cleared. Backend migration must be applied for database cleanup." } : check));
-    } finally {
-      setLoading(false);
-    }
-  }
 
   return (
     <main className="min-h-screen bg-slate-50 p-5 text-slate-950">
@@ -108,9 +91,9 @@ export default function UATGoLiveCommandCenterPage() {
             <button type="button" onClick={runReadinessCheck} disabled={loading} className="rounded-2xl bg-blue-700 px-5 py-3 text-sm font-black uppercase text-white disabled:opacity-60">
               {loading ? "Working..." : "Run Readiness Check"}
             </button>
-            <button type="button" onClick={clearMockRuntime} disabled={loading} className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black uppercase text-white disabled:opacity-60">
-              Clear Mock Runtime
-            </button>
+            <Link to="/go-live-control" className="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-black uppercase text-white disabled:opacity-60">
+              Review Go-Live Preview
+            </Link>
           </div>
         </div>
 
