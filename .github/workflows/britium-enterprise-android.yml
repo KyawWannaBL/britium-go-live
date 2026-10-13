@@ -14,6 +14,7 @@ on:
       - "britium-go-live/vite.config.ts"
       - "britium-go-live/capacitor.config.ts"
       - ".github/workflows/britium-enterprise-android.yml"
+      - "scripts/verify-enterprise-signing.mjs"
   workflow_dispatch:
 
 permissions:
@@ -44,6 +45,25 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Verify permanent signing policy
+        run: node scripts/verify-enterprise-signing.mjs
+
+      - name: Require permanent Enterprise signing secrets
+        env:
+          ENTERPRISE_ANDROID_KEYSTORE_BASE64: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_BASE64 }}
+          ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_PASSWORD }}
+          ENTERPRISE_ANDROID_KEY_ALIAS: ${{ secrets.ENTERPRISE_ANDROID_KEY_ALIAS }}
+          ENTERPRISE_ANDROID_KEY_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEY_PASSWORD }}
+          ENTERPRISE_ANDROID_CERT_SHA256: ${{ secrets.ENTERPRISE_ANDROID_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          for name in ENTERPRISE_ANDROID_KEYSTORE_BASE64 ENTERPRISE_ANDROID_KEYSTORE_PASSWORD ENTERPRISE_ANDROID_KEY_ALIAS ENTERPRISE_ANDROID_KEY_PASSWORD ENTERPRISE_ANDROID_CERT_SHA256; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing permanent Enterprise signing secret: ${name}"
+              exit 1
+            fi
+          done
 
       - name: Install dependencies
         working-directory: britium-go-live
@@ -159,19 +179,56 @@ jobs:
           manifest.write_text(m)
           PY
 
-      - name: Build installable APK
+      - name: Restore permanent Enterprise keystore
+        working-directory: britium-go-live
+        env:
+          ENTERPRISE_ANDROID_KEYSTORE_BASE64: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$ENTERPRISE_ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/britium-enterprise-release.jks
+          test -s android/app/britium-enterprise-release.jks
+          chmod 600 android/app/britium-enterprise-release.jks
+
+      - name: Configure permanent release signing
+        working-directory: britium-go-live
+        run: |
+          cat >> android/app/build.gradle <<'GRADLE'
+          android {
+              signingConfigs {
+                  britiumRelease {
+                      storeFile file("britium-enterprise-release.jks")
+                      storePassword System.getenv("ENTERPRISE_ANDROID_KEYSTORE_PASSWORD")
+                      keyAlias System.getenv("ENTERPRISE_ANDROID_KEY_ALIAS")
+                      keyPassword System.getenv("ENTERPRISE_ANDROID_KEY_PASSWORD")
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.britiumRelease
+                  }
+              }
+          }
+          GRADLE
+
+      - name: Build signed release APK
         working-directory: britium-go-live/android
+        env:
+          ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_PASSWORD }}
+          ENTERPRISE_ANDROID_KEY_ALIAS: ${{ secrets.ENTERPRISE_ANDROID_KEY_ALIAS }}
+          ENTERPRISE_ANDROID_KEY_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
-          test -s app/build/outputs/apk/debug/app-debug.apk
+          ./gradlew --no-daemon assembleRelease
+          test -s app/build/outputs/apk/release/app-release.apk
 
       - name: Prepare and verify Enterprise Portal APK
         working-directory: britium-go-live
+        env:
+          ENTERPRISE_ANDROID_CERT_SHA256: ${{ secrets.ENTERPRISE_ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
-          cp android/app/build/outputs/apk/debug/app-debug.apk Britium-Enterprise-Portal.apk
+          cp android/app/build/outputs/apk/release/app-release.apk Britium-Enterprise-Portal.apk
           test -s Britium-Enterprise-Portal.apk
           ls -lh Britium-Enterprise-Portal.apk
 
@@ -202,6 +259,13 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs Britium-Enterprise-Portal.apk | tee enterprise-apk-signing.txt
           grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" enterprise-apk-signing.txt
 
+          ACTUAL="$($APKSIGNER verify --print-certs Britium-Enterprise-Portal.apk | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          EXPECTED="$(printf '%s' "$ENTERPRISE_ANDROID_CERT_SHA256" | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [ -z "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Enterprise signing certificate does not match the permanent certificate."
+            exit 1
+          fi
+          echo "Permanent Enterprise signing certificate verified."
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
       - name: Publish APK to stable GitHub Release
