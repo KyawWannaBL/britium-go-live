@@ -6,7 +6,12 @@ type CompressionRequest = {
   mimeType: string;
 };
 
-self.onmessage = async (event: MessageEvent<CompressionRequest>) => {
+const compressionWorker = self as unknown as {
+  onmessage: ((event: MessageEvent<CompressionRequest>) => void | Promise<void>) | null;
+  postMessage: (message: unknown, transfer?: Transferable[]) => void;
+};
+
+compressionWorker.onmessage = async (event: MessageEvent<CompressionRequest>) => {
   const { id, buffer, mimeType } = event.data;
   try {
     const bitmap = await createImageBitmap(new Blob([buffer], { type: mimeType }));
@@ -24,7 +29,7 @@ self.onmessage = async (event: MessageEvent<CompressionRequest>) => {
         const output = await canvas.convertToBlob({ type: "image/jpeg", quality });
         if (output.size < MAX_PROOF_BYTES) {
           const compressed = await output.arrayBuffer();
-          self.postMessage({ id, ok: true, buffer: compressed, size: output.size }, [compressed]);
+          compressionWorker.postMessage({ id, ok: true, buffer: compressed, size: output.size }, [compressed]);
           return;
         }
         quality = Math.max(0.45, quality - 0.07);
@@ -35,7 +40,7 @@ self.onmessage = async (event: MessageEvent<CompressionRequest>) => {
     }
     throw new Error("The photo could not be compressed below 1 MB. Retake it at a lower resolution.");
   } catch (error) {
-    self.postMessage({
+    compressionWorker.postMessage({
       id,
       ok: false,
       error: error instanceof Error ? error.message : "Photo compression failed.",

@@ -333,7 +333,7 @@ export default function DispatchCommandCenterPage() {
   };
 
   const setJobStatus = async (trackingNo: string, status: string, noteOverride?: string) => {
-    let note = noteOverride || "";
+    const note = noteOverride || "";
     if (status === "ATTEMPTED_FAILED" && !note) {
       setMessage("Choose a failed-delivery reason before pressing Fail.");
       return;

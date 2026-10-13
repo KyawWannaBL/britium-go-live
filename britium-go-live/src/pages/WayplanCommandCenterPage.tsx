@@ -246,7 +246,7 @@ export default function WayplanCommandCenterPage() {
         if(acknowledgement.error) console.warn("Warehouse handoff acknowledgement unavailable",acknowledgement.error);
       }
 
-      let handoffSelection:Record<string,boolean>={};
+      const handoffSelection:Record<string,boolean>={};
       try {
         const requested=JSON.parse(window.sessionStorage.getItem("be_wayplan_handoff_ids_v150") || "[]");
         const requestedSet=new Set((Array.isArray(requested)?requested:[]).map((id:any)=>text(id).toUpperCase()));
