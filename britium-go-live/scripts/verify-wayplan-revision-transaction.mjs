@@ -1,5 +1,5 @@
+import {readMigrationFixture} from './read-migration-fixture.mjs';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 // Exercise the real revision function. Context, generation and route-history adapters
 // are reduced disposable fixtures, not substitutes for the production end-to-end gate.
@@ -33,7 +33,7 @@ CREATE FUNCTION public.be_generate_wayplan(jsonb) RETURNS jsonb LANGUAGE plpgsql
  INSERT INTO public.be_wayplan_membership_v40(wayplan_id,delivery_way_id,membership_status) VALUES($1->>'wayplan_id',stop_id,'PLANNED');
  UPDATE public.be_waybill_ledger SET wayplan_id=$1->>'wayplan_id' WHERE delivery_way_id=stop_id;
  END LOOP;RETURN '{"ok":true}'::jsonb;END$$;`);
-await db.exec(fs.readFileSync('../supabase/migrations/20261012144059_wayplan_revision_policy_v201.sql','utf8'));
+await db.exec(readMigrationFixture('20261012144059_wayplan_revision_policy_v201.sql'));
 async function seed(ctx=context){
  await db.exec(`TRUNCATE be_audit_events,be_wayplan_dispatches,be_wayplan_dispatch_stops,be_wayplan_membership_v40,be_waybill_ledger,be_data_entry_parcel_details,be_delivery_location_registry,fixture_context,fixture_route_history;
  SELECT set_config('test.generation_failure','false',false);
