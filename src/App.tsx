@@ -11,6 +11,7 @@ import AppInstallPrompt from "./components/AppInstallPrompt";
 
 // ── Lazy-load portals (code-split per role) ───────────────────────────────────
 const LoginPage          = React.lazy(() => import("./pages/LoginPage"));
+const RecoveryPasswordPage = React.lazy(() => import("./pages/RecoveryPasswordPage"));
 const WarehousePortal    = React.lazy(() => import("./pages/WarehousePortal"));
 const FinancePortal      = React.lazy(() => import("./pages/FinancePortal"));
 const AdminHRPortal      = React.lazy(() => import("./pages/AdminHRPortal"));
@@ -177,6 +178,7 @@ export default function App() {
               <Routes>
                 {/* ── Public ── */}
                 <Route path="/login"        element={<LoginPage />} />
+                <Route path="/reset-password" element={<RecoveryPasswordPage />} />
                 <Route path="/unauthorized" element={<UnauthorizedPage />} />
 
                 {/* ── Root → role-based redirect ── */}
