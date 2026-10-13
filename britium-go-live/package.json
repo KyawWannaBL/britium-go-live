@@ -82,7 +82,8 @@
     "verify:go-live-preview": "node scripts/verify-go-live-preview.mjs",
     "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs",
     "verify:isolated-build-inputs": "node scripts/verify-isolated-build-inputs.mjs",
-    "verify:mobile-layout": "node scripts/verify-mobile-layout.cjs"
+    "verify:mobile-layout": "node scripts/verify-mobile-layout.cjs",
+    "verify:legacy-login": "node scripts/verify-legacy-login.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
@@ -154,20 +155,19 @@
   "devDependencies": {
     "@electric-sql/pglite": "0.5.9",
     "@eslint/js": "9.39.2",
-    "@tailwindcss/postcss": "^4.3.0",
-    "@tailwindcss/vite": "^4.3.1",
     "@types/mapbox-gl": "^3.4.1",
     "@types/pdfkit": "^0.17.6",
     "@types/react": "^18.3.23",
     "@types/react-dom": "^18.3.7",
     "@vitejs/plugin-react": "^5.1.1",
+    "autoprefixer": "10.4.21",
     "eslint": "9.39.2",
     "eslint-plugin-react-hooks": "5.2.0",
     "eslint-plugin-react-refresh": "0.4.26",
     "globals": "15.15.0",
     "playwright-core": "1.64.0",
     "react-test-renderer": "^18.3.1",
-    "tailwindcss": "^4.3.1",
+    "tailwindcss": "3.4.19",
     "typescript": "^5.9.3",
     "typescript-eslint": "8.53.0",
     "vite": "^8.0.16",

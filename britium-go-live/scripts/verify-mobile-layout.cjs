@@ -20,7 +20,7 @@ async function pageTestInsets(browser,css) {
  const insets={'safe-area-inset-top':'20px','safe-area-inset-bottom':'16px','safe-area-inset-left':'12px','safe-area-inset-right':'0px'};
  const insetCss=css.replace(/env\((safe-area-inset-[a-z]+)(?:,[^)]*)?\)/g,(_,name)=>insets[name]||'0px');
  await page.setContent(`<style>${insetCss}</style><div id="root">${markup(320)}</div>`);
- const b=await page.locator('[data-be-sidebar]').boundingBox();assert.equal(b.x,12);assert.equal(b.y,20);assert.ok(b.y+b.height<=552,'rail must clear bottom system inset');
+ const b=await page.evaluate(()=>{const r=document.querySelector('[data-be-sidebar]').getBoundingClientRect();return {x:r.x,y:r.y,height:r.height};});assert.equal(b.x,12);assert.equal(b.y,20);assert.ok(b.y+b.height<=552,'rail must clear bottom system inset');
  }finally{await page.close();}
 }
 async function pageTestExpanded(browser,css) {

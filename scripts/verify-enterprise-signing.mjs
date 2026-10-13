@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import assert from 'node:assert/strict';
+const w=fs.readFileSync('.github/workflows/britium-enterprise-android.yml','utf8');
+assert.doesNotMatch(w,/assembleDebug|app-debug\.apk/,'Production must not publish runner-generated debug keys');
+for(const name of ['KEYSTORE_BASE64','KEYSTORE_PASSWORD','KEY_ALIAS','KEY_PASSWORD','CERT_SHA256'])assert.ok(w.includes(`secrets.ENTERPRISE_ANDROID_${name}`),`Missing permanent signing secret ${name}`);
+assert.match(w,/assembleRelease/);
+assert.match(w,/signingConfig signingConfigs\.britiumRelease/);
+assert.match(w,/\[ "\$ACTUAL" != "\$EXPECTED" \]/,'Pin certificate before publication');
+assert.ok(w.indexOf('Require permanent Enterprise signing secrets')<w.indexOf('Build signed release APK'));
+assert.ok(w.indexOf('certificate does not match')<w.indexOf('Publish APK to stable GitHub Release'));
+console.log('PASS: permanent Enterprise signing required, pinned certificate before publication, no debug APK path');
