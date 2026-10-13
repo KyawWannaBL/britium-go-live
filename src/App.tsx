@@ -25,6 +25,17 @@ const BranchOfficePortal = React.lazy(() => import("./pages/BranchOfficePortal")
 const CustomerPortal     = React.lazy(() => import("./pages/CustomerPortal"));
 const RiderPortal        = React.lazy(() => import("./pages/RiderPortal"));
 
+// Supabase's default recovery callback can arrive at /#access_token=...&type=recovery.
+// Move only that callback to the public reset page before BrowserRouter mounts.
+// Preserve the fragment so Supabase can exchange/consume the temporary session.
+if (typeof window !== "undefined") {
+  const fragment = window.location.hash.replace(/^#/, "");
+  const isRecoveryCallback = new URLSearchParams(fragment).get("type") === "recovery";
+  if (isRecoveryCallback && window.location.pathname !== "/reset-password") {
+    window.history.replaceState(window.history.state, "", "/reset-password" + window.location.search + window.location.hash);
+  }
+}
+
 // ── Query Client ──────────────────────────────────────────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
