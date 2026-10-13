@@ -1,5 +1,5 @@
+import {readMigrationFixture} from './read-migration-fixture.mjs';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 try{
@@ -15,7 +15,7 @@ CREATE TABLE public.be_data_entry_parcel_details(delivery_way_id text PRIMARY KE
 CREATE TABLE public.be_wayplan_dispatches(wayplan_id text PRIMARY KEY);
 CREATE TABLE public.be_pickup_requests(pickup_id text PRIMARY KEY);
 CREATE TABLE public.unclassified_transactions(id text PRIMARY KEY);INSERT INTO unclassified_transactions VALUES('KEEP');`);
-await db.exec(fs.readFileSync('../supabase/migrations/20261012173710_go_live_cutover_scope_v2.sql','utf8'));
+await db.exec(readMigrationFixture('20261012173710_go_live_cutover_scope_v2.sql'));
 const keys=[{table:'be_data_entry_parcel_details',key:'EXPLICIT-TEST'}];
 const call=async(roots=keys)=> (await db.query('SELECT public.be_go_live_cutover_preview_v2(now(),$1::jsonb) result',[roots])).rows[0].result;
 await assert.rejects(call(),/permission|authenticated/i);

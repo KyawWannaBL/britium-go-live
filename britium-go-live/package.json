@@ -80,7 +80,8 @@
     "verify:wayplan-revision-policy": "node scripts/verify-wayplan-revision-policy.mjs",
     "verify:wayplan-revision-transaction": "node scripts/verify-wayplan-revision-transaction.mjs",
     "verify:go-live-preview": "node scripts/verify-go-live-preview.mjs",
-    "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs"
+    "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs",
+    "verify:isolated-build-inputs": "node scripts/verify-isolated-build-inputs.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
