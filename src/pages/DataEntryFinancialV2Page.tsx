@@ -459,7 +459,9 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
       // The tariff selected by the operator is the intended provider; do not silently overwrite it with automatic routing.
       service_provider_code: option.provider_code,
       delivery_charges: tariffRate(option, row.customer_tier),
-      message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was applied.`,
+      message: option.provider_code === nextRoute.providerCode
+        ? `${providerRoutingMessage(nextRoute)} Tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was selected.`
+        : `Manual provider selection: ${option.provider_name}. The displayed tariff is provisional until an authorized provider-change review and financial validation are completed.`,
     });
     setOpen(false);
   };
