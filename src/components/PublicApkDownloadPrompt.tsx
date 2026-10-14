@@ -29,7 +29,7 @@ export default function PublicApkDownloadPrompt() {
 
   return (
     <div className="fixed bottom-4 left-1/2 z-[9999] w-[calc(100%-1.5rem)] max-w-md -translate-x-1/2 rounded-2xl border border-cyan-400/30 bg-slate-950/80 p-3 shadow-[0_20px_60px_rgba(0,0,0,.45)] backdrop-blur-xl">
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-cyan-400/15 text-cyan-300">
           <Smartphone size={20} />
         </div>
@@ -49,7 +49,14 @@ export default function PublicApkDownloadPrompt() {
           className="inline-flex items-center gap-2 rounded-xl bg-cyan-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:scale-[1.02]"
         >
           <Download size={16} />
-          APK
+          Enterprise APK
+        </a>
+        <a
+          href="https://raw.githubusercontent.com/KyawWannaBL/Rider-App/main/public/downloads/Britium-Express-Rider-Build100.apk"
+          className="inline-flex items-center gap-2 rounded-xl bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 transition hover:scale-[1.02]"
+        >
+          <Download size={16} />
+          Rider APK 100
         </a>
       </div>
     </div>
