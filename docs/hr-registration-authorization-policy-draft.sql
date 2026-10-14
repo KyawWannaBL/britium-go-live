@@ -1,0 +1,15 @@
+-- REVIEW-ONLY: DO NOT APPLY without cross-role tests and migration reconciliation.
+-- be_current_role() is backed by be_user_account_registry and active superadmin delegations.
+-- Existing permissive be_employee_master policies use USING / WITH CHECK (true)
+-- for all authenticated users; these must be replaced, not augmented by additional
+-- permissive policies, because Postgres combines permissive policies with OR.
+-- Desired server-enforced authorization matrix (validate against account registry):
+-- SELECT: superadmin, super_admin, admin, hr_admin, hr, and separately scoped views for other staff.
+-- INSERT/UPDATE: superadmin, super_admin, admin, hr_admin, hr.
+-- DELETE: superadmin only (or explicit audited hard-delete procedure).
+-- The employee sensitive details and HR document register should have distinct
+-- restricted read/write policies. Existing HR Storage policy already checks
+-- be_current_role() for hr-documents INSERT and SELECT.
+-- Note: portal route currently allows admin, hr, super_admin, whereas storage
+-- upload accepts hr_admin, superadmin, super_admin, admin; reconcile role aliases.
+-- No DDL is executed by this draft.
