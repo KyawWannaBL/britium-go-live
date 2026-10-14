@@ -456,6 +456,8 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
     });
     updateRow(index, {
       ...routingPatch(nextRoute,{...row,township:option.destination_name}),
+      // The tariff selected by the operator is the intended provider; do not silently overwrite it with automatic routing.
+      service_provider_code: option.provider_code,
       delivery_charges: tariffRate(option, row.customer_tier),
       message: `${providerRoutingMessage(nextRoute)} Approved tariff ${option.provider_name} · Rack ${option.rack_code || "—"} was applied.`,
     });
