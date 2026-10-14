@@ -43,6 +43,7 @@ begin
   if v_category = 'DIRECT_RTO' then
     raise exception 'DIRECT_RTO_REQUIRES_EVIDENCE_REVIEW';
   end if;
+  -- Invalid reasons use the legacy ATTEMPTED_FAILED status for downstream compatibility.
   -- Three valid, distinct delivery cycles are required for normal RTO.
   v_limit := 3;
 
@@ -101,7 +102,7 @@ begin
   end if;
 
   v_attempt := coalesce(v_attempt, 0) + case when v_category = 'VALID_REASON' then 1 else 0 end;
-  v_status := case when v_attempt >= 3 then 'RTO' when v_category = 'INVALID_REASON' then 'INVALID_FAILED' else 'ATTEMPTED_FAILED' end;
+  v_status := case when v_attempt >= 3 then 'RTO' else 'ATTEMPTED_FAILED' end;
 
   update public.be_delivery_attempt_state_v39
   set pickup_id = v_pickup_id,
