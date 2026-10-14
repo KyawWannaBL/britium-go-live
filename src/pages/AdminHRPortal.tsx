@@ -4,13 +4,14 @@
 // API: /api/v1/admin-hr/*   Role: admin / super_admin / hr
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from "react";
+import EmployeeRegistrationDraft from "./EmployeeRegistrationDraft";
 import {
   useEmployees, useCreateEmployee, useAttendance,
   useLeaveRequests, useLeaveAction, useApprovals,
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "employees" | "attendance" | "leave" | "approvals" | "new-employee";
+type Tab = "employees" | "attendance" | "leave" | "approvals" | "new-employee" | "registration-preview";
 
 export default function AdminHRPortal() {
   const { user, logout } = useAuth();
@@ -35,6 +36,7 @@ export default function AdminHRPortal() {
     { id: "leave", label: "📋 Leave Requests" },
     { id: "approvals", label: "✅ Approvals" },
     { id: "new-employee", label: "➕ Add Employee" },
+    { id: "registration-preview", label: "📄 Registration Template Preview" },
   ];
 
   return (
@@ -142,6 +144,8 @@ export default function AdminHRPortal() {
             />
           </div>
         )}
+
+        {tab === "registration-preview" && <EmployeeRegistrationDraft />}
 
         {/* NEW EMPLOYEE */}
         {tab === "new-employee" && (
