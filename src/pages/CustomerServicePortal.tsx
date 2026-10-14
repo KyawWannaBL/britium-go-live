@@ -4,10 +4,10 @@
 // API: /api/v1/operations/*   Role: customer_service
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from "react";
-import { useTickets, useCreateTicket, useUpdateTicket, useTrackShipment } from "../hooks/useApi";
+import { useTickets, useCreateTicket, useUpdateTicket, useTrackShipment, usePickups } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "tickets" | "track" | "new-ticket";
+type Tab = "tickets" | "track" | "new-ticket" | "pickups";
 
 export default function CustomerServicePortal() {
   const { user, logout } = useAuth();
@@ -16,6 +16,12 @@ export default function CustomerServicePortal() {
   const [trackAWB, setTrackAWB] = useState("");
   const [ticketForm, setTicketForm] = useState({ subject: "", issue_type: "inquiry", shipment_awb: "", priority: "medium", notes: "" });
   const [statusFilter, setStatusFilter] = useState("open");
+  const [pickupSearch, setPickupSearch] = useState("");
+  const [pickupDateFrom, setPickupDateFrom] = useState("");
+  const [pickupDateTo, setPickupDateTo] = useState("");
+  const [pickupStatus, setPickupStatus] = useState("all");
+  const [selectedPickup, setSelectedPickup] = useState<Record<string, unknown> | null>(null);
+  const pickups = usePickups();
 
   const tickets = useTickets({ status: statusFilter });
   const createTicket = useCreateTicket();
@@ -25,6 +31,7 @@ export default function CustomerServicePortal() {
   const ISSUE_TYPES = ["inquiry", "failed_delivery", "wrong_address", "cod_dispute", "damaged_parcel", "lost_parcel", "reattempt_request", "other"];
   const tabs = [
     { id: "tickets" as Tab, label: "🎫 Tickets" },
+    { id: "pickups" as Tab, label: "📦 Pickup Requests" },
     { id: "track" as Tab, label: "🔍 Track Shipment" },
     { id: "new-ticket" as Tab, label: "➕ New Ticket" },
   ];
@@ -83,6 +90,75 @@ export default function CustomerServicePortal() {
               </table>
             </div>
           </div>
+        )}
+
+
+        {/* Independent pickup request list: read-only actions do not modify dispatch state. */}
+        {tab === "pickups" && (
+          <section style={S.formCardWide} aria-label="Customer Service pickup requests">
+            <div style={S.filterRow}>
+              <h2 style={S.h2}>Pickup Order Requests</h2>
+              <button type="button" style={S.trackBtn} onClick={() => pickups.refetch()} disabled={pickups.isFetching}>Refresh List</button>
+            </div>
+            <div style={S.pickupFilters}>
+              <label style={S.label}>Search merchant / pickup ID
+                <input style={S.input} value={pickupSearch} onChange={e => setPickupSearch(e.target.value)} placeholder="Search requests..." />
+              </label>
+              <label style={S.label}>From date
+                <input style={S.input} type="date" value={pickupDateFrom} onChange={e => setPickupDateFrom(e.target.value)} />
+              </label>
+              <label style={S.label}>To date
+                <input style={S.input} type="date" value={pickupDateTo} onChange={e => setPickupDateTo(e.target.value)} />
+              </label>
+              <label style={S.label}>Status
+                <select style={S.input} value={pickupStatus} onChange={e => setPickupStatus(e.target.value)}>
+                  <option value="all">All statuses</option>
+                  {["pending","requested","assigned","accepted","in_progress","completed","cancelled"].map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </label>
+            </div>
+            {pickups.isLoading && <Spin />}
+            {pickups.isError && <ErrBanner msg={pickups.error?.message || "Unable to load pickup requests. Verify CS pickup list access."} />}
+            {!pickups.isError && (() => {
+              const payload: any = pickups.data;
+              const records: Record<string, unknown>[] = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : Array.isArray(payload?.pickups) ? payload.pickups : Array.isArray(payload?.items) ? payload.items : [];
+              const list = records.filter(r => {
+                const searchable = [r.id, r.pickup_id, r.pickup_code, r.merchant_name, r.merchant, r.customer_name, r.status].map(v => String(v ?? "")).join(" ").toLowerCase();
+                const requested = String(r.requested_at ?? r.created_at ?? r.pickup_date ?? "");
+                const day = requested.slice(0, 10);
+                const status = String(r.status ?? "").toLowerCase();
+                return searchable.includes(pickupSearch.trim().toLowerCase()) &&
+                  (!pickupDateFrom || (day && day >= pickupDateFrom)) &&
+                  (!pickupDateTo || (day && day <= pickupDateTo)) &&
+                  (pickupStatus === "all" || status === pickupStatus);
+              });
+              return <div style={{ overflowX: "auto" }}>
+                <div style={{ fontSize: 12, color: "#475569", marginBottom: 8 }}>{list.length} request(s) displayed</div>
+                <table style={S.table}>
+                  <thead><tr>{["Pickup ID","Merchant / Customer","Requested Date","Scheduled Pickup","Parcels","Status","Actions"].map(h => <th key={h} style={S.th}>{h}</th>)}</tr></thead>
+                  <tbody>{list.length ? list.map((r, i) => (
+                    <tr key={String(r.id ?? r.pickup_id ?? i)}>
+                      <td style={S.td}>{String(r.pickup_code ?? r.pickup_id ?? r.id ?? "—")}</td>
+                      <td style={S.td}>{String(r.merchant_name ?? r.merchant ?? r.customer_name ?? "—")}</td>
+                      <td style={S.td}>{fmtDate(String(r.requested_at ?? r.created_at ?? ""))}</td>
+                      <td style={S.td}>{fmtDate(String(r.scheduled_at ?? r.pickup_date ?? r.scheduled_date ?? ""))}</td>
+                      <td style={S.td}>{String(r.parcel_count ?? r.quantity ?? r.total_parcels ?? "—")}</td>
+                      <td style={S.td}><StatusBadge s={String(r.status ?? "unknown")} /></td>
+                      <td style={S.td}><button type="button" style={S.inlineSelect} onClick={() => setSelectedPickup(r)}>View Details</button></td>
+                    </tr>
+                  )) : <tr><td colSpan={7} style={S.empty}>No matching pickup requests.</td></tr>}</tbody>
+                </table>
+              </div>;
+            })()}
+            {selectedPickup && <div style={S.pickupDetails}>
+              <div style={S.filterRow}><strong>Pickup Request Details</strong><button type="button" style={S.inlineSelect} onClick={() => setSelectedPickup(null)}>Close</button></div>
+              <div style={S.pickupDetailGrid}>
+                {Object.entries(selectedPickup).filter(([key, value]) => value !== null && typeof value !== "object" && !/token|secret|password/i.test(key)).map(([key, value]) => (
+                  <div key={key}><div style={S.trackLabel}>{key.replace(/_/g, " ")}</div><div style={{ overflowWrap: "anywhere" }}>{String(value ?? "—")}</div></div>
+                ))}
+              </div>
+            </div>}
+          </section>
         )}
 
         {/* TRACK */}
@@ -187,6 +263,10 @@ const S: Record<string, React.CSSProperties> = {
   trackGrid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
   trackField: { fontSize: 13 },
   trackLabel: { fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", marginBottom: 2 },
+  formCardWide: { background: "#fff", borderRadius: 14, padding: 24, boxShadow: "0 2px 8px rgba(0,0,0,.08)" },
+  pickupFilters: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(170px,1fr))", gap: 12, marginBottom: 18 },
+  pickupDetails: { marginTop: 20, padding: 18, background: "#f8fafc", border: "1px solid #cbd5e1", borderRadius: 10 },
+  pickupDetailGrid: { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(180px,1fr))", gap: 14, fontSize: 13 },
   formCard: { background: "#fff", borderRadius: 14, padding: 28, maxWidth: 640, boxShadow: "0 2px 8px rgba(0,0,0,.08)" },
   form: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 },
   label: { fontSize: 13, fontWeight: 600, color: "#374151", display: "flex", flexDirection: "column", gap: 5 },
