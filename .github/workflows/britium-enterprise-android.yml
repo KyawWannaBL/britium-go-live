@@ -75,13 +75,24 @@ jobs:
         working-directory: britium-go-live
         run: npm install --no-save @capacitor/cli@8.4.0 @capacitor/assets sharp
 
-      - name: Build production Enterprise Portal UI
-        working-directory: britium-go-live
+      - name: Build canonical production Enterprise Portal UI
         run: |
           set -euo pipefail
+          test -s src/pages/AdminOperations.tsx
+          test -s src/lib/providerChangeDecisions.ts
+          npm ci
           npx vite build
           test -s dist/index.html
           test -d dist/assets
+
+      - name: Bundle canonical Enterprise Portal into Android application
+        run: |
+          set -euo pipefail
+          rm -rf britium-go-live/dist
+          mkdir -p britium-go-live/dist
+          cp -a dist/. britium-go-live/dist/
+          cmp dist/index.html britium-go-live/dist/index.html
+          echo "APK UI now matches the website's canonical root src/ build."
 
       - name: Generate clean Android project
         working-directory: britium-go-live
