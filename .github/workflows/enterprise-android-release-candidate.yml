@@ -34,22 +34,43 @@ jobs:
           npm run build
       - name: Copy bundled web assets to Android
         run: npx --yes @capacitor/cli@8.4.0 sync android
-      - name: Assemble APK
+      - name: Check release signing inputs
+        env:
+          KEYSTORE_B64: ${{ secrets.ENTERPRISE_RELEASE_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS }}
+          STORE_PASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ENTERPRISE_RELEASE_KEY_PASSWORD }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "Missing Enterprise keystore"; exit 1; }
+          test -n "$KEY_ALIAS" || { echo "Missing alias"; exit 1; }
+          test -n "$STORE_PASS" || { echo "Missing store password"; exit 1; }
+          test -n "$KEY_PASS" || { echo "Missing key password"; exit 1; }
+      - name: Configure signing temporarily
+        env:
+          KEYSTORE_B64: ${{ secrets.ENTERPRISE_RELEASE_KEYSTORE_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS }}
+          STORE_PASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ENTERPRISE_RELEASE_KEY_PASSWORD }}
+        run: |
+          umask 077
+          printf '%s' "$KEYSTORE_B64" | base64 --decode > android/app/enterprise-release.jks
+          printf 'storeFile=enterprise-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > android/signing.properties
+      - name: Assemble signed release APK
         run: |
           cd android
           bash ./gradlew --no-daemon assembleRelease
-      - name: Check signing configuration
-        env:
-          HAS_KEYSTORE: ${{ secrets.ENTERPRISE_RELEASE_KEYSTORE_BASE64 != '' }}
-          HAS_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS != '' }}
-          HAS_STOREPASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD != '' }}
-          HAS_KEYPASS: ${{ secrets.ENTERPRISE_RELEASE_KEY_PASSWORD != '' }}
+      - name: Verify signed APK
         run: |
-          if [ "$HAS_KEYSTORE" != true ] || [ "$HAS_ALIAS" != true ] || [ "$HAS_STOREPASS" != true ] || [ "$HAS_KEYPASS" != true ]; then
-            echo 'Release signing credentials not configured: candidate cannot be published'
-            exit 1
-          fi
-          echo 'Signing credentials available; signed release configuration must still be connected and verified.'
-          exit 1
-      # Release artifact publication intentionally disabled until release-signing
-      # configuration, APK signatures, and Android 8.0 install tests pass.
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK_DIR/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+      - name: Upload signed APK as private CI artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: enterprise-signed-release-candidate
+          path: android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          retention-days: 7
