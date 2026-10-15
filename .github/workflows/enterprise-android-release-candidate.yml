@@ -67,6 +67,24 @@ jobs:
           APKSIGNER="$(find "$SDK_DIR/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
+      - name: Verify Android upgrade identity and signer
+        env:
+          EXPECTED_CERT_SHA256: 990fcbce5147015e4a802a4bca6fef44f201c9266eacb38d6ffb08e819d49155
+        run: |
+          set -euo pipefail
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          SDK_DIR="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+          APKSIGNER="$(find "$SDK_DIR/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          AAPT="$(find "$SDK_DIR/build-tools" -name aapt -type f | sort -V | tail -n 1)"
+          test -n "$APKSIGNER" && test -n "$AAPT"
+          BADGING="$("$AAPT" dump badging "$APK")"
+          echo "$BADGING" | grep -F "name='com.britiumexpress.enterpriseportal'"
+          echo "$BADGING" | grep -F "versionCode='300024'"
+          CERT="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
+          test "${CERT,,}" = "$EXPECTED_CERT_SHA256" || {
+            echo "Enterprise APK signer does not match October 7 installed app; refusing release."
+            exit 1
+          }
       - name: Upload signed APK as private CI artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
