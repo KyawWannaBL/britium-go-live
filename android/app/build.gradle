@@ -17,14 +17,14 @@ android {
             }
         }
     }
-    namespace "com.britiumexpress.enterprise"
+    namespace "com.britiumexpress.enterpriseportal"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "com.britiumexpress.enterprise"
+        applicationId "com.britiumexpress.enterpriseportal"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 300024
+        versionName "3.0.24"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
