@@ -295,7 +295,7 @@ jobs:
           import re
           def package(path):
               text=open(path).read()
-              match=re.search(r"package: name='([^']+)' versionCode='(\\d+)'",text)
+              match=re.search(r"package: name='([^']+)' versionCode='(\d+)'",text)
               if not match: raise SystemExit(f"Could not read APK version in {path}")
               return match.group(1),int(match.group(2))
           old_id,old_code=package("/tmp/britium-old-badging.txt")
