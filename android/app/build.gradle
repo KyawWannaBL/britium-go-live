@@ -1,6 +1,22 @@
 apply plugin: 'com.android.application'
 
+def enterpriseSigningFile = rootProject.file("signing.properties")
+def enterpriseSigning = new Properties()
+if (enterpriseSigningFile.exists()) {
+    enterpriseSigningFile.withInputStream { enterpriseSigning.load(it) }
+}
+
 android {
+    signingConfigs {
+        enterpriseRelease {
+            if (enterpriseSigningFile.exists()) {
+                storeFile file(enterpriseSigning.getProperty("storeFile", "enterprise-release.jks"))
+                storePassword enterpriseSigning.getProperty("storePassword")
+                keyAlias enterpriseSigning.getProperty("keyAlias")
+                keyPassword enterpriseSigning.getProperty("keyPassword")
+            }
+        }
+    }
     namespace "com.britiumexpress.enterprise"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
@@ -18,6 +34,7 @@ android {
     }
     buildTypes {
         release {
+            if (enterpriseSigningFile.exists()) signingConfig signingConfigs.enterpriseRelease
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
