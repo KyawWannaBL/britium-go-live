@@ -18,6 +18,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase/client";
+import { decideProviderChange, getProviderChangePreflight } from "@/lib/providerChangeDecisions";
 
 type ViewKey = "overview" | "employees" | "approvals" | "admin" | "reports";
 
@@ -680,6 +681,7 @@ export default function AdminHrPortal() {
 
       {view === "approvals" && (
         <div className="space-y-6">
+          <ProviderChangeManagerQueue />
           <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_420px]">
             <Panel title="Leave Request Queue">
               <div className="space-y-3">
@@ -1051,6 +1053,54 @@ function InfoCard({
       ) : null}
     </div>
   );
+}
+
+
+// Dedicated manager-only provider decisions; server RPCs enforce actual role authorization.
+function ProviderChangeManagerQueue() {
+  const [requests, setRequests] = useState<Array<{id:string;way_id:string;requested_provider:string;automatic_provider:string;reason:string}>>([]);
+  const [notes, setNotes] = useState<Record<string,string>>({});
+  const [status, setStatus] = useState("");
+  const [busy, setBusy] = useState(false);
+  async function refreshQueue() {
+    setBusy(true);
+    try {
+      const client = supabase as unknown as {rpc:(name:string)=>Promise<{data:{requests?:typeof requests}|null;error:{message:string}|null}>};
+      const {data,error}=await client.rpc("be_review_provider_change_requests_v1");
+      if(error) throw new Error(error.message);
+      setRequests(data?.requests || []);
+      setStatus("");
+    } catch(e) { setStatus(e instanceof Error ? e.message : "Unable to load provider requests"); }
+    finally { setBusy(false); }
+  }
+  async function decide(id:string, action:"approve"|"reject") {
+    setBusy(true);
+    try {
+      if(action==="approve") {
+        const check=await getProviderChangePreflight(id);
+        if(check.matching_tariffs!==1 || check.has_wayplan || check.has_settlement || check.parcel_closed) throw new Error("Approval blocked by tariff, dispatch, or settlement preflight");
+      }
+      await decideProviderChange(id,action,notes[id]||"");
+      await refreshQueue();
+    } catch(e) { setStatus(e instanceof Error ? e.message : "Decision failed"); }
+    finally { setBusy(false); }
+  }
+  return <Panel title="Provider Change Requests" subtitle="Authorization and final validation are enforced by the database.">
+    <div className="space-y-3">
+      <SecondaryButton onClick={()=>void refreshQueue()} disabled={busy}>Refresh provider requests</SecondaryButton>
+      {status && <p role="alert" className="text-sm text-rose-700">{status}</p>}
+      {requests.length===0 && <p className="text-sm text-slate-500">No pending requests loaded.</p>}
+      {requests.map(request=><div key={request.id} className="rounded-xl border border-slate-200 p-4 space-y-2">
+        <div className="font-semibold text-slate-900">{request.way_id}: {request.automatic_provider} → {request.requested_provider}</div>
+        <p className="text-sm text-slate-600">{request.reason}</p>
+        <textarea className="min-h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" placeholder="Decision reason (minimum 10 characters)" value={notes[request.id]||""} onChange={e=>setNotes(prev=>({...prev,[request.id]:e.target.value}))}/>
+        <div className="flex flex-wrap gap-2">
+          <SecondaryButton disabled={busy || (notes[request.id]||"").trim().length<10} onClick={()=>void decide(request.id,"approve")}>Approve (restricted)</SecondaryButton>
+          <SecondaryButton disabled={busy || (notes[request.id]||"").trim().length<10} onClick={()=>void decide(request.id,"reject")}>Reject</SecondaryButton>
+        </div>
+      </div>)}
+    </div>
+  </Panel>;
 }
 
 function TextInput({

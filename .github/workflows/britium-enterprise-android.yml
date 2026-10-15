@@ -75,13 +75,24 @@ jobs:
         working-directory: britium-go-live
         run: npm install --no-save @capacitor/cli@8.4.0 @capacitor/assets sharp
 
-      - name: Build production Enterprise Portal UI
-        working-directory: britium-go-live
+      - name: Build canonical production Enterprise Portal UI
         run: |
           set -euo pipefail
+          test -s src/pages/AdminOperations.tsx
+          test -s src/lib/providerChangeDecisions.ts
+          npm ci
           npx vite build
           test -s dist/index.html
           test -d dist/assets
+
+      - name: Bundle canonical Enterprise Portal into Android application
+        run: |
+          set -euo pipefail
+          rm -rf britium-go-live/dist
+          mkdir -p britium-go-live/dist
+          cp -a dist/. britium-go-live/dist/
+          cmp dist/index.html britium-go-live/dist/index.html
+          echo "APK UI now matches the website's canonical root src/ build."
 
       - name: Generate clean Android project
         working-directory: britium-go-live
@@ -269,6 +280,41 @@ jobs:
           fi
           echo "Permanent Enterprise signing certificate verified."
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
+
+      - name: Confirm in-place upgrade compatibility with published APK
+        working-directory: britium-go-live
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/britium-previous-release
+          gh release download enterprise-portal-latest \
+            --pattern 'Britium-Enterprise-Portal.apk' \
+            --dir /tmp/britium-previous-release
+          PREVIOUS=/tmp/britium-previous-release/Britium-Enterprise-Portal.apk
+          test -s "$PREVIOUS"
+          AAPT="$(find "${ANDROID_HOME}/build-tools" -type f -name aapt | sort -V | tail -n 1)"
+          APKSIGNER="$(find "${ANDROID_HOME}/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --print-certs "$PREVIOUS" > /tmp/britium-previous-cert.txt
+          old_cert="$(sed -n 's/^.*certificate SHA-256 digest: //p' /tmp/britium-previous-cert.txt | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          new_cert="$("$APKSIGNER" verify --print-certs Britium-Enterprise-Portal.apk | sed -n 's/^.*certificate SHA-256 digest: //p' | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          test -n "$old_cert"
+          test "$old_cert" = "$new_cert" || { echo "::error::APK signing key changed: Android cannot upgrade in place"; exit 1; }
+          "$AAPT" dump badging "$PREVIOUS" > /tmp/britium-old-badging.txt
+          "$AAPT" dump badging Britium-Enterprise-Portal.apk > /tmp/britium-new-badging.txt
+          python3 - <<'PY'
+          import re
+          def package(path):
+              text=open(path).read()
+              match=re.search(r"package: name='([^']+)' versionCode='(\d+)'",text)
+              if not match: raise SystemExit(f"Could not read APK version in {path}")
+              return match.group(1),int(match.group(2))
+          old_id,old_code=package("/tmp/britium-old-badging.txt")
+          new_id,new_code=package("/tmp/britium-new-badging.txt")
+          if old_id!=new_id: raise SystemExit(f"Android package ID changed: {old_id} -> {new_id}")
+          if new_code<=old_code: raise SystemExit(f"APK versionCode must increase: {old_code} -> {new_code}")
+          print(f"PASS: in-place upgrade {old_id} versionCode {old_code} -> {new_code}; certificate unchanged.")
+          PY
 
       - name: Publish APK to stable GitHub Release
         working-directory: britium-go-live
