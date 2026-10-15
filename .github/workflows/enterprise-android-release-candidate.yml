@@ -1,0 +1,55 @@
+name: Enterprise Android APK release candidate
+on:
+  push:
+    branches: [feature/hr-registration-template-20261015]
+    paths:
+      - 'src/**'
+      - 'android/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/enterprise-android-release-candidate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d1659
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@07976c6290703d34c16d382cb36445f98bb43b0d
+      - name: Install and typecheck/build web application
+        run: |
+          npm ci
+          npm run build
+      - name: Copy bundled web assets to Android
+        run: npx --yes @capacitor/cli@8.4.0 sync android
+      - name: Assemble APK
+        run: |
+          cd android
+          bash ./gradlew --no-daemon assembleRelease
+      - name: Check signing configuration
+        env:
+          HAS_KEYSTORE: ${{ secrets.ENTERPRISE_RELEASE_KEYSTORE_BASE64 != '' }}
+          HAS_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS != '' }}
+          HAS_STOREPASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD != '' }}
+          HAS_KEYPASS: ${{ secrets.ENTERPRISE_RELEASE_KEY_PASSWORD != '' }}
+        run: |
+          if [ "$HAS_KEYSTORE" != true ] || [ "$HAS_ALIAS" != true ] || [ "$HAS_STOREPASS" != true ] || [ "$HAS_KEYPASS" != true ]; then
+            echo 'Release signing credentials not configured: candidate cannot be published'
+            exit 1
+          fi
+          echo 'Signing credentials available; signed release configuration must still be connected and verified.'
+          exit 1
+      # Release artifact publication intentionally disabled until release-signing
+      # configuration, APK signatures, and Android 8.0 install tests pass.
