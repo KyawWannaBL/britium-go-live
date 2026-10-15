@@ -55,6 +55,19 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE_B64" | base64 --decode > android/app/enterprise-release.jks
           printf 'storeFile=enterprise-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > android/signing.properties
+      - name: Check supplied keystore matches installed Enterprise APK
+        env:
+          EXPECTED_CERT_SHA256: 990fcbce5147015e4a802a4bca6fef44f201c9266eacb38d6ffb08e819d49155
+          STORE_PASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          ACTUAL="$(keytool -list -v -keystore android/app/enterprise-release.jks -alias "$KEY_ALIAS" -storepass "$STORE_PASS" 2>/dev/null | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL" || { echo "Cannot inspect signing keystore or alias"; exit 1; }
+          test "$ACTUAL" = "$EXPECTED_CERT_SHA256" || {
+            echo "Signing certificate differs from October 7 Enterprise APK; aborting build."
+            exit 1
+          }
       - name: Assemble signed release APK
         run: |
           cd android
