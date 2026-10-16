@@ -302,7 +302,7 @@ const TABS = [
 ];
 
 export default function CustomerPortal() {
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState("track");
 
   const viewMap: Record<string, React.ReactNode> = {
@@ -320,8 +320,8 @@ export default function CustomerPortal() {
           <div style={{ fontSize: 11, opacity: 0.55, marginTop: 1 }}>Customer Portal</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 13, opacity: 0.8 }}>{user?.full_name}</span>
-          <button onClick={logout}
+          <span style={{ fontSize: 13, opacity: 0.8 }}>{profile?.full_name}</span>
+          <button onClick={() => void signOut()}
             style={{ background: "rgba(255,255,255,0.1)", color: "#fff", border: "none", borderRadius: 8, padding: "6px 14px", fontSize: 12, cursor: "pointer", fontFamily: "inherit" }}>
             Sign Out
           </button>
