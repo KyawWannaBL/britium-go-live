@@ -764,8 +764,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           ?"Google Map is temporarily disabled for outside-core highway-terminal handoffs. Select the physical bus station instead."
           :"Google Map is temporarily disabled for outside-core Royal Express routes. No Britium Wayplan coordinate is required."}
         reloadToken={locationReloadToken}
-        onResolutionChange={(locationStatus)=>updateRow(index,{locationStatus})}
-        onCandidateChange={(locationCandidate)=>updateRow(index,{locationCandidate})}
+        onResolutionChange={(locationStatus: DataEntryLocationResolution)=>updateRow(index,{locationStatus})}
+        onCandidateChange={(locationCandidate: DeliveryLocation | null)=>updateRow(index,{locationCandidate})}
       />
 
       <div className="mt-4 rounded-xl border border-[#f6b84b]/25 bg-[#1d2b37] p-4">
