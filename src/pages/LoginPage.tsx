@@ -6,9 +6,10 @@ import React, { useState, FormEvent } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { ROLE_PORTALS } from "../lib/config";
+import { supabase } from "../lib/supabaseClient";
 
 export default function LoginPage() {
-  const { login, loading } = useAuth();
+  const { signIn, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -28,18 +29,19 @@ export default function LoginPage() {
     setError("");
     setSubmitting(true);
     try {
-      const result = await login(form.email, form.password);
-      if (!result.success) {
-        setError(result.error ?? "Login failed.");
-        return;
-      }
-      if (result.must_change_password) {
+      await signIn(form.email, form.password);
+      // Only route using an explicitly authorized profile from the server.
+      const { data, error: profileError } = await supabase.rpc("be_login_access_profile");
+      if (profileError) throw profileError;
+      const access = data as { authorized?: boolean; role?: string; must_change_password?: boolean } | null;
+      if (!access?.authorized) throw new Error("This account is not authorized to use Britium Express.");
+      if (access.must_change_password) {
         navigate("/reset-password", { replace: true });
         return;
       }
-      const role = result.user?.role ?? "rider";
-      const portal = ROLE_PORTALS[role] ?? "/";
-      navigate(portal, { replace: true });
+      navigate(ROLE_PORTALS[access.role ?? ""] ?? "/unauthorized", { replace: true });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Login failed.");
     } finally {
       setSubmitting(false);
     }
