@@ -1235,7 +1235,7 @@ function FailureModal({
 }
 
 export default function RiderPortal() {
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const {
     data: tasks = [],
     isLoading,
@@ -1378,13 +1378,13 @@ export default function RiderPortal() {
               opacity: 0.55,
             }}
           >
-            Rider App / ပို့ဆောင်ရေးဝန်ထမ်း အက်ပ် · {user?.full_name}
+            Rider App / ပို့ဆောင်ရေးဝန်ထမ်း အက်ပ် · {profile?.full_name}
           </div>
         </div>
 
         <button
           type="button"
-          onClick={logout}
+          onClick={() => void signOut()}
           style={{
             padding: "6px 14px",
             background: "rgba(255,255,255,0.1)",
