@@ -8,6 +8,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import ErrorBoundary from "./components/ErrorBoundary";
 import AppInstallPrompt from "./components/AppInstallPrompt";
+import { ROLE_PORTALS } from "./lib/config";
 
 // ── Lazy-load portals (code-split per role) ───────────────────────────────────
 const LoginPage          = React.lazy(() => import("./pages/LoginPage"));
@@ -78,12 +79,12 @@ function RequireAuth({
   children: React.ReactNode;
   allowedRoles?: string[];
 }) {
-  const { user, loading } = useAuth();
+  const { user, profile, loading } = useAuth();
   const location = useLocation();
 
   if (loading) return <PageSpinner />;
   if (!user) return <Navigate to="/login" state={{ from: location }} replace />;
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  if (!profile?.authorized || (allowedRoles && !allowedRoles.includes(profile.role ?? ""))) {
     return <Navigate to="/unauthorized" replace />;
   }
   return <>{children}</>;
@@ -91,15 +92,15 @@ function RequireAuth({
 
 // ── Root redirect: send user to their role portal ────────────────────────────
 function RootRedirect() {
-  const { user, loading, portalRoute } = useAuth();
+  const { user, profile, loading } = useAuth();
   if (loading) return <PageSpinner />;
   if (!user) return <Navigate to="/login" replace />;
-  return <Navigate to={portalRoute} replace />;
+  return <Navigate to={profile?.authorized ? (ROLE_PORTALS[profile.role ?? ""] ?? "/unauthorized") : "/unauthorized"} replace />;
 }
 
 // ── Unauthorized page ─────────────────────────────────────────────────────────
 function UnauthorizedPage() {
-  const { logout } = useAuth();
+  const { signOut } = useAuth();
   return (
     <div
       style={{
@@ -121,7 +122,7 @@ function UnauthorizedPage() {
         You don't have permission to view this page.
       </p>
       <button
-        onClick={logout}
+        onClick={() => void signOut()}
         style={{
           background: "#1e3a8a",
           color: "#fff",
