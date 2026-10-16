@@ -397,7 +397,7 @@ export default function DataEntryLocationEditor({
     reportResolution("SEARCHING");
     setMessage(automatic ? "Automatically locating this drop-off…" : "Searching address…");
     try {
-      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township },supabase);
+      const resolve = () => resolveDeliveryLocation({ deliveryWayId, address: value || address, township, client: supabase });
       const resolved = automatic ? await withAutomaticLocationSlot(resolve) : await resolve();
       const found = resolved ? { ...resolved, originalAddress: address } : null;
       if (requestId !== requestSequence.current) return;
@@ -419,11 +419,11 @@ export default function DataEntryLocationEditor({
         reportResolution("REVIEW_REQUIRED");
         const reason=String(found.reviewReason||"");
         if(reason==="TOWNSHIP_MISMATCH") {
-          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but its township does not match ${township || "the selected township"}. The pin is shown for review only and has NOT been shared with Wayplan.`);
+          setMessage(`${found.matchLevel.replace(/_/g, " ")} candidate found, but its township does not match ${township || "the selected township"}. The pin is shown for review only and has NOT been shared with Wayplan.`);
         } else if(reason==="POSTAL_EVIDENCE_MISMATCH") {
-          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found, but postal/ward evidence is incomplete. Review the pin and click Apply coordinates only if it is correct. It has NOT been shared with Wayplan.`);
+          setMessage(`${found.matchLevel.replace(/_/g, " ")} candidate found, but postal/ward evidence is incomplete. Review the pin and click Apply coordinates only if it is correct. It has NOT been shared with Wayplan.`);
         } else {
-          setMessage(`${found.matchLevel.replaceAll("_", " ")} candidate found. Review the map and coordinates, then click Apply coordinates only if the pin is correct. It has NOT been shared with Wayplan yet.`);
+          setMessage(`${found.matchLevel.replace(/_/g, " ")} candidate found. Review the map and coordinates, then click Apply coordinates only if the pin is correct. It has NOT been shared with Wayplan yet.`);
         }
         return;
       }
@@ -433,8 +433,8 @@ export default function DataEntryLocationEditor({
       setLng(String(found.longitude));
       setManualOpen(false);
       setMessage(deliveryWayId
-        ? `${found.matchLevel.replaceAll("_", " ")} saved automatically and shared with Wayplan.`
-        : `${found.matchLevel.replaceAll("_", " ")} found. Preview only until the Delivery Way ID is allocated.`);
+        ? `${found.matchLevel.replace(/_/g, " ")} saved automatically and shared with Wayplan.`
+        : `${found.matchLevel.replace(/_/g, " ")} found. Preview only until the Delivery Way ID is allocated.`);
       reportResolution(deliveryWayId ? "SYNCED" : "REVIEW_REQUIRED");
     } catch (error: any) {
       if (requestId !== requestSequence.current) return;
@@ -567,7 +567,7 @@ export default function DataEntryLocationEditor({
   return <div data-location-details="true" className="mt-4 rounded-xl border border-cyan-400/50 bg-[#061524] p-4">
     <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
       <div className="flex items-center gap-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-300"><MapPin size={15}/> Location Details / တည်နေရာအသေးစိတ်</div>
-      {candidate && <span className={`rounded-full px-3 py-1 text-[11px] font-black ${candidate.reviewStatus === "ACCEPTED" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"}`}>{candidate.matchLevel.replaceAll("_", " ")}{candidate.reviewStatus === "MANUAL_REVIEW" ? " · REVIEW" : ""}</span>}
+      {candidate && <span className={`rounded-full px-3 py-1 text-[11px] font-black ${candidate.reviewStatus === "ACCEPTED" ? "bg-emerald-950 text-emerald-300" : "bg-amber-950 text-amber-200"}`}>{candidate.matchLevel.replace(/_/g, " ")}{candidate.reviewStatus === "MANUAL_REVIEW" ? " · REVIEW" : ""}</span>}
     </div>
     <div className="grid gap-3 xl:grid-cols-[.9fr_1.1fr]">
       <div>
@@ -577,7 +577,7 @@ export default function DataEntryLocationEditor({
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Original address:</b> {query || address || "—"}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Township:</b> {township || candidate?.township || "—"}{postal.matchLevel !== "UNRESOLVED" && postal.township && <div className="mt-1 text-[11px] text-slate-400">Postal directory: {postal.township}<br/>{postal.townshipMm}</div>}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal code:</b> {postal.postalCode || (postal.matchLevel === "TOWNSHIP_ONLY" ? "Enter a recognized ward / quarter" : "Township or ward not recognized")}{postal.postalCode&&<div className="mt-1 text-[11px] text-slate-400">{[postal.quarter,postal.township,postal.region].filter(Boolean).join(", ")}<br/>{[postal.quarterMm,postal.townshipMm,postal.regionMm].filter(Boolean).join("၊ ")}</div>}</div>
-          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replaceAll("_", " ")}</div>
+          <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Postal match:</b> {postal.matchLevel.replace(/_/g, " ")}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Coordinates:</b> {validMyanmarCoordinate(lng,lat) ? `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}` : "Not resolved"}</div>
           <div className="rounded-lg border border-slate-700 p-2 text-xs text-slate-200"><b className="text-cyan-300">Source:</b> {candidate?.coordinateSource || "Not resolved"}</div>
         </div>
