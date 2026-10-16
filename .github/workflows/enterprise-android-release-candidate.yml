@@ -27,7 +27,23 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@v3.2.2
+      - name: Validate Android SDK on GitHub runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_DIR="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_DIR" || { echo "Android SDK missing from runner"; exit 1; }
+          echo "ANDROID_HOME=$SDK_DIR" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_DIR" >> "$GITHUB_ENV"
+          SDKMANAGER="$SDK_DIR/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$SDK_DIR/cmdline-tools" -path '*/bin/sdkmanager' -type f | sort -V | tail -n 1)"
+          fi
+          test -x "$SDKMANAGER" || { echo "sdkmanager missing"; exit 1; }
+          "$SDKMANAGER" --sdk_root="$SDK_DIR" --install "platforms;android-35" "build-tools;35.0.0" "platform-tools"
+          test -f "$SDK_DIR/platforms/android-35/android.jar"
+          test -x "$SDK_DIR/build-tools/35.0.0/apksigner"
+          test -x "$SDK_DIR/build-tools/35.0.0/aapt"
       - name: Install and typecheck/build web application
         run: |
           npm ci
