@@ -12,7 +12,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 type Tab = "exceptions" | "rider-monitoring" | "shipments";
 
 export default function SupervisorPortal() {
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [tab, setTab] = useState<Tab>("exceptions");
   const [statusFilter, setStatusFilter] = useState("failed");
   const qc = useQueryClient();
@@ -39,8 +39,8 @@ export default function SupervisorPortal() {
       <header style={S.header}>
         <span style={S.headerTitle}>🎯 Supervisor Portal</span>
         <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-          <span style={S.userBadge}>{user?.full_name || user?.email}</span>
-          <button onClick={logout} style={S.logoutBtn}>Sign Out</button>
+          <span style={S.userBadge}>{profile?.full_name || user?.email}</span>
+          <button onClick={() => void signOut()} style={S.logoutBtn}>Sign Out</button>
         </div>
       </header>
 
