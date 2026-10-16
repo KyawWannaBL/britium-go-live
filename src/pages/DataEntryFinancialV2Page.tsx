@@ -1824,7 +1824,7 @@ export default function DataEntryFinancialV2Page() {
       const keys=Object.keys(exportRows[0]||{});
       worksheet["!cols"]=keys.map((key)=>{
         let width=Math.max(12,key.length+2);
-        for(const item of exportRows.slice(0,250)) width=Math.max(width,String(item[key]??"").length+2);
+        for(const item of exportRows.slice(0,250)) width=Math.max(width,String((item as Record<string, unknown>)[key]??"").length+2);
         return {wch:Math.min(width,42)};
       });
       XLSX.utils.book_append_sheet(workbook,worksheet,"Data Entry Registration");
@@ -1984,7 +1984,7 @@ export default function DataEntryFinancialV2Page() {
       const XLSX:any=await import("xlsx");
       const workbook=XLSX.read(await file.arrayBuffer(),{type:"array",cellDates:true,raw:false});
       const sheet=workbook.Sheets["Location Review"]||workbook.Sheets[workbook.SheetNames[0]];
-      const imported=XLSX.utils.sheet_to_json<Record<string,unknown>>(sheet,{defval:"",raw:false});
+      const imported=XLSX.utils.sheet_to_json(sheet,{defval:"",raw:false}) as Array<Record<string,unknown>>;
       if(!imported.length) throw new Error("The Location Review sheet contains no rows.");
       const knownRows=new Map([...Object.values(bulkImportDrafts).flatMap((draft)=>draft.rows),...rows].map((row)=>[row.delivery_way_id,row]));
       const payloadRows=imported.map((entry,index)=>{
