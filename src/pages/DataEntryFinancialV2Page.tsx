@@ -518,7 +518,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
         {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {selected.provider_name} · Rack {selected.rack_code || "—"} · {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
         <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
           <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Provider: <b>{route.providerCode||"UNRESOLVED"}</b></div>
-          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replaceAll("_"," ")}</b></div>
+          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replace(/_/g, " ")}</b></div>
         </div>
       </div>
     </Field>
@@ -542,8 +542,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             <div className="text-[11px] font-black uppercase tracking-[0.15em] text-[#f6b84b]">Parcel {row.parcel_sequence}</div>
             {row.isAdditionalRegistration?<span className="rounded-full border border-cyan-300/40 bg-cyan-400/10 px-2 py-1 text-[9px] font-black text-cyan-200">AUTHORIZED MERCHANT ADDITION</span>:null}
             {row.importedFromOs?<span className="rounded-full border border-violet-300/40 bg-violet-400/10 px-2 py-1 text-[9px] font-black text-violet-200">OS SOFTCOPY · ROW {row.sourceRowNumber||"—"}</span>:null}
-            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replaceAll("_"," ")}</span>
-            {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} · {route.deliveryMode.replaceAll("_"," ")}</span>:null}
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${["SYNCED","NOT_REQUIRED"].includes(row.locationStatus)?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":row.locationStatus==="SEARCHING"?"border-cyan-300/40 bg-cyan-400/10 text-cyan-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {row.locationStatus.replace(/_/g, " ")}</span>
+            {route.routeRegion!=="UNRESOLVED"?<span className="rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-1 text-[9px] font-black text-sky-200">{route.routeRegion} · {route.deliveryMode.replace(/_/g, " ")}</span>:null}
             {row.saved?<span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2 py-1 text-[9px] font-black text-emerald-200">SAVED</span>:null}
           </div>
           <div className="mt-1 text-[12px] text-[#8db4ce]">{row.delivery_way_id || "Delivery Way ID allocated by backend"}</div>
