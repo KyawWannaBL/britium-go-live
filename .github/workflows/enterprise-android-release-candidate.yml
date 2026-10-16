@@ -27,7 +27,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '21'
-      - uses: android-actions/setup-android@07976c6290703d34c16d382cb36445f98bb43b0d
+      - uses: android-actions/setup-android@v3.2.2
       - name: Install and typecheck/build web application
         run: |
           npm ci
