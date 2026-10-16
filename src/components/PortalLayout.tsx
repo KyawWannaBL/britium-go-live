@@ -406,7 +406,7 @@ export default function PortalLayout({
         <div style={S.sidebarFooter}>
           {!collapsed && user && (
             <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, marginBottom: 8 }}>
-              {profile.full_name} · <em>{(profile?.role ?? "guest").replace("_", " ")}</em>
+              {profile?.full_name ?? user.email ?? "User"} · <em>{(profile?.role ?? "guest").replace("_", " ")}</em>
             </div>
           )}
           <button style={S.logoutBtn} onClick={() => void signOut()}>
