@@ -362,15 +362,15 @@ export default function PortalLayout({
   onNav,
   children,
 }: PortalLayoutProps) {
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const { data: notifData } = useNotifications();
   const notifications = (notifData as unknown as Notification[] | undefined) ?? [];
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
-  const initials = user?.full_name
-    ? user.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
+  const initials = profile?.full_name
+    ? profile.full_name.split(" ").map((w) => w[0]).slice(0, 2).join("").toUpperCase()
     : "?";
 
   return (
@@ -406,10 +406,10 @@ export default function PortalLayout({
         <div style={S.sidebarFooter}>
           {!collapsed && user && (
             <div style={{ color: "rgba(255,255,255,0.45)", fontSize: 11, marginBottom: 8 }}>
-              {user.full_name} · <em>{user.role.replace("_", " ")}</em>
+              {profile.full_name} · <em>{(profile?.role ?? "guest").replace("_", " ")}</em>
             </div>
           )}
-          <button style={S.logoutBtn} onClick={logout}>
+          <button style={S.logoutBtn} onClick={() => void signOut()}>
             <span>🚪</span>
             {!collapsed && <span>Sign Out</span>}
           </button>
@@ -448,7 +448,7 @@ export default function PortalLayout({
             {/* User chip */}
             <div style={S.userChip}>
               <div style={S.avatar(accentColor)}>{initials}</div>
-              <span>{user?.full_name ?? "User"}</span>
+              <span>{profile?.full_name ?? "User"}</span>
             </div>
           </div>
         </header>
