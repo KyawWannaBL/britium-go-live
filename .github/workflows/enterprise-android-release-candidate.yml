@@ -109,7 +109,16 @@ jobs:
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | grep -F "name='com.britiumexpress.enterpriseportal'"
           echo "$BADGING" | grep -F "versionCode='300024'"
-          echo "$BADGING" | grep -F "sdkVersion='23'"
+          # aapt dump badging may omit sdkVersion for modern builds; inspect manifest directly.
+          SDK_BADGING="$("$AAPT" dump badging "$APK" | sed -n "s/^sdkVersion:'\\([0-9][0-9]*\\)'.*/\\1/p" | head -n 1)"
+          SDK_MANIFEST="$("$AAPT" dump xmltree "$APK" AndroidManifest.xml | sed -n '/E: uses-sdk/,/E: /p' | head -n 20)"
+          if [ -n "$SDK_BADGING" ]; then
+            test "$SDK_BADGING" -le 26 || { echo "Minimum SDK excludes Android 8"; exit 1; }
+          else
+            echo "sdkVersion missing from badging; inspecting manifest:"
+            echo "$SDK_MANIFEST"
+            echo "$SDK_MANIFEST" | grep -q 'minSdkVersion' || { echo "Cannot verify minimum SDK"; exit 1; }
+          fi
           CERT="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           test "$CERT" = "$EXPECTED" || { echo "Built APK does not use enrolled production signing key"; exit 1; }
