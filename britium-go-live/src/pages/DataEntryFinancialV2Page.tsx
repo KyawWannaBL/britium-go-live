@@ -108,6 +108,7 @@ function tariffRate(option: TariffOption, tier: string): number {
 }
 
 type Pickup = {
+  payment_type?: string;
   pickup_id: string;
   merchant_id: string;
   merchant_name: string;
@@ -267,8 +268,13 @@ function automaticDeliveryCharge(row: ParcelRow, options: TariffOption[]): numbe
   const approved = tariffRate(route.option as TariffOption, row.customer_tier);
   return Number.isFinite(approved) && approved > 0 ? approved : null;
 }
-function codFeePreview(codValue: unknown) {
+function codFeePreview(codValue: unknown, paymentType: unknown = "COD") {
   const cod = Math.max(0, num(codValue));
+  const normalizedPayment = text(paymentType).trim().toUpperCase().replace(/[ -]/g, "_");
+  // T&C: 2% applies only to Advance Settlement over MMK 200,000.
+  if ((normalizedPayment === "CASH_ADVANCE_ON" || normalizedPayment === "CASH_ADVANCE") && cod > 200000) {
+    return { amount: Math.round(cod * 0.02), rate: 0.02, status: "ADVANCE_SETTLEMENT_2_PERCENT_ABOVE_200000" };
+  }
   if (cod <= 100000) return { amount: 0, rate: 0, status: "COD_FEE_FREE_0_TO_100000" };
   if (cod <= 300000) return { amount: 200, rate: 0, status: "COD_FEE_FLAT_200_PER_PARCEL_100001_TO_300000" };
   return { amount: Math.round(cod * 0.002), rate: 0.002, status: "COD_FEE_0_2_PERCENT_ABOVE_300000" };
@@ -304,6 +310,7 @@ function normalizePickup(row: any): Pickup | null {
   if (!pickupId) return null;
   return {
     pickup_id: pickupId,
+    payment_type: text(row?.payment_type || row?.payment_method || row?.payment_terms || "COD"),
     merchant_id: text(row?.merchant_id || row?.merchant_code).trim().toUpperCase(),
     merchant_name: text(row?.merchant_name).trim(),
     township: text(row?.township).trim(),
@@ -654,8 +661,9 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, onMapFocusChange }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
   const c = row.calculation || {};
+  const pickupPaymentType = selectedPaymentType || "COD";
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
   const stationReady = handoffStationReady(row,route);
@@ -982,8 +990,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <div className="flex justify-between gap-4"><span>Item Price</span><b>{money(row.item_price)}</b></div>
                 <div className="flex justify-between gap-4"><span>Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
                 <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
-                <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount)}</b></div>
-                <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount).status}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
                 <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
                 <div className="flex justify-between gap-4"><span>Delivery Difference</span><b>{money(c.delivery_difference)}</b></div>
                 <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement (not customer total)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
@@ -996,8 +1004,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Item Price</span><b>{money(row.item_price)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount)}</b></div>
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount).status}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
               <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2"><span className="font-black text-[#8db4ce]">Merchant Settlement (internal)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
@@ -1042,8 +1050,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <MoneyBox label="Receiver Total to Collect" value={c.cod_amount} highlight />
                 <MoneyBox label="Customer Delivery Charge" value={c.effective_declared_delivery_charge ?? c.delivery_charges ?? row.delivery_charges} />
-                <MoneyBox label="COD Service Fee" value={c.cod_service_fee_amount ?? codFeePreview(c.cod_amount).amount} />
-                <MoneyBox label="COD Fee Policy" value={c.cod_fee_policy_status || codFeePreview(c.cod_amount).status} />
+                <MoneyBox label="COD Service Fee" value={c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount} />
+                <MoneyBox label="COD Fee Policy" value={c.cod_fee_policy_status || codFeePreview(c.cod_amount,pickupPaymentType).status} />
                 <MoneyBox label="Backend Surcharges" value={c.backend_calculated_delivery_surcharges} />
                 <MoneyBox label="Base Tariff" value={c.base_tariff} />
                 <MoneyBox label="Weight Surcharge" value={c.weight_surcharge} />
@@ -3217,6 +3225,7 @@ export default function DataEntryFinancialV2Page() {
           {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor
             key={row.pickup_id+":"+row.parcel_sequence}
             row={row}
+            selectedPaymentType={selectedPickup?.payment_type || "COD"}
             index={pageStart}
             updateRow={updateRow}
             calculate={calculateEditorRow}
