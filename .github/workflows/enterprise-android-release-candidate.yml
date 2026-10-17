@@ -71,19 +71,19 @@ jobs:
           umask 077
           printf '%s' "$KEYSTORE_B64" | base64 --decode > android/app/enterprise-release.jks
           printf 'storeFile=enterprise-release.jks\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$STORE_PASS" "$KEY_ALIAS" "$KEY_PASS" > android/signing.properties
-      - name: Check supplied keystore matches installed Enterprise APK
+      - name: Verify permanent production signing certificate
         env:
-          EXPECTED_CERT_SHA256: 990fcbce5147015e4a802a4bca6fef44f201c9266eacb38d6ffb08e819d49155
+          EXPECTED_CERT_SHA256: ${{ secrets.ENTERPRISE_RELEASE_CERT_SHA256 }}
           STORE_PASS: ${{ secrets.ENTERPRISE_RELEASE_STORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ENTERPRISE_RELEASE_KEY_ALIAS }}
         run: |
           set -euo pipefail
+          test -n "$EXPECTED_CERT_SHA256" || { echo "Missing permanent Enterprise certificate SHA256 secret"; exit 1; }
           ACTUAL="$(keytool -list -v -keystore android/app/enterprise-release.jks -alias "$KEY_ALIAS" -storepass "$STORE_PASS" 2>/dev/null | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
-          test -n "$ACTUAL" || { echo "Cannot inspect signing keystore or alias"; exit 1; }
-          test "$ACTUAL" = "$EXPECTED_CERT_SHA256" || {
-            echo "Signing certificate differs from October 7 Enterprise APK; aborting build."
-            exit 1
-          }
+          EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$ACTUAL" || { echo "Cannot inspect Enterprise signing keystore or alias"; exit 1; }
+          test "$ACTUAL" = "$EXPECTED" || { echo "Production signer differs from the enrolled permanent Enterprise certificate"; exit 1; }
+          test "$ACTUAL" != "990fcbce5147015e4a802a4bca6fef44f201c9266eacb38d6ffb08e819d49155" || { echo "Unexpected legacy debug signer"; exit 1; }
       - name: Assemble signed release APK
         run: |
           cd android
@@ -96,9 +96,9 @@ jobs:
           APKSIGNER="$(find "$SDK_DIR/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
           test -n "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "$APK"
-      - name: Verify Android upgrade identity and signer
+      - name: Verify Android fresh-install identity and permanent signer
         env:
-          EXPECTED_CERT_SHA256: 990fcbce5147015e4a802a4bca6fef44f201c9266eacb38d6ffb08e819d49155
+          EXPECTED_CERT_SHA256: ${{ secrets.ENTERPRISE_RELEASE_CERT_SHA256 }}
         run: |
           set -euo pipefail
           APK=android/app/build/outputs/apk/release/app-release.apk
@@ -109,15 +109,15 @@ jobs:
           BADGING="$("$AAPT" dump badging "$APK")"
           echo "$BADGING" | grep -F "name='com.britiumexpress.enterpriseportal'"
           echo "$BADGING" | grep -F "versionCode='300024'"
-          CERT="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1)"
-          test "${CERT,,}" = "$EXPECTED_CERT_SHA256" || {
-            echo "Enterprise APK signer does not match October 7 installed app; refusing release."
-            exit 1
-          }
+          echo "$BADGING" | grep -F "sdkVersion='23'"
+          CERT="$("$APKSIGNER" verify --print-certs "$APK" | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n 1 | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test "$CERT" = "$EXPECTED" || { echo "Built APK does not use enrolled production signing key"; exit 1; }
+          echo "NEW INSTALL REQUIRED for legacy debug-signed Enterprise APKs; in-place upgrade is not supported."
       - name: Upload signed APK as private CI artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: enterprise-signed-release-candidate
+          name: enterprise-permanent-signed-fresh-install-v3.0.24
           path: android/app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
           retention-days: 7
