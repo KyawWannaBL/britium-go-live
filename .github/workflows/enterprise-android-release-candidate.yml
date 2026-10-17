@@ -125,7 +125,11 @@ jobs:
           # Compare the actual signed artifact against the enrolled keystore.
           # Accept both old/new apksigner label formats, but never skip comparison.
           SIGNER_OUTPUT="$("$APKSIGNER" verify --print-certs "$APK")"
-          CERT="$(printf '%s\n' "$SIGNER_OUTPUT" | sed -nE 's/^[[:space:]]*Signer #[0-9]+ certificate SHA-256 digest:[[:space:]]*//p' | head -n 1 | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
+          # apksigner uses different label capitalizations across Android Build Tools.
+          # Extract exactly 64 hex characters from the SHA-256 digest line.
+          printf '%s\n' "$SIGNER_OUTPUT" | grep -i 'sha-256\|sha256' || true
+          CERT="$(printf '%s\n' "$SIGNER_OUTPUT" | grep -i -m 1 -E 'certificate SHA-256 digest|certificate SHA256 digest' | grep -oE '[[:xdigit:]]{64}' | head -n 1 | tr '[:upper:]' '[:lower:]' || true)"
+          test -n "$CERT" || { echo "Cannot parse signer SHA-256 from apksigner output above"; exit 1; }
           EXPECTED="$(printf '%s' "$EXPECTED_CERT_SHA256" | tr -d '[:space:]:' | tr '[:upper:]' '[:lower:]')"
           test "${#CERT}" -eq 64 || { echo "Unable to extract valid SHA-256 APK signer fingerprint"; exit 1; }
           test "${#EXPECTED}" -eq 64 || { echo "Enrolled production certificate SHA-256 must have 64 hex characters"; exit 1; }
