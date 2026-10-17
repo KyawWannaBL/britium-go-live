@@ -1,0 +1,48 @@
+name: Stage Enterprise permanent APK v3.0.24
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: "Type STAGE-FRESH-INSTALL to create a DRAFT GitHub Release. Does not replace the current download."
+        required: true
+        type: string
+permissions:
+  contents: write
+jobs:
+  stage-apk:
+    if: ${{ inputs.confirmation == 'STAGE-FRESH-INSTALL' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download verified candidate from successful build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+          gh run download 39048390013 --repo "$GITHUB_REPOSITORY" \
+            --name enterprise-permanent-signed-fresh-install-v3.0.24 \
+            --dir release
+          test -s release/app-release.apk
+      - name: Check exact approved APK checksum and basic ZIP structure
+        run: |
+          set -euo pipefail
+          printf '%s  %s\n' '84d5c18c986a4c8d13c4883ac583eae4da08bd041bd419e3a84de612b8aee0da' 'release/app-release.apk' | sha256sum -c -
+          unzip -t release/app-release.apk >/dev/null
+          mv release/app-release.apk release/Britium-Enterprise-Portal-v3.0.24.apk
+      - name: Create a DRAFT, fresh-install-only release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG=enterprise-v3.0.24-fresh-install
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release tag already exists; refusing to overwrite or publish it."
+            exit 1
+          fi
+          gh release create "$TAG" release/Britium-Enterprise-Portal-v3.0.24.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target a53f51147014e14c69985b7940f973f1b0c46bf1 \
+            --title "Britium Enterprise Portal v3.0.24 — Fresh Install" \
+            --draft \
+            --notes 'NEW PERMANENT SIGNING CERTIFICATE. Old debug-signed Enterprise APK installations cannot be upgraded in place. Back up any unsynchronized information, uninstall the old Enterprise app, and reinstall after administrator approval. This release remains DRAFT pending phone/tablet installation, login, camera, notification, and operational acceptance tests. SHA-256 of APK: 84d5c18c986a4c8d13c4883ac583eae4da08bd041bd419e3a84de612b8aee0da.'
+          echo "Draft release created. No production download URL was changed."
