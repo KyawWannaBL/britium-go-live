@@ -34,7 +34,7 @@ async function compressOnMainThread(file: File): Promise<File> {
       canvas.width = 1;
       canvas.height = 1;
       if (blob.size < MAX_RIDER_PROOF_BYTES) {
-        const basename = file.name.replace(/\\.[^.]+$/, "") || "proof";
+        const basename = file.name.replace(/\.[^.]+$/, "") || "proof";
         return new File([blob], basename + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
       }
       quality = Math.max(0.42, quality - 0.06);
@@ -87,7 +87,7 @@ export async function compressRiderPhoto(file: File, signal?: AbortSignal): Prom
     });
     if (!response.ok || !response.buffer) return compressOnMainThread(file);
     if (response.buffer.byteLength >= MAX_RIDER_PROOF_BYTES) return compressOnMainThread(file);
-    const basename = file.name.replace(/\\.[^.]+$/, "") || "proof";
+    const basename = file.name.replace(/\.[^.]+$/, "") || "proof";
     return new File([response.buffer], basename + ".jpg", { type: "image/jpeg", lastModified: Date.now() });
   } catch (error) {
     if (signal?.aborted) throw error;
