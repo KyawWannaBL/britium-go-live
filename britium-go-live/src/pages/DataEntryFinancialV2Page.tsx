@@ -1885,7 +1885,7 @@ export default function DataEntryFinancialV2Page() {
       const e=envelope(r.data);
       const mismatch = e.ok ? receiverQuoteMismatch(pricingRow, e.data || {}) : null;
       if (mismatch) {
-        updateRow(index,{calculating:false,calculation:{},calculationFailed:true,message:mismatch});
+        updateRow(index,{calculating:false,calculation:{...e.data},calculationFailed:true,message:mismatch});
         return false;
       }
       const resolution=e.raw?.server_resolution||{};
