@@ -671,7 +671,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         <Field label="လက်ခံသူဖုန်း"><input className={inputClass} value={row.recipient_phone} onChange={(e) => updateRow(index,{recipient_phone:e.target.value})}/></Field>
         <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
         <Field label="အမှန်တကယ်အလေးချိန် (kg)"><input type="number" step="0.01" className={inputClass} value={row.weight_kg} onChange={(e)=>updateRow(index,{weight_kg:e.target.value===""?"":Number(e.target.value)})}/></Field>
-        <Field label="လက်ခံသူလိပ်စာ"><textarea rows={2} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>{
+        <Field label="လက်ခံသူလိပ်စာ"><textarea rows={2} style={{ backgroundColor: "#ffffff", color: "#000000", colorScheme: "light" }} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`} value={row.delivery_address} onChange={(e)=>{
           const delivery_address=e.target.value;
           const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
           const option=nextRoute.option as TariffOption|null;
