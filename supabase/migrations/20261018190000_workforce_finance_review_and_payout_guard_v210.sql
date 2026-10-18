@@ -15,6 +15,21 @@ create table if not exists public.be_workforce_commission_finance_reviews_v210 (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.be_workforce_commission_review_audit_v210 (
+  id uuid primary key default gen_random_uuid(),
+  commission_event_id uuid not null references public.be_commission_events(id) on delete restrict,
+  decision text not null check(decision in ('APPROVED','HELD')),
+  reviewed_by_uid uuid not null,
+  reviewed_by_email text not null,
+  reviewed_amount_mmk numeric(18,2) not null,
+  evidence_snapshot jsonb not null,
+  review_note text not null,
+  created_at timestamptz not null default now()
+);
+alter table public.be_workforce_commission_review_audit_v210 enable row level security;
+revoke all on public.be_workforce_commission_review_audit_v210 from public,anon,authenticated;
+grant all on public.be_workforce_commission_review_audit_v210 to service_role;
+
 create index if not exists be_workforce_commission_finance_reviews_v210_status_idx
 on public.be_workforce_commission_finance_reviews_v210(decision,reviewed_at desc);
 
@@ -31,11 +46,12 @@ language plpgsql
 stable security definer
 set search_path to 'public','auth','pg_temp'
 as $$
-declare v_rows jsonb;
-declare v_total numeric;
-declare v_count integer;
-declare v_holds integer;
-declare v_shortfall integer;
+declare
+  v_rows jsonb;
+  v_total numeric;
+  v_count integer;
+  v_holds integer;
+  v_shortfall integer;
 begin
   if auth.uid() is null or not (
     public.be_accounting_can_v1('financial_reports')
@@ -133,6 +149,7 @@ declare
   v_note text:=btrim(coalesce(p_note,''));
   v_event public.be_commission_events%rowtype;
   v_uid uuid:=auth.uid();
+  v_event_id uuid;
   v_email text:=nullif(lower(auth.jwt()->>'email'),'');
   v_verified integer;
   v_photos integer;
@@ -154,11 +171,10 @@ begin
        <> array_length(p_event_ids,1) then
     raise exception 'Duplicate commission event IDs are not allowed';
   end if;
-  foreach v_uid in array p_event_ids loop
-    -- v_uid is reloaded immediately below from authenticated caller.
+  foreach v_event_id in array p_event_ids loop
     select * into v_event from public.be_commission_events
-    where id=v_uid for update;
-    if not found then raise exception 'Commission record not found: %',v_uid; end if;
+    where id=v_event_id for update;
+    if not found then raise exception 'Commission record not found: %',v_event_id; end if;
     if v_event.operation_type not in ('PICKUP','DELIVERY')
        or v_event.event_status not in ('PENDING','READY')
     then raise exception 'Commission % is not available for review',v_event.id; end if;
@@ -243,6 +259,14 @@ begin
       review_note=excluded.review_note,
       evidence_snapshot=excluded.evidence_snapshot,
       reviewed_at=now(),updated_at=now();
+    insert into public.be_workforce_commission_review_audit_v210(
+      commission_event_id,decision,reviewed_by_uid,reviewed_by_email,
+      reviewed_amount_mmk,evidence_snapshot,review_note
+    )
+    select r.commission_event_id,r.decision,r.reviewed_by_uid,r.reviewed_by_email,
+           r.reviewed_amount_mmk,r.evidence_snapshot,r.review_note
+    from public.be_workforce_commission_finance_reviews_v210 r
+    where r.commission_event_id=v_event.id;
     v_n:=v_n+1;
     v_photos:=null;
     v_verified:=null;
@@ -264,19 +288,36 @@ declare
   v_ledger record;
   v_approval record;
   v_event public.be_commission_events%rowtype;
+  v_n integer:=0;
+  v_sum numeric:=0;
 begin
   if upper(coalesce(new.party_type,'')) not in ('RIDER','DRIVER','HELPER') then
     return new;
+  end if;
+  if auth.uid() is null or new.paid_by is distinct from auth.uid() then
+    raise exception 'Authenticated payout actor must match recorded payer';
+  end if;
+  if coalesce(array_length(new.ledger_ids,1),0)=0 then
+    raise exception 'At least one approved commission ledger is required';
   end if;
   for v_ledger in
     select l.id,l.source_key,l.source_type,l.amount,l.status
     from public.be_party_wallet_ledger l
     where l.id=any(new.ledger_ids)
   loop
-    if v_ledger.source_type<>'COMMISSION' then continue; end if;
+    v_n:=v_n+1;
+    v_sum:=v_sum+v_ledger.amount;
+    if v_ledger.source_type<>'COMMISSION'
+       or v_ledger.status<>'PENDING'
+       or v_ledger.amount<=0 then
+      raise exception 'Workforce payout requires pending approved commission records only';
+    end if;
     select * into v_event
       from public.be_commission_events e where e.id::text=v_ledger.source_key;
-    if not found then raise exception 'Commission payout references an absent event'; end if;
+    if not found or v_event.event_status not in ('READY','PENDING')
+       or v_event.role_code<>upper(new.party_type)
+       or lower(v_event.assignee_email)<>lower(new.party_key)
+    then raise exception 'Workforce payout references an invalid commission event or payee'; end if;
     select * into v_approval
       from public.be_workforce_commission_finance_reviews_v210 r
       where r.commission_event_id=v_event.id;
@@ -284,11 +325,17 @@ begin
        or v_approval.reviewed_amount_mmk<>v_event.commission_mmk
        or v_approval.reviewed_amount_mmk<>v_ledger.amount
        or v_approval.reviewed_assignee_email<>lower(v_event.assignee_email)
-       or (new.paid_by is not null and v_approval.reviewed_by_uid=new.paid_by)
+       or v_approval.reviewed_by_uid=new.paid_by
+       or (v_approval.evidence_snapshot->>'rate_mmk')::numeric is distinct from v_event.rate_mmk
+       or (v_approval.evidence_snapshot->>'unit_count')::numeric is distinct from v_event.unit_count
+       or v_approval.evidence_snapshot->>'source_key' is distinct from v_event.source_key
     then
       raise exception 'Independent Finance approval is required before commission payout for %',v_event.source_key;
     end if;
   end loop;
+  if v_n<>array_length(new.ledger_ids,1) or v_sum is distinct from new.amount then
+    raise exception 'Workforce payout total/ledger reconciliation mismatch';
+  end if;
   return new;
 end;
 $$;
