@@ -80,7 +80,7 @@ export default function PortalLoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const apkHref = useMemo(() => "/downloads/britium-rider-app.apk", []);
+  const apkHref = useMemo(() => "https://www.britiumexpress.app/downloads/Britium-Express-Rider.apk", []);
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
