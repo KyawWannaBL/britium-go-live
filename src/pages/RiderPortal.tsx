@@ -60,8 +60,18 @@ function ProofPhotoPicker({
 
   return <div style={{ margin: "8px 0 12px" }}>
     <label style={{ display: "block", fontSize: 12, fontWeight: 700 }}>{label}</label>
-    <input type="file" accept="image/*" capture="environment" disabled={busy || preparing}
-      onChange={(event) => { void selectPhoto(event.target.files?.[0]); event.currentTarget.value = ""; }} style={{ margin: "8px 0" }}/>
+    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0" }}>
+      <label style={{ display: "inline-flex", padding: "9px 12px", border: "1px solid #2563eb", borderRadius: 8, fontWeight: 700 }}>
+        {bi("Take photo", "ဓာတ်ပုံရိုက်ရန်")}
+        <input type="file" accept="image/*" capture="environment" disabled={busy || preparing}
+          onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectPhoto(file); }} style={{ display: "none" }}/>
+      </label>
+      <label style={{ display: "inline-flex", padding: "9px 12px", border: "1px solid #64748b", borderRadius: 8, fontWeight: 700 }}>
+        {bi("Choose existing photo", "ရှိပြီးသား ဓာတ်ပုံရွေးရန်")}
+        <input type="file" accept="image/*" disabled={busy || preparing}
+          onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void selectPhoto(file); }} style={{ display: "none" }}/>
+      </label>
+    </div>
     {preparing && <div style={{ color: "#475569", fontSize: 12 }}>{bi("Preparing preview without blocking…", "preview ပြင်ဆင်နေသည်…")}</div>}
     {error && <ErrorBox message={error}/>}
     {previewUrl && candidate && <div style={{ border: "2px solid #f59e0b", borderRadius: 10, padding: 8 }}>
