@@ -45,7 +45,7 @@ export default function MerchantSettlementPage(){
  }
  async function requestPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");await loadRequests();}
  async function reviewPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");await loadRequests();}
- useEffect(()=>{void load();},[]);
+ useEffect(()=>{void load();void loadRequests();},[]);
  const role=String(data.scope?.role||"");
  const canCreate=["FINANCE_CREATOR","FINANCE_ADMIN","FINANCE","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
  const canUploadReceipt=["FINANCE","FINANCE_CREATOR","FINANCE_REVIEWER","FINANCE_APPROVER","PAYMENT_OFFICER","FINANCE_ADMIN","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
