@@ -1,6 +1,5 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { Camera, Upload } from 'lucide-react';
-import { Button } from '@/components/ui/button';
 import { uploadFileToBucket } from '@/lib/storageUpload';
 
 export function PhotoUploaderField({
@@ -12,8 +11,6 @@ export function PhotoUploaderField({
   label: string;
   onUploaded: (path: string, file: File) => void;
 }) {
-  const cameraInput = useRef<HTMLInputElement>(null);
-  const galleryInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -38,39 +35,28 @@ export function PhotoUploaderField({
     <div className="space-y-2">
       <label className="text-sm font-medium">{label}</label>
       <div className="flex flex-wrap items-center gap-3">
-        <input
-          ref={cameraInput}
-          className="sr-only"
-          type="file"
-          accept="image/*"
-          capture="environment"
-          aria-label="Take photo with camera"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            void upload(file);
-          }}
-        />
-        <input
-          ref={galleryInput}
-          className="sr-only"
-          type="file"
-          accept="image/*"
-          aria-label="Choose existing photo"
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            event.currentTarget.value = '';
-            void upload(file);
-          }}
-        />
-        <Button type="button" variant="outline" disabled={loading} onClick={() => cameraInput.current?.click()}>
-          <Camera className="mr-2 h-4 w-4" />
-          Take photo
-        </Button>
-        <Button type="button" variant="outline" disabled={loading} onClick={() => galleryInput.current?.click()}>
-          <Upload className="mr-2 h-4 w-4" />
-          {loading ? 'Uploading...' : 'Choose photo'}
-        </Button>
+        {([
+          { camera: true, caption: 'Take photo' },
+          { camera: false, caption: loading ? 'Uploading...' : 'Choose photo' },
+        ] as const).map(({ camera, caption }) => (
+          <label key={String(camera)} className={`inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${loading ? 'opacity-50' : 'cursor-pointer'}`}>
+            {camera ? <Camera className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
+            {caption}
+            <input
+              className="sr-only"
+              type="file"
+              accept="image/*"
+              {...(camera ? { capture: 'environment' as const } : {})}
+              disabled={loading}
+              aria-label={camera ? 'Take photo with camera' : 'Choose existing photo'}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                event.currentTarget.value = '';
+                void upload(file);
+              }}
+            />
+          </label>
+        ))}
       </div>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
     </div>
