@@ -2189,6 +2189,8 @@ function FieldPortal() {
                 email: unified.email || payload.identity?.email,
                 phone: unified.phone || payload.identity?.phone,
                 branch_code: unified.branch_code || payload.identity?.branch_code,
+                enterprise_employee_code: unified.employee_code || '',
+                enterprise_role_label: unified.enterprise_role || '',
               };
             }
           }
@@ -3489,6 +3491,9 @@ function FieldPortal() {
                 <div><small>Phone</small><strong>{me.phone}</strong></div>
                 <div><small>Branch</small><strong>{me.branch}</strong></div>
                 <div><small>Assigned zone</small><strong>{me.zone}</strong></div>
+                {(identity as any)?.enterprise_employee_code && <div><small>Enterprise employee code</small><strong>{(identity as any).enterprise_employee_code}</strong></div>}
+                {(identity as any)?.enterprise_role_label && <div><small>Enterprise role label</small><strong>{(identity as any).enterprise_role_label}</strong></div>}
+                <p style={{ color: C.sub, fontSize: 12 }}>Enterprise profile values are for display. Operational worker role and assignments remain controlled by dispatch.</p>
                 <button onClick={() => void load(session)} style={buttonStyle("blue")}><RefreshCw size={16} /> Refresh profile</button>
                 <button onClick={logout} style={buttonStyle("red")}><LogOut size={16} /> Logout</button>
               </div>
