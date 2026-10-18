@@ -15,7 +15,7 @@ export default function MerchantSettlementPage(){
  const [selected,setSelected]=useState<string[]>([]),[allocations,setAllocations]=useState<Record<string,string>>({});
  const [payment,setPayment]=useState({method:"BANK_TRANSFER",reference:"",account:"",evidence:""});
  const [adjustment,setAdjustment]=useState({type:"NONE",direction:"CREDIT",amount:"",reason:""});
- const [post,setPost]=useState({batch:"",type:"REFUND",direction:"CREDIT",amount:"",reason:""});
+ const [post,setPost]=useState({batch:"",type:"REFUND",direction:"CREDIT",amount:"",reason:"",evidence:""});
  const [review,setReview]=useState({id:"",action:"APPROVE",note:""});
  const [requests,setRequests]=useState<Row[]>([]);
  const mutation=useRef(false),uploadLock=useRef(false);
@@ -43,7 +43,7 @@ export default function MerchantSettlementPage(){
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   const a=document.createElement("a");a.href=url;a.download="merchant-post-payment-adjustments.csv";a.click();URL.revokeObjectURL(url);
  }
- async function requestPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:null}),"Adjustment requested without transferring funds.");await loadRequests();}
+ async function requestPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");await loadRequests();}
  async function reviewPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");await loadRequests();}
  useEffect(()=>{void load();},[]);
  const role=String(data.scope?.role||"");
@@ -129,7 +129,7 @@ export default function MerchantSettlementPage(){
       <label>Purpose<select className={field+" mt-1 w-full"} value={post.type} onChange={e=>setPost({...post,type:e.target.value})}>{["REFUND","PROMOTION","GOODWILL","OTHER"].map(t=><option key={t}>{t}</option>)}</select></label>
       <label>Direction<select className={field+" mt-1 w-full"} value={post.direction} onChange={e=>setPost({...post,direction:e.target.value})}><option value="CREDIT">Credit merchant</option><option value="DEDUCTION">Merchant deduction</option></select></label>
       <label>Amount (MMK)<input className={field+" mt-1 w-full"} type="number" min="0.01" step="0.01" value={post.amount} onChange={e=>setPost({...post,amount:e.target.value})}/></label>
-      <label className="md:col-span-2">Manual reason<textarea className={field+" mt-1 w-full"} maxLength={1000} rows={2} value={post.reason} onChange={e=>setPost({...post,reason:e.target.value})}/></label>
+      <label>Evidence URL (HTTPS)<input className={field+" mt-1 w-full"} type="url" value={post.evidence} onChange={e=>setPost({...post,evidence:e.target.value})} placeholder="https://..."/></label><label className="md:col-span-2">Manual reason<textarea className={field+" mt-1 w-full"} maxLength={1000} rows={2} value={post.reason} onChange={e=>setPost({...post,reason:e.target.value})}/></label>
     </div>
     <button className={button+" mt-3"} disabled={busy||!canCreate||!post.batch||!(Number(post.amount)>0)||post.reason.trim().length<8} onClick={()=>void requestPost()}>Submit adjustment request (no payment)</button>
     <div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button><button className={button} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment register CSV</button></div>
