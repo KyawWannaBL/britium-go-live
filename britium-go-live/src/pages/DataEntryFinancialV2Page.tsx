@@ -380,6 +380,20 @@ function envelope(data: any) {
     raw:data,
   };
 }
+function receiverQuoteMismatch(row: ParcelRow, quote: Record<string, any>): string | null {
+  const receiverPaid = ['ITEM_PRICE_PLUS_DECLARED_DELIVERY', 'TOTAL_AMOUNT_INCLUDING_DELIVERY', 'DELIVERY_CHARGE_ONLY'].includes(row.amount_entry_type);
+  if (!receiverPaid || quote.validation_status === 'ERROR') return null;
+  const surcharges = Number(quote.backend_calculated_delivery_surcharges);
+  const cod = Number(quote.cod_amount);
+  const declared = Number(row.delivery_charges);
+  const item = row.amount_entry_type === 'DELIVERY_CHARGE_ONLY' ? 0 : Number(row.item_price);
+  if (![surcharges, cod, declared, item].every(Number.isFinite)) return 'Receiver collection quote is incomplete. Recalculate before saving.';
+  const expected = item + declared + surcharges;
+  if (Math.abs(cod - expected) > 0.01) {
+    return `Receiver total mismatch: backend returned ${cod} MMK, but item + delivery + surcharges = ${expected} MMK. Recalculate; do not save or settle this parcel.`;
+  }
+  return null;
+}
 function envelopeMessage(v: any): string {
   const e = Array.isArray(v.errors) ? v.errors.map((x: any) => x?.message).filter(Boolean) : [];
   const w = Array.isArray(v.warnings) ? v.warnings.map((x: any) => x?.message).filter(Boolean) : [];
@@ -1869,6 +1883,11 @@ export default function DataEntryFinancialV2Page() {
       const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(pricingRow,selectedPickup)}));
       if(r.error) throw r.error;
       const e=envelope(r.data);
+      const mismatch = e.ok ? receiverQuoteMismatch(pricingRow, e.data || {}) : null;
+      if (mismatch) {
+        updateRow(index,{calculating:false,calculation:{},calculationFailed:true,message:mismatch});
+        return false;
+      }
       const resolution=e.raw?.server_resolution||{};
       const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
       const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
@@ -2000,6 +2019,15 @@ export default function DataEntryFinancialV2Page() {
   }
 
   async function saveRow(index:number):Promise<boolean>{
+    const prior = rows[index];
+    const quoteError = prior && Object.keys(prior.calculation || {}).length
+      ? receiverQuoteMismatch(prior, prior.calculation)
+      : null;
+    if (quoteError) {
+      updateRow(index,{calculation:{},calculationFailed:true,message:quoteError});
+      return false;
+    }
+
     if(!selectedPickup) return false;
     const row=rows[index]; if(!row || row.skipped) return false;
 
@@ -2083,6 +2111,8 @@ export default function DataEntryFinancialV2Page() {
             const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])}));
             if(r.error) throw r.error;
             const e=envelope(r.data);
+            const quoteError = e.ok ? receiverQuoteMismatch(row, e.data || {}) : null;
+            if (quoteError) throw new Error(quoteError);
             const resolution=e.raw?.server_resolution||{};
             const resolvedTier=text(resolution.resolved_customer_tier||e.data?.customer_tier).toUpperCase();
             const resolvedProvider=text(e.data?.service_provider_code||resolution.service_provider_code).toUpperCase();
