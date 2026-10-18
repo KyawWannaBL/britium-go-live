@@ -1473,7 +1473,7 @@ function LoginPortal({ onSignedIn }: { onSignedIn: (session: RiderSession, paylo
               </div>
               <button type="submit" disabled={loading} style={buttonStyle("gold")}>{loading ? <RefreshCw size={17} className="be-spin" /> : <ShieldCheck size={17} />} Sign in</button>
               <button type="button" onClick={quickUnlock} style={buttonStyle("plain")}><Fingerprint size={17} /> Biometric / passkey quick unlock</button>
-              <a href="/downloads/britium-rider-app.apk" style={{ ...buttonStyle("ghost"), textDecoration: "none" }}><Download size={17} /> Download Rider APK</a>
+              <a href="https://www.britiumexpress.app/downloads/Britium-Express-Rider.apk" style={{ ...buttonStyle("ghost"), textDecoration: "none" }}><Download size={17} /> Download Rider APK</a>
             </form>
           )}
 
@@ -3488,7 +3488,7 @@ function FieldPortal() {
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <a href="tel:+959897447744" style={{ ...buttonStyle("blue"), textDecoration: "none" }}><Phone size={16} /> Call hotline</a>
               <a href="mailto:support@britiumventures.com" style={{ ...buttonStyle("plain"), textDecoration: "none" }}><Mail size={16} /> Email support</a>
-              <a href="/downloads/britium-rider-app.apk" style={{ ...buttonStyle("gold"), textDecoration: "none" }}><Download size={16} /> Download APK</a>
+              <a href="https://www.britiumexpress.app/downloads/Britium-Express-Rider.apk" style={{ ...buttonStyle("gold"), textDecoration: "none" }}><Download size={16} /> Download APK</a>
             </div>
           </Card>
         )}
