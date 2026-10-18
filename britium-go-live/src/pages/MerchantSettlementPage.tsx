@@ -38,7 +38,7 @@ export default function MerchantSettlementPage(){
  async function loadRequests(){try{const x=await rpc("be_finance_post_payment_adjustments_list_v1",{});setRequests(Array.isArray(x)?x:[]);}catch(e:any){setError(e.message);}}
  function exportAdjustments(){
   const headers=["batch_number","merchant_id","adjustment_type","difference","status","reason","requested_by","approved_by","created_at","updated_at","supporting_document_url"];
-  const clean=(v:unknown)=>'"'+String(v??"").replace(/^[=+@-]/,"' async function requestPost(){").replace(/"/g,'""')+'"';
+  const clean=(v:unknown)=>'"'+String(v??"").replace(/^[=+@-]/,"'replace(/^[=+@-]/,"' async function requestPost(){")").replace(/"/g,'""')+'"';
   const csv=[headers.map(clean).join(","),...requests.map((r:Row)=>headers.map(h=>clean(r[h])).join(","))].join("\r\n");
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   const a=document.createElement("a");a.href=url;a.download="merchant-post-payment-adjustments.csv";a.click();URL.revokeObjectURL(url);
