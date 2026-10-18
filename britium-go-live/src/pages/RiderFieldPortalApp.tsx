@@ -2172,7 +2172,31 @@ function FieldPortal() {
     }
     try {
       const payload = await fetchRiderPayload(nextSession.normalizedLogin || nextSession.login);
-      setIdentity(payload.identity || null);
+      // Use the authenticated Enterprise registry for display only.
+      // Worker codes and permissions continue to come from the assignment backend.
+      let profileIdentity = payload.identity || null;
+      const profileClient = getRiderSupabase();
+      if (profileClient) {
+        try {
+          const { data: authData } = await profileClient.auth.getUser();
+          if (authData?.user?.id) {
+            const { data: unified, error: unifiedError } = await (profileClient as any)
+              .rpc("be_my_unified_workforce_profile_v1");
+            if (!unifiedError && unified?.ok && unified.auth_user_id === authData.user.id) {
+              profileIdentity = {
+                ...(payload.identity || {}),
+                display_name: unified.full_name || payload.identity?.display_name,
+                email: unified.email || payload.identity?.email,
+                phone: unified.phone || payload.identity?.phone,
+                branch_code: unified.branch_code || payload.identity?.branch_code,
+              };
+            }
+          }
+        } catch (profileError) {
+          console.warn("Enterprise profile unavailable; using authenticated mobile profile", profileError);
+        }
+      }
+      setIdentity(profileIdentity);
       setJobs(payload.jobs || []);
       setNotifications(payload.notifications || []);
       setSource(payload.source || "backend");
@@ -2204,7 +2228,7 @@ function FieldPortal() {
         setAvailablePickups([]);
       }
       if (payload.identity) {
-        const refreshed = makeSession(nextSession.login || nextSession.normalizedLogin, payload.identity);
+        const refreshed = makeSession(nextSession.login || nextSession.normalizedLogin, profileIdentity);
         setSession(refreshed);
         saveSession(refreshed);
       }
