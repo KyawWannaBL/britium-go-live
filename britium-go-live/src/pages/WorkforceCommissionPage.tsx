@@ -15,6 +15,38 @@ type LedgerRow = {
   commission_mmk: number;
 };
 
+type FinanceReviewRow = {
+  commission_event_id: string;
+  work_date: string;
+  source_key: string;
+  operation_type: string;
+  role_code: string;
+  assignee_name: string | null;
+  assignee_email: string;
+  unit_count: number;
+  rate_mmk: number;
+  commission_mmk: number;
+  event_status: string;
+  finance_decision: string;
+  evidence_status: string;
+  pickup_verification_count: number;
+  pickup_photo_count: number;
+  pickup_photo_reviews_pending: number;
+  delivered_proof_count: number;
+  wallet_match_count: number;
+  wallet_amount: number;
+  reviewed_at?: string | null;
+  reviewed_by_email?: string | null;
+  review_note?: string | null;
+};
+
+type FinanceReviewSummary = {
+  record_count: number;
+  amount_mmk: number;
+  on_hold: number;
+  evidence_blockers: number;
+};
+
 type Summary = {
   total_commission: number;
   event_rows: number;
@@ -48,6 +80,14 @@ export default function WorkforceCommissionPage() {
   const [stats, setStats] = useState<Summary | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [syncMessage, setSyncMessage] = useState("");
+  const [reviewRows, setReviewRows] = useState<FinanceReviewRow[]>([]);
+  const [reviewSummary, setReviewSummary] = useState<FinanceReviewSummary | null>(null);
+  const [canFinanceReview, setCanFinanceReview] = useState(false);
+  const [reviewBusy, setReviewBusy] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewError, setReviewError] = useState("");
 
   const fetchPayouts = async (sync: boolean = false) => {
     setErrorMessage("");
@@ -112,8 +152,69 @@ export default function WorkforceCommissionPage() {
     }
   };
 
+  const loadReviewQueue = async () => {
+    const start = Date.parse(fromDate + "T00:00:00Z");
+    const end = Date.parse(toDate + "T00:00:00Z");
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start || end - start > 31 * 86400000) {
+      setReviewError("Select a valid reporting period of at most 32 days.");
+      return;
+    }
+    setReviewLoading(true);
+    setReviewError("");
+    try {
+      const [queue, authority] = await Promise.all([
+        (supabase as any).rpc("be_workforce_commission_review_queue_v210", { p_from: fromDate, p_to: toDate }),
+        (supabase as any).rpc("be_accounting_current_authority_v2"),
+      ]);
+      if (queue.error) throw queue.error;
+      if (queue.data?.ok === false) throw new Error(queue.data?.message || "Unable to read Finance review queue");
+      setReviewRows(Array.isArray(queue.data?.rows) ? queue.data.rows : []);
+      setReviewSummary(queue.data?.summary || null);
+      setCanFinanceReview(!authority.error && authority.data?.can_review === true);
+    } catch (error: any) {
+      setReviewError(error?.message || "Unable to load Finance review queue.");
+      setReviewRows([]);
+      setReviewSummary(null);
+      setCanFinanceReview(false);
+    } finally {
+      setReviewLoading(false);
+    }
+  };
+
+  const decideFinanceReview = async (row: FinanceReviewRow, decision: "APPROVE" | "HOLD") => {
+    const note = (reviewNotes[row.commission_event_id] || "").trim();
+    if (note.length < 12) {
+      setReviewError("Enter a Finance review note of at least 12 characters before making a decision.");
+      return;
+    }
+    if (decision === "APPROVE" && row.evidence_status !== "READY_FOR_FINANCE_REVIEW") {
+      setReviewError("This commission has an unresolved evidence or wallet discrepancy and cannot be approved.");
+      return;
+    }
+    setReviewBusy(row.commission_event_id);
+    setReviewError("");
+    setReviewMessage("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_workforce_commission_review_decide_v210", {
+        p_event_ids: [row.commission_event_id],
+        p_decision: decision,
+        p_note: note,
+      });
+      if (error) throw error;
+      if (data?.ok === false) throw new Error(data?.message || "Finance review decision failed.");
+      setReviewMessage(`${decision === "APPROVE" ? "Approved for separate payout review" : "Held for investigation"}: ${row.source_key}. No payment was sent.`);
+      setReviewNotes((old) => ({ ...old, [row.commission_event_id]: "" }));
+      await loadReviewQueue();
+    } catch (error: any) {
+      setReviewError(error?.message || "Could not save Finance review decision.");
+    } finally {
+      setReviewBusy("");
+    }
+  };
+
   useEffect(() => {
     void fetchPayouts(false);
+    void loadReviewQueue();
   }, [fromDate, toDate]);
 
   const filtered = ledger.filter((row) => {
@@ -211,6 +312,115 @@ export default function WorkforceCommissionPage() {
               </tbody>
             </table>
           </div>
+        </section>
+
+        <section className="overflow-hidden rounded-3xl border border-[#1a3a5c] bg-[#0b2236] shadow-xl">
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 border-b border-[#1a3a5c] bg-[#081b2e] p-5">
+            <div>
+              <h2 className="text-base font-bold text-white">Finance Commission Review Queue</h2>
+              <p className="mt-1 text-xs text-[#9cc2d9]">
+                Review pickup photos, delivered proofs, assigned payees and pending wallet entries.
+                Approval authorizes independent payment processing; it does not issue or confirm a payout.
+              </p>
+            </div>
+            <button disabled={reviewLoading || !!reviewBusy} onClick={() => void loadReviewQueue()}
+              className="flex items-center gap-2 rounded-xl border border-[#31506a] px-4 py-2 text-xs font-bold text-white disabled:opacity-50">
+              <RefreshCw size={15} className={reviewLoading ? "animate-spin" : ""} /> Refresh Finance Review
+            </button>
+          </div>
+          <div className="flex flex-wrap gap-5 px-5 py-4 text-xs font-semibold text-[#c8dff0]">
+            <span>Records: {reviewSummary?.record_count ?? 0}</span>
+            <span>Total: {Number(reviewSummary?.amount_mmk || 0).toLocaleString()} MMK</span>
+            <span>Evidence blockers: {reviewSummary?.evidence_blockers ?? 0}</span>
+            <span>On hold: {reviewSummary?.on_hold ?? 0}</span>
+            <span>{canFinanceReview ? "Finance review access verified" : "Read-only or no Finance review authority"}</span>
+          </div>
+          {reviewError && <p className="mx-5 mb-3 text-sm font-semibold text-rose-300" role="alert">{reviewError}</p>}
+          {reviewMessage && <p className="mx-5 mb-3 text-sm font-semibold text-emerald-300" role="status">{reviewMessage}</p>}
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[1160px] text-left text-xs">
+              <thead className="bg-[#081b2e] uppercase font-black text-[#9cc2d9]">
+                <tr>
+                  <th className="p-3">Date / Source</th>
+                  <th className="p-3">Worker / Role</th>
+                  <th className="p-3">Commission</th>
+                  <th className="p-3">Evidence / Wallet</th>
+                  <th className="p-3">Decision</th>
+                  <th className="p-3 min-w-[270px]">Finance Review &amp; Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reviewRows.map((row) => {
+                  const busy = reviewBusy === row.commission_event_id;
+                  const note = reviewNotes[row.commission_event_id] || "";
+                  const evidenceReady = row.evidence_status === "READY_FOR_FINANCE_REVIEW";
+                  return (
+                    <tr key={row.commission_event_id} className="border-t border-[#1a3a5c]/70 align-top">
+                      <td className="p-3">
+                        <div className="text-[#c8dff0]">{row.work_date}</div>
+                        <div className="mt-1 font-mono font-semibold text-white">{row.source_key}</div>
+                        <div className="mt-1 text-[#9cc2d9]">{row.operation_type}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className="font-bold text-white">{row.assignee_name || row.assignee_email}</div>
+                        <div className="mt-1 break-all text-[#9cc2d9]">{row.assignee_email}</div>
+                        <div className="mt-1 text-sky-300">{row.role_code}</div>
+                      </td>
+                      <td className="p-3 font-mono text-white">
+                        <div className="font-bold text-emerald-300">{Number(row.commission_mmk || 0).toLocaleString()} MMK</div>
+                        <div className="mt-1 text-[#9cc2d9]">{Number(row.unit_count || 0)} × {Number(row.rate_mmk || 0).toLocaleString()}</div>
+                      </td>
+                      <td className="p-3">
+                        <div className={evidenceReady ? "font-bold text-emerald-300" : "font-bold text-amber-300"}>
+                          {row.evidence_status.replaceAll("_", " ")}
+                        </div>
+                        {row.operation_type === "PICKUP"
+                          ? <div className="mt-1 text-[#c8dff0]">Photos: {row.pickup_photo_count}/{row.unit_count} · Pending photo reviews: {row.pickup_photo_reviews_pending}</div>
+                          : <div className="mt-1 text-[#c8dff0]">Delivered proof: {row.delivered_proof_count}</div>}
+                        <div className="mt-1 text-[#9cc2d9]">Wallet entries: {row.wallet_match_count}; {Number(row.wallet_amount || 0).toLocaleString()} MMK</div>
+                      </td>
+                      <td className="p-3">
+                        <div className={row.finance_decision === "APPROVED" ? "font-bold text-emerald-300" : row.finance_decision === "HELD" ? "font-bold text-amber-300" : "font-semibold text-[#c8dff0]"}>
+                          {row.finance_decision.replaceAll("_", " ")}
+                        </div>
+                        {row.reviewed_by_email && <div className="mt-1 break-all text-[#9cc2d9]">Reviewer: {row.reviewed_by_email}</div>}
+                        {row.review_note && <div className="mt-1 text-[#9cc2d9]">Note: {row.review_note}</div>}
+                      </td>
+                      <td className="p-3">
+                        <textarea value={note} rows={2} maxLength={500}
+                          onChange={(event) => setReviewNotes((old) => ({...old, [row.commission_event_id]: event.target.value}))}
+                          placeholder="Record evidence checked and the reason for approval or hold (12+ characters)."
+                          className="w-full resize-y rounded-lg border border-[#31506a] bg-white p-2 text-xs text-[#061524]"
+                          disabled={!canFinanceReview || busy || reviewLoading} />
+                        <div className="mt-2 flex gap-2">
+                          <button disabled={!canFinanceReview || !evidenceReady || busy || note.trim().length < 12 || reviewLoading}
+                            onClick={() => void decideFinanceReview(row, "APPROVE")}
+                            className="rounded-lg bg-emerald-500 px-3 py-2 font-bold text-[#061524] disabled:opacity-40">
+                            {busy ? "Saving..." : "Approve"}
+                          </button>
+                          <button disabled={!canFinanceReview || busy || note.trim().length < 12 || reviewLoading}
+                            onClick={() => void decideFinanceReview(row, "HOLD")}
+                            className="rounded-lg border border-amber-400 px-3 py-2 font-bold text-amber-200 disabled:opacity-40">
+                            Hold
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {reviewRows.length === 0 && (
+                  <tr><td colSpan={6} className="p-10 text-center text-[#9cc2d9]">
+                    {reviewLoading ? "Loading Finance review records..." : reviewError || "No commission records in this selected date range."}
+                  </td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <p className="border-t border-[#1a3a5c] p-5 text-xs text-[#9cc2d9]">
+            Financial safeguards: incomplete evidence cannot be approved. A different authorized Finance poster must confirm
+            a payment using the existing wallet settlement procedure with an actual payment reference and proof.
+            Neither Approve nor Hold sends money.
+          </p>
         </section>
       </div>
     </div>
