@@ -59,6 +59,8 @@ export default function MerchantSettlementPage(){
  async function createBatch(){
    const amount=adjustment.type==="NONE"?0:Number(adjustment.amount);
    if(adjustment.type!=="NONE"&&(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)/100!==amount||!adjustment.reason.trim())){setError("Provide a positive adjustment amount and manual reason.");return;}
+   const basePayable=chosen.reduce((sum,row)=>sum+Number(row.merchant_final_settlement_amount||0),0);
+   if(adjustment.type!=="NONE"&&adjustment.direction==="DEDUCTION"&&amount>basePayable){setError("Deduction exceeds this draft merchant payable. Use a separately approved recovery transaction rather than creating negative payout.");return;}
    const reason=adjustment.type==="NONE"?"No adjustment":adjustment.type+" / "+adjustment.direction+": "+adjustment.reason.trim();
    await mutate(()=>rpc("be_finance_create_settlement_batch_v3",{p_parcel_ids:selected,p_period_from:from||null,p_period_to:to||null,p_planned_payment_date:null,p_batch_credits:adjustment.type!=="NONE"&&adjustment.direction==="CREDIT"?amount:0,p_batch_deductions:adjustment.type!=="NONE"&&adjustment.direction==="DEDUCTION"?amount:0,p_advance_recovery:0,p_withholding_tax:0,p_payment_method:payment.method,p_merchant_bank_account:payment.account||null,p_finance_remarks:"Created from live merchant settlement. Manual adjustment: "+reason}),"Draft batch created. Submit for independent review and approval.");
  }
