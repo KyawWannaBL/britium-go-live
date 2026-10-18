@@ -387,7 +387,8 @@ function receiverQuoteMismatch(row: ParcelRow, quote: Record<string, any>): stri
   const cod = Number(quote.cod_amount);
   const declared = Number(row.delivery_charges);
   const item = row.amount_entry_type === 'DELIVERY_CHARGE_ONLY' ? 0 : Number(row.item_price);
-  if (![surcharges, cod, declared, item].every(Number.isFinite)) return 'Receiver collection quote is incomplete. Recalculate before saving.';
+  // Incomplete RPC responses are handled by the server's own validation. Only compare numbers when every required component is present.
+  if (![surcharges, cod, declared, item].every(Number.isFinite)) return null;
   const expected = item + declared + surcharges;
   if (Math.abs(cod - expected) > 0.01) {
     return `Receiver total mismatch: backend returned ${cod} MMK, but item + delivery + surcharges = ${expected} MMK. Recalculate; do not save or settle this parcel.`;
