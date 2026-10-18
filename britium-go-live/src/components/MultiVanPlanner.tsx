@@ -182,12 +182,15 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const used = waveUsed.get(wave) || new Set<string>();
       waveUsed.set(wave, used);
 
-      let driver = find(drivers, plan.driver_code);
-      if (!free(used, driver)) driver = choose(drivers, used);
-      reserve(used, driver);
-
       const requestedHelper = find(helpers, plan.helper_code);
       const requestedHelperPerson = personKey(requestedHelper);
+      let driver = find(drivers, plan.driver_code);
+      // When the operator explicitly chose a Helper, never silently pick that
+      // same person as Driver; otherwise the Helper disappears during repair.
+      if (!free(used, driver) || (requestedHelperPerson && personKey(driver) === requestedHelperPerson)) {
+        driver = choose(drivers, used, requestedHelperPerson);
+      }
+      reserve(used, driver);
       // Rider is optional. An empty rider_code is an intentional Driver-only route,
       // not a crew gap to auto-fill. Only repair a Rider that was explicitly selected.
       let rider = find(riders, plan.rider_code);
