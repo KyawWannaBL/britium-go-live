@@ -15,6 +15,9 @@ export default function MerchantSettlementPage(){
  const [selected,setSelected]=useState<string[]>([]),[allocations,setAllocations]=useState<Record<string,string>>({});
  const [payment,setPayment]=useState({method:"BANK_TRANSFER",reference:"",account:"",evidence:""});
  const [adjustment,setAdjustment]=useState({type:"NONE",direction:"CREDIT",amount:"",reason:""});
+ const [post,setPost]=useState({batch:"",type:"REFUND",direction:"CREDIT",amount:"",reason:""});
+ const [review,setReview]=useState({id:"",action:"APPROVE",note:""});
+ const [requests,setRequests]=useState<Row[]>([]);
  const mutation=useRef(false),uploadLock=useRef(false);
  const [uploading,setUploading]=useState(false),[receiptName,setReceiptName]=useState("");
  async function uploadReceipt(event:React.ChangeEvent<HTMLInputElement>){
@@ -32,6 +35,9 @@ export default function MerchantSettlementPage(){
    try { const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}); setData(next); }
    catch(e:any){setError(e.message);} finally{setLoading(false);}
  }
+ async function loadRequests(){try{const x=await rpc("be_finance_post_payment_adjustments_list_v1",{});setRequests(Array.isArray(x)?x:[]);}catch(e:any){setError(e.message);}}
+ async function requestPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:null}),"Adjustment requested without transferring funds.");await loadRequests();}
+ async function reviewPost(){await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");await loadRequests();}
  useEffect(()=>{void load();},[]);
  const role=String(data.scope?.role||"");
  const canCreate=["FINANCE_CREATOR","FINANCE_ADMIN","FINANCE","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
@@ -106,6 +112,21 @@ export default function MerchantSettlementPage(){
    <div className="mt-4 grid gap-3 md:grid-cols-2"><label>Payment method<select className={field+" mt-1 w-full"} value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{methods.map(m=><option key={m}>{m}</option>)}</select></label><label>Transfer / receipt reference<input className={field+" mt-1 w-full"} value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></label><label>Beneficiary bank / wallet / cheque account<input className={field+" mt-1 w-full"} value={payment.account} onChange={e=>setPayment({...payment,account:e.target.value})}/></label><label>Receipt / evidence URL (HTTPS)<input disabled={busy||uploading} type="url" className={field+" mt-1 w-full"} value={payment.evidence} onChange={e=>{setPayment({...payment,evidence:e.target.value});setReceiptName("");}}/></label></div>
    <div className="mt-3 space-y-2"><label className={button+" inline-block cursor-pointer"}>Upload receipt<input aria-label="Upload receipt" type="file" accept="image/jpeg,image/png,application/pdf" className="mt-2 block max-w-full text-sm" disabled={busy||loading||uploading||!canUploadReceipt} onChange={uploadReceipt}/></label><p className="text-sm text-slate-300">JPG, PNG or PDF · up to 10 MB. Upload a file or paste an existing HTTPS evidence link.</p>{uploading&&<p role="status">Uploading receipt…</p>}{receiptName&&<p role="status">Attached: {receiptName} · <SettlementReceiptLink url={payment.evidence} label="Preview receipt"/></p>}</div>
    <button className={button+" mt-4"} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void mutate(async()=>{await rpc("be_finance_record_bulk_payment_v200",{p_payments:paymentRows,p_reference:payment.reference,p_method:payment.method,p_account:payment.account||null,p_evidence_url:payment.evidence});setPayment(p=>({...p,reference:"",evidence:""}));setReceiptName("");},"Confirmed payment recorded. Merchant wallet and transaction history updated.")}>Record {money(paymentTotal)} · {paymentRows.length} batches</button>
+  </section>
+  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+    <h2 className="text-xl font-bold">After-payment refund and promotion requests</h2>
+    <p className="mt-2 text-sm text-slate-300">Requests and independent approvals only. No automatic funds transfer or alteration to historical COD.</p>
+    <div className="mt-3 grid gap-3 md:grid-cols-3">
+      <label>Paid settlement<select className={field+" mt-1 w-full"} value={post.batch} onChange={e=>setPost({...post,batch:e.target.value})}><option value="">Choose paid batch</option>{batches.filter((b:Row)=>b.status==="PAID").map((b:Row)=><option key={b.id} value={b.id}>{b.batch_number} / {b.merchant_id}</option>)}</select></label>
+      <label>Purpose<select className={field+" mt-1 w-full"} value={post.type} onChange={e=>setPost({...post,type:e.target.value})}>{["REFUND","PROMOTION","GOODWILL","OTHER"].map(t=><option key={t}>{t}</option>)}</select></label>
+      <label>Direction<select className={field+" mt-1 w-full"} value={post.direction} onChange={e=>setPost({...post,direction:e.target.value})}><option value="CREDIT">Credit merchant</option><option value="DEDUCTION">Merchant deduction</option></select></label>
+      <label>Amount (MMK)<input className={field+" mt-1 w-full"} type="number" min="0.01" step="0.01" value={post.amount} onChange={e=>setPost({...post,amount:e.target.value})}/></label>
+      <label className="md:col-span-2">Manual reason<textarea className={field+" mt-1 w-full"} maxLength={1000} rows={2} value={post.reason} onChange={e=>setPost({...post,reason:e.target.value})}/></label>
+    </div>
+    <button className={button+" mt-3"} disabled={busy||!canCreate||!post.batch||!(Number(post.amount)>0)||post.reason.trim().length<8} onClick={()=>void requestPost()}>Submit adjustment request (no payment)</button>
+    <div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button></div>
+    <div className="mt-3 space-y-2">{requests.map((a:Row)=><div className="rounded-xl border border-slate-700 p-3" key={a.id}><p>{a.batch_number} · {a.merchant_id} · {a.adjustment_type} · {money(Math.abs(Number(a.difference||0)))} · {a.status}</p><p className="text-sm text-slate-300">{a.reason}</p>{a.status==="PENDING_APPROVAL"&&<button className={button+" mt-2"} onClick={()=>setReview({...review,id:a.id})}>Review this request</button>}</div>)}</div>
+    {review.id&&<div className="mt-3 flex flex-wrap gap-3"><select className={field} value={review.action} onChange={e=>setReview({...review,action:e.target.value})}><option value="APPROVE">Approve (unpaid)</option><option value="REJECT">Reject</option></select><input className={field} placeholder="Review note (required)" maxLength={1000} value={review.note} onChange={e=>setReview({...review,note:e.target.value})}/><button className={button} disabled={busy||review.note.trim().length<8} onClick={()=>void reviewPost()}>Record independent review</button></div>}
   </section>
   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Payment history</h2><div className="mt-4 overflow-auto"><table className="w-full min-w-[900px] text-left text-sm"><thead><tr>{["Date","Batch / merchant","Amount","Method","Reference","Account","Evidence","Entered / confirmed by","Status"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{payments.map((p:Row)=><tr key={p.id} className="border-t border-slate-700"><td className="p-3">{new Date(p.confirmed_at||p.created_at).toLocaleString()}</td><td className="p-3">{p.batch_number}<br/>{p.merchant_id}</td><td className="p-3">{money(p.amount)}</td><td className="p-3">{p.payment_method}</td><td className="p-3">{p.payment_group_reference||p.payment_reference}</td><td className="p-3">{p.bank_account||"—"}</td><td className="p-3">{<SettlementReceiptLink url={p.evidence_url||""}/>}</td><td className="p-3">{p.entered_by}<br/>{p.confirmed_by}</td><td className="p-3">{p.status}</td></tr>)}</tbody></table>{!payments.length&&<p className="p-5">No recorded payments.</p>}</div></section>
  </main>;
