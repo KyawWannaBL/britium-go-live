@@ -1,9 +1,10 @@
 import { memo, useEffect, useRef, useState } from 'react';
+import type { CSSProperties } from 'react';
 
 /** Keep keystrokes local. Commit on blur, before a subsequent Save/Calculate click. */
 export default memo(function BufferedDataEntryInput({value, onCommit, multiline = false, ...props}: {
   value: string | number; onCommit: (value: string) => void; multiline?: boolean;
-  className?: string; type?: string; step?: string; min?: string; rows?: number; placeholder?: string;
+  className?: string; type?: string; step?: string; min?: string; rows?: number; placeholder?: string; style?: CSSProperties;
 }) {
   const [draft, setDraft] = useState(String(value ?? ''));
   const dirty = useRef(false);
@@ -20,5 +21,5 @@ export default memo(function BufferedDataEntryInput({value, onCommit, multiline 
       if (changed && draft !== String(value ?? '')) onCommit(draft);
     },
   };
-  return multiline ? <textarea {...shared}/> : <input {...shared}/>;
+  return multiline ? <textarea {...shared} className={`${props.className || ''} !bg-white !text-black placeholder:!text-slate-500`} style={{...props.style, backgroundColor: '#ffffff', color: '#000000', WebkitTextFillColor: '#000000', colorScheme: 'light'}}/> : <input {...shared}/>;
 });
