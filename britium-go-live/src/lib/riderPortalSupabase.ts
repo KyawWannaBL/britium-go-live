@@ -17,6 +17,7 @@ export function getRiderSupabase(): SupabaseClient {
   if (!url || !anon) throw new Error("Rider Sandbox Supabase configuration is missing.");
 
   riderClient = createClient(url, anon, {
+    global: { headers: { "x-britium-data-epoch": "2026-10-20" } },
     auth: {
       storageKey: "britium.field.sandbox.auth.v1",
       persistSession: true,

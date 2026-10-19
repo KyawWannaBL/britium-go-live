@@ -11,6 +11,7 @@ if (!CONFIG.SUPABASE_URL || !CONFIG.SUPABASE_ANON_KEY) {
 }
 
 export const supabase = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, {
+  global: { headers: { "x-britium-data-epoch": "2026-10-20" } },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
