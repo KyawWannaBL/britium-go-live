@@ -40,6 +40,7 @@ export const supabase = createClient(
   supabaseUrl || "https://placeholder.supabase.co",
   supabaseAnonKey || "missing-anon-key",
   {
+    global: { headers: { "x-britium-data-epoch": "2026-10-20" } },
     auth: {
       storageKey: authStorageKey,
       persistSession: true,
