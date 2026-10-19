@@ -578,9 +578,12 @@ export default function DataEntryPage() {
       if (!error && data) {
         // Never combine a newly calculated delivery fee with an old collection total.
         // The item-price field is the declared COD principal, not a net-of-delivery value.
-        const deliveryFee = roundMoney(money(data.delivery_fee ?? local.deli_fee));
+        const baseFee = roundMoney(money(data.base_fee ?? local.base_fee));
+        // Default weight surcharge is customer-payable, even when the tariff RPC
+        // returns a base-only delivery_fee or an outdated zero surcharge.
+        const surcharge = roundMoney(Math.max(money(data.surcharge), money(local.surcharge)));
+        const deliveryFee = roundMoney(Math.max(money(data.delivery_fee), baseFee + surcharge));
         const cod = roundMoney(money(data.cod_amount ?? data.cod ?? local.cod));
-        const surcharge = roundMoney(money(data.surcharge ?? local.surcharge));
         const actualCollect = roundMoney(cod + deliveryFee);
         if (![deliveryFee, cod, surcharge, actualCollect].every(Number.isFinite) ||
             deliveryFee < 0 || cod < 0 || surcharge < 0) {
@@ -588,7 +591,7 @@ export default function DataEntryPage() {
         }
         return {
           ...local,
-          base_fee: roundMoney(money(data.base_fee ?? local.base_fee)),
+          base_fee: baseFee,
           surcharge,
           deli_fee: deliveryFee,
           cod,
