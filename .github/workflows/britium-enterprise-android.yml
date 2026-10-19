@@ -191,6 +191,31 @@ jobs:
           test -s android/app/britium-enterprise-release.jks
           chmod 600 android/app/britium-enterprise-release.jks
 
+      - name: Diagnose restored Enterprise signing key safely
+        working-directory: britium-go-live
+        env:
+          ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_PASSWORD }}
+          ENTERPRISE_ANDROID_KEY_ALIAS: ${{ secrets.ENTERPRISE_ANDROID_KEY_ALIAS }}
+          ENTERPRISE_ANDROID_KEY_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          store="android/app/britium-enterprise-release.jks"
+          expected_hash="773d904ebd8b7ed60ccdc365ec9f2e031abc8b390c1c964cac5d984b12fe0627"
+          actual_hash="$(sha256sum "$store" | awk '{print $1}')"
+          if [ "$actual_hash" != "$expected_hash" ]; then
+            echo "::error::Restored keystore bytes differ from the locally verified Britium Enterprise permanent keystore. Replace ENTERPRISE_ANDROID_KEYSTORE_BASE64 with the Base64 of the original JKS."
+            exit 1
+          fi
+          echo "Restored Enterprise keystore SHA256 matches local reference."
+          if ! keytool -list -keystore "$store" -storetype PKCS12 -storepass:env ENTERPRISE_ANDROID_KEYSTORE_PASSWORD -alias "$ENTERPRISE_ANDROID_KEY_ALIAS" >/dev/null 2>&1; then
+            echo "::error::Keystore bytes match, but GitHub's ENTERPRISE_ANDROID_KEYSTORE_PASSWORD or alias cannot open the original JKS. Update both password secrets using original source-keystore password and set alias to britiumenterprise."
+            exit 1
+          fi
+          echo "Enterprise keystore password and alias verified before Gradle."
+          if [ "$ENTERPRISE_ANDROID_KEY_PASSWORD" != "$ENTERPRISE_ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "::warning::Private key password differs from keystore password; standard PKCS12 keys commonly use the same password. Verify ENTERPRISE_ANDROID_KEY_PASSWORD."
+          fi
+
       - name: Configure permanent release signing
         working-directory: britium-go-live
         run: |
