@@ -1,4 +1,4 @@
-name: Britium Enterprise Portal Android APK
+name: Britium Enterprise Portal Android APK and AAB
 
 on:
   push:
@@ -237,7 +237,7 @@ jobs:
           }
           GRADLE
 
-      - name: Build signed release APK
+      - name: Build signed release APK and AAB
         working-directory: britium-go-live/android
         env:
           ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_PASSWORD }}
@@ -246,16 +246,18 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon assembleRelease
+          ./gradlew --no-daemon assembleRelease bundleRelease
           test -s app/build/outputs/apk/release/app-release.apk
+          test -s app/build/outputs/bundle/release/app-release.aab
 
-      - name: Prepare and verify Enterprise Portal APK
+      - name: Prepare and verify Enterprise Portal APK and AAB
         working-directory: britium-go-live
         env:
           ENTERPRISE_ANDROID_CERT_SHA256: ${{ secrets.ENTERPRISE_ANDROID_CERT_SHA256 }}
         run: |
           set -euo pipefail
           cp android/app/build/outputs/apk/release/app-release.apk Britium-Enterprise-Portal.apk
+          cp android/app/build/outputs/bundle/release/app-release.aab Britium-Express-Enterprise.aab
           test -s Britium-Enterprise-Portal.apk
           ls -lh Britium-Enterprise-Portal.apk
 
@@ -292,7 +294,15 @@ jobs:
             echo "::error::Enterprise signing certificate does not match the permanent certificate."
             exit 1
           fi
-          echo "Permanent Enterprise signing certificate verified."
+          jarsigner -verify Britium-Express-Enterprise.aab > enterprise-aab-signing.txt
+          grep -q "jar verified" enterprise-aab-signing.txt
+          AAB_CERT="$(keytool -printcert -jarfile Britium-Express-Enterprise.aab | sed -n 's/^[[:space:]]*SHA256: //p' | head -n 1 | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [ -z "$AAB_CERT" ] || [ "$AAB_CERT" != "$EXPECTED" ]; then
+            echo "::error::Enterprise AAB signing certificate does not match the permanent certificate."
+            exit 1
+          fi
+          sha256sum Britium-Express-Enterprise.aab > enterprise-aab-sha256.txt
+          echo "Permanent Enterprise APK and AAB signing certificates verified."
           sha256sum Britium-Enterprise-Portal.apk > enterprise-apk-sha256.txt
 
       - name: Publish APK to stable GitHub Release
@@ -315,6 +325,9 @@ jobs:
           name: Britium-Enterprise-Portal-Android
           path: |
             britium-go-live/Britium-Enterprise-Portal.apk
+            britium-go-live/Britium-Express-Enterprise.aab
+            britium-go-live/enterprise-aab-sha256.txt
+            britium-go-live/enterprise-aab-signing.txt
             britium-go-live/enterprise-apk-sha256.txt
             britium-go-live/enterprise-apk-badging.txt
             britium-go-live/enterprise-apk-signing.txt
