@@ -889,7 +889,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                   <BufferedDataEntryInput
                     multiline
                     rows={2}
-                    className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500`}
+                    className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`}
+                    style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }}
                     value={row.delivery_address}
                     onCommit={(value)=>{
                       const delivery_address=value;
