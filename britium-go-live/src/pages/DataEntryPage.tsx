@@ -534,8 +534,13 @@ export default function DataEntryPage() {
 
     const baseFee = isUpperMyanmar ? 6000 : 4000;
     const includedKg = normalizedTier === 'royal' ? 5 : 3;
-    const chargeableExtraKg = Math.max(0, Math.ceil(weight) - includedKg);
-    const surcharge = chargeableExtraKg * 500;
+    const billedKg = Math.ceil(weight);
+    // Progressive surcharge: 500/kg through 10 kg, 1000/kg for 11-20 kg,
+    // and 1500/kg above 20 kg. Apply the tier's included allowance first.
+    const surcharge =
+      Math.max(0, Math.min(billedKg, 10) - includedKg) * 500 +
+      Math.max(0, Math.min(billedKg, 20) - Math.max(10, includedKg)) * 1000 +
+      Math.max(0, billedKg - Math.max(20, includedKg)) * 1500;
     const deliveryFee = baseFee + surcharge;
     const cod = itemPrice;
     const actualCollect = itemPrice + deliveryFee;
