@@ -63,6 +63,7 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          <a href="https://www.britiumexpress.com/account-deletion.html" style={{ display: "block", padding: "14px 12px", color: "#f6d178", fontSize: 14, textAlign: "center", textDecoration: "underline" }}>{t("Request account and data deletion", "အကောင့်နှင့် အချက်အလက် ဖျက်ရန် တောင်းဆိုမည်")}</a>
           <div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-6">
             <h3 className="mb-4 border-b border-[#1a3a5c] pb-4 text-[14px] uppercase tracking-widest text-[#eef8ff]">{t('Authorized Territory', 'ခွင့်ပြုထားသော လုပ်ငန်းနယ်ပယ်')}</h3>
             {territories.length ? (
