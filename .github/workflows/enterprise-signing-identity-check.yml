@@ -1,0 +1,51 @@
+name: Check Enterprise signing identity
+on:
+  push:
+    branches: ['codex/enterprise-signing-identity-check']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Compare stored keystore identity without exposing credentials
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_BASE64 }}
+          ENTERPRISE_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ENTERPRISE_ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ENTERPRISE_ANDROID_KEY_ALIAS }}
+          EXPECTED_CERT: ${{ secrets.ENTERPRISE_ANDROID_CERT_SHA256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$KEYSTORE_BASE64"
+          test -n "$ENTERPRISE_ANDROID_KEYSTORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$EXPECTED_CERT"
+          signing_tmp="$(mktemp -d)"
+          trap 'rm -rf "$signing_tmp"' EXIT
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$signing_tmp/store"
+          actual_hash="$(sha256sum "$signing_tmp/store" | awk '{print $1}')"
+          if [ "$actual_hash" = '773d904ebd8b7ed60ccdc365ec9f2e031abc8b390c1c964cac5d984b12fe0627' ]; then
+            echo 'KEYSTORE_BYTES_MATCH=true'
+          else
+            echo 'KEYSTORE_BYTES_MATCH=false'
+          fi
+          if ! keytool -exportcert -rfc -keystore "$signing_tmp/store" -storepass:env ENTERPRISE_ANDROID_KEYSTORE_PASSWORD -alias "$KEY_ALIAS" > "$signing_tmp/cert.pem" 2> "$signing_tmp/keytool-error"; then
+            echo 'KEYSTORE_PASSWORD_AND_ALIAS_VALID=false'
+            exit 1
+          fi
+          echo 'KEYSTORE_PASSWORD_AND_ALIAS_VALID=true'
+          actual_cert="$(openssl x509 -in "$signing_tmp/cert.pem" -outform DER | sha256sum | awk '{print toupper($1)}')"
+          expected_cert="$(printf '%s' "$EXPECTED_CERT" | tr '[:lower:]' '[:upper:]' | tr -d ':[:space:]')"
+          if [ "$actual_cert" != "$expected_cert" ]; then
+            echo 'PERMANENT_CERTIFICATE_MATCH=false'
+            exit 1
+          fi
+          echo 'PERMANENT_CERTIFICATE_MATCH=true'
