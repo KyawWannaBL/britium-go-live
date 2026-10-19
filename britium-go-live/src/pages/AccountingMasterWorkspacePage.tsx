@@ -6,6 +6,10 @@ import { useAuth } from "@/contexts/AuthContext";
 
 const input="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-sm text-white outline-none focus:border-[#f6b84b]";
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
+function accountClassification(account:any){
+  const type=String(account?.account_type||"").toUpperCase();
+  return ({REVENUE:"Income / Revenue",EXPENSE:"Expense",COGS:"Cost of Goods Sold",ASSET:"Asset",LIABILITY:"Liability",EQUITY:"Equity"} as Record<string,string>)[type]||"Unclassified — check Chart of Accounts";
+}
 
 function SearchMaster({kind,value,onSelect,placeholder}:{kind:string;value:any;onSelect:(r:any)=>void;placeholder:string}){
   const [q,setQ]=useState("");
@@ -22,7 +26,7 @@ function SearchMaster({kind,value,onSelect,placeholder}:{kind:string;value:any;o
     {open&&<div className="absolute z-30 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#1a3a5c] bg-[#071b2c] shadow-2xl">
       {rows.map((r:any)=><button key={r.account_code||r.journal_type||r.dimension_code} type="button" onClick={()=>{onSelect(r);setOpen(false);setQ("")}} className="block w-full border-b border-[#1a3a5c]/50 p-3 text-left hover:bg-[#0b2236]">
         <div className="font-mono text-xs font-black text-[#f6b84b]">{r.account_code||r.journal_type||r.dimension_code}</div>
-        <div className="text-sm font-bold text-white">{r.name_en}</div><div className="text-xs text-[#8fb2c9]">{r.name_mm}</div>
+        <div className="text-sm font-bold text-white">{r.name_en}</div><div className="text-xs text-[#8fb2c9]">{r.name_mm}</div>{kind==="ACCOUNT"&&<div className="text-xs font-semibold text-amber-200">Account type: {accountClassification(r)}</div>}
       </button>)}
       {!rows.length&&<div className="p-4 text-sm text-[#6f91aa]">No matches.</div>}
     </div>}
@@ -168,7 +172,7 @@ export default function AccountingMasterWorkspacePage(){
 
         <div className="mt-5 space-y-3"><div className="flex items-center justify-between"><h3 className="font-black">Journal Lines / စာရင်းလိုင်းများ</h3><button onClick={()=>setLines([...lines,{account:null,debit:"",credit:"",description:""}])} className="flex h-9 items-center gap-1 rounded-lg border border-[#1a3a5c] px-3 text-xs font-black"><Plus size={14}/>Add Line</button></div>
           {lines.map((l,i)=><div key={i} className="grid gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] p-3 md:grid-cols-[2fr_1fr_1fr_2fr_auto]">
-            <SearchMaster kind="ACCOUNT" value={l.account} onSelect={r=>updateLine(i,{account:r})} placeholder="Type 111, cash, ငွေသား, merchant, rider..."/>
+            <div><SearchMaster kind="ACCOUNT" value={l.account} onSelect={r=>updateLine(i,{account:r})} placeholder="Type 111, cash, ငွေသား, merchant, rider..."/><div className="mt-1 text-xs font-semibold text-amber-200">Account Type: {accountClassification(l.account)}</div></div>
             <input type="number" min="0" placeholder="Debit" value={l.debit} onChange={e=>updateLine(i,{debit:e.target.value,credit:e.target.value?"" : l.credit})} className={input}/>
             <input type="number" min="0" placeholder="Credit" value={l.credit} onChange={e=>updateLine(i,{credit:e.target.value,debit:e.target.value?"" : l.debit})} className={input}/>
             <input placeholder="Line description" value={l.description} onChange={e=>updateLine(i,{description:e.target.value})} className={input}/>
