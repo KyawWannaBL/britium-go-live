@@ -794,6 +794,8 @@ export default function Login() {
                 </a>
               </div>
 
+              <a href="https://www.britiumexpress.com/account-deletion.html" className="mt-4 block min-h-12 rounded-xl border border-[#2f84b7] px-4 py-3 text-center text-[13px] font-bold text-[#d6ebf8] underline hover:text-[#f6b84b]">{t("Request account and data deletion", "အကောင့်နှင့် အချက်အလက် ဖျက်ရန် တောင်းဆိုမည်")}</a>
+
               <p className="mt-4 text-center text-[10px] leading-5 text-[#66879c]">
                 Access remains controlled by the authenticated account role.
                 Workspace selection does not override permissions.
