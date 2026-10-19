@@ -2,6 +2,18 @@ import { useEffect, useState } from 'react';
 import {previewGoLiveCutover, type GoLivePreview, type GoLivePreviewClient, type GoLiveRoot} from '@/lib/goLiveCutover';
 const rootTables:Record<string,GoLiveRoot['table']>={parcel:'be_data_entry_parcel_details',pickup:'be_pickup_requests',wayplan:'be_wayplan_dispatches'};
 export default function GoLiveReadyPreview({client}:{client:GoLivePreviewClient}) {
+ const [isolation,setIsolation]=useState<{rows_removed:number;table_count:number;cutoff_at:string}|null>(null);
+ useEffect(()=>{
+  let current=true;
+  Promise.resolve(client.rpc('be_go_live_isolation_report',{})).then(({data,error})=>{
+   if(error||!current||!data||typeof data!=='object')return;
+   const r=data as Record<string,unknown>;
+   if(r.mode==='PRODUCTION_ISOLATION'&&r.status==='ACTIVE'&&r.protected_records_verified===true&&Number.isSafeInteger(r.rows_removed)&&Number.isSafeInteger(r.table_count)&&typeof r.cutoff_at==='string'&&Number.isFinite(Date.parse(r.cutoff_at))){
+    setIsolation({rows_removed:r.rows_removed as number,table_count:r.table_count as number,cutoff_at:r.cutoff_at});
+   }
+  }).catch(()=>{/* A failed status read must not claim activation. */});
+  return()=>{current=false;};
+ },[client]);
  const [roots,setRoots]=useState('');
  const [cutoff,setCutoff]=useState(()=>new Date().toISOString());
  const [preview,setPreview]=useState<GoLivePreview|null>(null);
@@ -22,6 +34,14 @@ export default function GoLiveReadyPreview({client}:{client:GoLivePreviewClient}
   }catch(error){setMessage(error instanceof Error?error.message:'Go-live preview failed.');}
   finally{setBusy(false);}
  }
+ if(isolation)return <section className="space-y-4 rounded-3xl border border-emerald-500/40 bg-[#0b2236] p-6 text-[#eef8ff]">
+  <h2 className="text-xl font-black text-emerald-300">Production isolation is active</h2>
+  <p role="status">{isolation.rows_removed.toLocaleString('en-US')} pre-cutoff transaction records cleared across {isolation.table_count} transaction tables.</p>
+  <p className="text-sm">Accounts, master data, tariffs, configuration, audit history and numbering were preserved and verified.</p>
+  <p className="text-sm">Production transaction cutoff: {new Date(isolation.cutoff_at).toLocaleString('en-GB',{timeZone:'Asia/Yangon'})} Myanmar Time. New transactions are accepted from this time.</p>
+  <p className="text-sm text-[#a9c2d4]">Refresh the web app or upgrade the Rider app before submitting. Retired assignments cannot be resubmitted.</p>
+  <button type="button" disabled className="rounded-xl bg-emerald-700 px-5 py-3 font-black">Isolation active</button>
+ </section>;
  return <section className="space-y-4 rounded-3xl border border-amber-500/30 bg-[#0b2236] p-6 text-[#eef8ff]">
   <div><h2 className="text-xl font-black">Go-Live Ready · Test-data preview</h2><p className="mt-2 text-sm text-[#a9c2d4]">Review approved testing transactions and preserved masters, tariffs, accounts and billing controls. This preview does not change data. Complete isolation and recovery evidence is required before activation.</p></div>
   <label className="block text-sm">Preview cutoff (ISO timestamp)<input aria-label="Preview cutoff" disabled={busy} className="mt-1 w-full rounded-lg bg-white p-2 text-slate-950" value={cutoff} onChange={e=>{setCutoff(e.target.value);invalidate();}}/></label>
@@ -37,3 +57,4 @@ export default function GoLiveReadyPreview({client}:{client:GoLivePreviewClient}
   </div>}
  </section>;
 }
+
