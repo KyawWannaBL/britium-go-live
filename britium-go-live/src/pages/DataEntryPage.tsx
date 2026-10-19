@@ -576,13 +576,23 @@ export default function DataEntryPage() {
       const { data, error } = response;
 
       if (!error && data) {
+        // Never combine a newly calculated delivery fee with an old collection total.
+        // The item-price field is the declared COD principal, not a net-of-delivery value.
+        const deliveryFee = roundMoney(money(data.delivery_fee ?? local.deli_fee));
+        const cod = roundMoney(money(data.cod_amount ?? data.cod ?? local.cod));
+        const surcharge = roundMoney(money(data.surcharge ?? local.surcharge));
+        const actualCollect = roundMoney(cod + deliveryFee);
+        if (![deliveryFee, cod, surcharge, actualCollect].every(Number.isFinite) ||
+            deliveryFee < 0 || cod < 0 || surcharge < 0) {
+          throw new Error('Invalid tariff amounts returned by the server');
+        }
         return {
           ...local,
-          base_fee: roundMoney(data.base_fee ?? local.base_fee),
-          surcharge: roundMoney(data.surcharge ?? local.surcharge),
-          deli_fee: roundMoney(data.delivery_fee ?? local.deli_fee),
-          cod: roundMoney(data.cod_amount ?? data.cod ?? local.cod),
-          actual_collect: roundMoney(data.actual_collect ?? local.actual_collect),
+          base_fee: roundMoney(money(data.base_fee ?? local.base_fee)),
+          surcharge,
+          deli_fee: deliveryFee,
+          cod,
+          actual_collect: actualCollect,
           destination: data.city || data.destination || local.destination,
         };
       }
@@ -1147,6 +1157,10 @@ export default function DataEntryPage() {
       return;
     }
     const normalizedTownship = option.township;
+    if (Math.abs(roundMoney(money(row.cod) + money(row.deli_fee)) - money(row.actual_collect)) > 0.01) {
+      setMessage('COD and delivery charge do not match the collection total. Recalculate before saving.');
+      return;
+    }
 
     try {
       setLoading(true);
