@@ -41,6 +41,17 @@ export default function AccountingMasterWorkspacePage(){
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   const [history,setHistory]=useState<any[]>([]);
+  const [pl,setPl]=useState<any>(null);
+  const [plFrom,setPlFrom]=useState(new Date().toISOString().slice(0,7)+"-01");
+  const [plTo,setPlTo]=useState(new Date().toISOString().slice(0,10));
+  const [plBranch,setPlBranch]=useState("");
+  const [plError,setPlError]=useState("");
+  async function loadProfitLoss(){
+    const {data,error}=await (supabase as any).rpc("be_accounting_profit_loss_summary_v1",{p_from:plFrom||null,p_to:plTo||null,p_branch:plBranch||null});
+    if(error||data?.ok===false){setPl(null);setPlError(error?.message||"Unable to load report.");}
+    else {setPl(data);setPlError("");}
+  }
+  useEffect(()=>{if(tab==="profitloss")void loadProfitLoss()},[tab]);
 
   const [journalType,setJournalType]=useState<any>(null);
   const [branch,setBranch]=useState<any>({dimension_code:"YGN",name_en:"Yangon",name_mm:"ရန်ကုန်"});
@@ -153,7 +164,7 @@ export default function AccountingMasterWorkspacePage(){
     </section>
 
     <div className="flex flex-wrap gap-2 border-b border-[#1a3a5c] pb-3">
-      {[["journal","Journal Entry / စာရင်းသွင်း"],["assets","Company Assets / ပိုင်ဆိုင်မှု"],["openitems","AR / AP"],["history","Journal Register"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={"rounded-xl px-4 py-2.5 text-sm font-black "+(tab===id?"bg-[#f6b84b] text-[#061524]":"border border-[#1a3a5c] bg-[#0b2236]")}>{label}</button>)}
+      {[["journal","Journal Entry / စာရင်းသွင်း"],["assets","Company Assets / ပိုင်ဆိုင်မှု"],["openitems","AR / AP"],["history","Journal Register"],["profitloss","Income / Expense / Profit"]].map(([id,label])=><button key={id} onClick={()=>setTab(id)} className={"rounded-xl px-4 py-2.5 text-sm font-black "+(tab===id?"bg-[#f6b84b] text-[#061524]":"border border-[#1a3a5c] bg-[#0b2236]")}>{label}</button>)}
     </div>
 
     {tab==="journal"&&<div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
@@ -196,6 +207,20 @@ export default function AccountingMasterWorkspacePage(){
       <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Offset Account</span><SearchMaster kind="ACCOUNT" value={openOffset} onSelect={r=>{setOpenOffset(r);setOpenItem({...openItem,offset_account_code:r.account_code})}} placeholder="Type revenue / expense account..."/></label>
     </div><label className="mt-4 block text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Invoice / Bill / Supporting Evidence</span><input type="file" accept="image/*,.pdf" onChange={e=>setEvidenceFile(e.target.files?.[0]||null)} className="w-full rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"/></label><button onClick={()=>void saveOpenItem()} disabled={busy||!openItem.counterparty_name||!openItem.amount} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#38bdf8] px-5 font-black text-[#061524] disabled:opacity-40"><Save size={16}/>Save {openItem.item_type} + Evidence</button></section>}
 
+    {tab==="profitloss"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+  <h2 className="text-lg font-black">Income, Expenses &amp; Net Profit</h2>
+  <p className="mt-1 text-xs text-[#9cc2d9]">MMK. Posted journal lines only. Drafts excluded.</p>
+  <div className="mt-4 flex flex-wrap items-end gap-3">
+    <label className="text-xs">From<input type="date" value={plFrom} onChange={e=>setPlFrom(e.target.value)} className={input}/></label>
+    <label className="text-xs">To<input type="date" value={plTo} onChange={e=>setPlTo(e.target.value)} className={input}/></label>
+    <label className="text-xs">Branch<input value={plBranch} onChange={e=>setPlBranch(e.target.value.toUpperCase())} placeholder="All branches" className={input}/></label>
+    <button onClick={()=>void loadProfitLoss()} className="rounded-xl bg-[#38bdf8] px-5 py-3 font-bold text-[#061524]">Refresh Report</button>
+  </div>
+  {plError&&<p className="mt-4 text-rose-300">{plError}</p>}
+  {pl&&<><div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+    {([["Revenue",pl.revenue],["Direct Costs / COGS",pl.cogs],["Operating Expenses",pl.expenses],["Gross Profit",pl.gross_profit],["Net Profit",pl.net_profit]] as any[]).map(([label,amount])=><div key={label} className="rounded-xl bg-[#061524] p-4"><p className="text-xs text-[#9cc2d9]">{label}</p><p className="mt-2 text-lg font-black text-white">{money(amount)}</p></div>)}
+  </div><p className="mt-3 text-xs text-[#9cc2d9]">{pl.classified_line_count===0?"No posted income or expense journals in this period. Draft entries are not counted.":String(pl.classified_line_count)+" classified journal lines included."}</p></>}
+</section>}
     {tab==="history"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Manual Journal Register</h2><div className="mt-4 max-h-[700px] overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td className="font-mono font-black text-[#38bdf8]">{r.journal_reference}</td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div></section>}
   </div>;
 }
