@@ -1,6 +1,10 @@
 name: Enterprise Play AAB
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/enterprise-play-aab.yml'
 permissions:
   contents: read
 jobs:
