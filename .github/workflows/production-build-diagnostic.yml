@@ -3,6 +3,8 @@ name: Production Build Diagnostic
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
 
 jobs:
   build:
@@ -18,4 +20,6 @@ jobs:
           cache: npm
           cache-dependency-path: britium-go-live/package-lock.json
       - run: npm ci
+      - run: node scripts/test-reason-only-photo-skip.mjs
+      - run: node scripts/test-reason-only-photo-skip-db.mjs
       - run: npm run build

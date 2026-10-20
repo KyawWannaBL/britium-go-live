@@ -475,8 +475,8 @@ function parcelRowFromProof(
   const importedFromOs=Boolean(
     proof.source_file_name||proof.os_imported_at||proof.financial_quote?.os_softcopy_import
   );
-  const temporaryPhotoWaiver=Boolean(proof.raw_payload?.temporary_photo_waiver);
-  const temporaryPhotoWaiverReason=text(proof.raw_payload?.temporary_photo_waiver_reason);
+  const temporaryPhotoWaiver=Boolean(proof.raw_payload?.photo_skipped || proof.raw_payload?.temporary_photo_waiver);
+  const temporaryPhotoWaiverReason=text(proof.raw_payload?.photo_skip_reason || proof.raw_payload?.temporary_photo_waiver_reason);
   const photoEvidenceMode:ParcelRow["photoEvidenceMode"]=storedPhotoMode==="OS_SOFTCOPY"?"OS_SOFTCOPY":"PICKER_PHOTO";
   return {
     pickup_id:pickup.pickup_id,
@@ -514,12 +514,12 @@ function parcelRowFromProof(
     ].filter(Boolean).join(" "),
     photoReviewed:temporaryPhotoWaiver||["APPROVED","APPROVED_AFTER_REUPLOAD","PHOTO_APPROVED","VERIFIED","RIDER_VERIFIED"].includes(proofReviewStatus),
     photoUnavailableAcknowledged:photoEvidenceMode==="OS_SOFTCOPY",
-    photoReviewStatus:temporaryPhotoWaiver?"TEMPORARY_WAIVER":proofReviewStatus,
+    photoReviewStatus:temporaryPhotoWaiver?"PHOTO_SKIPPED":proofReviewStatus,
     photoRejectionReason:text(proof.rejection_reason),
     photoRejectionNote:text(proof.review_note),
     photoReviewBusy:false,
     photoTemporaryWaiver:temporaryPhotoWaiver,
-    photoTemporaryWaiverReason:temporaryPhotoWaiverReason||"No order picker currently available",
+    photoTemporaryWaiverReason:temporaryPhotoWaiverReason||"",
     isAdditionalRegistration:sequence>requestedParcelCount(pickup),
     importedFromOs,
     sourceFileName:text(proof.source_file_name||proof.financial_quote?.os_source_file_name),
@@ -731,9 +731,10 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 </div>
               ) : row.photoTemporaryWaiver ? (
                 <div data-temporary-photo-waiver-v54="true" className="rounded-xl border border-amber-300/40 bg-amber-400/10 p-3 text-[11px] text-amber-100">
-                  <div className="font-black">Temporary photo-verification waiver active</div>
-                  <div className="mt-1"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Temporary operational waiver"}</div>
-                  <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Restore normal photo verification</button>
+                  <div className="font-black">Photo skipped — reason recorded</div>
+                  <div className="mt-1"><b>Reason:</b> {row.photoTemporaryWaiverReason||"Recorded photo exception"}</div>
+                  <div className="mt-1">No photo upload is required later.</div>
+                  <button type="button" disabled={busy||row.photoReviewBusy||row.saved} onClick={()=>togglePhotoWaiver(index,false)} className="mt-3 rounded-lg border border-amber-300/50 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Remove photo skip</button>
                 </div>
               ) : row.proof_url ? (
                 <>
@@ -815,7 +816,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                   <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.photoReviewStatus === "APPROVED"?"border-emerald-500/40 bg-emerald-500/10 text-emerald-300":row.photoReviewStatus === "REUPLOAD_REQUIRED"?"border-rose-500/40 bg-rose-500/10 text-rose-300":"border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>{row.photoReviewStatus || "PENDING REVIEW"}</span>
                 </div>
                 <div className="grid grid-cols-1 gap-2">
-                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} title={!row.proof_url?"No Rider / Driver parcel photo exists to approve. Use the temporary waiver only when operations explicitly need to proceed without the photo.":undefined} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo{!row.proof_url?" · NO PHOTO":""}</button>
+                  <button type="button" disabled={row.photoReviewBusy || !row.proof_url} title={!row.proof_url?"No Rider / Driver parcel photo exists to approve. Enter a reason to skip the photo requirement.":undefined} onClick={() => reviewPhoto(index, "APPROVE")} className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2 text-left text-[11px] font-black text-emerald-300 disabled:opacity-50">Approve Photo{!row.proof_url?" · NO PHOTO":""}</button>
                   <select className="w-full rounded-lg border border-rose-500/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoRejectionReason} onChange={(e) => updateRow(index, { photoRejectionReason: e.target.value })}>
                     <option value="">Reject reason…</option>
                     <option value="IMAGE_UNAVAILABLE">Image unavailable</option>
@@ -830,8 +831,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                   <button type="button" disabled={row.photoReviewBusy || !row.photoRejectionReason} onClick={() => reviewPhoto(index, "REJECT")} className="rounded-lg border border-rose-500/50 bg-rose-600 px-3 py-2 text-[11px] font-black text-white disabled:opacity-50">Reject & Request Re-upload</button>
                 </div>
                 <div data-photo-waiver-control-v54="true" className="mt-3 rounded-lg border border-amber-300/30 bg-amber-400/10 p-3">
-                  <input className="w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoTemporaryWaiverReason||""} onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})} placeholder="Temporary waiver reason"/>
-                  <button type="button" disabled={row.photoReviewBusy||busy||String(row.photoTemporaryWaiverReason||"").trim().length<10} onClick={()=>togglePhotoWaiver(index,true)} className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Temporarily Skip Photo Verification</button>
+                  <input className="w-full rounded-lg border border-amber-300/30 bg-[#0b2236] px-3 py-2 text-[11px] text-white" value={row.photoTemporaryWaiverReason||""} onChange={(e)=>updateRow(index,{photoTemporaryWaiverReason:e.target.value})} placeholder="Reason for skipping the photo"/>
+                  <button type="button" disabled={row.photoReviewBusy||busy||!String(row.photoTemporaryWaiverReason||"").trim()} onClick={()=>togglePhotoWaiver(index,true)} className="mt-2 rounded-lg border border-amber-300/50 bg-amber-400/15 px-3 py-2 text-[10px] font-black text-amber-100 disabled:opacity-50">Skip Photo — Reason Only</button>
                 </div>
               </div>:null}
             </div>
@@ -1851,8 +1852,10 @@ export default function DataEntryFinancialV2Page() {
 
   async function skipPhotoReviewAll(){
     if(!pendingPhotoWaiverRows.length||bulkSaving||bulkCalculating||waybillBusy) return;
-    const reason="Temporary operational waiver: Rider / Driver parcel photo is not available yet.";
-    if(!window.confirm(`Temporarily skip photo verification for ${pendingPhotoWaiverRows.length} pending parcel(s)? Each waiver will be recorded in the audit trail.`)) return;
+    const enteredReason=window.prompt(`Reason for skipping photo verification for ${pendingPhotoWaiverRows.length} parcel(s). No photo upload is required later.`);
+    if(enteredReason===null) return;
+    const reason=enteredReason.trim();
+    if(!reason){setBulkMessage("Enter a reason before skipping photo verification.");return;}
     setBulkSaving(true);
     setBulkMessage("");
     try{
@@ -1866,18 +1869,18 @@ export default function DataEntryFinancialV2Page() {
           reason,
         }});
         if(response.error) throw response.error;
-        if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||`Temporary photo waiver failed for parcel ${row.parcel_sequence}.`);
+        if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||`Photo skip failed for parcel ${row.parcel_sequence}.`);
         succeeded.add(`${row.pickup_id}:${row.parcel_sequence}`);
       }
       const applyWaiver=(row:ParcelRow)=>succeeded.has(`${row.pickup_id}:${row.parcel_sequence}`)
-        ?{...row,photoTemporaryWaiver:true,photoTemporaryWaiverReason:reason,photoReviewStatus:"TEMPORARY_WAIVER",photoReviewed:true,photoUnavailableAcknowledged:false,message:"Temporary photo-verification waiver recorded. Calculate and Save can proceed."}
+        ?{...row,photoTemporaryWaiver:true,photoTemporaryWaiverReason:reason,photoReviewStatus:"PHOTO_SKIPPED",photoReviewed:true,photoUnavailableAcknowledged:false,message:"Photo skip recorded. Calculate and Save can proceed. No photo upload is required later."}
         :row;
       setRows((current)=>current.map(applyWaiver));
       setBulkImportDrafts((current)=>Object.fromEntries(Object.entries(current).map(([pickupId,draft])=>[pickupId,{...draft,rows:draft.rows.map(applyWaiver)}])));
       setWaybillMessage("");
-      setBulkMessage(`Temporary photo-verification waiver recorded for ${succeeded.size} parcel(s). Run Calculate All, then Save All, then Generate Completed Waybills.`);
+      setBulkMessage(`Photo skip recorded for ${succeeded.size} parcel(s). Run Calculate All, then Save All, then Generate Completed Waybills.`);
     }catch(error:any){
-      setBulkMessage(error?.message||"Unable to record temporary photo-verification waivers.");
+      setBulkMessage(error?.message||"Unable to record photo skips.");
     }finally{
       setBulkSaving(false);
     }
@@ -1925,8 +1928,8 @@ export default function DataEntryFinancialV2Page() {
   async function togglePhotoWaiver(index:number, enabled:boolean){
     const row=rows[index]; if(!row) return;
     const reason=String(row.photoTemporaryWaiverReason||"").trim();
-    if(enabled && reason.length<10){
-      updateRow(index,{message:"Enter a clear reason of at least 10 characters before temporarily skipping photo verification."});
+    if(enabled && !reason){
+      updateRow(index,{message:"Enter a reason before skipping photo verification."});
       return;
     }
     updateRow(index,{photoReviewBusy:true,message:""});
@@ -1939,20 +1942,20 @@ export default function DataEntryFinancialV2Page() {
         reason:enabled?reason:null,
       }});
       if(response.error) throw response.error;
-      if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||"Temporary photo waiver failed.");
+      if(response.data?.ok===false) throw new Error(response.data?.error||response.data?.message||"Photo skip failed.");
       updateRow(index,{
         photoReviewBusy:false,
         photoTemporaryWaiver:enabled,
-        photoTemporaryWaiverReason:enabled?reason:"No order picker currently available",
-        photoReviewStatus:enabled?"TEMPORARY_WAIVER":"PENDING_REVIEW",
+        photoTemporaryWaiverReason:enabled?reason:"",
+        photoReviewStatus:enabled?"PHOTO_SKIPPED":"PENDING_REVIEW",
         photoReviewed:enabled,
         photoUnavailableAcknowledged:false,
         message:enabled
-          ?"Temporary photo-verification waiver recorded. Save can proceed; restore normal verification when order pickers are available."
-          :"Temporary waiver revoked. Normal photo approval is required again before Save."
+          ?"Photo skip recorded. Save can proceed. No photo upload is required later."
+          :"Photo skip removed by the operator. Normal photo approval is required before Save."
       });
     }catch(error:any){
-      updateRow(index,{photoReviewBusy:false,message:error?.message||"Temporary photo waiver failed."});
+      updateRow(index,{photoReviewBusy:false,message:error?.message||"Photo skip failed."});
     }
   }
 
@@ -2041,15 +2044,19 @@ export default function DataEntryFinancialV2Page() {
     if(!selectedPickup) return false;
     const row=rows[index]; if(!row || row.skipped) return false;
 
-    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.proof_ref) {
-      updateRow(index,{message:"No stored parcel photo reference exists. Photo capture/re-upload is required before saving."});
+    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver && !row.proof_ref) {
+      updateRow(index,{message:"No stored parcel photo exists. Enter a reason and select Skip Photo, or upload a photo before saving."});
       return false;
     }
-    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoReviewed) {
+    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver && !row.photoReviewed) {
       updateRow(index, {
         message:
-          "Approve the parcel photo before Save. Reject unavailable, wrong, unclear, or unrelated images and request re-upload.",
+          "Approve the parcel photo or record a reason to skip it before Save.",
       });
+      return false;
+    }
+    if(row.photoTemporaryWaiver && !row.photoTemporaryWaiverReason.trim()){
+      updateRow(index,{message:"A reason is required for the photo skip."});
       return false;
     }
     if(row.photoUnavailableAcknowledged && (!row.importedFromOs || !row.sourceFileName || row.photoBypassReason.trim().length<10)){
@@ -2168,7 +2175,8 @@ export default function DataEntryFinancialV2Page() {
     if(!text(row.recipient_phone)) return "Recipient phone needs clarification";
     if(!text(row.delivery_address)) return "Delivery address needs clarification";
     if(row.calculationFailed || row.calculation?.validation_status==="ERROR") return row.message||"Financial calculation needs correction. Recalculate this parcel.";
-    if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged) return "Photo approval required";
+    if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged&&!row.photoTemporaryWaiver) return "Photo approval required";
+    if(row.photoTemporaryWaiver&&!row.photoTemporaryWaiverReason.trim()) return "Photo skip reason is required";
     if(row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10)) return "OS evidence source or reason is incomplete";
     const route=routeForRow(row,tariffOptions);
     if(!route.providerCode) return "Destination needs clarification";
@@ -2395,7 +2403,7 @@ export default function DataEntryFinancialV2Page() {
         photoUnavailableAcknowledged:importPayload.skipPhotoReview,
         photoReviewStatus:importPayload.skipPhotoReview?"OS_SOFTCOPY_AUTHORIZED":existing.photoReviewStatus,
         photoTemporaryWaiver:false,
-        photoTemporaryWaiverReason:"No order picker currently available",
+        photoTemporaryWaiverReason:"",
         isAdditionalRegistration:sequence>requestedParcelCount(pickup),
         importedFromOs:true,
         sourceFileName:importPayload.fileName,
@@ -3378,7 +3386,7 @@ export default function DataEntryFinancialV2Page() {
                   disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy}
                   className="rounded-lg border border-orange-200/70 bg-orange-400 px-3 py-2 text-[10px] font-black text-[#2b1600] disabled:opacity-50"
                 >
-                  TEMPORARILY SKIP PHOTO REVIEW FOR ALL ({pendingPhotoWaiverRows.length})
+                  SKIP PHOTO REVIEW WITH REASON FOR ALL ({pendingPhotoWaiverRows.length})
                 </button>
               :null}
             </div>
@@ -3403,7 +3411,7 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
             <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
             <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
-            <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">TEMPORARILY SKIP PHOTO REVIEW FOR ALL ({pendingPhotoWaiverRows.length})</button>
+            <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">SKIP PHOTO REVIEW WITH REASON FOR ALL ({pendingPhotoWaiverRows.length})</button>
             <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
             <button
               type="button"
