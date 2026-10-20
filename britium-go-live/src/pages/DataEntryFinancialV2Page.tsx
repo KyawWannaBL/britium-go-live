@@ -137,6 +137,7 @@ type ParcelRow = {
   township: string;
   delivery_address: string;
   weight_kg: number | "";
+  evidenceWeightKg?: number | "";
   customer_tier: string;
   tier_override: boolean;
   service_provider_code: string;
@@ -492,6 +493,7 @@ function parcelRowFromProof(
     township:text(proof.township||pickup.township),
     delivery_address:text(proof.delivery_address||proof.recipient_address),
     weight_kg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
+    evidenceWeightKg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
     customer_tier:customerTier,
     tier_override:Boolean(tierAccess.registered && tierAccess.profile_tier && customerTier!==tierAccess.profile_tier && tierAccess.can_override_profile_tier),
     service_provider_code:text(proof.service_provider_code||proof.financial_quote?.service_provider_code).toUpperCase(),
@@ -535,6 +537,24 @@ function parcelRowFromProof(
     handoffStationName:text(proof.handoff_station_name||proof.financial_quote?.handoff_station_name),
     locationStatus:proof.location_required===false||proof.financial_quote?.location_required===false?"NOT_REQUIRED":"PENDING",
     saved:Boolean(proof.saved_at),
+  };
+}
+
+// Cached operational edits may survive refresh; photo decisions always come from the current evidence.
+function mergePickupEvidence(previous:Partial<ParcelRow>, fresh:ParcelRow):ParcelRow {
+  const editedWeight=previous.evidenceWeightKg!==undefined && previous.weight_kg!==undefined
+    && String(previous.weight_kg)!==String(previous.evidenceWeightKg);
+  const weight=editedWeight?previous.weight_kg!:fresh.weight_kg;
+  return {
+    ...fresh,...previous,
+    pickup_id:fresh.pickup_id,parcel_sequence:fresh.parcel_sequence,delivery_way_id:fresh.delivery_way_id,
+    proof_url:fresh.proof_url,proof_ref:fresh.proof_ref,photo_status:fresh.photo_status,
+    photoReviewed:fresh.photoReviewed,photoReviewStatus:fresh.photoReviewStatus,
+    photoRejectionReason:fresh.photoRejectionReason,photoRejectionNote:fresh.photoRejectionNote,
+    photoTemporaryWaiver:fresh.photoTemporaryWaiver,photoTemporaryWaiverReason:fresh.photoTemporaryWaiverReason,
+    photoUnavailableAcknowledged:fresh.photoUnavailableAcknowledged,
+    weight_kg:weight,evidenceWeightKg:fresh.evidenceWeightKg,
+    ...(String(weight)!==String(previous.weight_kg)?{calculation:{}}:{}),
   };
 }
 
@@ -1626,8 +1646,12 @@ export default function DataEntryFinancialV2Page() {
     }
   }
 
+  const [evidenceReloadToken,setEvidenceReloadToken]=useState(0);
+  const workspaceLoadRevision=useRef(0);
+
   async function loadStartup(){
-    setLoading(true); setMessage("");
+    const background=rowsPickupId===selectedPickupId && rows.length>0;
+    if(!background)setLoading(true); setMessage("");
     try{
       const schemaResponse=await (supabase as any).rpc("be_data_entry_financial_v2_schema");
       if(schemaResponse.error) throw schemaResponse.error;
@@ -1688,9 +1712,10 @@ export default function DataEntryFinancialV2Page() {
         registered_parcels:registeredByPickup.get(pickup.pickup_id)?.size??pickup.registered_parcels,
       }));
       setPickups(withRegisteredCounts);
+      setEvidenceReloadToken(token=>token+1);
       setSelectedPickupId(current=>current===BULK_UPLOAD_PICKUP_ID||withRegisteredCounts.some(x=>x.pickup_id===current)?current:(withRegisteredCounts[0]?.pickup_id||""));
     }catch(error:any){setMessage(error?.message||"Unable to load Financial V2.");}
-    finally{setLoading(false);}
+    finally{if(!background)setLoading(false);}
   }
 
   async function fetchPickupWorkspace(pickup:Pickup):Promise<{tierAccess:MerchantTierAccess;rows:ParcelRow[]}>{
@@ -1727,7 +1752,7 @@ export default function DataEntryFinancialV2Page() {
     for(const {source,response} of proofResponses){
       if(response.error){lastProofError=`${source}: ${response.error.message}`;continue;}
       if(Array.isArray(response.data)&&response.data.length){
-        proofs.push(...response.data);
+        proofs.push(...response.data.map((proof:any)=>({...proof,__authoritative:source==="be_pickup_parcel_verifications"})));
         console.info(`Data Entry evidence: ${response.data.length} row(s) loaded from ${source}`);
       }
     }
@@ -1747,6 +1772,14 @@ export default function DataEntryFinancialV2Page() {
           for(const [key,value] of Object.entries(item)){
             if(value!==null&&value!==undefined&&value!=="") merged[key]=value;
           }
+          if(item.__authoritative){
+            merged.__proof_ref=item.__proof_ref;
+            merged.__proof_url=item.__proof_url;
+            merged.review_status=item.proof_check_status||item.verification_status||"PENDING_REVIEW";
+            merged.review_note=item.review_note||"";
+            merged.rejection_reason=["REUPLOAD_REQUIRED","PHOTO_REJECTED","REJECTED"].includes(merged.review_status)?text(item.review_note).split(":")[0]:"";
+            merged.raw_payload=item.raw_payload||{};
+          }
           return merged;
         },{});
       const row=parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
@@ -1765,7 +1798,7 @@ export default function DataEntryFinancialV2Page() {
       const draft=heldBySequence.get(row.parcel_sequence);
       const persisted=(proofResponses.find(r=>r.source==="be_data_entry_parcel_details")?.response.data||[]).some((d:any)=>Number(d.parcel_sequence)===row.parcel_sequence);
       if(!draft || persisted) return row;
-      const restored={...row,...draft.snapshot,pickup_id:pickup.pickup_id,parcel_sequence:row.parcel_sequence,
+      const restored={...mergePickupEvidence(draft.snapshot,row),pickup_id:pickup.pickup_id,parcel_sequence:row.parcel_sequence,
         saved:false,skipped:draft.skipped,checking:false,calculating:false,calculation:{},
         message:draft.skipped?"Pending clarification saved. Resume when details are available.":"Draft restored. Review and save."};
       return {...restored,...routingPatch(routeForRow(restored,tariffOptions),restored)};
@@ -1785,15 +1818,20 @@ export default function DataEntryFinancialV2Page() {
     })};
   }
 
-  async function loadPickupRows(pickup:Pickup){
-    setLoadingRows(true); setMessage("");
+  async function loadPickupRows(pickup:Pickup,background=false){
+    const revision=++workspaceLoadRevision.current;
+    if(!background)setLoadingRows(true); setMessage("");
     try{
       const workspace=await fetchPickupWorkspace(pickup);
+      if(revision!==workspaceLoadRevision.current) return;
       setTierAccess(workspace.tierAccess);
-      setRows(workspace.rows);
+      setRows(current=>workspace.rows.map(fresh=>{
+        const previous=current.find(row=>row.pickup_id===fresh.pickup_id && row.parcel_sequence===fresh.parcel_sequence);
+        return previous&&!previous.saved?mergePickupEvidence(previous,fresh):fresh;
+      }));
       setRowsPickupId(pickup.pickup_id);
-    }catch(error:any){setRows([]);setRowsPickupId("");setMessage(error?.message||"Unable to load pickup proof rows.");}
-    finally{setLoadingRows(false);}
+    }catch(error:any){if(revision===workspaceLoadRevision.current)setMessage(error?.message||"Unable to load pickup proof rows.");}
+    finally{if(revision===workspaceLoadRevision.current)setLoadingRows(false);}
   }
 
   async function toggleSkip(index:number){
@@ -3186,35 +3224,41 @@ export default function DataEntryFinancialV2Page() {
   useEffect(()=>{void loadStaffProgress(progressDate);},[progressDate,selectedPickupId]);
   useEffect(()=>{
     let refreshTimer:number|undefined;
+    let evidenceTimer:number|undefined;
     const scheduleProgressRefresh=()=>{
       if(refreshTimer) window.clearTimeout(refreshTimer);
       refreshTimer=window.setTimeout(()=>{void loadStaffProgress(progressDate);},350);
     };
     const channel=(supabase as any)
       .channel("data-entry-staff-progress-v98")
+      .on("postgres_changes",{event:"*",schema:"public",table:"be_pickup_parcel_verifications",filter:`pickup_id=eq.${selectedPickupId}`},()=>{
+        if(evidenceTimer) window.clearTimeout(evidenceTimer);
+        evidenceTimer=window.setTimeout(()=>setEvidenceReloadToken(token=>token+1),350);
+      })
       .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_parcel_details"},scheduleProgressRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"be_data_entry_pending_drafts"},scheduleProgressRefresh)
       .on("postgres_changes",{event:"*",schema:"public",table:"be_portal_pickup_requests"},scheduleProgressRefresh)
       .subscribe();
     return ()=>{
       if(refreshTimer) window.clearTimeout(refreshTimer);
+      if(evidenceTimer) window.clearTimeout(evidenceTimer);
       (supabase as any).removeChannel(channel);
     };
-  },[progressDate]);
+  },[progressDate,selectedPickupId]);
+  useEffect(()=>{setPageIndex(0);},[selectedPickupId]);
   useEffect(()=>{
-    setPageIndex(0);
-    if(bulkUploadSelected){setRows([]);setRowsPickupId("");return;}
+    if(bulkUploadSelected){workspaceLoadRevision.current++;setRows([]);setRowsPickupId("");return;}
     const draft=bulkImportDrafts[selectedPickupId];
     if(draft){
       setTierAccess(draft.tierAccess);
       setRows(draft.rows);
       setRowsPickupId(draft.pickupId);
       setLoadingRows(false);
-      return;
     }
-    if(selectedPickup) void loadPickupRows(selectedPickup);
-    else {setRows([]);setRowsPickupId("");}
-  },[selectedPickupId]);
+    if(selectedPickup) void loadPickupRows(selectedPickup,rowsPickupId===selectedPickupId);
+    else {workspaceLoadRevision.current++;setRows([]);setRowsPickupId("");}
+    return ()=>{workspaceLoadRevision.current++;};
+  },[selectedPickupId,evidenceReloadToken]);
   useEffect(()=>{
     if(!rowsPickupId||rowsPickupId!==selectedPickupId) return;
     setBulkImportDrafts((current)=>{

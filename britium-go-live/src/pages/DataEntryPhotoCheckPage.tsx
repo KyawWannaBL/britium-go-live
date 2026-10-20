@@ -5,13 +5,13 @@ import { Search, RefreshCw, CheckCircle2, XCircle, Image as ImageIcon, RotateCcw
 
 function text(value: any) { return String(value ?? "").trim(); }
 function getPhoto(row: any) {
-  return row.current_photo_url || row.photo_url || row.cargo_photo_url || row.parcel_photo_url || row.payload?.photo_url || row.payload?.cargo_photo_url || row.payload?.proof_photo_data_url || "";
+  return row.current_photo_url || row.proof_photo_url || row.proof_photo_path || row.photo_url || row.cargo_photo_url || row.parcel_photo_url || row.payload?.photo_url || row.payload?.cargo_photo_url || row.payload?.proof_photo_data_url || "";
 }
 function parcelNo(row: any, index = 0) { return Number(row.parcel_sequence || row.line_no || row.row_no || index + 1); }
 function reviewStatus(row: any) { return text(row.review_status || row.photo_status || row.payload?.photo_check_status || "PENDING_REVIEW").toUpperCase(); }
 function statusClass(status: string) {
   if (["APPROVED", "APPROVED_AFTER_REUPLOAD", "PHOTO_APPROVED"].includes(status)) return "border-[#22c55e]/30 bg-[#22c55e]/10 text-[#22c55e]";
-  if (["PHOTO_REJECTED", "REUPLOAD_REQUIRED"].includes(status)) return "border-[#ff4f86]/30 bg-[#ff4f86]/10 text-[#ff4f86]";
+  if (["PHOTO_REJECTED", "REUPLOAD_REQUIRED", "REJECTED"].includes(status)) return "border-[#ff4f86]/30 bg-[#ff4f86]/10 text-[#ff4f86]";
   return "border-[#f6b84b]/30 bg-[#f6b84b]/10 text-[#f6b84b]";
 }
 
@@ -32,6 +32,7 @@ export default function DataEntryPhotoCheckPage() {
   const [search, setSearch] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loadFailed,setLoadFailed]=useState(false);
   const [preview, setPreview] = useState<any>(null);
   const [rejecting, setRejecting] = useState<any>(null);
   const [reason, setReason] = useState("BLURRY_IMAGE");
@@ -46,17 +47,29 @@ export default function DataEntryPhotoCheckPage() {
   const summary = useMemo(() => ({
     total: rows.length,
     approved: rows.filter((r) => ["APPROVED", "APPROVED_AFTER_REUPLOAD", "PHOTO_APPROVED"].includes(reviewStatus(r))).length,
-    rejected: rows.filter((r) => ["PHOTO_REJECTED", "REUPLOAD_REQUIRED"].includes(reviewStatus(r))).length,
-    pending: rows.filter((r) => !["APPROVED", "APPROVED_AFTER_REUPLOAD", "PHOTO_APPROVED", "PHOTO_REJECTED", "REUPLOAD_REQUIRED"].includes(reviewStatus(r))).length,
+    rejected: rows.filter((r) => ["PHOTO_REJECTED", "REUPLOAD_REQUIRED", "REJECTED"].includes(reviewStatus(r))).length,
+    pending: rows.filter((r) => !["APPROVED", "APPROVED_AFTER_REUPLOAD", "PHOTO_APPROVED", "PHOTO_REJECTED", "REUPLOAD_REQUIRED", "REJECTED"].includes(reviewStatus(r))).length,
   }), [rows]);
 
   async function load() {
-    setLoading(true);
+    setLoading(true);setLoadFailed(false);
     setMessage(t("Loading photo check queue...", "ဓာတ်ပုံစစ်ဆေးရန် စာရင်းများကို ရယူနေပါသည်..."));
     try {
       let data: any[] = [];
-      const reviewRes = await (supabase as any).from("be_parcel_photo_reviews").select("*").order("updated_at", { ascending: false }).limit(1000);
-      if (!reviewRes.error && reviewRes.data?.length) data = reviewRes.data;
+      const [reviewRes,verificationRes] = await Promise.all([
+        (supabase as any).from("be_parcel_photo_reviews").select("*").order("updated_at", { ascending: false }).limit(1000),
+        (supabase as any).from("be_pickup_parcel_verifications").select("*").order("updated_at", { ascending: false }).limit(1000),
+      ]);
+      if(verificationRes.error) throw verificationRes.error;
+      if(reviewRes.error) throw reviewRes.error;
+      const byParcel=new Map<string,any>();
+      for(const row of reviewRes.error?[]:(reviewRes.data||[])) byParcel.set(`${row.pickup_id}:${parcelNo(row)}`,row);
+      for(const row of verificationRes.data||[]) byParcel.set(`${row.pickup_id}:${parcelNo(row)}`,{
+        ...row,current_photo_url:getPhoto(row),review_status:row.proof_check_status||row.verification_status||"PENDING_REVIEW",
+        rejection_reason:["REUPLOAD_REQUIRED","PHOTO_REJECTED","REJECTED"].includes(row.proof_check_status||row.verification_status)?row.review_note||"Photo re-upload required":null,
+        rejection_note:"",review_source:"VERIFICATION",
+      });
+      data=[...byParcel.values()];
       if (!data.length) {
         const fallback = await (supabase as any).from("be_data_entry_parcels").select("*").order("created_at", { ascending: false }).limit(1000);
         if (fallback.error) throw fallback.error;
@@ -65,6 +78,7 @@ export default function DataEntryPhotoCheckPage() {
       setRows(data);
       setMessage(t(`Loaded ${data.length} parcel photo row(s).`, `ပါဆယ်ဓာတ်ပုံမှတ်တမ်း (${data.length}) ခု ရရှိပါသည်။`));
     } catch (error: any) {
+      setLoadFailed(true);
       setMessage(t(`Photo check load failed: ${error.message}`, `ရယူခြင်း မအောင်မြင်ပါ - ${error.message}`));
     } finally {
       setLoading(false);
@@ -72,6 +86,7 @@ export default function DataEntryPhotoCheckPage() {
   }
 
   async function decide(row: any, decision: "APPROVE" | "REJECT") {
+    if(decision==="APPROVE"&&!getPhoto(row)) return setMessage("A current parcel photo is required for approval. Use Data Entry to record an audited reason-only photo skip when appropriate.");
     const payload = {
       review_id: row.id,
       pickup_id: row.pickup_id || row.pickup_request_id,
@@ -87,18 +102,8 @@ export default function DataEntryPhotoCheckPage() {
     setLoading(true);
     try {
       const rpc = await (supabase as any).rpc("be_review_parcel_photo", { p_payload: payload });
-      if (rpc.error) {
-        const status = decision === "APPROVE" ? "APPROVED" : "REUPLOAD_REQUIRED";
-        const fallback = await (supabase as any).from("be_parcel_photo_reviews").update({
-          review_status: status,
-          rejection_reason: decision === "REJECT" ? reason : null,
-          rejection_note: decision === "REJECT" ? note : null,
-          reviewed_by: payload.reviewed_by,
-          reviewed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }).eq("id", row.id);
-        if (fallback.error) throw rpc.error;
-      }
+      if(rpc.data?.ok===false) throw new Error(rpc.data?.error||rpc.data?.message||"Photo review failed.");
+      if(rpc.error) throw rpc.error;
       setMessage(decision === "APPROVE" ? "Photo approved. This parcel can proceed to registration." : "Photo rejected. Rider and warehouse re-upload request created.");
       setRejecting(null); setNote(""); setReason("BLURRY_IMAGE");
       await load();
@@ -136,11 +141,11 @@ export default function DataEntryPhotoCheckPage() {
               <div className="space-y-3 p-5">
                 <div className="flex items-start justify-between gap-3"><div><div className="font-mono font-black text-[#f6b84b]">{row.pickup_id || row.pickup_request_id || '-'}</div><div className="mt-1 text-sm text-[#9cc2d9]">Parcel {parcelNo(row, index)} · {row.tracking_no || row.delivery_way_id || '-'}</div></div><span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase ${statusClass(status)}`}>{status.replaceAll('_',' ')}</span></div>
                 {row.rejection_reason && <div className="rounded-xl border border-[#ff4f86]/30 bg-[#ff4f86]/10 p-3 text-sm text-[#ff9abd]">{String(row.rejection_reason).replaceAll('_',' ')}{row.rejection_note ? ` — ${row.rejection_note}` : ''}</div>}
-                <div className="grid grid-cols-2 gap-2"><button onClick={() => void decide(row, 'APPROVE')} className="flex items-center justify-center gap-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 px-3 py-3 font-bold text-[#22c55e]"><CheckCircle2 size={16}/>Approve</button><button onClick={() => { setRejecting(row); setReason('BLURRY_IMAGE'); setNote(''); }} className="flex items-center justify-center gap-2 rounded-xl border border-[#ff4f86]/30 bg-[#ff4f86]/10 px-3 py-3 font-bold text-[#ff4f86]"><XCircle size={16}/>Reject</button></div>
+                <div className="grid grid-cols-2 gap-2"><button disabled={loading||!photo} onClick={() => void decide(row, 'APPROVE')} className="flex items-center justify-center gap-2 rounded-xl border border-[#22c55e]/30 bg-[#22c55e]/10 px-3 py-3 font-bold text-[#22c55e]"><CheckCircle2 size={16}/>Approve</button><button onClick={() => { setRejecting(row); setReason('BLURRY_IMAGE'); setNote(''); }} className="flex items-center justify-center gap-2 rounded-xl border border-[#ff4f86]/30 bg-[#ff4f86]/10 px-3 py-3 font-bold text-[#ff4f86]"><XCircle size={16}/>Reject</button></div>
               </div>
             </article>;
           })}
-          {!filtered.length && <div className="col-span-full rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-14 text-center font-bold text-[#4d7a9b]">No parcel photos found.</div>}
+          {!filtered.length && !loadFailed && <div className="col-span-full rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-14 text-center font-bold text-[#4d7a9b]">No parcel photos found.</div>}
         </section>
       </div>
 
