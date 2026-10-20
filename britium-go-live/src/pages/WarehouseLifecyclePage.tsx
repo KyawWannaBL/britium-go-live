@@ -4,30 +4,43 @@ import { supabase } from "@/integrations/supabase/client";
 import WarehouseWayplanCenterPage from "./WarehouseWayplanCenterPage";
 
 function text(value: any) { return String(value ?? "").trim(); }
-function getPhoto(row: any) { return row.current_photo_url || row.photo_url || ""; }
+function getPhoto(row: any) { return row.current_photo_url || row.proof_photo_url || row.proof_photo_path || row.photo_url || ""; }
 
 export default function WarehouseLifecyclePage() {
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadFailed,setLoadFailed]=useState(false);
   const [message, setMessage] = useState("");
   const [files, setFiles] = useState<Record<string, File | undefined>>({});
 
-  const openRows = useMemo(() => rows.filter((r) => ["PHOTO_REJECTED", "REUPLOAD_REQUIRED"].includes(text(r.review_status).toUpperCase())), [rows]);
+  const openRows = useMemo(() => rows.filter((r) => ["PHOTO_REJECTED", "REUPLOAD_REQUIRED", "REJECTED"].includes(text(r.review_status).toUpperCase())), [rows]);
 
   async function load() {
-    setLoading(true);
+    setLoading(true);setLoadFailed(false);
     try {
-      const { data, error } = await (supabase as any).from("be_parcel_photo_reviews").select("*").in("review_status", ["PHOTO_REJECTED", "REUPLOAD_REQUIRED"]).order("updated_at", { ascending: false }).limit(500);
-      if (error) throw error;
-      setRows(data || []);
-      setMessage(`Loaded ${(data || []).length} photo rework item(s).`);
+      const [reviews,verifications]=await Promise.all([
+        (supabase as any).from("be_parcel_photo_reviews").select("*").in("review_status", ["PHOTO_REJECTED", "REUPLOAD_REQUIRED", "REJECTED"]).order("updated_at", { ascending: false }).limit(500),
+        (supabase as any).from("be_pickup_parcel_verifications").select("*").order("updated_at", { ascending: false }).limit(1000),
+      ]);
+      if(verifications.error) throw verifications.error;
+      if(reviews.error) throw reviews.error;
+      const byParcel=new Map<string,any>();
+      for(const row of reviews.error?[]:(reviews.data||[])) byParcel.set(`${row.pickup_id}:${row.parcel_sequence}`,row);
+      for(const row of verifications.data||[]) byParcel.set(`${row.pickup_id}:${row.parcel_sequence}`,{
+        ...row,current_photo_url:getPhoto(row),review_status:row.proof_check_status||row.verification_status||"PENDING_REVIEW",
+        rejection_reason:row.review_note||"Photo re-upload required",rejection_note:"",review_source:"VERIFICATION",
+      });
+      const data=[...byParcel.values()].filter(row=>["PHOTO_REJECTED","REUPLOAD_REQUIRED","REJECTED"].includes(text(row.review_status).toUpperCase()));
+      setRows(data);
+      setMessage(`Loaded ${data.length} photo rework item(s).`);
     } catch (error: any) {
-      setMessage(`Photo rework queue unavailable: ${error.message}. Run the included migration.`);
-      setRows([]);
+      setLoadFailed(true);
+      setMessage(`Photo rework queue unavailable: ${error.message}. Refresh to retry.`);
     } finally { setLoading(false); }
   }
 
   async function uploadReplacement(row: any) {
+    if(row.review_source==="VERIFICATION") return setMessage("Ask the assigned Rider to replace this photo in pickup verification, then submit it for Data Entry review.");
     const file = files[row.id];
     if (!file) return setMessage("Select or capture a clear replacement photo first.");
     if (!file.type.startsWith("image/")) return setMessage("Only image files are allowed.");
@@ -51,6 +64,7 @@ export default function WarehouseLifecyclePage() {
         uploaded_role: "WAREHOUSE",
       }});
       if (result.error) throw result.error;
+      if(result.data?.ok===false) throw new Error(result.data?.error||"Photo re-upload failed.");
       setMessage(`Replacement photo uploaded for ${row.tracking_no || row.delivery_way_id || row.pickup_id}. Data Entry review is pending.`);
       setFiles((old) => ({ ...old, [row.id]: undefined }));
       await load();
@@ -69,9 +83,9 @@ export default function WarehouseLifecyclePage() {
         {openRows.map((row) => <article key={row.id} className="overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#061524]">
           <div className="flex h-64 items-center justify-center overflow-hidden p-2">{getPhoto(row) ? <img src={getPhoto(row)} alt="Rejected parcel proof" className="h-full w-full object-contain"/> : <div className="text-[#4d7a9b]">No existing photo</div>}</div>
           <div className="space-y-3 border-t border-[#1a3a5c] p-4"><div className="flex justify-between gap-3"><div><div className="font-mono font-black text-[#f6b84b]">{row.pickup_id}</div><div className="text-sm text-[#9cc2d9]">{row.tracking_no || row.delivery_way_id || `Parcel ${row.parcel_sequence || '-'}`}</div></div><span className="h-fit rounded-full border border-[#ff4f86]/30 bg-[#ff4f86]/10 px-3 py-1 text-[10px] font-black text-[#ff4f86]">REUPLOAD REQUIRED</span></div><div className="rounded-xl border border-[#ff4f86]/30 bg-[#ff4f86]/10 p-3 text-sm text-[#ff9abd]">{text(row.rejection_reason).replaceAll('_',' ') || 'Unclear or incomplete parcel photo'}{row.rejection_note ? ` — ${row.rejection_note}` : ''}</div>
-          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] px-3 py-3 font-bold"><Camera size={16}/>Capture / Select Replacement<input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFiles((old) => ({...old, [row.id]: e.target.files?.[0]}))}/></label>{files[row.id] && <div className="text-xs text-[#22c55e]">Selected: {files[row.id]?.name}</div>}<button onClick={() => void uploadReplacement(row)} disabled={loading || !files[row.id]} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f6b84b] px-4 py-3 font-black text-[#061524] disabled:opacity-50"><UploadCloud size={17}/>Upload for Data Entry Review</button></div>
+          {row.review_source==="VERIFICATION"?<div className="rounded-xl border border-[#f6b84b]/30 p-3 text-sm text-[#f6b84b]">Ask the assigned Rider to replace this photo in pickup verification, then submit it for Data Entry review.</div>:<><label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] px-3 py-3 font-bold"><Camera size={16}/>Capture / Select Replacement<input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => setFiles((old) => ({...old, [row.id]: e.target.files?.[0]}))}/></label>{files[row.id] && <div className="text-xs text-[#22c55e]">Selected: {files[row.id]?.name}</div>}<button onClick={() => void uploadReplacement(row)} disabled={loading || !files[row.id]} className="flex w-full items-center justify-center gap-2 rounded-xl bg-[#f6b84b] px-4 py-3 font-black text-[#061524] disabled:opacity-50"><UploadCloud size={17}/>Upload for Data Entry Review</button></>}</div>
         </article>)}
-        {!openRows.length && <div className="col-span-full rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-10 text-center font-bold text-[#22c55e]"><CheckCircle2 className="mx-auto mb-2"/>No rejected parcel-photo rework is waiting.</div>}
+        {!openRows.length && !loadFailed && <div className="col-span-full rounded-2xl border border-[#22c55e]/30 bg-[#22c55e]/10 p-10 text-center font-bold text-[#22c55e]"><CheckCircle2 className="mx-auto mb-2"/>No rejected parcel-photo rework is waiting.</div>}
       </div>
     </section>
   </div>;
