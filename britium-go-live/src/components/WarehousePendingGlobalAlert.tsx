@@ -37,7 +37,10 @@ function returnedAfterDispatch(row:any){
 function pending(row:any){
   if(!row.inbound_scan_at || terminal(row) || hasActiveWayplan(row)) return false;
   const delivery=upper(row.delivery_status);
+  const stage=upper(row.dispatch_workflow_stage);
   if(["OUT_FOR_DELIVERY","RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return false;
+
+  if(["OUT_FOR_DELIVERY","DISPATCHED_TO_FIELD"].includes(stage)) return false;
 
   const failed=Boolean(row.next_attempt_priority)
     || Number(row.return_attempt_count||row.physical_return_scan_count||0)>0
@@ -59,9 +62,13 @@ export default function WarehousePendingGlobalAlert(){
     if(!enabled) return;
     let alive=true;
     const load=async()=>{
-      const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
-      if(!alive||error) return;
-      setRows(Array.isArray(data?.rows)?data.rows:[]);
+      try {
+        const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
+        if(!alive||error||data?.ok===false) return;
+        setRows(Array.isArray(data?.rows)?data.rows:[]);
+      } catch {
+        // Keep the last known overdue alert visible during a connection failure.
+      }
     };
     void load();
     const timer=window.setInterval(()=>void load(),60000);
@@ -70,8 +77,8 @@ export default function WarehousePendingGlobalAlert(){
 
   const overdue=useMemo(()=>rows.filter((row:any)=>{
     if(!pending(row)) return false;
-    const hours=Number(row.dwell_hours);
-    if(Number.isFinite(hours)) return hours>=48;
+    const hours=row.dwell_hours==null||txt(row.dwell_hours)===""?NaN:Number(row.dwell_hours);
+    if(Number.isFinite(hours)&&hours>=0) return hours>=48;
     const ms=Date.now()-new Date(row.inbound_scan_at).getTime();
     return Number.isFinite(ms)&&ms>=48*3600000;
   }),[rows]);

@@ -79,7 +79,7 @@ jobs:
         working-directory: britium-go-live
         run: |
           set -euo pipefail
-          npx vite build
+          npm run build
           test -s dist/index.html
           test -d dist/assets
 

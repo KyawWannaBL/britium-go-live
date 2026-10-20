@@ -83,79 +83,114 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const profileRef = useRef<UserProfile | null>(null);
   const profileRequestRef = useRef(0);
+  const profileUserRef = useRef<string | null>(null);
+  const activeRef = useRef(true);
 
-  const commitProfile = (nextProfile: UserProfile | null) => {
+  const isCurrentRequest = (requestId: number) =>
+    activeRef.current && requestId === profileRequestRef.current;
+
+  const commitProfile = (nextProfile: UserProfile | null, userId: string | null = null) => {
     profileRef.current = nextProfile;
+    profileUserRef.current = nextProfile ? userId : null;
     setProfile(nextProfile);
+  };
+
+  const acceptSession = (nextSession: Session | null) => {
+    setSession(nextSession);
+    // Approval belongs to the UUID that was checked, never to a new session's
+    // account. Keep an approved same-user view mounted during JWT renewal.
+    if (!nextSession || profileUserRef.current !== nextSession.user.id) {
+      commitProfile(null);
+      setLoading(Boolean(nextSession));
+    }
+  };
+
+  const clearSession = () => {
+    ++profileRequestRef.current;
+    setSession(null);
+    commitProfile(null);
+    setLoading(false);
   };
 
   const rejectSession = async (error: unknown) => {
     console.warn('Session rejected by RLS login contract:', getErrorMessage(error));
-    setSession(null);
-    commitProfile(null);
+    clearSession();
     await supabase.auth.signOut();
   };
 
-  const refreshProfile = async () => {
-    const { data } = await supabase.auth.getSession();
-    setSession(data.session);
+  const verifyProfile = async (requestId: number, user: User | null) => {
+    if (!isCurrentRequest(requestId)) return;
     try {
-      commitProfile(await loadProfile(data.session?.user ?? null));
+      const nextProfile = await loadProfile(user);
+      if (isCurrentRequest(requestId)) commitProfile(nextProfile, user?.id ?? null);
     } catch (error) {
-      if (error instanceof AccountAccessDeniedError) {
-        await rejectSession(error);
-      }
+      if (!isCurrentRequest(requestId)) return;
+      if (error instanceof AccountAccessDeniedError) await rejectSession(error);
       throw error;
+    } finally {
+      if (isCurrentRequest(requestId)) setLoading(false);
     }
   };
 
+  const refreshProfile = async () => {
+    const requestId = ++profileRequestRef.current;
+    const { data } = await supabase.auth.getSession();
+    if (!isCurrentRequest(requestId)) return;
+    acceptSession(data.session);
+    await verifyProfile(requestId, data.session?.user ?? null);
+  };
+
   useEffect(() => {
-    let active = true;
+    activeRef.current = true;
+    const requestId = ++profileRequestRef.current;
 
     supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      setSession(data.session);
+      if (!isCurrentRequest(requestId)) return;
+      acceptSession(data.session);
       try {
-        commitProfile(await loadProfile(data.session?.user ?? null));
+        await verifyProfile(requestId, data.session?.user ?? null);
       } catch (error) {
-        if (error instanceof AccountAccessDeniedError) {
-          await rejectSession(error);
-        } else {
+        if (!(error instanceof AccountAccessDeniedError)) {
           console.warn('Profile verification was temporarily unavailable; preserving the active session:', getErrorMessage(error));
         }
       }
-      if (active) setLoading(false);
+    }).catch((error) => {
+      if (!isCurrentRequest(requestId)) return;
+      console.warn('Unable to restore authentication session:', getErrorMessage(error));
+      clearSession();
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, newSession) => {
+      if (!activeRef.current) return;
       if (event === 'SIGNED_OUT' || !newSession) {
-        setSession(null);
-        commitProfile(null);
-        setLoading(false);
+        clearSession();
         return;
       }
 
-      setSession(newSession);
+      acceptSession(newSession);
 
       // A file-picker focus change can coincide with Supabase refreshing the JWT.
-      // The existing authorized profile remains valid; do not turn a transient
-      // profile RPC failure into an application sign-out.
-      if (event === 'TOKEN_REFRESHED' && profileRef.current?.authorized) {
+      // Only an approved profile belonging to this UUID can skip verification.
+      if (event === 'TOKEN_REFRESHED' && profileRef.current?.authorized &&
+          profileUserRef.current === newSession.user.id) {
         setLoading(false);
         return;
       }
 
+      // Same-account JWT renewal must not cancel an access check already in
+      // flight: that check may authoritatively revoke the current approval.
       const requestId = ++profileRequestRef.current;
-      // Supabase advises keeping auth callbacks non-blocking. Deferring the RPC
-      // also prevents a file-picker focus event and token refresh from racing
-      // two profile requests that can overwrite each other.
+
+      // Keep auth callbacks non-blocking, and check ownership before starting
+      // queued RPCs as well as after they resolve.
       globalThis.setTimeout(() => {
+        if (!isCurrentRequest(requestId)) return;
         loadProfile(newSession.user)
           .then((nextProfile) => {
-            if (requestId === profileRequestRef.current) commitProfile(nextProfile);
+            if (isCurrentRequest(requestId)) commitProfile(nextProfile, newSession.user.id);
           })
           .catch(async (error) => {
-            if (requestId !== profileRequestRef.current) return;
+            if (!isCurrentRequest(requestId)) return;
             if (error instanceof AccountAccessDeniedError) {
               await rejectSession(error);
             } else {
@@ -163,13 +198,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           })
           .finally(() => {
-            if (requestId === profileRequestRef.current) setLoading(false);
+            if (isCurrentRequest(requestId)) setLoading(false);
           });
       }, 0);
     });
 
     return () => {
-      active = false;
+      activeRef.current = false;
+      ++profileRequestRef.current;
       sub.subscription.unsubscribe();
     };
   }, []);
@@ -186,9 +222,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await refreshProfile();
     },
     signOut: async () => {
+      clearSession();
       await supabase.auth.signOut();
-      setSession(null);
-      commitProfile(null);
     },
     refreshProfile
   }), [loading, session, profile]);

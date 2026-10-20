@@ -65,7 +65,7 @@ export default function WarehousePendingParcelsPage(){
     if(!quiet) setLoading(true);
     try{
       const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
-      if(error) throw error;
+      if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
       setMessage("");
     }catch(e:any){
@@ -82,7 +82,7 @@ export default function WarehousePendingParcelsPage(){
   },[load]);
 
   const pending=useMemo(()=>rows.filter(isPendingForWayplan).map((row:any)=>{
-    const dwell = Number(row.dwell_hours);
+    const dwell = row.dwell_hours == null || txt(row.dwell_hours) === "" ? NaN : Number(row.dwell_hours);
     const ageHours = Number.isFinite(dwell) && dwell >= 0 ? dwell : hoursSince(row.inbound_scan_at);
     const failedReturn = Boolean(row.next_attempt_priority)
       || Number(row.return_attempt_count || row.physical_return_scan_count || 0)>0

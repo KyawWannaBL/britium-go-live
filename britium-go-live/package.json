@@ -72,7 +72,7 @@
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
     "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
     "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
-    "prebuild": "npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
+    "prebuild": "npm run test:enterprise-regressions && npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
     "verify:merchant-settlement-v200": "node scripts/verify-merchant-settlement-v200.cjs",
     "verify:merchant-receipt-upload": "node scripts/verify-merchant-receipt-upload.cjs",
     "verify:learned-location-alias": "node scripts/verify-learned-location-alias.mjs",
@@ -83,7 +83,9 @@
     "verify:go-live-ready-ui": "node scripts/verify-go-live-ready-ui.cjs",
     "verify:isolated-build-inputs": "node scripts/verify-isolated-build-inputs.mjs",
     "verify:mobile-layout": "node scripts/verify-mobile-layout.cjs",
-    "verify:legacy-login": "node scripts/verify-legacy-login.cjs"
+    "verify:legacy-login": "node scripts/verify-legacy-login.cjs",
+    "test:enterprise-regressions": "node scripts/test-enterprise-auth-state.mjs && node scripts/test-enterprise-finance-review-state.mjs && node scripts/test-enterprise-warehouse-state.mjs",
+    "test": "npm run test:enterprise-regressions && node scripts/test-reason-only-photo-skip.mjs && node scripts/test-reason-only-photo-skip-db.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
