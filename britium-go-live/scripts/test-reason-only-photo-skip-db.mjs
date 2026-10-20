@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { PGlite } from '@electric-sql/pglite';
+const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+const db=new PGlite();
+try {
+await db.exec(`create schema auth; create schema private;
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.test_uid',true),'')::uuid$$;
+create function auth.jwt() returns jsonb language sql stable as $$select '{"email":"staff@example.invalid"}'::jsonb$$;
+create function public.be_data_entry_require_access_v57(text,boolean) returns jsonb language plpgsql as $$begin if current_setting('request.test_role',true)<>'DATA_ENTRY' then raise exception 'Access denied';end if;return jsonb_build_object('actor_user_id',auth.uid(),'actor_email','staff@example.invalid','actor_role','DATA_ENTRY');end$$;
+create table public.be_portal_pickup_requests(pickup_id text primary key,pickup_way_id text,pending_photo_count integer,updated_at timestamptz);
+create table public.be_pickup_parcel_verifications(pickup_id text,pickup_way_id text,parcel_sequence integer,delivery_way_id text,status text,verification_status text,proof_check_status text,reviewed_by text,reviewed_by_email text,reviewed_at timestamptz,review_note text,raw_payload jsonb,created_at timestamptz,updated_at timestamptz,proof_photo_url text,proof_photo_path text,proof_photo_data text,primary key(pickup_id,parcel_sequence));
+create table public.be_data_entry_parcel_details(pickup_id text,parcel_sequence integer,delivery_way_id text,saved_at timestamptz);
+create table public.be_audit_events(actor_id uuid,actor_email text,actor_role text,action text,resource_type text,resource_id text,details jsonb,upload_code text,event_type text,entity_type text,entity_id text,payload jsonb);
+insert into public.be_portal_pickup_requests values('P1020-TEST-001','P1020-TEST-001',1,now());
+insert into public.be_data_entry_parcel_details values('P1020-TEST-001',1,'P1020-TEST-001-001',now());
+set request.test_uid='11111111-1111-4111-8111-111111111111';set request.test_role='DATA_ENTRY';`);
+const migration=process.argv[2]||fs.readdirSync(path.join(root,'supabase/migrations')).find(f=>f.endsWith('_reason_only_photo_skip.sql'));
+const file=process.argv[2]?path.resolve(root,migration):path.join(root,'supabase/migrations',migration);
+await db.exec(fs.readFileSync(file,'utf8'));
+async function waive(reason,extra={}){return (await db.query('select public.be_data_entry_photo_waiver_v54($1::jsonb) result',[JSON.stringify({action:'WAIVE',pickup_id:'P1020-TEST-001',parcel_sequence:1,reason,...extra})])).rows[0].result;}
+assert.equal((await waive(' ')).ok,false,'Empty reason rejected by database');
+const result=await waive('None');
+assert.equal(result.ok,true,'A short non-empty reason is sufficient');
+assert.equal(result.review_status,'PHOTO_SKIPPED');
+assert.equal(result.photo_upload_later_required,false);
+const v=(await db.query('select * from public.be_pickup_parcel_verifications')).rows[0];
+assert.equal(v.verification_status,'PHOTO_SKIPPED_REASON');
+assert.equal(v.raw_payload.photo_skipped,true);
+assert.equal(v.raw_payload.photo_skip_reason,'None');
+assert.equal(v.proof_photo_url,null,'Skipping never fabricates an image');
+assert.equal(v.proof_photo_path,null);
+assert.equal((await db.query("select pending_photo_count from public.be_portal_pickup_requests")).rows[0].pending_photo_count,0,'No pending photo task remains');
+assert.equal((await db.query("select count(*)::int n from public.be_audit_events where action='DATA_ENTRY_PHOTO_SKIPPED_BY_REASON' and details->>'reason'='None' and details->>'temporary'='false'")).rows[0].n,1,'Reason and actor are audited as a permanent exception');
+assert.equal((await db.query("select private.be_reason_only_photo_skip_valid_v1('P1020-TEST-001',1) ok")).rows[0].ok,true,'Saved audited skip is accepted downstream without photos');
+await db.exec("update public.be_pickup_parcel_verifications set reviewed_by='22222222-2222-4222-8222-222222222222',reviewed_by_email='other@example.invalid'");
+assert.equal((await db.query("select private.be_reason_only_photo_skip_valid_v1('P1020-TEST-001',1) ok")).rows[0].ok,true,'Another operator generating the waybill cannot invalidate the original skip audit');
+await db.exec("update public.be_pickup_parcel_verifications set raw_payload=jsonb_set(raw_payload,'{photo_skip_reason}','\"Different\"')");
+assert.equal((await db.query("select private.be_reason_only_photo_skip_valid_v1('P1020-TEST-001',1) ok")).rows[0].ok,false,'Unaudited or changed reasons do not authorize bypass');
+await db.exec("set request.test_role='RIDER'");
+await assert.rejects(waive('None'),/Access denied/,'Existing access controls remain enforced');
+await db.exec("set request.test_uid=''");
+await assert.rejects(waive('None'),/Authentication is required/);
+console.log('PASS: database reason-only skip, audit, downstream evidence and access checks');
+} finally { await db.close(); }
