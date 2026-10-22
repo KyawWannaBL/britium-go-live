@@ -85,7 +85,7 @@
     "verify:mobile-layout": "node scripts/verify-mobile-layout.cjs",
     "verify:data-entry-rider-evidence-sync": "node --test scripts/test-data-entry-rider-evidence-sync.mjs",
     "verify:legacy-login": "node scripts/verify-legacy-login.cjs",
-    "test:enterprise-regressions": "node scripts/test-enterprise-auth-state.mjs && node scripts/test-enterprise-finance-review-state.mjs && node scripts/test-enterprise-warehouse-state.mjs && npm run verify:data-entry-rider-evidence-sync",
+    "test:enterprise-regressions": "node scripts/test-enterprise-auth-state.mjs && node scripts/test-enterprise-finance-review-state.mjs && node scripts/test-accounting-journal-register.mjs && node scripts/test-enterprise-warehouse-state.mjs && npm run verify:data-entry-rider-evidence-sync",
     "test": "npm run test:enterprise-regressions && node scripts/test-reason-only-photo-skip.mjs && node scripts/test-reason-only-photo-skip-db.mjs"
   },
   "dependencies": {

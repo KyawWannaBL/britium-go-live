@@ -1,5 +1,5 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Archive, BookOpen, FileUp, Landmark, Plus, RefreshCw, Save, Search, Send, Trash2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -41,6 +41,11 @@ export default function AccountingMasterWorkspacePage(){
   const [message,setMessage]=useState("");
   const [busy,setBusy]=useState(false);
   const [history,setHistory]=useState<any[]>([]);
+  const [historyError,setHistoryError]=useState("");
+  const [selectedJournalId,setSelectedJournalId]=useState<string|null>(null);
+  const journalReferenceRef=useRef<HTMLButtonElement|null>(null);
+  const selectedJournal=history.find(r=>r.id===selectedJournalId);
+  const savedLines=Array.isArray(selectedJournal?.lines)?selectedJournal.lines:[];
   const [pl,setPl]=useState<any>(null);
   const [plFrom,setPlFrom]=useState(new Date().toISOString().slice(0,7)+"-01");
   const [plTo,setPlTo]=useState(new Date().toISOString().slice(0,10));
@@ -77,8 +82,12 @@ export default function AccountingMasterWorkspacePage(){
   const balanced=debit>0&&Math.abs(debit-credit)<0.01&&lines.every(l=>l.account&&(Number(l.debit||0)>0)!==(Number(l.credit||0)>0));
 
   async function loadHistory(){
-    const {data,error}=await (supabase as any).rpc("be_accounting_manual_journal_snapshot_v1",{p_limit:100});
-    if(!error&&data?.ok!==false)setHistory(Array.isArray(data?.rows)?data.rows:[]);
+    try {
+      const {data,error}=await (supabase as any).rpc("be_accounting_manual_journal_snapshot_v1",{p_limit:100});
+      if(error||data?.ok===false)throw new Error(error?.message||data?.error||data?.message||"Unable to load journals.");
+      if(!Array.isArray(data?.rows))throw new Error("Unable to load journals. Please refresh.");
+      setHistory(data.rows);setHistoryError("");
+    } catch(error:any){setHistoryError(error?.message||"Unable to load journals.");}
   }
   useEffect(()=>{void loadHistory()},[]);
 
@@ -221,6 +230,17 @@ export default function AccountingMasterWorkspacePage(){
     {([["Revenue",pl.revenue],["Direct Costs / COGS",pl.cogs],["Operating Expenses",pl.expenses],["Gross Profit",pl.gross_profit],["Net Profit",pl.net_profit]] as any[]).map(([label,amount])=><div key={label} className="rounded-xl bg-[#061524] p-4"><p className="text-xs text-[#9cc2d9]">{label}</p><p className="mt-2 text-lg font-black text-white">{money(amount)}</p></div>)}
   </div><p className="mt-3 text-xs text-[#9cc2d9]">{pl.classified_line_count===0?"No posted income or expense journals in this period. Draft entries are not counted.":String(pl.classified_line_count)+" classified journal lines included."}</p></>}
 </section>}
-    {tab==="history"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><h2 className="font-black">Manual Journal Register</h2><div className="mt-4 max-h-[700px] overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td className="font-mono font-black text-[#38bdf8]">{r.journal_reference}</td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div></section>}
+    {tab==="history"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+      <h2 className="font-black">Manual Journal Register</h2>
+      <p className="mt-1 text-xs text-[#9cc2d9]">Select a journal reference to view its saved debit and credit lines. Drafts are not posted to the General Ledger or included in profit reports.</p>
+      {historyError&&<p role="alert" className="mt-4 text-rose-300">Journal refresh failed: {historyError}{history.length>0&&" Showing previously loaded records."}</p>}
+      <div className="mt-4 max-h-[700px] overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td><button type="button" ref={selectedJournalId===r.id?journalReferenceRef:null} onClick={()=>setSelectedJournalId(r.id)} aria-expanded={selectedJournalId===r.id} aria-controls="journal-register-detail" className="py-3 text-left font-mono font-black text-[#38bdf8] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#f6b84b]">{r.journal_reference}</button></td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&!historyError&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div>
+      {selectedJournal&&<section id="journal-register-detail" aria-label="Saved journal details" className="mt-5 rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-mono font-black text-[#38bdf8]">{selectedJournal.journal_reference}</h3><p className="mt-2 text-sm">{selectedJournal.description||"No description"}</p><p className="mt-2 text-xs text-[#9cc2d9]">{selectedJournal.transaction_date} · {selectedJournal.branch_code} · {selectedJournal.status}</p></div><button type="button" onClick={()=>{journalReferenceRef.current?.focus();setSelectedJournalId(null)}} className="rounded-lg border border-[#1a3a5c] px-3 py-2 text-xs">Close details</button></div>
+        {selectedJournal.status==="DRAFT"&&<p className="mt-3 text-sm text-[#f6b84b]">Draft — not posted to the General Ledger. Maker-checker approval is required before posting.</p>}
+        <div className="mt-4 overflow-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="text-xs text-[#9cc2d9]"><tr><th className="p-3">Account Code</th><th className="p-3">Line Description</th><th className="p-3 text-right">Debit</th><th className="p-3 text-right">Credit</th></tr></thead><tbody>{savedLines.map((line:any,index:number)=><tr key={index} className="border-t border-[#1a3a5c]"><td className="p-3 font-mono">{line.account_code||"-"}</td><td className="p-3">{line.description||"-"}</td><td className="p-3 text-right">{money(line.debit)}</td><td className="p-3 text-right">{money(line.credit)}</td></tr>)}</tbody><tfoot className="border-t border-[#1a3a5c] font-black"><tr><th colSpan={2} className="p-3">Total</th><td className="p-3 text-right">{money(savedLines.reduce((sum:number,line:any)=>sum+Number(line.debit||0),0))}</td><td className="p-3 text-right">{money(savedLines.reduce((sum:number,line:any)=>sum+Number(line.credit||0),0))}</td></tr></tfoot></table></div>
+        {!savedLines.length&&<p className="mt-3 text-sm text-[#9cc2d9]">No saved lines returned for this journal.</p>}
+      </section>}
+    </section>}
   </div>;
 }
