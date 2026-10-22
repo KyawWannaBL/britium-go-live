@@ -1,6 +1,7 @@
 // @ts-nocheck
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, Edit3, FileText, RefreshCw, Search, Trash2, UploadCloud, Users, X } from "lucide-react";
+import AccountAccessPanel from "@/components/accounts/AccountAccessPanel";
 import { supabase } from "@/integrations/supabase/client";
 
 const DOC_TYPES=[
@@ -28,14 +29,15 @@ export default function AdminHRPage(){
   const [form,setForm]=useState({employee_code:"",document_type:"EMPLOYMENT_CONTRACT",title:"",effective_date:"",expiry_date:"",notes:""});
   const [employeeEdit,setEmployeeEdit]=useState<any>(null);
   const [employeeBusy,setEmployeeBusy]=useState(false);
+  const employeeMutationBusy=useRef(false);
 
-  async function load(){
-    setLoading(true);setMessage("");
+  async function load(preserveMessage=false){
+    setLoading(true);if(!preserveMessage)setMessage("");
     const [hr,dr]=await Promise.all([
       (supabase as any).rpc("be_hr_dashboard"),
       (supabase as any).rpc("be_hr_document_snapshot_v1",{p_search:docSearch.trim()||null,p_limit:1000})
     ]);
-    if(hr.error)setMessage(hr.error.message);
+    if(hr.error||hr.data?.ok===false)setMessage(m=>(preserveMessage&&m?m+" Refresh failed: ":"")+(hr.error?.message||hr.data?.message||hr.data?.code||"Employee list unavailable."));
     else {setEmployees(Array.isArray(hr.data?.employees)?hr.data.employees:Array.isArray(hr.data?.rows)?hr.data.rows:[]);setSummary(hr.data?.summary||{});}
     if(dr.error||dr.data?.ok===false)setMessage((m:string)=>m||dr.error?.message||dr.data?.code||"HR documents unavailable.");
     else setDocs(Array.isArray(dr.data?.rows)?dr.data.rows:[]);
@@ -59,31 +61,43 @@ export default function AdminHRPage(){
   }
 
   async function saveEmployee(){
-    if(!employeeEdit)return;
-    setEmployeeBusy(true);setMessage("");
-    const {data:{user}}=await supabase.auth.getUser();
-    const {data,error}=await (supabase as any).rpc("be_hr_employee_save_audited",{
-      p_record:employeeEdit,
-      p_actor_email:user?.email||"hr@britiumexpress.com"
-    });
-    if(error||data?.ok===false){setMessage(error?.message||data?.message||data?.code||"Employee save failed.");setEmployeeBusy(false);return;}
-    setMessage("Employee record updated in Supabase with audit trail.");
-    setEmployeeEdit(null);setEmployeeBusy(false);await load();
+    if(!employeeEdit||employeeMutationBusy.current)return;
+    const code=String(employeeEdit.employee_code||employeeEdit.employee_id||"").trim();
+    const name=String(employeeEdit.employee_name||employeeEdit.display_name||"").trim();
+    if(!code||!name)return setMessage("Employee code and name are required.");
+    const status=String(employeeEdit.status||"active").trim().toLowerCase();
+    if(!["active","inactive","suspended"].includes(status))return setMessage("Status must be ACTIVE, INACTIVE or SUSPENDED.");
+    const record={...employeeEdit,employee_id:employeeEdit.employee_id||code,employee_code:code,
+      employee_name:name,display_name:String(employeeEdit.display_name||name).trim(),
+      full_name:String(employeeEdit.display_name||name).trim(),phone_e164:String(employeeEdit.phone_primary||"").trim(),
+      email:String(employeeEdit.email||"").trim().toLowerCase(),status,is_active:status==="active",record_action:employeeEdit._existing?(employeeEdit.record_source==="employee_master_dynamic"?"UPSERT":"UPDATE"):"CREATE"};
+    delete record._existing;
+    employeeMutationBusy.current=true;setEmployeeBusy(true);setMessage("");
+    try{
+      const {data:{user},error:authError}=await supabase.auth.getUser();
+      if(authError||!user)throw new Error(authError?.message||"Please sign in again.");
+      const {data,error}=await (supabase as any).rpc("be_hr_employee_save_audited",{p_record:record,p_actor_email:user.email});
+      if(error||!data||data.ok!==true)throw new Error(error?.message||data?.message||data?.code||"Employee save failed.");
+      setMessage("Employee "+code+" saved with audit trail.");setEmployeeEdit(null);await load(true);
+    }catch(error:any){setMessage(error?.message||"Employee save failed.");}
+    finally{employeeMutationBusy.current=false;setEmployeeBusy(false);}
   }
 
   async function deleteEmployee(row:any){
-    const id=String(row.employee_code||row.employee_id||row.id||"").trim();
+    if(employeeMutationBusy.current)return;
+    const id=String(row.employee_id||row.id||row.employee_code||"").trim();
     if(!id)return setMessage("Employee ID is missing.");
-    if(!window.confirm("Delete employee "+id+"? This action is audited."))return;
-    setEmployeeBusy(true);setMessage("");
-    const {data:{user}}=await supabase.auth.getUser();
-    const {data,error}=await (supabase as any).rpc("be_hr_employee_delete_audited",{
-      p_employee_id:id,
-      p_actor_email:user?.email||"hr@britiumexpress.com"
-    });
-    if(error||data?.ok===false){setMessage(error?.message||data?.message||data?.code||"Employee delete failed.");setEmployeeBusy(false);return;}
-    setMessage("Employee "+id+" deleted with audit trail.");
-    setEmployeeBusy(false);await load();
+    if(!window.confirm("Deactivate employee "+id+"? History and documents are retained. Edit and set ACTIVE to restore."))return;
+    employeeMutationBusy.current=true;setEmployeeBusy(true);setMessage("");
+    try{
+      const {data:{user},error:authError}=await supabase.auth.getUser();
+      if(authError||!user)throw new Error(authError?.message||"Please sign in again.");
+      const {data,error}=await (supabase as any).rpc("be_hr_employee_delete_audited",{p_employee_id:id,p_actor_email:user.email});
+      if(error||!data||data.ok!==true)throw new Error(error?.message||data?.message||data?.code||"Employee deactivation failed.");
+      if(!data.deleted_rows)throw new Error("Employee not found. Refresh and try again.");
+      setMessage("Employee "+id+" deactivated with audit trail. History retained.");await load(true);
+    }catch(error:any){setMessage(error?.message||"Employee deactivation failed.");}
+    finally{employeeMutationBusy.current=false;setEmployeeBusy(false);}
   }
 
   async function downloadDoc(row:any){
@@ -130,12 +144,12 @@ export default function AdminHRPage(){
     </section>
 
     <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><Users size={18} className="text-[#38bdf8]"/><h2 className="font-black">Employee Master</h2></div><div className="relative"><Search size={15} className="absolute left-3 top-3 text-[#6f91aa]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employee, department, branch..." className="h-10 min-w-[340px] rounded-xl border border-[#1a3a5c] bg-[#061524] pl-9 pr-3"/></div></div>
-      <div className="mt-4 max-h-[650px] overflow-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Employee</th><th>Name</th><th>Department</th><th>Role</th><th>Branch</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.map((e:any)=><tr key={e.employee_code||e.employee_id||e.email} className="border-t border-[#1a3a5c]/60"><td className="p-3 font-mono text-[#38bdf8]">{e.employee_code||e.employee_id||"-"}</td><td className="font-black">{e.display_name||e.employee_name||e.full_name||"-"}</td><td>{e.department||"-"}</td><td>{e.role_label||e.role_id||"-"}</td><td>{e.branch_code||"-"}</td><td>{e.email||"-"}</td><td>{e.status||"-"}</td><td><div className="flex gap-2"><button onClick={()=>setEmployeeEdit({...e})} className="inline-flex items-center gap-1 rounded-lg border border-[#38bdf8]/40 px-2 py-1.5 font-black text-[#38bdf8]"><Edit3 size={13}/>Edit</button><button onClick={()=>void deleteEmployee(e)} className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 px-2 py-1.5 font-black text-rose-300"><Trash2 size={13}/>Delete</button></div></td></tr>)}</tbody></table>{!filtered.length&&<div className="p-10 text-center text-[#6f91aa]">No employees match the search.</div>}</div>
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between"><div className="flex items-center gap-2"><Users size={18} className="text-[#38bdf8]"/><h2 className="font-black">Employee Master</h2><button disabled={employeeBusy} onClick={()=>setEmployeeEdit({employee_code:"",employee_name:"",display_name:"",department:"Operations",role_id:"",branch_code:"YGN",email:"",phone_primary:"",status:"active"})} className="ml-3 rounded-xl bg-[#f6b84b] px-4 py-2 text-[#061524] font-black">Add Employee</button></div><div className="relative"><Search size={15} className="absolute left-3 top-3 text-[#6f91aa]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search employee, department, branch..." className="h-10 min-w-[340px] rounded-xl border border-[#1a3a5c] bg-[#061524] pl-9 pr-3"/></div></div>
+      <div className="mt-4 max-h-[650px] overflow-auto"><table className="w-full min-w-[1000px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Employee</th><th>Name</th><th>Department</th><th>Role</th><th>Branch</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.map((e:any)=><tr key={e.employee_code||e.employee_id||e.email} className="border-t border-[#1a3a5c]/60"><td className="p-3 font-mono text-[#38bdf8]">{e.employee_code||e.employee_id||"-"}</td><td className="font-black">{e.display_name||e.employee_name||e.full_name||"-"}</td><td>{e.department||"-"}</td><td>{e.role_label||e.role_id||"-"}</td><td>{e.branch_code||"-"}</td><td>{e.email||"-"}</td><td>{e.status||"-"}</td><td><div className="flex gap-2"><button onClick={()=>setEmployeeEdit({...e,_existing:true})} className="inline-flex items-center gap-1 rounded-lg border border-[#38bdf8]/40 px-2 py-1.5 font-black text-[#38bdf8]"><Edit3 size={13}/>Edit</button><button disabled={employeeBusy} onClick={()=>void deleteEmployee(e)} className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 px-2 py-1.5 font-black text-rose-300"><Trash2 size={13}/>Deactivate</button></div></td></tr>)}</tbody></table>{!filtered.length&&<div className="p-10 text-center text-[#6f91aa]">No employees match the search.</div>}</div>
     </section>
 
-    {employeeEdit&&<div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-[#f6b84b]">EDIT EMPLOYEE</div><h3 className="mt-1 text-xl font-black">{employeeEdit.display_name||employeeEdit.employee_name||employeeEdit.full_name||employeeEdit.employee_code||employeeEdit.employee_id}</h3></div><button onClick={()=>setEmployeeEdit(null)}><X size={20}/></button></div><p className="mt-2 text-xs text-[#8fb2c9]">All fields below accept manual text. Type a new value directly where required.</p><div className="mt-5 grid gap-3 md:grid-cols-2">{[
+    {employeeEdit&&<div className="fixed inset-0 z-[220] flex items-center justify-center bg-black/70 p-4"><div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex items-center justify-between"><div><div className="text-[10px] font-black uppercase tracking-[.2em] text-[#f6b84b]">{employeeEdit._existing?"EDIT EMPLOYEE":"NEW EMPLOYEE"}</div><h3 className="mt-1 text-xl font-black">{employeeEdit.display_name||employeeEdit.employee_name||employeeEdit.full_name||employeeEdit.employee_code||employeeEdit.employee_id}</h3></div><button disabled={employeeBusy} onClick={()=>setEmployeeEdit(null)}><X size={20}/></button></div><p className="mt-2 text-xs text-[#8fb2c9]">Employee codes stay fixed to preserve history. Set status to ACTIVE to restore a deactivated employee.</p><div className="mt-5 grid gap-3 md:grid-cols-2">{[
       ["employee_code","Employee Code"],["employee_name","Employee Name"],["display_name","Display Name"],["department","Department"],["role_id","Role"],["branch_code","Branch"],["email","Email"],["phone_primary","Phone"],["status","Status"]
-    ].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input value={employeeEdit[k]??""} onChange={e=>setEmployeeEdit({...employeeEdit,[k]:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-white"/></label>)}</div><div className="mt-5 flex justify-end gap-2"><button onClick={()=>setEmployeeEdit(null)} className="h-11 rounded-xl border border-[#1a3a5c] px-5 font-black">Cancel</button><button onClick={()=>void saveEmployee()} disabled={employeeBusy} className="h-11 rounded-xl bg-[#f6b84b] px-6 font-black text-[#061524] disabled:opacity-50">{employeeBusy?"Saving...":"Save Employee"}</button></div></div></div>}
+    ].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input disabled={employeeBusy||(k==="employee_code"&&!!employeeEdit._existing)} value={employeeEdit[k]??""} onChange={e=>setEmployeeEdit({...employeeEdit,[k]:e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3 text-white"/></label>)}</div>{employeeEdit._existing&&<div className="mt-5"><AccountAccessPanel key={employeeEdit.employee_id||employeeEdit.employee_code} employeeCode={employeeEdit.employee_id||employeeEdit.employee_code} name={employeeEdit.display_name||employeeEdit.employee_name} email={employeeEdit.email} phone={employeeEdit.phone_primary}/></div>}<div className="mt-5 flex justify-end gap-2"><button disabled={employeeBusy} onClick={()=>setEmployeeEdit(null)} className="h-11 rounded-xl border border-[#1a3a5c] px-5 font-black">Cancel</button><button onClick={()=>void saveEmployee()} disabled={employeeBusy} className="h-11 rounded-xl bg-[#f6b84b] px-6 font-black text-[#061524] disabled:opacity-50">{employeeBusy?"Saving...":"Save Employee"}</button></div></div></div>}
   </div>;
 }

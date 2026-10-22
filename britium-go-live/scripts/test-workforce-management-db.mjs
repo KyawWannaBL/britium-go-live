@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+const db=new PGlite();
+try {
+await db.exec(`create schema auth;
+create table profiles(id uuid primary key,full_name text,phone text,status text,is_active boolean,updated_at timestamptz);
+create table be_user_account_registry(auth_user_id uuid,worker_code text,role_code text,app_role text,user_role text,role text,full_name text,display_name text,phone_number text,status text,active boolean,is_active boolean,updated_at timestamptz);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+create function auth.jwt() returns jsonb language sql stable as $$select '{"email":"manager@example.test"}'::jsonb$$;
+create function public.be_current_role() returns text language sql stable as $$select current_setting('test.role',true)$$;
+create table be_master_riders(rider_id text primary key,rider_code text unique,rider_name text,name text,phone_primary text,phone text,assigned_zone text,branch_code text,employment_type text,status text,created_at timestamptz,updated_at timestamptz);
+create table be_master_drivers(driver_id text primary key,driver_code text unique,driver_name text,name text,phone_primary text,phone text,license_no text,assigned_fleet_id text,branch_code text,status text,created_at timestamptz,updated_at timestamptz);
+create table be_master_helpers(helper_id text primary key,helper_code text unique,helper_name text,name text,phone_primary text,phone text,assigned_zone text,branch_code text,employment_type text,status text,created_at timestamptz,updated_at timestamptz);
+create table be_master_data_rows(dataset_key text,record_key text,payload jsonb,status text,created_at timestamptz,updated_at timestamptz,updated_by_email text,deleted_at timestamptz,primary key(dataset_key,record_key));
+set test.uid='11111111-1111-4111-8111-111111111111';set test.role='manager';`);
+const migrations=fs.readdirSync(new URL('../supabase/migrations/',import.meta.url));
+const file=migrations.find(f=>f.endsWith('_workforce_identity_safe_crud.sql'));
+await db.exec(fs.readFileSync(file?new URL('../supabase/migrations/'+file,import.meta.url):new URL('./fixtures/workforce-master-original.sql',import.meta.url),'utf8'));
+async function save(type,code,extra={}){return(await db.query('select be_supervisor_workforce_master_upsert_v1($1::jsonb) result',[JSON.stringify({workforce_type:type,workforce_code:code,workforce_name:'Test Worker',phone:'09999',status:'ACTIVE',...extra})])).rows[0].result;}
+for(const type of ['RIDER','DRIVER','HELPER']){
+ const stem=type.toLowerCase(),table='be_master_'+stem+'s',code=type+'-01';
+ await db.query("insert into be_user_account_registry(auth_user_id,worker_code,role_code,status,active,is_active,updated_at) values(gen_random_uuid(),$1,$2,'active',true,true,now())",[code,stem]);
+ await db.exec("insert into profiles(id,status,is_active,updated_at) select auth_user_id,'active',true,now() from be_user_account_registry on conflict do nothing");
+ await db.query(`insert into ${table}(${stem}_id,${stem}_code,${stem}_name,status) values($1,$2,'Legacy','ACTIVE')`,['internal-'+code,code]);
+ const updated=await save(type,code,{record_action:'UPDATE'});assert.equal(updated.ok,true);
+ const rows=(await db.query(`select * from ${table}`)).rows;assert.equal(rows.length,1);assert.equal(rows[0][stem+'_id'],'internal-'+code,'editing retains actual legacy internal ID');assert.equal(rows[0][stem+'_name'],'Test Worker');
+ assert.equal((await db.query('select full_name from be_user_account_registry where worker_code=$1',[code])).rows[0].full_name,'Test Worker');
+ assert.equal((await db.query('select p.phone from profiles p join be_user_account_registry r on r.auth_user_id=p.id where r.worker_code=$1',[code])).rows[0].phone,'09999');
+ assert.equal((await save(type,code,{record_action:'CREATE'})).code,'WORKFORCE_CODE_EXISTS','add must never overwrite an existing master');
+ assert.equal((await save(type,type+'-MISSING',{record_action:'UPDATE'})).code,'WORKFORCE_NOT_FOUND','stale edit must never insert a new record');
+ assert.equal((await save(type,code,{record_action:'UPDATE',status:'INACTIVE'})).ok,true);
+ assert.equal((await db.query('select active from be_user_account_registry where worker_code=$1',[code])).rows[0].active,false,'linked registry is disabled');
+ assert.equal((await db.query('select p.is_active from profiles p join be_user_account_registry r on r.auth_user_id=p.id where r.worker_code=$1',[code])).rows[0].is_active,false,'linked profile is disabled');
+ const generic=(await db.query('select * from be_master_data_rows where record_key=$1',[code])).rows[0];assert.equal(generic.status,'inactive');assert.ok(generic.deleted_at,'inactive worker is removed from future generic assignment lists');
+ assert.equal((await db.query(`select count(*)::int n from ${table}`)).rows[0].n,1,'deactivation retains history master');
+ assert.equal((await save(type,code,{record_action:'UPDATE',status:'ACTIVE'})).ok,true);assert.equal((await db.query('select active from be_user_account_registry where worker_code=$1',[code])).rows[0].active,false,'restoring master does not silently unblock login access');assert.equal((await db.query('select deleted_at from be_master_data_rows where record_key=$1',[code])).rows[0].deleted_at,null,'reactivation restores assignment availability');
+ assert.equal((await save(type,type+'-NEW',{record_action:'CREATE'})).ok,true,'new workers may share an existing phone');
+}
+await db.exec("set test.role='rider'");assert.equal((await save('RIDER','RIDER-01')).code,'UNAUTHORIZED');
+await db.exec("set test.uid=''");assert.equal((await save('RIDER','RIDER-01')).code,'AUTH_REQUIRED');
+console.log('PASS: workforce legacy identity, explicit create/update, recoverable removal, generic master sync, shared phone and role guards');
+} finally {await db.close();}

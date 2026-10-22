@@ -124,6 +124,9 @@ type Pickup = {
 };
 
 type ParcelRow = {
+  registrationExists?: boolean;
+  registrationVersion?: string;
+  waybillPublished?: boolean;
   sourceMerchantName?: string;
   sourceWayId?: string;
   pickup_id: string;
@@ -537,6 +540,9 @@ function parcelRowFromProof(
     handoffStationName:text(proof.handoff_station_name||proof.financial_quote?.handoff_station_name),
     locationStatus:proof.location_required===false||proof.financial_quote?.location_required===false?"NOT_REQUIRED":"PENDING",
     saved:Boolean(proof.saved_at),
+    registrationExists:Boolean(proof.saved_at),
+    registrationVersion:text(proof.__registrationUpdatedAt||proof.updated_at),
+    waybillPublished:Boolean(proof.is_printed||proof.printed_at||["PRINTED","PUBLISHED","CREATED"].includes(text(proof.print_status).toUpperCase())),
   };
 }
 
@@ -548,6 +554,7 @@ function mergePickupEvidence(previous:Partial<ParcelRow>, fresh:ParcelRow):Parce
   return {
     ...fresh,...previous,
     pickup_id:fresh.pickup_id,parcel_sequence:fresh.parcel_sequence,delivery_way_id:fresh.delivery_way_id,
+    registrationExists:fresh.registrationExists,registrationVersion:fresh.registrationVersion,waybillPublished:fresh.waybillPublished,
     proof_url:fresh.proof_url,proof_ref:fresh.proof_ref,photo_status:fresh.photo_status,
     photoReviewed:fresh.photoReviewed,photoReviewStatus:fresh.photoReviewStatus,
     photoRejectionReason:fresh.photoRejectionReason,photoRejectionNote:fresh.photoRejectionNote,
@@ -696,7 +703,10 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, deleteRegistration, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
+  const [deleteOpen,setDeleteOpen]=useState(false);
+  const [deleteReason,setDeleteReason]=useState("");
+  useEffect(()=>{setDeleteOpen(false);setDeleteReason("")},[row.pickup_id,row.parcel_sequence]);
   const c = row.calculation || {};
   const pickupPaymentType = selectedPaymentType || "COD";
   const type = row.amount_entry_type as AmountType;
@@ -709,7 +719,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
   const photoReady = Boolean(row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
   const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
-  const saveBlocked = busy || row.checking || row.skipped || !photoReady || !routeReady(row,tariffOptions);
+  const saveBlocked = row.waybillPublished || busy || row.checking || row.skipped || !photoReady || !routeReady(row,tariffOptions);
   const statusText = row.saved ? "REGISTERED" : row.skipped ? "PENDING" : row.calculating ? "CALCULATING" : "DRAFT";
   const statusClass = row.saved
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
@@ -738,7 +748,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </div>
 
-      <fieldset disabled={busy || row.skipped || row.checking} className="min-w-0">
+      <fieldset disabled={row.waybillPublished || busy || row.skipped || row.checking} className="min-w-0">
         <div className="space-y-4 p-4">
           <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
@@ -1120,12 +1130,19 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14}/>} CALCULATE
           </button>
           <button type="button" onClick={() => save(index)} disabled={saveBlocked} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[11px] font-black disabled:opacity-40 ${fullMode?"bg-emerald-600 text-white":"bg-[#21c7e8] text-[#04111d]"}`}>
-            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} {row.saved?"REGISTERED":"SAVE"}
+            {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} {row.saved?"REGISTERED":row.registrationExists?"SAVE CHANGES":"SAVE"}
           </button>
           {fullMode?<button type="button" onClick={()=>void saveAndNext(index)} disabled={saveBlocked || row.saved} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#163c7a] px-3 py-2.5 text-[11px] font-black text-white disabled:opacity-40">
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} SAVE & NEXT
           </button>:null}
         </div>
+        {row.waybillPublished?<p className="mt-3 text-xs font-bold text-amber-300">Waybill published — registration editing and deletion are locked.</p>:row.registrationExists&&deleteRegistration?<div className="mt-3 border-t border-rose-300/30 pt-3">
+          {!deleteOpen?<button type="button" disabled={busy||row.checking} onClick={()=>setDeleteOpen(true)} className="min-h-11 rounded-lg border border-rose-400 bg-rose-950 px-3 text-xs font-bold text-rose-100 disabled:opacity-40">Delete unpublished registration</button>:<div className="space-y-2 rounded-xl bg-[#061524] p-3">
+            <p className="text-xs text-white">Remove this registration before waybill publication. Pickup photos and an audit recovery record are retained.</p>
+            <label className="block text-xs text-white">Deletion reason<input value={deleteReason} onChange={event=>setDeleteReason(event.target.value)} placeholder="Why is this registration being deleted?" className="mt-1 min-h-11 w-full rounded-lg border border-rose-400 bg-white px-3 text-black"/></label>
+            <div className="flex flex-wrap gap-2"><button type="button" disabled={busy||row.checking||deleteReason.trim().length<3} onClick={()=>void deleteRegistration(index,deleteReason)} className="min-h-11 rounded-lg bg-rose-600 px-4 text-xs font-bold text-white disabled:opacity-40">Confirm deletion</button><button type="button" disabled={row.checking} onClick={()=>setDeleteOpen(false)} className="min-h-11 rounded-lg border border-[#31506a] px-4 text-xs text-white">Cancel deletion</button></div>
+          </div>}
+        </div>:null}
         {!photoReady || !locationReady ? <div className={`mt-2 text-[9px] ${fullMode?"text-amber-900":"text-amber-200"}`}>
           {!photoReady?"Photo verification is still required. ":""}{!locationReady?"Location review is still required before Wayplan / dispatch; Data Entry save and waybill creation can proceed.":""}
         </div>:null}
@@ -1611,8 +1628,9 @@ export default function DataEntryFinancialV2Page() {
     }
   },[tariffOptions,updateRow]);
 
-  const rowActionsRef=useRef({calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip});
-  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip};});
+  const rowActionsRef=useRef({calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip,deleteRegistration});
+  useLayoutEffect(()=>{rowActionsRef.current={calculateRow,saveRow,saveAndNextRow,saveDraftRow,validateInputRow,reviewPhoto,togglePhotoWaiver,toggleSkip,deleteRegistration};});
+  const deleteEditorRegistration=useCallback((...args:any[])=>rowActionsRef.current.deleteRegistration(...args),[]);
   const calculateEditorRow=useCallback((...args:any[])=>rowActionsRef.current.calculateRow(...args),[]);
   const skipEditorRow=useCallback((index:number)=>rowActionsRef.current.toggleSkip(index),[]);
   const saveEditorRow=useCallback((...args:any[])=>rowActionsRef.current.saveRow(...args),[]);
@@ -1725,7 +1743,7 @@ export default function DataEntryFinancialV2Page() {
       "be_v_data_entry_parcel_rows",
       "be_pickup_parcel_verifications",
     ];
-    const [tierResponse,proofResponses]=await Promise.all([
+    const [tierResponse,proofResponses,registrationResponse]=await Promise.all([
       (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id}),
       Promise.all(proofSources.map(async (source)=>({
         source,
@@ -1735,7 +1753,10 @@ export default function DataEntryFinancialV2Page() {
           .eq("pickup_id",pickup.pickup_id)
           .order("parcel_sequence",{ascending:true}),
       }))),
+      (supabase as any).rpc("be_data_entry_registration_state_v1",{p_pickup_id:pickup.pickup_id}),
     ]);
+    if(registrationResponse.error||registrationResponse.data?.ok===false)throw new Error(registrationResponse.error?.message||registrationResponse.data?.message||"Unable to verify registration publication status. Refresh the pickup.");
+    const registrationStates=Array.isArray(registrationResponse.data?.rows)?registrationResponse.data.rows:[];
     if(tierResponse.error) throw tierResponse.error;
     if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
     const nextTierAccess:MerchantTierAccess={
@@ -1752,7 +1773,7 @@ export default function DataEntryFinancialV2Page() {
     for(const {source,response} of proofResponses){
       if(response.error){lastProofError=`${source}: ${response.error.message}`;continue;}
       if(Array.isArray(response.data)&&response.data.length){
-        proofs.push(...response.data.map((proof:any)=>({...proof,__authoritative:source==="be_pickup_parcel_verifications"})));
+        proofs.push(...response.data.map((proof:any)=>({...proof,...(source==="be_data_entry_parcel_details"?{__registrationUpdatedAt:proof.updated_at}:{}),__authoritative:source==="be_pickup_parcel_verifications"})));
         console.info(`Data Entry evidence: ${response.data.length} row(s) loaded from ${source}`);
       }
     }
@@ -1782,7 +1803,11 @@ export default function DataEntryFinancialV2Page() {
           }
           return merged;
         },{});
+      const registration=registrationStates.find((entry:any)=>positiveInt(entry.parcel_sequence)===sequence);
       const row=parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
+      row.registrationExists=Boolean(registration||row.registrationExists);
+      row.registrationVersion=text(registration?.updated_at||row.registrationVersion);
+      row.waybillPublished=Boolean(registration?.published||row.waybillPublished);
       const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
       const option=route.option as TariffOption|null;
       if(!route.providerCode) return row;
@@ -1832,6 +1857,26 @@ export default function DataEntryFinancialV2Page() {
       setRowsPickupId(pickup.pickup_id);
     }catch(error:any){if(revision===workspaceLoadRevision.current)setMessage(error?.message||"Unable to load pickup proof rows.");}
     finally{if(revision===workspaceLoadRevision.current)setLoadingRows(false);}
+  }
+
+  const registrationMutations=useRef(new Set<string>());
+  async function deleteRegistration(index:number,reason:string){
+    const row=rows[index];const explanation=text(reason).trim();
+    if(!row||!row.registrationExists||row.waybillPublished||row.checking||explanation.length<3)return;
+    const key=row.pickup_id+":"+row.parcel_sequence;
+    if(registrationMutations.current.has(key))return;
+    registrationMutations.current.add(key);updateRow(index,{checking:true,message:""});
+    const matches=(candidate:ParcelRow)=>candidate.pickup_id===row.pickup_id&&candidate.parcel_sequence===row.parcel_sequence;
+    try{
+      const {data,error}=await (supabase as any).rpc("be_data_entry_registration_delete_v1",{p_payload:{pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,reason:explanation,expected_updated_at:row.registrationVersion||null}});
+      if(error||!data?.ok||data?.deleted!==true)throw error||new Error(data?.message||data?.code||"Deletion was not confirmed. Refresh the registration.");
+      workspaceLoadRevision.current++;setLoadingRows(false);
+      const clear=(candidate:ParcelRow)=>matches(candidate)?{...candidate,saved:false,registrationExists:false,registrationVersion:"",checking:false,calculation:{},recipient_name:"",recipient_phone:"",delivery_address:"",item_price:"",delivery_charges:"",merchant_stated_total_amount:"",message:"Unpublished registration deleted. Pickup evidence retained. Enter corrected details before saving again."} as ParcelRow:candidate;
+      setRows(current=>current.map(clear));
+      setBulkImportDrafts(current=>Object.fromEntries(Object.entries(current).map(([id,draft]:[string,any])=>[id,{...draft,rows:draft.rows.map(clear)}])));
+      setPickups(current=>current.map(pickup=>pickup.pickup_id===row.pickup_id?{...pickup,registered_parcels:Math.max(0,pickup.registered_parcels-1)}:pickup));
+    }catch(error:any){setRows(current=>current.map(candidate=>matches(candidate)?{...candidate,checking:false,message:error?.message||"Unable to delete registration."}:candidate));}
+    finally{registrationMutations.current.delete(key);}
   }
 
   async function toggleSkip(index:number){
@@ -2118,7 +2163,7 @@ export default function DataEntryFinancialV2Page() {
       if(!e.ok || r.data?.persisted===false) throw new Error(envelopeMessage(e)||"Live save was not confirmed.");
       updateRow(index,{
         checking:false,
-        saved:true,
+        saved:true,registrationExists:true,registrationVersion:text(r.data?.registration_updated_at||row.registrationVersion),
         delivery_way_id:text(r.data?.canonical_way_id||e.data?.canonical_way_id||row.delivery_way_id||`${selectedPickup.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
         calculation:{...row.calculation,...e.data},
         message:"Saved successfully with backend calculation and audit lineage."
@@ -2307,7 +2352,7 @@ export default function DataEntryFinancialV2Page() {
         const savedResult=savedBySequence.get(row.parcel_sequence) as any;
         return {
           ...row,
-          saved:true,
+          saved:true,registrationExists:true,registrationVersion:text(savedResult?.registration_updated_at||row.registrationVersion),
           delivery_way_id:text(savedResult?.canonical_way_id||row.delivery_way_id||`${row.pickup_id}-${String(row.parcel_sequence).padStart(3,"0")}`),
           calculation:{...row.calculation,...(savedResult?.data||{})},
           message:`Saved in consecutive batch ${batchNumber}/${batchCount}.`,
@@ -2318,7 +2363,7 @@ export default function DataEntryFinancialV2Page() {
         if(!draft) return current;
         return {...current,[selectedPickup.pickup_id]:{
           ...draft,
-          rows:draft.rows.map((row)=>savedSequences.has(row.parcel_sequence)?{...row,saved:true,message:`Saved in consecutive batch ${batchNumber}/${batchCount}.`}:row),
+          rows:draft.rows.map((row)=>savedSequences.has(row.parcel_sequence)?{...row,saved:true,registrationExists:true,registrationVersion:text((savedBySequence.get(row.parcel_sequence) as any)?.registration_updated_at||row.registrationVersion),message:`Saved in consecutive batch ${batchNumber}/${batchCount}.`}:row),
         }};
       });
     }
@@ -3321,6 +3366,7 @@ export default function DataEntryFinancialV2Page() {
             busy={bulkSaving||locationReviewBusy||waybillBusy}
             reviewPhoto={reviewEditorPhoto}
             togglePhotoWaiver={toggleEditorPhotoWaiver}
+            deleteRegistration={deleteEditorRegistration}
             lookupPhoneHistory={lookupPhoneHistory}
             tariffOptions={tariffOptions}
             providerOptions={providerOptions}
