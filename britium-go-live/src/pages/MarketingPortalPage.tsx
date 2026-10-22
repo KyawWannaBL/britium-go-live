@@ -1,7 +1,8 @@
 // @ts-nocheck
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Edit3, Megaphone, Plus, RefreshCw, Save, Search, Store, Trash2, TrendingUp, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import AccountAccessPanel from "@/components/accounts/AccountAccessPanel";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
@@ -21,19 +22,26 @@ export default function MarketingPortalPage(){
   const [merchantSearch,setMerchantSearch]=useState("");
   const [merchantStatus,setMerchantStatus]=useState("");
   const [merchantForm,setMerchantForm]=useState<any>(null);
+  const [editingMerchantCode,setEditingMerchantCode]=useState<string|null>(null);
+  const [merchantBusy,setMerchantBusy]=useState(false);
+  const merchantPending=useRef(false);
 
   async function loadLeads(){
     setLoading(true);
+    try {
     const {data,error}=await (supabase as any).rpc("be_marketing_lead_snapshot_v1",{p_search:leadSearch.trim()||null,p_limit:1000});
     if(error||data?.ok===false){setMessage(error?.message||data?.code||"Marketing lead backend unavailable.");setLoading(false);return;}
     setLeads(Array.isArray(data?.rows)?data.rows:[]);
     setLeadSummary(data||{});setLoading(false);
+    }catch(error:any){setMessage(error?.message||"Unable to load records. Please retry.");}finally{setLoading(false);}
   }
   async function loadMerchants(){
     setLoading(true);
+    try {
     const {data,error}=await (supabase as any).rpc("be_marketing_merchant_master_center_v1",{p_search:merchantSearch.trim()||null,p_status:merchantStatus||null,p_limit:1000});
     if(error||data?.ok===false){setMessage(error?.message||data?.code||"Merchant master unavailable.");setLoading(false);return;}
     setMerchants(Array.isArray(data?.rows)?data.rows:[]);setLoading(false);
+    }catch(error:any){setMessage(error?.message||"Unable to load records. Please retry.");}finally{setLoading(false);}
   }
   async function saveLead(){
     if(!leadForm?.entity_name?.trim())return setMessage("Lead name is required.");
@@ -46,21 +54,29 @@ export default function MarketingPortalPage(){
     const code=String(m?.merchant_code||"").trim().toUpperCase();
     if(!code)return setMessage("Merchant code is required.");
     if(!window.confirm("Delete merchant "+code+"? Existing operational history will be preserved and the merchant will be deactivated with an audit trail."))return;
-    setLoading(true);setMessage("");
+    if(merchantPending.current)return;
+    merchantPending.current=true;setMerchantBusy(true);setMessage("");
+    try {
     const {data,error}=await (supabase as any).rpc("be_marketing_merchant_delete_v1",{p_merchant_code:code});
     if(error||data?.ok===false){setMessage(error?.message||data?.code||"Merchant delete failed.");setLoading(false);return;}
     setMessage(code+" removed from active Merchant Master with audit trail.");
     if(merchantForm?.merchant_code===code)setMerchantForm(null);
     await loadMerchants();
+    }catch(error:any){setMessage(error?.message||"Merchant delete failed. Please retry.");}finally{merchantPending.current=false;setMerchantBusy(false);}
   }
 
   async function saveMerchant(){
-    if(!merchantForm?.merchant_name?.trim()||String(merchantForm?.merchant_code||"").length!==3)return setMessage("Merchant name and 3-character code are required.");
-    setLoading(true);
-    const {data,error}=await (supabase as any).rpc("be_marketing_merchant_master_upsert_v1",{p_payload:merchantForm});
-    if(error||data?.ok===false){setMessage(error?.message||data?.code||"Merchant save failed.");setLoading(false);return;}
-    setMessage(String(data.merchant_code)+" synchronized to the application-wide Merchant Master.");
-    setMerchantForm(null);await loadMerchants();
+    if(merchantPending.current)return;
+    const code=String(editingMerchantCode||merchantForm?.merchant_code||"").trim().toUpperCase();
+    if(!merchantForm?.merchant_name?.trim()||!/^[A-Z0-9]{3}$/.test(code))return setMessage("Merchant name and 3-character alphanumeric code are required.");
+    merchantPending.current=true;setMerchantBusy(true);setMessage("");
+    try {
+      const {data,error}=await (supabase as any).rpc("be_marketing_merchant_master_upsert_v1",{p_payload:{...merchantForm,merchant_code:code,record_action:editingMerchantCode?"UPDATE":"CREATE"}});
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.code||"Merchant save failed.");
+      setMessage(code+" synchronized to the application-wide Merchant Master.");
+      setMerchantForm(null);setEditingMerchantCode(null);await loadMerchants();
+    } catch(error:any){setMessage(error?.message||"Merchant save failed. Please retry.");}
+    finally{merchantPending.current=false;setMerchantBusy(false);}
   }
 
   useEffect(()=>{void loadLeads();void loadMerchants()},[]);
@@ -106,13 +122,13 @@ export default function MarketingPortalPage(){
       </div>}
 
       {tab==="merchants"&&<div className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
-        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex justify-between"><div><h2 className="font-black">Create / Update Merchant Account</h2><p className="mt-1 text-xs text-[#8fb2c9]">Use after contract execution. Save synchronizes to operational merchant masters.</p></div><button onClick={()=>setMerchantForm({merchant_code:"",merchant_name:"",business_type:"",contact_person:"",phone_primary:"",phone_secondary:"",email:"",address_mm:"",address_line_1:"",township:"",city:"Yangon",region_state:"Yangon",customer_tier:"STANDARD",payment_profile:"COD",service_profile:"STANDARD",status:"ACTIVE"})} className="h-10 rounded-xl bg-[#22c55e] px-4 font-black text-[#061524]"><Plus size={15} className="inline mr-1"/>New</button></div>
-          {merchantForm&&<><div className="mt-4 grid gap-3 md:grid-cols-2">{[["merchant_code","Merchant Code (3)"],["merchant_name","Merchant Name"],["business_type","Business Type"],["contact_person","Contact Person"],["phone_primary","Primary Phone"],["phone_secondary","Secondary Phone"],["email","Email"],["township","Township"],["city","City"],["region_state","Region / State"],["address_line_1","Pickup Address"],["address_mm","Myanmar Address"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input maxLength={k==="merchant_code"?3:undefined} value={merchantForm[k]??""} onChange={e=>setMerchantForm({...merchantForm,[k]:k==="merchant_code"?e.target.value.toUpperCase():e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>)}
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex justify-between"><div><h2 className="font-black">Create / Update Merchant Account</h2><p className="mt-1 text-xs text-[#8fb2c9]">Use after contract execution. Save synchronizes to operational merchant masters.</p></div><button onClick={()=>{setEditingMerchantCode(null);setMerchantForm({merchant_code:"",merchant_name:"",business_type:"",contact_person:"",phone_primary:"",phone_secondary:"",email:"",address_mm:"",address_line_1:"",township:"",city:"Yangon",region_state:"Yangon",customer_tier:"STANDARD",payment_profile:"COD",service_profile:"STANDARD",status:"ACTIVE"})}} className="h-10 rounded-xl bg-[#22c55e] px-4 font-black text-[#061524]"><Plus size={15} className="inline mr-1"/>New</button></div>
+          {merchantForm&&<><div className="mt-4 grid gap-3 md:grid-cols-2">{[["merchant_code","Merchant Code (3)"],["merchant_name","Merchant Name"],["business_type","Business Type"],["contact_person","Contact Person"],["phone_primary","Primary Phone"],["phone_secondary","Secondary Phone"],["email","Email"],["township","Township"],["city","City"],["region_state","Region / State"],["address_line_1","Pickup Address"],["address_mm","Myanmar Address"]].map(([k,l])=><label key={k} className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">{l}</span><input disabled={merchantBusy||(k==="merchant_code"&&!!editingMerchantCode)} maxLength={k==="merchant_code"?3:undefined} value={merchantForm[k]??""} onChange={e=>setMerchantForm({...merchantForm,[k]:k==="merchant_code"?e.target.value.toUpperCase():e.target.value})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/></label>)}
             <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Tier</span><input list="merchant-tier-options" value={merchantForm.customer_tier||"STANDARD"} onChange={e=>setMerchantForm({...merchantForm,customer_tier:e.target.value.toUpperCase()})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3" placeholder="Type or select..."/><datalist id="merchant-tier-options"><option value="STANDARD"/><option value="ROYAL"/><option value="COMMITMENT"/></datalist></label>
             <label className="text-xs font-bold text-[#9cc2d9]"><span className="mb-1 block">Status</span><input list="merchant-status-options" value={merchantForm.status||"ACTIVE"} onChange={e=>setMerchantForm({...merchantForm,status:e.target.value.toUpperCase()})} className="h-11 w-full rounded-xl border border-[#1a3a5c] bg-[#061524] px-3" placeholder="Type or select..."/><datalist id="merchant-status-options"><option value="ACTIVE"/><option value="SUSPENDED"/><option value="INACTIVE"/></datalist></label>
-          </div><button onClick={()=>void saveMerchant()} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#22c55e] px-5 font-black text-[#061524]"><Save size={16}/>Save + Synchronize Merchant</button></>}
+          </div><button disabled={merchantBusy} onClick={()=>void saveMerchant()} className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#22c55e] px-5 font-black text-[#061524]"><Save size={16}/>Save + Synchronize Merchant</button></>}
         </div>
-        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex flex-col gap-2 lg:flex-row"><input value={merchantSearch} onChange={e=>setMerchantSearch(e.target.value)} placeholder="Search merchant..." className="h-10 flex-1 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><input list="merchant-filter-status" value={merchantStatus} onChange={e=>setMerchantStatus(e.target.value)} placeholder="Type status or choose..." className="h-10 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><datalist id="merchant-filter-status"><option value="ACTIVE"/><option value="SUSPENDED"/><option value="INACTIVE"/></datalist><button onClick={()=>void loadMerchants()} className="h-10 rounded-xl border border-[#1a3a5c] px-4 font-black">Refresh</button></div><div className="mt-4 max-h-[720px] space-y-2 overflow-auto">{merchants.map((m:any)=><div key={m.merchant_code} className="w-full rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4"><div className="flex items-start justify-between gap-3"><div><div><span className="font-mono font-black text-[#22c55e]">{m.merchant_code}</span><span className="ml-2 font-black">{m.merchant_name}</span></div><div className="mt-2 text-xs text-[#8fb2c9]">{m.contact_person||"-"} · {m.phone_primary||"-"} · {[m.township,m.city].filter(Boolean).join(", ")}</div></div><div className="flex items-center gap-2"><span className="text-[10px] font-black">{m.status}</span><button onClick={()=>setMerchantForm({...m,payment_profile:"COD",service_profile:"STANDARD"})} className="inline-flex h-9 items-center gap-1 rounded-lg border border-[#22c55e]/40 px-3 text-xs font-black text-[#22c55e]"><Edit3 size={13}/>Edit</button><button onClick={()=>void deleteMerchant(m)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-rose-500/40 px-3 text-xs font-black text-rose-300"><Trash2 size={13}/>Delete</button></div></div></div>)}</div></div>
+        <div className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5"><div className="flex flex-col gap-2 lg:flex-row"><input value={merchantSearch} onChange={e=>setMerchantSearch(e.target.value)} placeholder="Search merchant..." className="h-10 flex-1 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><input list="merchant-filter-status" value={merchantStatus} onChange={e=>setMerchantStatus(e.target.value)} placeholder="Type status or choose..." className="h-10 rounded-xl border border-[#1a3a5c] bg-[#061524] px-3"/><datalist id="merchant-filter-status"><option value="ACTIVE"/><option value="SUSPENDED"/><option value="INACTIVE"/></datalist><button onClick={()=>void loadMerchants()} className="h-10 rounded-xl border border-[#1a3a5c] px-4 font-black">Refresh</button></div><div className="mt-4 max-h-[720px] space-y-2 overflow-auto">{merchants.map((m:any)=><div key={m.merchant_code} className="w-full rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4"><div className="flex items-start justify-between gap-3"><div><div><span className="font-mono font-black text-[#22c55e]">{m.merchant_code}</span><span className="ml-2 font-black">{m.merchant_name}</span></div><div className="mt-2 text-xs text-[#8fb2c9]">{m.contact_person||"-"} · {m.phone_primary||"-"} · {[m.township,m.city].filter(Boolean).join(", ")}</div></div><div className="flex items-center gap-2"><span className="text-[10px] font-black">{m.status}</span><button onClick={()=>{setEditingMerchantCode(m.merchant_code);setMerchantForm({...m})}} className="inline-flex h-9 items-center gap-1 rounded-lg border border-[#22c55e]/40 px-3 text-xs font-black text-[#22c55e]"><Edit3 size={13}/>Edit</button><button disabled={merchantBusy} onClick={()=>void deleteMerchant(m)} className="inline-flex h-9 items-center gap-1 rounded-lg border border-rose-500/40 px-3 text-xs font-black text-rose-300"><Trash2 size={13}/>Delete</button></div></div><AccountAccessPanel merchantCode={m.merchant_code} name={m.merchant_name} email={m.email} phone={m.phone_primary}/></div>)}</div></div>
       </div>}
     </div>
   </div>;
