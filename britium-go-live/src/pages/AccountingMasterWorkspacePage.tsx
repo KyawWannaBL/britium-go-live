@@ -34,7 +34,7 @@ function SearchMaster({kind,value,onSelect,placeholder}:{kind:string;value:any;o
 }
 
 export default function AccountingMasterWorkspacePage(){
-  const {profile}=useAuth();
+  const {profile,user}=useAuth();
   const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
   const canPost=["accountant","superadmin","super_admin","admin"].includes(role);
   const [tab,setTab]=useState("journal");
@@ -44,6 +44,14 @@ export default function AccountingMasterWorkspacePage(){
   const [historyError,setHistoryError]=useState("");
   const [selectedJournalId,setSelectedJournalId]=useState<string|null>(null);
   const journalReferenceRef=useRef<HTMLButtonElement|null>(null);
+  const journalDetailRef=useRef<HTMLElement|null>(null);
+  const [postingConfirmation,setPostingConfirmation]=useState(false);
+  const [postingError,setPostingError]=useState("");
+  useEffect(()=>{
+    setPostingConfirmation(false);setPostingError("");
+    if(selectedJournalId){journalDetailRef.current?.scrollIntoView?.({block:"start",behavior:"smooth"});journalDetailRef.current?.focus?.({preventScroll:true});}
+  },[selectedJournalId]);
+  function openJournal(id:string,event?:any){journalReferenceRef.current=event?.currentTarget||null;setSelectedJournalId(id)}
   const selectedJournal=history.find(r=>r.id===selectedJournalId);
   const savedLines=Array.isArray(selectedJournal?.lines)?selectedJournal.lines:[];
   const [pl,setPl]=useState<any>(null);
@@ -134,6 +142,23 @@ export default function AccountingMasterWorkspacePage(){
     const {data,error}=await (supabase as any).rpc("be_accounting_manual_journal_post_v1",{p_draft_id:draftId});
     if(error||data?.ok===false){setMessage(error?.message||data?.code||"Posting failed.");setBusy(false);return;}
     setMessage("Journal POSTED to General Ledger: "+data.journal_reference);setBusy(false);await loadHistory();
+  }
+
+  const selectedIsMaker=!!user?.id&&selectedJournal?.created_by===user.id;
+  const canApproveSelected=canPost&&!!user?.id&&selectedJournal?.status==="DRAFT"&&(!selectedIsMaker||["superadmin","super_admin"].includes(role));
+  async function postSelectedJournal(){
+    if(!canApproveSelected||busy||historyError||!postingConfirmation)return;
+    const id=selectedJournal.id;
+    setBusy(true);setPostingError("");setPostingConfirmation(false);
+    try{
+      const {data,error}=await (supabase as any).rpc("be_accounting_manual_journal_post_v1",{p_draft_id:id});
+      if(error||data?.ok===false)throw error||new Error(data?.code||"Posting failed.");
+      if(data?.status!=="POSTED")throw new Error("Journal was not posted. Refresh the register before retrying.");
+      setHistory(rows=>rows.map(row=>row.id===id?{...row,status:"POSTED"}:row));
+      setMessage("Journal POSTED to General Ledger: "+(data.journal_reference||selectedJournal.journal_reference));
+      await loadHistory();
+    }catch(error:any){setPostingError(error?.message||"Posting failed. Refresh to verify the journal status before retrying.");}
+    finally{setBusy(false)}
   }
 
   async function saveAsset(){
@@ -232,13 +257,33 @@ export default function AccountingMasterWorkspacePage(){
 </section>}
     {tab==="history"&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
       <h2 className="font-black">Manual Journal Register</h2>
-      <p className="mt-1 text-xs text-[#9cc2d9]">Select a journal reference to view its saved debit and credit lines. Drafts are not posted to the General Ledger or included in profit reports.</p>
+      <p className="mt-1 text-xs text-[#9cc2d9]">Select a journal reference to view its saved debit and credit lines. Drafts are not posted to the General Ledger or included in profit reports. Approvers: open a DRAFT, review its lines, then choose Approve &amp; Post journal.</p>
       {historyError&&<p role="alert" className="mt-4 text-rose-300">Journal refresh failed: {historyError}{history.length>0&&" Showing previously loaded records."}</p>}
-      <div className="mt-4 max-h-[700px] overflow-auto"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td><button type="button" ref={selectedJournalId===r.id?journalReferenceRef:null} onClick={()=>setSelectedJournalId(r.id)} aria-expanded={selectedJournalId===r.id} aria-controls="journal-register-detail" className="py-3 text-left font-mono font-black text-[#38bdf8] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#f6b84b]">{r.journal_reference}</button></td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&!historyError&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div>
-      {selectedJournal&&<section id="journal-register-detail" aria-label="Saved journal details" className="mt-5 rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-mono font-black text-[#38bdf8]">{selectedJournal.journal_reference}</h3><p className="mt-2 text-sm">{selectedJournal.description||"No description"}</p><p className="mt-2 text-xs text-[#9cc2d9]">{selectedJournal.transaction_date} · {selectedJournal.branch_code} · {selectedJournal.status}</p></div><button type="button" onClick={()=>{journalReferenceRef.current?.focus();setSelectedJournalId(null)}} className="rounded-lg border border-[#1a3a5c] px-3 py-2 text-xs">Close details</button></div>
+      <div className="mt-4 hidden max-h-[700px] overflow-auto lg:block"><table className="w-full min-w-[1100px] text-left text-xs"><thead className="sticky top-0 bg-[#061524] text-[#8fb2c9]"><tr><th className="p-3">Date</th><th>Journal Ref</th><th>Type</th><th>Description</th><th>Branch</th><th>Status</th><th>Created</th><th>Posted</th></tr></thead><tbody>{history.map((r:any)=><tr key={r.id} className="border-t border-[#1a3a5c]/60"><td className="p-3">{r.transaction_date}</td><td><button type="button" onClick={event=>openJournal(r.id,event)} aria-expanded={selectedJournalId===r.id} aria-controls="journal-register-detail" className="py-3 text-left font-mono font-black text-[#38bdf8] underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#f6b84b]">{r.journal_reference}</button></td><td>{r.journal_type}</td><td>{r.description||"-"}</td><td>{r.branch_code}</td><td>{r.status}</td><td>{r.created_at?new Date(r.created_at).toLocaleString():"-"}</td><td>{r.posted_at?new Date(r.posted_at).toLocaleString():"-"}</td></tr>)}</tbody></table>{!history.length&&!historyError&&<div className="p-10 text-center text-[#6f91aa]">No manual journal records.</div>}</div>
+      <div className="mt-4 space-y-3 lg:hidden" aria-label="Journal register cards">
+        {history.map((r:any)=><article key={r.id} className="min-w-0 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3">
+          <button type="button" onClick={event=>openJournal(r.id,event)} aria-expanded={selectedJournalId===r.id} aria-controls="journal-register-detail" className="min-h-11 w-full break-all text-left font-mono font-black text-[#38bdf8] underline underline-offset-4">{r.journal_reference}</button>
+          <p className="mt-1 break-words text-sm">{r.description||"No description"}</p><p className="mt-2 text-xs text-[#9cc2d9]">{r.transaction_date} · {r.branch_code} · {r.status}</p>
+          <button type="button" onClick={event=>openJournal(r.id,event)} className="mt-3 min-h-11 rounded-lg border border-[#38bdf8]/40 px-3 text-sm font-bold text-[#38bdf8]">Review journal</button>
+        </article>)}
+        {!history.length&&!historyError&&<p className="py-5 text-sm text-[#9cc2d9]">No manual journal records.</p>}
+      </div>
+      {selectedJournal&&<section id="journal-register-detail" ref={journalDetailRef} tabIndex={-1} aria-label="Saved journal details" className="mt-5 scroll-mt-4 rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-mono font-black text-[#38bdf8]">{selectedJournal.journal_reference}</h3><p className="mt-2 text-sm">{selectedJournal.description||"No description"}</p><p className="mt-2 text-xs text-[#9cc2d9]">{selectedJournal.transaction_date} · {selectedJournal.branch_code} · {selectedJournal.status}</p></div><button type="button" disabled={busy} onClick={()=>{journalReferenceRef.current?.focus();setSelectedJournalId(null)}} className="rounded-lg border border-[#1a3a5c] px-3 py-2 text-xs">Close details</button></div>
         {selectedJournal.status==="DRAFT"&&<p className="mt-3 text-sm text-[#f6b84b]">Draft — not posted to the General Ledger. Maker-checker approval is required before posting.</p>}
         <div className="mt-4 overflow-auto"><table className="w-full min-w-[650px] text-left text-sm"><thead className="text-xs text-[#9cc2d9]"><tr><th className="p-3">Account Code</th><th className="p-3">Line Description</th><th className="p-3 text-right">Debit</th><th className="p-3 text-right">Credit</th></tr></thead><tbody>{savedLines.map((line:any,index:number)=><tr key={index} className="border-t border-[#1a3a5c]"><td className="p-3 font-mono">{line.account_code||"-"}</td><td className="p-3">{line.description||"-"}</td><td className="p-3 text-right">{money(line.debit)}</td><td className="p-3 text-right">{money(line.credit)}</td></tr>)}</tbody><tfoot className="border-t border-[#1a3a5c] font-black"><tr><th colSpan={2} className="p-3">Total</th><td className="p-3 text-right">{money(savedLines.reduce((sum:number,line:any)=>sum+Number(line.debit||0),0))}</td><td className="p-3 text-right">{money(savedLines.reduce((sum:number,line:any)=>sum+Number(line.credit||0),0))}</td></tr></tfoot></table></div>
+        {postingError&&<p role="alert" className="mt-4 break-words text-sm text-rose-300">{postingError}</p>}
+        {selectedJournal.status==="POSTED"&&<p role="status" className="mt-4 text-sm text-emerald-300">Posted to the General Ledger. No further approval is needed.</p>}
+        {selectedJournal.status==="DRAFT"&&<div className="mt-4 space-y-3 border-t border-[#1a3a5c] pt-4">
+          {!canPost&&<p className="text-sm text-[#9cc2d9]">Approval requires an Accountant, Admin or Superadmin account.</p>}
+          {canPost&&selectedIsMaker&&!["superadmin","super_admin"].includes(role)&&<p className="text-sm text-[#f6b84b]">You created this draft. A different authorized approver must post it.</p>}
+          {canApproveSelected&&!postingConfirmation&&<button type="button" disabled={busy||!!historyError||!savedLines.length} onClick={()=>setPostingConfirmation(true)} className="min-h-11 w-full rounded-xl bg-emerald-500 px-5 py-3 font-black text-[#061524] disabled:opacity-40 sm:w-auto">Approve &amp; Post journal</button>}
+          {canApproveSelected&&postingConfirmation&&<div role="group" aria-label="Confirm journal posting" className="rounded-xl border border-amber-400/40 p-3">
+            <p className="break-words text-sm">Post {selectedJournal.journal_reference} to the General Ledger? Confirm that you have reviewed the debit and credit lines above.</p>
+            <div className="mt-3 flex flex-wrap gap-3"><button type="button" disabled={busy||!!historyError} onClick={()=>void postSelectedJournal()} className="min-h-11 rounded-xl bg-emerald-500 px-4 font-black text-[#061524] disabled:opacity-40">Confirm posting</button><button type="button" disabled={busy} onClick={()=>setPostingConfirmation(false)} className="min-h-11 rounded-xl border border-[#1a3a5c] px-4">Cancel</button></div>
+          </div>}
+          {busy&&<p role="status" className="text-sm text-[#9cc2d9]">Posting journal…</p>}
+        </div>}
         {!savedLines.length&&<p className="mt-3 text-sm text-[#9cc2d9]">No saved lines returned for this journal.</p>}
       </section>}
     </section>}
