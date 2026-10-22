@@ -63,11 +63,11 @@ const ALIASES = new Map(Object.entries({
   "dala":"Dala","ဒလ":"Dala",
   "seikkyikanaungto":"Seikkyi Kanaungto","seikgyikanaungto":"Seikkyi Kanaungto","ဆိပ်ကြီးခနောင်တို":"Seikkyi Kanaungto",
   "thanlyin":"Thanlyin","syriam":"Thanlyin","သန်လျင်":"Thanlyin"
-}));
+}).map(([alias, township]) => [compact(alias), township]));
 
 function compact(value) {
   return String(value || "").normalize("NFC").toLowerCase()
-    .replace(/(?:township|မြို့နယ်|city|မြို့)/g, "")
+    .replace(/(?:township|မြို့နယ်|city|မြို့)\s*$/g, "")
     .replace(/[^a-z0-9\u1000-\u109f]+/g, "");
 }
 function canonicalTownship(value) { return ALIASES.get(compact(value)) || ""; }
@@ -299,6 +299,15 @@ function assignPlan(stops) {
   return { royal, otherExcluded, unmapped, unsupported, eligible, routes };
 }
 
+function townshipMappingMessage(rows) {
+  const details = rows.slice(0, 10).map((row) => `${row.delivery_way_id} (${row.raw_township || "township missing"})`).join(", ");
+  const remaining = rows.length > 10 ? ` and ${rows.length - 10} more` : "";
+  const highway = rows.some((row) => /^(ဂိတ်ချ|hterminaldropoff|highwayterminaldropoff)$/.test(compact(row.raw_township)));
+  return `Yangon township mapping needs review: ${details}${remaining}. ${highway
+    ? "Highway handoff (ဂိတ်ချ) is not a township: select its highway handoff station in Data Entry instead of routing it as Yangon doorstep delivery. "
+    : ""}Correct these destinations and refresh the queue before generating a Wayplan. All selected parcels remain selected.`;
+}
+
 export default {
   async fetch(request) {
     try {
@@ -312,7 +321,7 @@ export default {
         return json({
           ok: false,
           error: "yangon_master_township_mapping_required",
-          message: "One or more parcels do not map to the approved Yangon van-assignment master. Correct the township before automatic Wayplan generation.",
+          message: townshipMappingMessage([...assigned.unmapped, ...assigned.unsupported]),
           unmapped: assigned.unmapped.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.raw_township })),
           unsupported: assigned.unsupported.map((s) => ({ delivery_way_id: s.delivery_way_id, township: s.raw_township, canonical_township: s.township })),
         }, 422);
