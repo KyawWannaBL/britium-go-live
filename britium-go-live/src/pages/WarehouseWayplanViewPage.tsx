@@ -103,8 +103,8 @@ export default function WarehouseWayplanViewPage(){
                 <td><div>{text(s.recipient_name)}</div><div className="text-xs text-[#9cc2d9]">{text(s.recipient_phone,"")}</div></td>
                 <td>{text(s.township,s.delivery_township)}</td>
                 <td>{money(s.cod_amount)}</td>
-                <td>{text(s.stop_status,s.rider_status)}</td>
-                <td className="max-w-[240px] whitespace-normal">{text(s.failed_reason,s.warehouse_exception_reason||"")}</td>
+                <td>{text(s.stop_status,s.rider_status)}{s.metadata?.completion_basis==="MD_INSTRUCTED_ASSUMPTION"?<div className="mt-1 text-xs text-amber-200">MD reported: {text(s.metadata?.md_attested_outcome).replaceAll("_"," ")}</div>:null}</td>
+                <td className="max-w-[240px] whitespace-normal">{text(s.failed_reason,s.warehouse_exception_reason||"")}{s.metadata?.source_attempt_evidence?.verification?<div className="mt-1 text-xs text-amber-200">Source classification: {s.metadata.source_attempt_evidence.verification}</div>:null}</td>
                 <td>{text(s.warehouse_status,s.warehouse_action)}</td>
               </tr>)}</tbody>
             </table>

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
+import { WarehouseReportedHistory, reportedDateMatches } from "@/components/warehouse/WarehouseReportedHistory";
 import { normalizeWarehouseScan } from "@/lib/warehouseScan";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeRole } from "@/lib/portalRegistry";
@@ -64,7 +65,7 @@ export default function WarehousePage() {
   const [merchantFilter,setMerchantFilter]=useState("ALL");
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
-  const [dateBasis,setDateBasis]=useState<"WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY">("WAYBILL_CREATION");
+  const [dateBasis,setDateBasis]=useState<"WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY"|"SOURCE_OPERATION">("WAYBILL_CREATION");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
   const [scanChoices,setScanChoices]=useState<any>(null);
@@ -82,7 +83,7 @@ export default function WarehousePage() {
     if(!quiet) setLoading(true);
     try {
       const [snapshotResult,archiveResult] = await Promise.all([
-        supabase.rpc("be_warehouse_scan_lifecycle_snapshot_v164"),
+        (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211"),
         isFinanceReadOnly
           ? Promise.resolve({ data: { rows: [], count: 0 }, error: null })
           : (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
@@ -545,9 +546,13 @@ export default function WarehousePage() {
       if(townshipFilter!=="ALL" && String(r.delivery_township||"")!==townshipFilter) return false;
       if(merchantFilter!=="ALL" && String(r.merchant_name||r.merchant_code||"")!==merchantFilter) return false;
 
-      const filterDate=rowFilterDate(r);
-      if(dateFrom && (!filterDate || filterDate<dateFrom)) return false;
-      if(dateTo && (!filterDate || filterDate>dateTo)) return false;
+      if(dateBasis==="SOURCE_OPERATION") {
+        if(!reportedDateMatches(r,dateFrom,dateTo)) return false;
+      } else {
+        const filterDate=rowFilterDate(r);
+        if(dateFrom && (!filterDate || filterDate<dateFrom)) return false;
+        if(dateTo && (!filterDate || filterDate>dateTo)) return false;
+      }
 
       if(!q) return true;
       return [
@@ -581,6 +586,7 @@ export default function WarehousePage() {
       "Reason 3",
       "Priority Next Wayplan",
       "RTO",
+      "Reported Source History (not scan evidence)",
     ];
     const csv = [
       headers,
@@ -605,6 +611,7 @@ export default function WarehousePage() {
         r.return_reason_3_name || r.return_reason_3,
         r.next_attempt_priority ? "YES" : "NO",
         r.rto_at ? "YES" : "NO",
+        JSON.stringify(r.reported_source_history || []),
       ]),
     ]
       .map((row) => row.map((c: any) => `"${String(c ?? "").replace(/"/g, '""')}"`).join(","))
@@ -614,7 +621,7 @@ export default function WarehousePage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const basisLabel=dateBasis==="WAYBILL_CREATION" ? "waybill-date" : "warehouse-activity";
+    const basisLabel=dateBasis==="SOURCE_OPERATION" ? "source-operation" : dateBasis==="WAYBILL_CREATION" ? "waybill-date" : "warehouse-activity";
     const rangeLabel=dateFrom || dateTo ? `_${dateFrom||"start"}_to_${dateTo||"end"}` : "";
     a.download = `warehouse_${basisLabel}${rangeLabel}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
@@ -930,11 +937,12 @@ export default function WarehousePage() {
                 Date Basis
                 <select
                   value={dateBasis}
-                  onChange={e=>setDateBasis(e.target.value as "WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY")}
+                  onChange={e=>setDateBasis(e.target.value as "WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY"|"SOURCE_OPERATION")}
                   className="mt-1 block w-[190px] rounded-lg border border-slate-700 bg-[#071827] px-2 py-2 text-sm text-slate-100"
                 >
                   <option value="WAYBILL_CREATION">Waybill creation date</option>
                   <option value="WAREHOUSE_ACTIVITY">Warehouse activity date</option>
+                  <option value="SOURCE_OPERATION">Source operation date</option>
                 </select>
               </label>
 
@@ -1041,6 +1049,7 @@ export default function WarehousePage() {
                 <th className="p-2">Inbound Scan</th>
                 <th className="p-2">Dispatch Stage</th>
                 <th className="p-2">Wayplan</th>
+                <th className="p-2">Reported source history</th>
                 <th className="p-2">Dispatch Scan</th>
                 <th className="p-2">Return Scan 1</th>
                 <th className="p-2">Reason</th>
@@ -1086,6 +1095,7 @@ export default function WarehousePage() {
                       <div className="text-xs font-semibold text-slate-200">{r.active_wayplan_id || "-"}</div>
                       {r.assigned_vehicle_code ? <div className="mt-1 text-[11px] text-slate-500">Vehicle {r.assigned_vehicle_code}</div> : null}
                     </td>
+                    <td className="p-2 min-w-[320px] max-w-[420px]"><WarehouseReportedHistory history={r.reported_source_history} /></td>
                     <td className="p-2 min-w-[150px]">{fmt(r.dispatch_scan_at)}</td>
                     <td className="p-2 min-w-[150px]">{fmt(r.return_scan_1_at)}</td>
                     <td className="p-2 min-w-[220px]">{r.return_reason_1_name || r.return_reason_1 || r.pending_return_reason_name || r.pending_return_reason_code || "-"}</td>
