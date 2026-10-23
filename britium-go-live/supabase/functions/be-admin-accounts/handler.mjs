@@ -127,6 +127,15 @@ export function createAccountHandler({createClient,env}){
     if(!clean(body.full_name))throw fail('Name is required.');
     await checked(admin.from('be_user_account_registry').update({full_name:clean(body.full_name),display_name:clean(body.full_name),phone_number:clean(body.phone),updated_at:new Date().toISOString()}).eq('auth_user_id',id));
     await checked(admin.from('profiles').update({full_name:clean(body.full_name),phone:clean(body.phone),updated_at:new Date().toISOString()}).eq('id',id));
+    // Sync existing mobile identities by authenticated account ID, never phone or email.
+    // Codes, roles, access state and passwords remain managed by their own flows.
+    const mobileRole=normalize(target.role_code||target.app_role||target.user_role||target.role);
+    if(workforceTables[mobileRole]){
+     const mobileName=clean(body.full_name),mobilePhone=clean(body.phone);
+     const digits=mobilePhone.replace(/\D/g,'');
+     const e164=/^09\d{6,9}$/.test(digits)?'+95'+digits.slice(1):/^959\d{6,9}$/.test(digits)?'+'+digits:null;
+     await checked(admin.from('be_mobile_workforce_accounts').update({display_name:mobileName,full_name:mobileName,name:mobileName,phone:mobilePhone,phone_primary:mobilePhone,phone_number:mobilePhone,phone_e164:e164,updated_at:new Date().toISOString()}).eq('auth_user_id',id).ilike('workforce_type',mobileRole));
+    }
    }else if(action==='reset_password'){
     const password=String(body.password??'');if(password.length<12)throw fail('Enter a temporary password of at least 12 characters.');
     const result=await admin.auth.admin.updateUserById(id,{password});if(result.error)throw fail(result.error.message,500);
