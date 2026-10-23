@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
-import CodSettlementReview, {codPaymentTypeLabel} from "@/components/finance/CodSettlementReview";
+import CodSettlementReview from "@/components/finance/CodSettlementReview";
+import {paymentAllocationLabel} from '@/lib/paymentAllocations';
+import FinanceCollectionTotals from '@/components/finance/FinanceCollectionTotals';
 import {useAuth} from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -348,6 +350,7 @@ export function WarehouseLifecycleLivePage() {
 export function FinancePortalLivePage() {
   const {role:financeRole}=useAuth();
   const canReviewCod=["finance","accountant","superadmin","super_admin"].includes(String(financeRole||"").toLowerCase());
+  const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
       const [{ data: center, error: centerError }, { data: live, error: liveError }] = await Promise.all([
@@ -439,8 +442,9 @@ export function FinancePortalLivePage() {
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
       <div style={{ display: "grid", gap: 16 }}>
-        <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={() => { state.load(); loadSettlements(); }} />
+        <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
+        <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
 
         <SummaryCards cards={[
@@ -527,8 +531,8 @@ export function FinancePortalLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
-              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
-              { key: "payment_type", label: "Payment type", render: (r) => codPaymentTypeLabel(r.metadata?.payment_method || r.metadata?.payment_mode) },
+              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={async()=>{await state.load();setCollectionRefresh(value=>value+1);}} /> },
+              { key: "payment_type", label: "Payment type", render: (r) => paymentAllocationLabel(r) },
               { key: "rider_name", label: "Rider" },
               { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
               { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },
@@ -552,6 +556,7 @@ export function FinancePortalLivePage() {
 export function CodSettlementLivePage() {
   const {role:financeRole}=useAuth();
   const canReviewCod=["finance","accountant","superadmin","super_admin"].includes(String(financeRole||"").toLowerCase());
+  const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
       const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", { p_limit: 500 });
@@ -576,7 +581,7 @@ export function CodSettlementLivePage() {
           title="COD Settlement Center"
           subtitle="Settle rider COD cash collections with finance reference tracking."
           loading={state.loading}
-          onRefresh={state.load}
+          onRefresh={async()=>{await state.load();setCollectionRefresh(value=>value+1);}}
         />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.message && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{state.message}</div>}
@@ -587,6 +592,7 @@ export function CodSettlementLivePage() {
           { label: "Expected collection", value: money(s.total_expected), color: C.gold },
           { label: "Delivered COD", value: s.delivered_cod_count || 0, color: C.gold },
         ]} />
+        <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         <Card><SearchBar query={state.query} setQuery={state.setQuery} placeholder="Search wayplan, waybill, rider, customer..." /></Card>
         <Card>
           <LiveTable
@@ -596,8 +602,8 @@ export function CodSettlementLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
-              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
-              { key: "payment_type", label: "Payment type", render: (r) => codPaymentTypeLabel(r.metadata?.payment_method || r.metadata?.payment_mode) },
+              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={async()=>{await state.load();setCollectionRefresh(value=>value+1);}} /> },
+              { key: "payment_type", label: "Payment type", render: (r) => paymentAllocationLabel(r) },
               { key: "rider_name", label: "Rider" },
               { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
               { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },

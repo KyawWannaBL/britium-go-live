@@ -1,11 +1,9 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {supabase} from '@/integrations/supabase/client';
 
-export const codPaymentTypes=[['CASH','Cash'],['KBZ_PAY','KBZ Pay'],['WAVE_PAY','Wave Pay'],['AYA_PAY','AYA Pay'],['CB_PAY','CB Pay'],['BANK_TRANSFER','Bank transfer'],['MOBILE_WALLET','Mobile wallet'],['QR','QR']];
-export function codPaymentTypeLabel(value:unknown){
- const code=String(value||'').trim().toUpperCase();
- return code ? codPaymentTypes.find(([key])=>key===code)?.[1]||String(value) : 'Not recorded';
-}
+import PaymentAllocationEditor from '@/components/finance/PaymentAllocationEditor';
+import {reportedPaymentDraft,validatePaymentAllocations,allocationPayload,type PaymentAllocation} from '@/lib/paymentAllocations';
+export {codPaymentTypes,codPaymentTypeLabel} from '@/lib/paymentAllocations';
 type Props={row:any;canReview:boolean;onChanged:()=>Promise<unknown>};
 const field:React.CSSProperties={width:'100%',minHeight:40,padding:8,color:'#eef8ff',background:'#061524',border:'1px solid #35516a',borderRadius:6};
 function operationId(){
@@ -15,10 +13,10 @@ function operationId(){
 }
 export default function CodSettlementReview({row,canReview,onChanged}:Props){
  const [current,setCurrent]=useState(row),[expanded,setExpanded]=useState(false),[mode,setMode]=useState('CONFIRM');
- const [actual,setActual]=useState(''),[reference,setReference]=useState(''),[method,setMethod]=useState('CASH');
+ const [actual,setActual]=useState(''),[reference,setReference]=useState(''),[allocations,setAllocations]=useState<PaymentAllocation[]>([]);
  const [reason,setReason]=useState(''),[adjustment,setAdjustment]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false);
  const inFlight=useRef(false),generation=useRef(0),request=useRef<{fingerprint:string;payload:any}|null>(null);
- useEffect(()=>{generation.current++;setCurrent(row);setExpanded(false);setActual('');setReference('');setMethod('CASH');setReason('');setAdjustment('');setMessage('');setBusy(false);inFlight.current=false;request.current=null;},[row.id,row.updated_at]);
+ useEffect(()=>{generation.current++;setCurrent(row);setExpanded(false);setActual(reportedPaymentDraft(row).actual);setReference('');setAllocations(reportedPaymentDraft(row).allocations);setReason('');setAdjustment('');setMessage('');setBusy(false);inFlight.current=false;request.current=null;},[row.id,row.updated_at]);
  const locked=current?.settlement_status==='SETTLED'||!!current?.settled_at;
  async function act(action:string){
   if(!canReview||locked||inFlight.current)return;
@@ -28,7 +26,8 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
   if(action!=='CONFIRM'&&!reason.trim()){setMessage('A reason is required.');return;}
   if(action==='ADJUST'&&(!/^-?[0-9]+(?:\.[0-9]{1,2})?$/.test(adjustment)||Number(adjustment)===0)){setMessage('Enter a non-zero adjustment: positive to add, negative to deduct.');return;}
   if(action==='CONFIRM'&&!/^[0-9]+(?:\.[0-9]{1,2})?$/.test(actual)){setMessage('Enter a valid non-negative collection amount.');return;}
-  const body={action,row_id:current.id,expected_updated_at:current.updated_at,...(action==='CONFIRM'?{actual_collected:actual,payment_method:method,reference:reference.trim()}:{reason:reason.trim(),...(action==='ADJUST'?{adjustment_mmk:adjustment}:{})})};
+  if(action==='CONFIRM'){const error=validatePaymentAllocations(allocations,actual);if(error){setMessage(error);return;}}
+  const body={action,row_id:current.id,expected_updated_at:current.updated_at,...(action==='CONFIRM'?{actual_collected:actual,payment_method:allocations.length>1?'MIXED':allocations[0]?.method||'CASH',payment_allocations:allocationPayload(allocations),reference:reference.trim()}:{reason:reason.trim(),...(action==='ADJUST'?{adjustment_mmk:adjustment}:{})})};
   const fingerprint=JSON.stringify(body);
   if(request.current?.fingerprint!==fingerprint)request.current={fingerprint,payload:{...body,operation_id:operationId()}};
   const version=generation.current;inFlight.current=true;setBusy(true);setMessage('');
@@ -51,7 +50,7 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
    <div>Original: {Number(current.metadata?.original_expected_collection??current.cod_expected??0).toLocaleString()} MMK · Adjustment: {Number(current.metadata?.collection_adjustment_mmk??0).toLocaleString()} MMK<br/><strong>Revised: {Number(current.cod_expected??0).toLocaleString()} MMK</strong></div>
    {mode==='CONFIRM'?<>
     <label>Actual amount received (MMK)<input name="actual_collected" type="number" min="0" step="0.01" value={actual} disabled={!canReview||busy||locked} onChange={e=>setActual(e.target.value)} style={field}/></label>
-    <label>Payment type<select name="payment_method" value={method} disabled={!canReview||busy||locked} onChange={e=>setMethod(e.target.value)} style={field}>{codPaymentTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+    <PaymentAllocationEditor value={allocations} onChange={setAllocations} disabled={!canReview||busy||locked}/>
     <label>Collection reference<input name="reference" value={reference} disabled={!canReview||busy||locked} onChange={e=>setReference(e.target.value)} style={field}/></label>
     <small>Review the received amount and reference, then click Confirm again. If the amount differs, record an explained adjustment first.</small>
    </>:<>

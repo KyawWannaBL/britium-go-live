@@ -1,5 +1,7 @@
 // @ts-nocheck
 // BRITIUM_PRIMARY_FIELD_VERIFICATION_GUARD_V10_1
+import PaymentAllocationEditor from '@/components/finance/PaymentAllocationEditor';
+import {validatePaymentAllocations,allocationPayload} from '@/lib/paymentAllocations';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
@@ -1952,6 +1954,7 @@ function FieldPortal() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [codCollected, setCodCollected] = useState("0");
+  const [paymentAllocations,setPaymentAllocations] = useState([]);
   const [proofUrl, setProofUrl] = useState("");
   const [proofFile, setProofFile] = useState<File | null>(null);
   const [proofPreviewUrl, setProofPreviewUrl] = useState("");
@@ -2565,7 +2568,8 @@ function FieldPortal() {
     setParcelCount(nextCount);
     setRecipientName(text(job.recipient_name || job.customer_name));
     setRecipientPhone(text(job.recipient_phone || job.customer_phone));
-    setCodCollected(String(Number(job.rider_cod_amount || job.cod_amount || job.item_price || 0)));
+    setCodCollected("");
+    setPaymentAllocations([]);
     setProofUrl("");
     setProofFile(null);
     setProofPreviewUrl("");
@@ -3031,11 +3035,14 @@ function FieldPortal() {
         return;
       }
 
+      const allocationError=validatePaymentAllocations(paymentAllocations,codCollected);
+      if(allocationError){setError(allocationError);return;}
       action = "deliver";
       payload = {
         recipient_name: recipientName,
         recipient_phone: recipientPhone,
-        cod_collected_amount: Number(codCollected || 0),
+        cod_collected_amount: Number(codCollected),
+        payment_allocations: allocationPayload(paymentAllocations),
         proof_url: proof,
         signature_url: null,
       };
@@ -3719,7 +3726,8 @@ function FieldPortal() {
                 <div style={{ display: "grid", gap: 12 }}>
                   <div><label>Recipient name</label><input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} style={inputStyle()} /></div>
                   <div><label>Recipient phone</label><input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} style={inputStyle()} /></div>
-                  <div><label>COD / Payment collected amount</label><input value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
+                  <div><label>COD / Payment collected amount</label><input type="number" min="0" step="0.01" value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
+                  <PaymentAllocationEditor value={paymentAllocations} onChange={setPaymentAllocations} disabled={busy}/>
                   <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
                   {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
                   {proofPreviewUrl && <img src={proofPreviewUrl} alt="Delivery proof preview" style={{ width: "100%", maxHeight: 260, objectFit: "contain", borderRadius: 12, border: `1px solid ${proofApproved ? C.green : C.gold}` }} />}
