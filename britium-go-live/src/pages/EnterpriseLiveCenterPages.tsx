@@ -3,6 +3,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import CodSettlementReview from "@/components/finance/CodSettlementReview";
 import {paymentAllocationLabel} from '@/lib/paymentAllocations';
 import FinanceCollectionTotals from '@/components/finance/FinanceCollectionTotals';
+import CodQueueFilters from '@/components/finance/CodQueueFilters';
+import {filterCodRows,codDuration} from '@/lib/financeCodFilters';
+import {Link} from 'react-router-dom';
 import {useAuth} from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -353,7 +356,7 @@ export function FinancePortalLivePage() {
   const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
-      const [{ data: center, error: centerError }, { data: live, error: liveError }] = await Promise.all([
+      const [{ data: center, error: centerError }, { data: live, error: liveError }, {data:cod,error:codError}] = await Promise.all([
         supabase.rpc("be_finance_portal_center"),
         supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
           p_work_date: null,
@@ -361,16 +364,20 @@ export function FinancePortalLivePage() {
           p_worker: null,
           p_status: null,
         }),
+        supabase.rpc("be_finance_wayplan_cod_center",{p_limit:5000}),
       ]);
       if (centerError) throw centerError;
       if (liveError) throw liveError;
-      return { ...(center || {}), live_wayplans: live?.rows || [], live_work_date: live?.work_date };
+      if(codError)throw codError;
+      return { ...(center || {}), cod_rows:cod?.rows||[], live_wayplans: live?.rows || [], live_work_date: live?.work_date };
     },
     (d) => Array.isArray(d?.cod_rows) ? d.cod_rows : []
   );
 
+  const [codFilters,setCodFilters]=useState({});
+  const filteredCod=useMemo(()=>filterCodRows(state.rows,codFilters),[state.rows,codFilters]);
   const [settlements,setSettlements] = useState<any[]>([]);
-  const [settlementDate,setSettlementDate] = useState(() => new Date().toISOString().slice(0,10));
+  const [settlementDate,setSettlementDate] = useState(() => new Date(Date.now()+23400000).toISOString().slice(0,10));
   const [settlementBusy,setSettlementBusy] = useState("");
   const [settlementMessage,setSettlementMessage] = useState("");
   const [signedNames,setSignedNames] = useState<Record<string,string>>({});
@@ -444,6 +451,7 @@ export function FinancePortalLivePage() {
       <div style={{ display: "grid", gap: 16 }}>
         <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
+        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
 
@@ -492,7 +500,7 @@ export function FinancePortalLivePage() {
         <Card>
           <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
             <div>
-              <h2 style={{ margin:0 }}>Financial Settlement</h2>
+              <h2 id="financial-settlement" style={{ margin:0 }}>Financial Settlement</h2>
               <div style={{ color:C.sub, fontSize:12, marginTop:4 }}>Finance + assigned Rider/Driver/Helper must electronically sign. Clear is blocked until all required signatures and collection reconciliation are complete.</div>
             </div>
             <input type="date" value={settlementDate} onChange={(e)=>setSettlementDate(e.target.value)} style={{...input(),width:170}} />
@@ -523,12 +531,14 @@ export function FinancePortalLivePage() {
 
         <Card>
           <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
+          <CodQueueFilters value={codFilters} onChange={setCodFilters} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filteredCod.length} total={state.rows.length}/>
           <p style={{ color: C.sub }}>Expected collection is the amount due. Historical rows marked “Not recorded” require collection reconciliation before Finance can settle them.</p>
           <LiveTable
-            rows={state.rows}
+            rows={filteredCod}
             activeRow={state.activeRow}
             setActiveRow={state.setActiveRow}
             columns={[
+              { key: "duration", label: "Settlement duration", render:(r)=>codDuration(r) },
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
               { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={async()=>{await state.load();setCollectionRefresh(value=>value+1);}} /> },
@@ -559,17 +569,15 @@ export function CodSettlementLivePage() {
   const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
-      const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", { p_limit: 500 });
+      const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", { p_limit: 5000 });
       if (error) throw error;
       return data;
     },
     (d) => Array.isArray(d?.rows) ? d.rows : []
   );
 
-  const filtered = useMemo(() => {
-    const q = state.query.toLowerCase().trim();
-    return state.rows.filter((r) => !q || [r.wayplan_id, r.delivery_way_id, r.rider_code, r.recipient_name, r.settlement_status, r.metadata?.source_business_date].join(" ").toLowerCase().includes(q));
-  }, [state.rows, state.query]);
+  const [codFilters,setCodFilters]=useState({});
+  const filtered=useMemo(()=>filterCodRows(state.rows,{...codFilters,query:state.query}),[state.rows,codFilters,state.query]);
 
   const s = state.data?.summary || {};
 
@@ -593,13 +601,14 @@ export function CodSettlementLivePage() {
           { label: "Delivered COD", value: s.delivered_cod_count || 0, color: C.gold },
         ]} />
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
-        <Card><SearchBar query={state.query} setQuery={state.setQuery} placeholder="Search wayplan, waybill, rider, customer..." /></Card>
+        <Card><CodQueueFilters value={{...codFilters,query:state.query}} onChange={next=>{setCodFilters(next);state.setQuery(next.query||"");}} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filtered.length} total={state.rows.length}/><Link to="/rider-settlement" style={{color:C.gold}}>Open Financial Settlement signatures</Link></Card>
         <Card>
           <LiveTable
             rows={filtered}
             activeRow={state.activeRow}
             setActiveRow={state.setActiveRow}
             columns={[
+              { key: "duration", label: "Settlement duration", render:(r)=>codDuration(r) },
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
               { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={async()=>{await state.load();setCollectionRefresh(value=>value+1);}} /> },

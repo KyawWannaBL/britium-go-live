@@ -1,0 +1,18 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {createRequire} from 'node:module';
+import React from 'react';import Renderer,{act} from 'react-test-renderer';import ts from 'typescript';
+const require=createRequire(import.meta.url),calls=[];let role='driver',reloads=0;
+const module={exports:{}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/components/finance/FieldSettlementSignature.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:id=>id==='@/contexts/AuthContext'?{useAuth:()=>({role})}:id==='@/integrations/supabase/client'?{supabase:{rpc:async(name,args)=>{calls.push({name,args});return{data:{ok:true}}}}}:require(id)});
+let view;const props={row:{wayplan_id:'WP-1',status:'PENDING'},date:'2026-10-22',onChanged:async()=>{reloads++}};
+await act(async()=>{view=Renderer.create(React.createElement(module.exports.default,props))});
+assert.equal(view.root.findByType('button').props.disabled,true,'Blank names cannot sign');
+await act(async()=>view.root.findByType('input').props.onChange({target:{value:' Driver Name '}}));
+assert.match(JSON.stringify(view.toJSON()),/Sign My Settlement/);
+await act(async()=>view.root.findByType('button').props.onClick());
+assert.equal(calls.length,1);assert.equal(calls[0].name,'be_finance_field_settlement_sign_v1');assert.equal(calls[0].args.p_signed_name,'Driver Name');assert.equal(calls[0].args.p_work_date,'2026-10-22');assert.equal(calls[0].args.p_wayplan_id,'WP-1');assert.equal(reloads,1);
+await act(async()=>view.update(React.createElement(module.exports.default,{...props,row:{...props.row,status:'CLEARED'}})));
+assert.equal(view.root.findAllByType('button').length,0,'Cleared settlements cannot be re-signed');
+role='warehouse';await act(async()=>view.update(React.createElement(module.exports.default,props)));
+assert.equal(view.root.findAllByType('button').length,0,'Non-participants do not get a signing action');
+await act(async()=>view.unmount());
+console.log('PASS signature UI: explicit named signature, correct route/date, refresh, cleared lock and role restriction; no clear action invoked');

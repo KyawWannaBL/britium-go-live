@@ -28,6 +28,8 @@ jobs:
       - run: node scripts/test-warehouse-delivered-status.mjs
       - run: node scripts/test-payment-allocations-ui.mjs
       - run: node scripts/test-finance-collection-totals-ui.mjs
+      - run: node scripts/test-finance-cod-filters.mjs
+      - run: node scripts/test-field-settlement-signature-ui.mjs
       - run: node scripts/test-split-collection-db.mjs
       - run: node scripts/test-split-delivery-sync-db.mjs
       - run: node scripts/test-split-helper-handoff-db.mjs
