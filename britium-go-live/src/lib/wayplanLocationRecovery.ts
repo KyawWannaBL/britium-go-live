@@ -19,10 +19,12 @@ type RecoveryDependencies<Row extends RecoverableWayplanRow> = {
   concurrency?: number;
 };
 
-function hasCoordinate(row: RecoverableWayplanRow) {
+function hasCoordinate(row: {latitude?: unknown; longitude?: unknown}) {
+  if (row.latitude == null || row.longitude == null
+      || String(row.latitude).trim() === "" || String(row.longitude).trim() === "") return false;
   const lat = Number(row.latitude);
   const lng = Number(row.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng);
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
 }
 
 function acceptedLocation(location: RecoveredLocation | null): location is RecoveredLocation {
@@ -35,7 +37,7 @@ function acceptedLocation(location: RecoveredLocation | null): location is Recov
     || (/^MAPBOX_(?:POSTAL_VALIDATED|TOWNSHIP_EXACT_VALIDATED)_(?:ADDRESS_EXACT|POI_EXACT)$/.test(source)
       && ["ADDRESS_EXACT", "POI_EXACT"].includes(level));
   if (!routingSource) return false;
-  return Number.isFinite(Number(location.latitude)) && Number.isFinite(Number(location.longitude));
+  return hasCoordinate(location);
 }
 
 export async function recoverWayplanLocations<Row extends RecoverableWayplanRow>(
