@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import ts from 'typescript';
+const path=new URL('../src/lib/waybillPublicationScope.ts',import.meta.url);
+const source=readFileSync(path,'utf8');
+const js=ts.transpile(source,{module:ts.ModuleKind.ES2022});
+const {scopeReadySequences}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+assert.deepEqual(scopeReadySequences([1,15,31],31),[31]);
+assert.deepEqual(scopeReadySequences([1,15],31),[]);
+assert.deepEqual(scopeReadySequences([1,15,31]),[1,15,31]);
+assert.deepEqual(scopeReadySequences([1,15,31],0),[]);
+console.log('Waybill publication scope passes');
