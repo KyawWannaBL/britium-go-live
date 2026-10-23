@@ -1,4 +1,5 @@
 import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
+import { scopeReadySequences } from "@/lib/waybillPublicationScope";
 import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
 import BufferedDataEntryInput from "@/components/BufferedDataEntryInput";
 import { locationReadiness } from "@/lib/dataEntryLocationReadiness";
@@ -2795,7 +2796,7 @@ export default function DataEntryFinancialV2Page() {
     return nextRows;
   }
 
-  async function createAndGenerateWaybill(){
+  async function createAndGenerateWaybill(onlySequence?:number){
     if(!selectedPickupId || waybillBusy || bulkSaving || bulkCalculating) return;
 
     setWaybillBusy(true);
@@ -2804,8 +2805,8 @@ export default function DataEntryFinancialV2Page() {
 
     try{
       const workingRows=await synchronizePendingLocationsForWaybill(rows);
-      const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL",workingRows);
-      const readySequences=await authoritativeReadySequences(selectedPickupId);
+      const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL",onlySequence===undefined?workingRows:workingRows.filter(row=>row.parcel_sequence===onlySequence));
+      const readySequences=scopeReadySequences(await authoritativeReadySequences(selectedPickupId),onlySequence);
       if(!readySequences.length){
         const blockers=currentReadinessSummary(workingRows);
         const held=Number(saveResult?.held_count||0);
@@ -3516,6 +3517,7 @@ export default function DataEntryFinancialV2Page() {
               }
               GENERATE COMPLETED WAYBILLS
             </button>
+            <button type="button" onClick={()=>{const row=rows[pageStart];if(row) void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating} className="rounded-lg border border-emerald-300/50 bg-emerald-700 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">GENERATE CURRENT PARCEL WAYBILL</button>
             <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
             <DataEntryOsBulkImport
               pickups={pickups as OsBulkPickup[]}
