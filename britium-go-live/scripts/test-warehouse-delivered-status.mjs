@@ -1,0 +1,17 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';import vm from 'node:vm';import ts from 'typescript';
+const file='src/lib/warehouseStatus.ts',module={exports:{warehouseQueueStatus:r=>r.warehouse_scan_status||r.warehouse_status||r.delivery_status}};
+if(fs.existsSync(file))vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports});
+const status=module.exports.warehouseQueueStatus;
+const report=(date,outcome,extra={})=>({work_date:date,reported_outcome:outcome,completion_basis:'MD_INSTRUCTED_ASSUMPTION',...extra});
+const delivered=report('2026-10-21','DELIVERY_COMPLETED');
+assert.equal(status({warehouse_scan_status:'DISPATCH_SCANNED',reported_source_history:[delivered]}),'DELIVERED','confirmed delivered ways must not remain dispatch scanned');
+assert.equal(status({warehouse_scan_status:'RETURN_SCANNED',reported_source_history:[report('2026-10-20','DELIVERY_ATTEMPT_FAILED'),delivered]}),'DELIVERED','successful retry takes precedence over prior return scan');
+assert.equal(status({warehouse_scan_status:'RETURN_SCANNED',reported_source_history:[delivered,report('2026-10-22','DELIVERY_ATTEMPT_FAILED')]}),'RETURN_SCANNED','a newer failed outcome cannot become delivered');
+assert.equal(status({warehouse_scan_status:'DISPATCH_SCANNED',delivery_status:'OUT_FOR_DELIVERY',reported_source_history:[delivered]}),'DISPATCH_SCANNED','active current job takes priority over historical outcomes');
+assert.equal(status({warehouse_scan_status:'RETURN_SCANNED',delivery_status:'DELIVERED'}),'DELIVERED','live delivered status wins over historical warehouse scan');
+assert.equal(status({warehouse_scan_status:'DISPATCH_SCANNED',reported_source_history:[report('2026-10-21','THIRD_PARTY_HANDOVER_COMPLETE')]}),'DISPATCH_SCANNED','third party handover is not customer delivery');
+assert.equal(status({warehouse_scan_status:'DISPATCH_SCANNED',reported_source_history:[report('2026-10-21','DELIVERY_COMPLETED',{completion_basis:'DRAFT'})]}),'DISPATCH_SCANNED','unconfirmed report cannot mark delivered');
+assert.equal(status({warehouse_scan_status:'RETURN_SCANNED',reported_source_history:[delivered,report('2026-10-21','DELIVERY_ATTEMPT_FAILED')]}),'RETURN_SCANNED','same-day conflicting outcomes remain unresolved');
+for(const value of [null,{},[null],['bad']])assert.equal(status({warehouse_scan_status:'RECEIVED',reported_source_history:value}),'RECEIVED');
+console.log('PASS warehouse Delivered status: current delivery, confirmed source retries, active-job precedence, failed/third-party/conflict exclusions');

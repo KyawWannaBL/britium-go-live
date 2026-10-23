@@ -1,6 +1,6 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
-import CodSettlementReview from "@/components/finance/CodSettlementReview";
+import CodSettlementReview, {codPaymentTypeLabel} from "@/components/finance/CodSettlementReview";
 import {useAuth} from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -528,6 +528,7 @@ export function FinancePortalLivePage() {
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
               { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
+              { key: "payment_type", label: "Payment type", render: (r) => codPaymentTypeLabel(r.metadata?.payment_method || r.metadata?.payment_mode) },
               { key: "rider_name", label: "Rider" },
               { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
               { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },
@@ -596,6 +597,7 @@ export function CodSettlementLivePage() {
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
               { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
+              { key: "payment_type", label: "Payment type", render: (r) => codPaymentTypeLabel(r.metadata?.payment_method || r.metadata?.payment_mode) },
               { key: "rider_name", label: "Rider" },
               { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
               { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },
@@ -658,7 +660,6 @@ export function FinanceReportLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
-              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
               { key: "rider_name", label: "Rider" },
               { key: "cod_collected", label: "COD", align: "right", render: (r) => money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },

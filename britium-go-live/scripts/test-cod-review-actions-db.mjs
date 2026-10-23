@@ -18,6 +18,8 @@ try {
  const file=fs.readdirSync('supabase/migrations').find(f=>f.endsWith('_finance_cod_review_actions_v213.sql'));
  if(file)await db.exec(fs.readFileSync('supabase/migrations/'+file,'utf8'));
  else await db.exec(`create function be_finance_cod_review_action_v213(jsonb) returns jsonb language sql as $$select '{"ok":false,"error":"NOT_IMPLEMENTED"}'::jsonb$$;`);
+ const types=fs.readdirSync('supabase/migrations').find(f=>f.endsWith('_finance_named_payment_types_v214.sql'));
+ if(types)await db.exec(fs.readFileSync('supabase/migrations/'+types,'utf8'));
  let n=0;async function row(){return(await db.query('select * from be_wayplan_cod_settlements')).rows[0];}
  async function payload(action,extra={}){return{action,row_id:(await row()).id,expected_updated_at:(await row()).updated_at.toISOString(),operation_id:`00000000-0000-0000-0000-${String(++n).padStart(12,'0')}`,...extra};}
  async function call(p){return(await db.query('select be_finance_cod_review_action_v213($1::jsonb) data',[JSON.stringify(p)])).rows[0].data;}
@@ -43,6 +45,12 @@ try {
  await db.exec(`update be_finance_cod_settlements_v48 set settlement_status='HOLD_EXCEPTION'`);
  assert.equal((await call(await payload('CONFIRM',{actual_collected:100,reference:'R',payment_method:'CASH'}))).error,'FIELD_EXCEPTION_HOLD');
  await db.exec(`update be_finance_cod_settlements_v48 set settlement_status='PENDING'`);
+ assert.equal((await call(await payload('CONFIRM',{actual_collected:100,reference:'R',payment_method:'UNSUPPORTED'}))).error,'PAYMENT_METHOD_REQUIRED');
+ for(const method of ['KBZ_PAY','WAVE_PAY','AYA_PAY','CB_PAY']){
+  const p=await payload('CONFIRM',{actual_collected:100,reference:'TYPE-CHECK',payment_method:method});
+  await db.exec('begin');assert.equal((await call(p)).ok,true,method+' must persist through Finance confirmation');
+  assert.equal((await row()).metadata.payment_method,method);await db.exec('rollback');
+ }
  const confirm=await payload('CONFIRM',{actual_collected:100,reference:'RCPT-100',payment_method:'CASH',actor:'spoofed'});
  assert.equal((await call(confirm)).ok,true);assert.equal((await row()).settlement_status,'SETTLED');
  assert.equal((await call(confirm)).idempotent,true);
