@@ -303,6 +303,25 @@ export function WarehouseLifecycleLivePage() {
 
   const s = state.data?.summary || {};
 
+  // A delivery confirms completion of a stop, NOT receipt of Cash/KPay.
+  // Expected COD is drawn from Finance's wayplan settlement snapshot.
+  // When every stop is delivered, opening COD is an equivalent fallback.
+  const financeSnapshotDateMatchesLive = settlementDate === String(s.live_work_date || "");
+  const settlementTotalsByWayplan = new Map(
+    financeSnapshotDateMatchesLive ? settlements.map((row:any) => [String(row.wayplan_id), row]) : []
+  );
+  function deliveredCodExpected(row:any): number | null {
+    const snapshot = settlementTotalsByWayplan.get(String(row.wayplan_id)) as any;
+    if(snapshot) return Number(snapshot.expected_cod || 0);
+    if(Number(row.total_ways || 0) === Number(row.dropped_ways || 0)) {
+      return Number(row.opening_cod_amount || 0);
+    }
+    return null; // Do not invent delivered COD for partially-completed wayplans.
+  }
+  const knownDeliveredCod = liveRows.reduce((sum:number,row:any) => sum + (deliveredCodExpected(row) || 0), 0);
+  const incompleteExpectedRows = liveRows.filter((row:any) => deliveredCodExpected(row) === null).length;
+  const unrecordedDeliveredCod = Math.max(0, knownDeliveredCod - liveTotals.collected);
+
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
       <div style={{ display: "grid", gap: 16 }}>
@@ -461,6 +480,8 @@ export function FinancePortalLivePage() {
         <SummaryCards cards={[
           { label: "Today Revenue", value: money(s.today_revenue), color: C.green },
           { label: "Opening COD", value: money(liveTotals.opening), color: C.gold },
+          { label: "Delivered COD Expected", value: incompleteExpectedRows ? `${money(knownDeliveredCod)} (partial)` : money(knownDeliveredCod), color: C.gold },
+          { label: "Delivered COD Not Yet Recorded", value: money(unrecordedDeliveredCod), color: C.gold },
           { label: "Total Ways", value: liveTotals.totalWays, color: C.blue },
           { label: "Dropped", value: liveTotals.dropped, color: C.green },
           { label: "Failed", value: liveTotals.failed, color: C.red },
@@ -479,6 +500,10 @@ export function FinancePortalLivePage() {
             </div>
             <Badge status="LIVE" />
           </div>
+          <div style={{background:"#102b45",border:`1px solid ${C.border}`,borderRadius:10,padding:"12px 14px",color:C.gold,marginBottom:12,fontSize:12}}>
+            Dropped means physically delivered. Dropped COD Expected is the amount associated with those deliveries, not a confirmed payment. Cash / KPay Recorded only increases after the collection has been recorded with its payment method and verified by Finance.
+            {unrecordedDeliveredCod > 0 && <div style={{marginTop:7,fontWeight:900}}>Pending collection verification: {money(unrecordedDeliveredCod)}</div>}
+          </div>
           <LiveTable
             rows={liveRows}
             activeRow={state.activeRow}
@@ -491,11 +516,12 @@ export function FinancePortalLivePage() {
               { key: "total_ways", label: "Total Ways", align:"right" },
               { key: "opening_cod_amount", label: "Opening COD", align:"right", render:(r)=>money(r.opening_cod_amount) },
               { key: "dropped_ways", label: "Dropped", align:"right" },
+              { key: "delivered_cod_expected", label: "Dropped COD Expected", align:"right", render:(r)=>deliveredCodExpected(r) === null ? "Pending reconciliation" : money(deliveredCodExpected(r)) },
               { key: "failed_ways", label: "Failed", align:"right" },
               { key: "remaining_ways", label: "Left", align:"right" },
-              { key: "cash_collected", label: "Cash", align:"right", render:(r)=>money(r.cash_collected) },
-              { key: "mobile_banking_collected", label: "Mobile", align:"right", render:(r)=>money(r.mobile_banking_collected) },
-              { key: "actual_collected", label: "Actual", align:"right", render:(r)=>money(r.actual_collected) },
+              { key: "cash_collected", label: "Cash Recorded", align:"right", render:(r)=>money(r.cash_collected) },
+              { key: "mobile_banking_collected", label: "KPay / Bank Recorded", align:"right", render:(r)=>money(r.mobile_banking_collected) },
+              { key: "actual_collected", label: "Total Recorded", align:"right", render:(r)=>money(r.actual_collected) },
             ]}
           />
         </Card>
