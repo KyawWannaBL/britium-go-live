@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
+import WarehouseReviewedBatch from "@/components/warehouse/WarehouseReviewedBatch";
 import { WarehouseReportedHistory, reportedDateMatches } from "@/components/warehouse/WarehouseReportedHistory";
 import { warehouseQueueStatus } from "@/lib/warehouseStatus";
 import { normalizeWarehouseScan } from "@/lib/warehouseScan";
@@ -44,6 +45,8 @@ export default function WarehousePage() {
   const currentRole = normalizeRole(profile?.role);
   const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
+  const batchBusyRef=useRef(false);
+  const [batchBusy,setBatchBusy]=useState(false);
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, rows: [], reasons: [] });
   const scanBusy=useRef(false);
   const scanInputRef=useRef<HTMLInputElement>(null);
@@ -106,6 +109,7 @@ export default function WarehousePage() {
   }, [loadAll]);
 
   const focusScanner=useCallback(()=>{
+    if(batchBusyRef.current)return;
     requestAnimationFrame(()=>{
       if(scanInputRef.current && !scanChoices){
         scanInputRef.current.focus({preventScroll:true});
@@ -150,6 +154,7 @@ export default function WarehousePage() {
   };
 
   const processDispatchQueue=useCallback(async ()=>{
+    if(batchBusyRef.current)return;
     if(dispatchWorkerBusy.current) return;
     dispatchWorkerBusy.current=true;
     setDispatchProcessing(true);
@@ -193,6 +198,7 @@ export default function WarehousePage() {
   },[applyDispatchScanLocally,focusScanner,scheduleBackgroundRefresh]);
 
   const enqueueDispatchScan=useCallback((raw:string,chosen?:any)=>{
+    if(batchBusyRef.current){setMessage('Finish the reviewed warehouse batch before scanning dispatch parcels.');return;}
     let tracking:string;
     try{tracking=normalizeWarehouseScan(raw||"");}
     catch(error:any){setMessage(error.message);focusScanner();return;}
@@ -795,6 +801,7 @@ export default function WarehousePage() {
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
+        {!isFinanceReadOnly&&<WarehouseReviewedBatch disabled={loading||dispatchProcessing||!!scanChoices} onBusyChange={busy=>{batchBusyRef.current=busy;setBatchBusy(busy);scanBusy.current=busy;setLoading(busy);}} onChanged={()=>loadAll()} />}
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
         {scanChoices && <div role="dialog" aria-label="Choose matching pickup" className="mb-4 rounded border border-amber-500 p-3">
           <p>Choose the pickup printed on this parcel:</p>
@@ -805,7 +812,8 @@ export default function WarehousePage() {
           </button>)}
           <button onClick={()=>setScanChoices(null)} className="m-1 p-3">Cancel</button>
         </div>}
-        <WarehouseCameraScanner disabled={loading && scanMode!=="dispatch"} onDetected={code=>{
+        <WarehouseCameraScanner disabled={batchBusy||(loading && scanMode!=="dispatch")} onDetected={code=>{
+          if(batchBusyRef.current)return;
           setScanChoices(null);
           if(scanMode==="dispatch") enqueueDispatchScan(code);
           else {setScanCode(code);setMessage("Read "+code+". Choose Inbound or Return to save.");}
@@ -823,7 +831,7 @@ export default function WarehousePage() {
             ref={scanInputRef}
             aria-label="Scanned waybill ID"
             autoComplete="off" autoCapitalize="off" spellCheck={false}
-            disabled={loading && scanMode!=="dispatch"}
+            disabled={batchBusy||(loading && scanMode!=="dispatch")}
             value={scanCode}
             onChange={(e) => {setScanCode(e.target.value);setScanChoices(null);}}
             onKeyDown={(e) => {
