@@ -1704,6 +1704,7 @@ export default function DataEntryFinancialV2Page() {
           const registrationResponse=await (supabase as any)
             .from("be_data_entry_parcel_details")
             .select("pickup_id,parcel_sequence")
+            .not("saved_at","is",null)
             .in("pickup_id",pickupIds)
             .order("pickup_id",{ascending:true})
             .order("parcel_sequence",{ascending:true})
