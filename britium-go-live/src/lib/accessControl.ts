@@ -22,7 +22,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/accounts', rule('finance', 'finance-user', 'accountant')],
   ['/invoice-studio', rule('finance', 'finance-user', 'accountant')],
   ['/cod-settlement', rule('finance', 'finance-user', 'accountant')],
-  ['/rider-settlement', rule('finance', 'finance-user', 'accountant')],
+  ['/rider-settlement', rule('finance', 'finance-user', 'accountant', 'rider', 'driver', 'helper')],
   ['/workforce-commission', rule('finance', 'finance-user', 'accountant')],
 
   ['/data-entry', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
