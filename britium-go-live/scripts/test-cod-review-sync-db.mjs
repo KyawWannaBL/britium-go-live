@@ -16,7 +16,9 @@ try{
   wayplan_id text,delivery_way_id text,waybill_no text,pickup_id text,receiver_name text,recipient_name text,
   receiver_phone text,recipient_phone text,cod_amount numeric,cod_collected numeric,delivery_fee numeric,
   stop_status text,delivered_at timestamptz,rider_status text,rider_proof_url text);`);
- const migration=fs.readFileSync('supabase/migrations/20261023020000_finance_cod_review_actions_v213.sql','utf8');
+ const file=fs.readdirSync('supabase/migrations').find(f=>f.endsWith('_finance_cod_review_actions_v213.sql'));
+ assert.ok(file,'Finance review migration must exist');
+ const migration=fs.readFileSync('supabase/migrations/'+file,'utf8');
  const sync=migration.match(/create or replace function public\.be_sync_wayplan_cod_settlement\(\)[\s\S]*?\$sync\$;/i);
  assert.ok(sync,'migration must replace the operational sync trigger function');
  await db.exec(sync[0]);
