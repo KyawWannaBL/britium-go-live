@@ -67,8 +67,10 @@ function routeLabel(plan: VanPlan) {
 }
 
 function coord(row: any) {
+  if (row?.latitude == null || row?.longitude == null
+      || String(row.latitude).trim() === "" || String(row.longitude).trim() === "") return "";
   const lat = Number(row?.latitude), lng = Number(row?.longitude);
-  return Number.isFinite(lat) && Number.isFinite(lng) ? `${lat},${lng}` : "";
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? `${lat},${lng}` : "";
 }
 
 function personKey(resource: Resource | undefined | null) {
