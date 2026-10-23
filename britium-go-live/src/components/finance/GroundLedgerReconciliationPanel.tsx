@@ -35,6 +35,7 @@ export default function GroundLedgerReconciliationPanel() {
   const [summary, setSummary] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [confirmations, setConfirmations] = useState<Record<string,any>>({});
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -48,6 +49,9 @@ export default function GroundLedgerReconciliationPanel() {
       if (!data?.ok) throw new Error(data?.code || "Reconciliation unavailable");
       setRows(Array.isArray(data.rows) ? data.rows : []);
       setSummary(data.summary || {});
+      const confirmed = await (supabase as any).rpc("be_finance_ground_settlement_confirmations_v1",{p_limit:320});
+      if(confirmed.error || !confirmed.data?.ok) throw confirmed.error || new Error(confirmed.data?.code || "Confirmation register unavailable");
+      setConfirmations(Object.fromEntries((confirmed.data.rows || []).map((x:any)=>[x.delivery_way_id,x])));
     } catch (err) {
       setRows([]);
       setError(err instanceof Error ? err.message : String(err));
@@ -85,11 +89,12 @@ export default function GroundLedgerReconciliationPanel() {
       {error && <p role="alert" style={{ color: "#fca5a5" }}>{error}</p>}
       <div style={{ overflow: "auto", maxHeight: 460 }}>
         <table style={{ borderCollapse: "collapse", minWidth: 900, width: "100%", fontSize: 12 }}>
-          <thead><tr>{["Sheet", "Row", "Way ID", "Ground COD", "Cash", "KPay", "System COD", "Review status"].map(col =>
+          <thead><tr>{["Confirmation", "Sheet", "Row", "Way ID", "Ground COD", "Cash", "KPay", "System COD", "Review status"].map(col =>
             <th key={col} style={{ textAlign: "left", padding: 8, position: "sticky", top: 0, background: "#102b45" }}>{col}</th>
           )}</tr></thead>
           <tbody>{rows.map(row =>
             <tr key={row.delivery_way_id}>
+              <td style={{ padding: 8 }}>{confirmations[row.delivery_way_id]?.confirmation_no || "Pending"}<div style={{fontSize:10,opacity:0.75}}>{confirmations[row.delivery_way_id]?.finance_status?.replaceAll("_"," ") || ""}</div></td>
               <td style={{ padding: 8 }}>{row.source_sheet}</td>
               <td style={{ padding: 8 }}>{row.source_row}</td>
               <td style={{ padding: 8 }}>{row.delivery_way_id}</td>
