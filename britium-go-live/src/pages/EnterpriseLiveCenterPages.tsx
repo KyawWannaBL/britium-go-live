@@ -1,6 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
 import CodSettlementReview from "@/components/finance/CodSettlementReview";
+import GroundLedgerReconciliationPanel from "@/components/finance/GroundLedgerReconciliationPanel";
 import {paymentAllocationLabel} from '@/lib/paymentAllocations';
 import FinanceCollectionTotals from '@/components/finance/FinanceCollectionTotals';
 import FieldSettlementAmounts from '@/components/finance/FieldSettlementAmounts';
@@ -453,6 +454,7 @@ export function FinancePortalLivePage() {
         <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>
+        <GroundLedgerReconciliationPanel/>
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
 
