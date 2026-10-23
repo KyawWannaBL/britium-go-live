@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import FieldSettlementSignature from '@/components/finance/FieldSettlementSignature';
+import FieldSettlementAmounts from '@/components/finance/FieldSettlementAmounts';
 import {Link} from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 
@@ -70,15 +71,15 @@ export default function RiderSettlementPage(){
       <div className="flex items-center gap-3 border-b border-[#1a3a5c] p-4"><Search size={16} className="text-[#38bdf8]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search Wayplan, vehicle, rider, driver, helper..." className="w-full bg-transparent outline-none"/></div>
       <div className="max-h-[700px] overflow-auto">
         <table className="w-full min-w-[1400px] text-left text-sm">
-          <thead className="sticky top-0 bg-[#061524] text-[11px] uppercase tracking-wider text-[#8ab0c9]"><tr><th className="p-3">Wayplan</th><th className="p-3">Vehicle</th><th className="p-3">Rider</th><th className="p-3">Driver</th><th className="p-3">Helper</th><th className="p-3">Ways</th><th className="p-3">Opening COD</th><th className="p-3">Collected</th><th className="p-3">Variance</th><th className="p-3">Signatures</th><th className="p-3">Status</th><th className="p-3">Electronic signature</th></tr></thead>
+          <thead className="sticky top-0 bg-[#061524] text-[11px] uppercase tracking-wider text-[#8ab0c9]"><tr><th className="p-3">Wayplan</th><th className="p-3">Vehicle</th><th className="p-3">Rider</th><th className="p-3">Driver</th><th className="p-3">Helper</th><th className="p-3">Ways</th><th className="p-3">Settlement amounts</th><th className="p-3">Signatures</th><th className="p-3">Status</th><th className="p-3">Electronic signature</th></tr></thead>
           <tbody>{filtered.map((r:any)=><tr key={r.id||r.wayplan_id} className="border-t border-[#1a3a5c]/50">
             <td className="p-3 font-mono text-[#38bdf8]">{r.wayplan_id}</td><td className="p-3">{r.vehicle_code||r.vehicle_name||"-"}</td><td className="p-3">{r.rider_name||r.rider_code||"-"}</td><td className="p-3">{r.driver_name||r.driver_code||"-"}</td><td className="p-3">{r.helper_name||r.helper_code||"-"}</td>
-            <td className="p-3">{r.total_ways} · {r.delivered_ways} success · {r.failed_ways} fail · {r.remaining_ways} left</td><td className="p-3">{money(r.opening_cod_amount)}</td><td className="p-3">{money(r.actual_collected)}</td><td className={`p-3 font-black ${Number(r.variance_amount||0)===0?"text-emerald-400":"text-rose-400"}`}>{money(r.variance_amount)}</td>
+            <td className="p-3">{r.total_ways} · {r.delivered_ways} success · {r.failed_ways} fail · {r.remaining_ways} left</td><td className="p-3"><div style={{minWidth:340}}><FieldSettlementAmounts row={r}/></div></td>
             <td className="p-3 text-xs">F {r.signature_status?.finance?"✓":"—"} · R {r.signature_status?.rider?"✓":"—"} · D {r.signature_status?.driver?"✓":"—"} · H {r.signature_status?.helper?"✓":"—"}</td>
             <td className="p-3"><span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-black ${String(r.status).toUpperCase()==="CLEARED"?"bg-emerald-500/10 text-emerald-400":"bg-amber-500/10 text-amber-300"}`}>{String(r.status).toUpperCase()==="CLEARED"?<CheckCircle2 size={14}/>:<ShieldCheck size={14}/>} {r.status}</span></td>
             <td className="p-3"><FieldSettlementSignature key={`${date}:${r.id||r.wayplan_id}`} row={r} date={date} onChanged={load}/></td>
           </tr>)}
-          {filtered.length===0&&<tr><td colSpan={12} className="p-16 text-center text-[#8ab0c9]">No settlement rows found.</td></tr>}</tbody>
+          {filtered.length===0&&<tr><td colSpan={10} className="p-16 text-center text-[#8ab0c9]">No settlement rows found.</td></tr>}</tbody>
         </table>
       </div>
     </section>
