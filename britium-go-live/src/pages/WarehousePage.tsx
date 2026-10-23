@@ -801,7 +801,7 @@ export default function WarehousePage() {
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
-        {!isFinanceReadOnly&&<WarehouseReviewedBatch disabled={loading||dispatchProcessing||!!scanChoices} onBusyChange={busy=>{batchBusyRef.current=busy;setBatchBusy(busy);scanBusy.current=busy;setLoading(busy);}} onChanged={()=>loadAll()} />}
+        {!isFinanceReadOnly&&<WarehouseReviewedBatch receivedWayIds={rows.filter((row:any)=>['RECEIVED','WAREHOUSE_READY'].includes(String(row.warehouse_scan_status||row.warehouse_status||'').toUpperCase())).map((row:any)=>canonicalDeliveryWayId(row))} disabled={loading||dispatchProcessing||!!scanChoices} onBusyChange={busy=>{batchBusyRef.current=busy;setBatchBusy(busy);scanBusy.current=busy;setLoading(busy);}} onChanged={()=>loadAll()} />}
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
         {scanChoices && <div role="dialog" aria-label="Choose matching pickup" className="mb-4 rounded border border-amber-500 p-3">
           <p>Choose the pickup printed on this parcel:</p>

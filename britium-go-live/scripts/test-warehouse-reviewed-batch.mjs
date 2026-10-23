@@ -25,5 +25,11 @@ const successfulFirst=calls.filter(c=>c.name==='be_warehouse_inbound_scan'&&c.ar
 await act(async()=>button('Receive reviewed parcels').props.onClick());assert.equal(calls.filter(c=>c.name==='be_warehouse_inbound_scan'&&c.args.p_tracking_no==='D1022-SKF-023').length,successfulFirst,'Retry skips committed successes');
 await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'D1022-SKF-025'}}));await act(async()=>button('Review inbound list').props.onClick());await act(async()=>view.root.findByType('input').props.onChange({target:{checked:true}}));
 ambiguousId='D1022-SKF-025';const before=calls.filter(c=>c.name==='be_warehouse_inbound_scan').length;await act(async()=>button('Receive reviewed parcels').props.onClick());assert.equal(calls.filter(c=>c.name==='be_warehouse_inbound_scan').length,before,'Resolver candidate count blocks ambiguity even with one chosen match');
+
+await act(async()=>view.update(React.createElement(module.exports.default,{onChanged:async()=>refreshes++,receivedWayIds:['D1022-SKF-026','D1022-SKF-027']})));
+await act(async()=>view.root.findByType('textarea').props.onChange({target:{value:'D1022-SKF-026\nD1022-SKF-027'}}));await act(async()=>button('Review inbound list').props.onClick());await act(async()=>view.root.findByType('input').props.onChange({target:{checked:true}}));
+assert.equal(button('Receive reviewed parcels').props.disabled,true,'Reviewed scope uses persisted warehouse receipts after refresh');
+assert.equal(button('Mark reviewed parcels ready').props.disabled,false,'Already received reviewed parcels can advance without rescanning');
 await act(async()=>view.unmount());
+
 console.log('PASS reviewed warehouse batch: exact scope, deduplication, receipt confirmation, authenticated actor, ready action, invalid-list block');

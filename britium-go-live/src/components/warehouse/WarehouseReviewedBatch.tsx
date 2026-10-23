@@ -2,7 +2,7 @@ import {useRef,useState} from 'react';
 import {supabase} from '@/integrations/supabase/client';
 
 type Outcome={id:string;ok:boolean;message:string};
-export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyChange}:{onChanged:()=>Promise<unknown>;disabled?:boolean;onBusyChange?:(busy:boolean)=>void}){
+export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyChange,receivedWayIds=[]}:{onChanged:()=>Promise<unknown>;disabled?:boolean;onBusyChange?:(busy:boolean)=>void;receivedWayIds?:string[]}){
   const [text,setText]=useState(''),[ids,setIds]=useState<string[]>([]),[confirmed,setConfirmed]=useState(false);
   const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [received,setReceived]=useState<string[]>([]),[ready,setReady]=useState<string[]>([]),[outcomes,setOutcomes]=useState<Outcome[]>([]);
@@ -12,7 +12,9 @@ export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyC
     const parsed=[...new Set(text.toUpperCase().split(/[\s,;]+/).filter(Boolean))];
     setIds([]);setConfirmed(false);setReceived([]);setReady([]);setOutcomes([]);
     if(!parsed.length||parsed.length>100||parsed.some(id=>!/^D\d{4}-[A-Z0-9]+-\d{3,}$/.test(id))){setMessage('Enter 1–100 valid D-series Way IDs. No scans were submitted.');return;}
-    setIds(parsed);setMessage('Review every Way ID below, then confirm physical receipt.');
+    const persisted=new Set(receivedWayIds.map(id=>id.toUpperCase()));
+    setReceived(parsed.filter(id=>persisted.has(id)));
+    setIds(parsed);setMessage('Review every Way ID below, then confirm physical receipt. Previously received parcels will not be scanned again.');
   }
   async function run(kind:'inbound'|'ready'){
     if(disabled||running.current||!confirmed||!ids.length)return;
