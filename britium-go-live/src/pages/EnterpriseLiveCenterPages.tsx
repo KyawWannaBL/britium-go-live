@@ -303,25 +303,6 @@ export function WarehouseLifecycleLivePage() {
 
   const s = state.data?.summary || {};
 
-  // A delivery confirms completion of a stop, NOT receipt of Cash/KPay.
-  // Expected COD is drawn from Finance's wayplan settlement snapshot.
-  // When every stop is delivered, opening COD is an equivalent fallback.
-  const financeSnapshotDateMatchesLive = settlementDate === String(s.live_work_date || "");
-  const settlementTotalsByWayplan = new Map(
-    financeSnapshotDateMatchesLive ? settlements.map((row:any) => [String(row.wayplan_id), row]) : []
-  );
-  function deliveredCodExpected(row:any): number | null {
-    const snapshot = settlementTotalsByWayplan.get(String(row.wayplan_id)) as any;
-    if(snapshot) return Number(snapshot.expected_cod || 0);
-    if(Number(row.total_ways || 0) === Number(row.dropped_ways || 0)) {
-      return Number(row.opening_cod_amount || 0);
-    }
-    return null; // Do not invent delivered COD for partially-completed wayplans.
-  }
-  const knownDeliveredCod = liveRows.reduce((sum:number,row:any) => sum + (deliveredCodExpected(row) || 0), 0);
-  const incompleteExpectedRows = liveRows.filter((row:any) => deliveredCodExpected(row) === null).length;
-  const unrecordedDeliveredCod = Math.max(0, knownDeliveredCod - liveTotals.collected);
-
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
       <div style={{ display: "grid", gap: 16 }}>
@@ -466,6 +447,25 @@ export function FinancePortalLivePage() {
     mobile:a.mobile+Number(r.mobile_banking_collected||0),
     collected:a.collected+Number(r.actual_collected||0),
   }),{totalWays:0,dropped:0,failed:0,left:0,opening:0,cash:0,mobile:0,collected:0});
+
+  // A delivery confirms completion of a stop, NOT receipt of Cash/KPay.
+  // Expected COD is drawn from Finance's wayplan settlement snapshot.
+  // When every stop is delivered, opening COD is an equivalent fallback.
+  const financeSnapshotDateMatchesLive = settlementDate === String(s.live_work_date || "");
+  const settlementTotalsByWayplan = new Map(
+    financeSnapshotDateMatchesLive ? settlements.map((row:any) => [String(row.wayplan_id), row]) : []
+  );
+  function deliveredCodExpected(row:any): number | null {
+    const snapshot = settlementTotalsByWayplan.get(String(row.wayplan_id)) as any;
+    if(snapshot) return Number(snapshot.expected_cod || 0);
+    if(Number(row.total_ways || 0) === Number(row.dropped_ways || 0)) {
+      return Number(row.opening_cod_amount || 0);
+    }
+    return null; // Do not invent delivered COD for partially-completed wayplans.
+  }
+  const knownDeliveredCod = liveRows.reduce((sum:number,row:any) => sum + (deliveredCodExpected(row) || 0), 0);
+  const incompleteExpectedRows = liveRows.filter((row:any) => deliveredCodExpected(row) === null).length;
+  const unrecordedDeliveredCod = Math.max(0, knownDeliveredCod - liveTotals.collected);
 
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
