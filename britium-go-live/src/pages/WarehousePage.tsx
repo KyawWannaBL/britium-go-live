@@ -17,6 +17,7 @@ import {
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
 import { WarehouseReportedHistory, reportedDateMatches } from "@/components/warehouse/WarehouseReportedHistory";
+import { warehouseQueueStatus } from "@/lib/warehouseStatus";
 import { normalizeWarehouseScan } from "@/lib/warehouseScan";
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeRole } from "@/lib/portalRegistry";
@@ -31,7 +32,7 @@ const track = (r: any) =>
 function statusClass(status?: string) {
   const s = String(status || "").toUpperCase();
   if (s === "RTO") return "bg-rose-500/15 text-rose-300 border-rose-500/30";
-  if (s === "DROP_OFF") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
+  if (s === "DELIVERED" || s === "DROP_OFF") return "bg-emerald-500/15 text-emerald-300 border-emerald-500/30";
   if (s === "RETURN_SCANNED" || s === "RETURNED_FOR_REATTEMPT") return "bg-amber-500/15 text-amber-300 border-amber-500/30";
   if (s === "DISPATCH_SCANNED" || s === "OUT_FOR_DELIVERY") return "bg-sky-500/15 text-sky-300 border-sky-500/30";
   if (s === "RECEIVED") return "bg-teal-500/15 text-teal-300 border-teal-500/30";
@@ -493,7 +494,7 @@ export default function WarehousePage() {
     const delivery=String(r.delivery_status||r.rider_status||r.stop_status||"").toUpperCase();
     const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
     const whStatus=String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase();
-    if(delivery==="DELIVERED" || stage==="DELIVERED" || whStatus==="DELIVERED") return "DELIVERED";
+    if(warehouseQueueStatus(r)==="DELIVERED") return "DELIVERED";
     if(["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return "DISPATCH_SCANNED";
     if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)) return "AWAITING_RETURN_SCAN";
     if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
@@ -600,7 +601,7 @@ export default function WarehousePage() {
         r.phone_number || r.recipient_phone,
         r.delivery_township,
         r.cod_amount,
-        r.warehouse_scan_status,
+        warehouseQueueStatus(r)==="DELIVERED" ? "Delivered" : warehouseQueueStatus(r),
         fmt(r.inbound_scan_at),
         fmt(r.dispatch_scan_at),
         fmt(r.return_scan_1_at),
@@ -1064,7 +1065,7 @@ export default function WarehousePage() {
 
             <tbody>
               {filteredRows.map((r: any, idx: number) => {
-                const status = r.warehouse_scan_status || r.warehouse_status || r.delivery_status;
+                const status = warehouseQueueStatus(r);
                 const code = track(r);
                 return (
                   <tr key={`${code}-${idx}`} className="border-t border-slate-800 align-top hover:bg-slate-900/40">
@@ -1077,7 +1078,7 @@ export default function WarehousePage() {
                     <td className="p-2 text-right">{money(r.cod_amount)}</td>
                     <td className="p-2">
                       <span className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${statusClass(status)}`}>
-                        {status || "-"}
+                        {status === "DELIVERED" ? "Delivered" : status || "-"}
                       </span>
                     </td>
                     <td className="p-2 min-w-[150px]">{fmt(r.inbound_scan_at)}</td>

@@ -25,4 +25,5 @@ jobs:
       - run: node scripts/test-cod-review-actions-db.mjs
       - run: node scripts/test-cod-review-actions-ui.mjs
       - run: node scripts/test-cod-review-sync-db.mjs
+      - run: node scripts/test-warehouse-delivered-status.mjs
       - run: npm run build

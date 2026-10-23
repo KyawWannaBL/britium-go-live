@@ -1,6 +1,11 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {supabase} from '@/integrations/supabase/client';
 
+export const codPaymentTypes=[['CASH','Cash'],['KBZ_PAY','KBZ Pay'],['WAVE_PAY','Wave Pay'],['AYA_PAY','AYA Pay'],['CB_PAY','CB Pay'],['BANK_TRANSFER','Bank transfer'],['MOBILE_WALLET','Mobile wallet'],['QR','QR']];
+export function codPaymentTypeLabel(value:unknown){
+ const code=String(value||'').trim().toUpperCase();
+ return code ? codPaymentTypes.find(([key])=>key===code)?.[1]||String(value) : 'Not recorded';
+}
 type Props={row:any;canReview:boolean;onChanged:()=>Promise<unknown>};
 const field:React.CSSProperties={width:'100%',minHeight:40,padding:8,color:'#eef8ff',background:'#061524',border:'1px solid #35516a',borderRadius:6};
 function operationId(){
@@ -46,7 +51,7 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
    <div>Original: {Number(current.metadata?.original_expected_collection??current.cod_expected??0).toLocaleString()} MMK · Adjustment: {Number(current.metadata?.collection_adjustment_mmk??0).toLocaleString()} MMK<br/><strong>Revised: {Number(current.cod_expected??0).toLocaleString()} MMK</strong></div>
    {mode==='CONFIRM'?<>
     <label>Actual amount received (MMK)<input name="actual_collected" type="number" min="0" step="0.01" value={actual} disabled={!canReview||busy||locked} onChange={e=>setActual(e.target.value)} style={field}/></label>
-    <label>Payment method<select name="payment_method" value={method} disabled={!canReview||busy||locked} onChange={e=>setMethod(e.target.value)} style={field}><option value="CASH">Cash</option><option value="BANK_TRANSFER">Bank transfer</option><option value="MOBILE_WALLET">Mobile wallet</option><option value="QR">QR</option></select></label>
+    <label>Payment type<select name="payment_method" value={method} disabled={!canReview||busy||locked} onChange={e=>setMethod(e.target.value)} style={field}>{codPaymentTypes.map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
     <label>Collection reference<input name="reference" value={reference} disabled={!canReview||busy||locked} onChange={e=>setReference(e.target.value)} style={field}/></label>
     <small>Review the received amount and reference, then click Confirm again. If the amount differs, record an explained adjustment first.</small>
    </>:<>
