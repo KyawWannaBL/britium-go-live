@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import CodSettlementReview from "@/components/finance/CodSettlementReview";
 import {paymentAllocationLabel} from '@/lib/paymentAllocations';
 import FinanceCollectionTotals from '@/components/finance/FinanceCollectionTotals';
+import FieldSettlementAmounts from '@/components/finance/FieldSettlementAmounts';
 import CodQueueFilters from '@/components/finance/CodQueueFilters';
 import {filterCodRows,codDuration} from '@/lib/financeCodFilters';
 import {Link} from 'react-router-dom';
@@ -509,15 +510,14 @@ export function FinancePortalLivePage() {
             {settlements.length===0 ? <div style={{padding:24,textAlign:"center",color:C.sub}}>No settlement rows for this date.</div> : settlements.map((r:any)=>(
               <div key={r.id} style={{ border:`1px solid ${C.border}`, borderRadius:16, padding:14, background:"#081b2e" }}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:10}}>
-                  <div><div style={{fontSize:10,color:C.sub}}>WAYPLAN</div><div style={{fontWeight:900}}>{r.wayplan_id}</div><div style={{fontSize:11,color:C.gold}}>{text(r.vehicle_code || r.vehicle_name)}</div></div>
+                  <div><div style={{fontSize:10,color:C.sub}}>WAYPLAN</div><div style={{fontWeight:900,overflowWrap:"anywhere"}}>{r.wayplan_id}</div><div style={{fontSize:11,color:C.gold}}>{text(r.vehicle_code || r.vehicle_name)}</div></div>
                   <div><div style={{fontSize:10,color:C.sub}}>TEAM</div><div>{text(r.driver_name)} / {text(r.rider_name)}</div><div style={{fontSize:11,color:C.sub}}>Helper: {text(r.helper_name)}</div></div>
                   <div><div style={{fontSize:10,color:C.sub}}>WAYS</div><div style={{fontWeight:900}}>{r.total_ways} total · {r.delivered_ways} delivered · {r.failed_ways} failed · {r.remaining_ways} left</div></div>
-                  <div><div style={{fontSize:10,color:C.sub}}>COLLECTION</div><div style={{fontWeight:900}}>{money(r.actual_collected)}</div><div style={{fontSize:11,color:C.sub}}>Cash {money(r.cash_collected)} · Digital {money(r.digital_collected)}</div></div>
-                  <div><div style={{fontSize:10,color:C.sub}}>VARIANCE</div><div style={{fontWeight:900,color:Number(r.variance_amount||0)===0?C.green:C.red}}>{money(r.variance_amount)}</div></div>
                   <div><div style={{fontSize:10,color:C.sub}}>STATUS</div><Badge status={r.status} /></div>
                 </div>
-                <div style={{display:"grid",gridTemplateColumns:"minmax(180px,1fr) auto auto",gap:8,marginTop:12}}>
-                  <input value={signedNames[r.wayplan_id]||""} onChange={(e)=>setSignedNames({...signedNames,[r.wayplan_id]:e.target.value})} placeholder="Finance signer full name" style={input()} />
+                <FieldSettlementAmounts row={r}/>
+                <div style={{display:"flex",flexWrap:"wrap",gap:8,marginTop:12}}>
+                  <input value={signedNames[r.wayplan_id]||""} onChange={(e)=>setSignedNames({...signedNames,[r.wayplan_id]:e.target.value})} placeholder="Finance signer full name" style={{...input(),flex:"1 1 180px",width:"auto",minWidth:0,boxSizing:"border-box"}} />
                   <button disabled={settlementBusy===r.wayplan_id || r.status==="CLEARED"} onClick={()=>signFinance(r)} style={btn("blue")}>Finance Sign</button>
                   <button disabled={settlementBusy===r.wayplan_id || r.status==="CLEARED"} onClick={()=>clearSettlement(r)} style={btn(r.status==="CLEARED"?"green":"gold")}>{r.status==="CLEARED"?"Cleared":"Clear Settlement"}</button>
                 </div>
