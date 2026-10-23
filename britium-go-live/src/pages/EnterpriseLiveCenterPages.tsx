@@ -473,7 +473,6 @@ export function FinancePortalLivePage() {
         <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>
-        <GroundLedgerReconciliationPanel/>
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
 
@@ -530,6 +529,9 @@ export function FinancePortalLivePage() {
           <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
             <div>
               <h2 id="financial-settlement" style={{ margin:0 }}>Financial Settlement</h2>
+              <div style={{fontSize:12,color:C.gold,marginTop:5}}>Daily Wayplan Settlements: {settlements.length} wayplans · {settlements.reduce((sum:number,r:any)=>sum+Number(r.total_ways||0),0)} Ways for {settlementDate}</div>
+              <div style={{fontSize:12,color:C.sub,marginTop:5}}>Historical Ground Ledger: 305 Way IDs (20–22 Oct) · 5 also appear in the Oct 23 wayplans · not yet posted as cleared</div>
+              <button type="button" style={{...btn("blue"),marginTop:10}} onClick={()=>document.getElementById("historical-ground-ledger")?.scrollIntoView({behavior:"smooth",block:"start"})}>View historical 305 Ways and reconciliation</button>
               <div style={{ color:C.sub, fontSize:12, marginTop:4 }}>Finance + assigned Rider/Driver/Helper must electronically sign. Clear is blocked until all required signatures and collection reconciliation are complete.</div>
             </div>
             <input type="date" value={settlementDate} onChange={(e)=>setSettlementDate(e.target.value)} style={{...input(),width:170}} />
@@ -554,6 +556,11 @@ export function FinancePortalLivePage() {
                 </div>
               </div>
             ))}
+          </div>
+          <div id="historical-ground-ledger" style={{marginTop:22,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontSize:12,color:C.gold,marginBottom:10,fontWeight:900}}>Historical ground deliveries and settlements (305 Way IDs)</div>
+            <p style={{fontSize:12,color:C.sub,marginTop:0}}>This separate register includes management-reported deliveries from 20–22 October regardless of selected wayplan date. It is not additional cleared COD and 5 Way IDs overlap with today's 60. Review discrepancies before Finance posting.</p>
+            <GroundLedgerReconciliationPanel/>
           </div>
         </Card>
 
