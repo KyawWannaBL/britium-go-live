@@ -515,6 +515,7 @@ export function FinancePortalLivePage() {
 
         <Card>
           <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
+          <p style={{ color: C.sub }}>Expected collection is the amount due. Historical rows marked “Not recorded” require collection reconciliation before Finance can settle them.</p>
           <LiveTable
             rows={state.rows}
             activeRow={state.activeRow}
@@ -524,7 +525,9 @@ export function FinancePortalLivePage() {
               { key: "delivery_way_id", label: "Waybill" },
               { key: "rider_name", label: "Rider" },
               { key: "recipient_name", label: "Recipient" },
-              { key: "cod_collected", label: "COD", align: "right", render: (r) => money(r.cod_collected) },
+              { key: "source_business_date", label: "Service date", render: (r) => text(r.metadata?.source_business_date, dateText(r.delivered_at)) },
+              { key: "cod_expected", label: "Expected collection", align: "right", render: (r) => money(r.cod_expected) },
+              { key: "cod_collected", label: "Recorded collection", align: "right", render: (r) => r.metadata?.historical_source_review && r.cod_collected == null ? "Not recorded" : money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },
               { key: "settlement_reference", label: "Reference" },
               { key: "settled_at", label: "Settled At", render: (r) => dateText(r.settled_at) },
@@ -548,7 +551,7 @@ export function CodSettlementLivePage() {
 
   const filtered = useMemo(() => {
     const q = state.query.toLowerCase().trim();
-    return state.rows.filter((r) => !q || [r.wayplan_id, r.delivery_way_id, r.rider_code, r.recipient_name, r.settlement_status].join(" ").toLowerCase().includes(q));
+    return state.rows.filter((r) => !q || [r.wayplan_id, r.delivery_way_id, r.rider_code, r.recipient_name, r.settlement_status, r.metadata?.source_business_date].join(" ").toLowerCase().includes(q));
   }, [state.rows, state.query]);
 
   async function settle() {
@@ -583,7 +586,7 @@ export function CodSettlementLivePage() {
           subtitle="Settle rider COD cash collections with finance reference tracking."
           loading={state.loading}
           onRefresh={state.load}
-          actions={<button onClick={settle} style={btn("green")}><Banknote size={16} /> Settle Selected</button>}
+          actions={<button disabled={!!state.activeRow?.metadata?.historical_source_review && state.activeRow?.cod_collected == null} onClick={settle} style={btn("green")}><Banknote size={16} /> Settle Selected</button>}
         />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.message && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{state.message}</div>}
@@ -591,6 +594,7 @@ export function CodSettlementLivePage() {
           { label: "Collected", value: money(s.total_collected), color: C.green },
           { label: "Pending", value: money(s.pending_settlement), color: C.red },
           { label: "Settled", value: money(s.settled), color: C.green },
+          { label: "Expected collection", value: money(s.total_expected), color: C.gold },
           { label: "Delivered COD", value: s.delivered_cod_count || 0, color: C.gold },
         ]} />
         <Card><SearchBar query={state.query} setQuery={state.setQuery} placeholder="Search wayplan, waybill, rider, customer..." /></Card>
@@ -604,7 +608,9 @@ export function CodSettlementLivePage() {
               { key: "delivery_way_id", label: "Waybill" },
               { key: "rider_name", label: "Rider" },
               { key: "recipient_name", label: "Recipient" },
-              { key: "cod_collected", label: "COD", align: "right", render: (r) => money(r.cod_collected) },
+              { key: "source_business_date", label: "Service date", render: (r) => text(r.metadata?.source_business_date, dateText(r.delivered_at)) },
+              { key: "cod_expected", label: "Expected collection", align: "right", render: (r) => money(r.cod_expected) },
+              { key: "cod_collected", label: "Recorded collection", align: "right", render: (r) => r.metadata?.historical_source_review && r.cod_collected == null ? "Not recorded" : money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },
               { key: "settlement_reference", label: "Reference" },
               { key: "settled_at", label: "Settled At", render: (r) => dateText(r.settled_at) },

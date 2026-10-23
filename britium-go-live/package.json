@@ -86,7 +86,7 @@
     "verify:data-entry-rider-evidence-sync": "node --test scripts/test-data-entry-rider-evidence-sync.mjs",
     "verify:legacy-login": "node scripts/verify-legacy-login.cjs",
     "test:enterprise-regressions": "npm run test:account-registration-management && node scripts/test-enterprise-auth-state.mjs && node scripts/test-enterprise-finance-review-state.mjs && node scripts/test-accounting-journal-register.mjs && node scripts/test-enterprise-warehouse-state.mjs && npm run verify:data-entry-rider-evidence-sync",
-    "test": "npm run test:enterprise-regressions && npm run test:warehouse-source-history && node scripts/test-reason-only-photo-skip.mjs && node scripts/test-reason-only-photo-skip-db.mjs",
+    "test": "npm run test:enterprise-regressions && npm run test:warehouse-source-history && node scripts/test-historical-finance-review.mjs && node scripts/test-reason-only-photo-skip.mjs && node scripts/test-reason-only-photo-skip-db.mjs",
     "test:warehouse-source-history": "node scripts/test-warehouse-source-history-db.mjs && node scripts/test-warehouse-reported-history-ui.mjs",
     "test:account-registration-management": "node scripts/test-admin-accounts-server.mjs && node scripts/test-workforce-account-ui.cjs && node scripts/test-account-access-ui.cjs && node scripts/test-merchant-account-management.cjs && node scripts/test-merchant-profile-db.mjs && node scripts/test-workforce-management.mjs && node scripts/test-workforce-management-db.mjs && node scripts/test-hr-employee-db.mjs && node scripts/test-data-entry-registration-management.mjs && node scripts/test-prepublication-registration.mjs"
   },
