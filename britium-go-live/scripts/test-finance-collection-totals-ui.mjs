@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {createRequire} from 'node:module';
+import React from 'react';import Renderer,{act} from 'react-test-renderer';import ts from 'typescript';
+const require=createRequire(import.meta.url),file='src/components/finance/FinanceCollectionTotals.tsx',calls=[];
+assert.ok(fs.existsSync(file),'Finance collection totals component must exist');
+const helper={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/lib/paymentAllocations.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{module:helper,exports:helper.exports});
+const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:id=>id==='@/integrations/supabase/client'?{supabase:{rpc:async(name,args)=>{calls.push({name,args});return {data:{ok:true,rows:[{service_date:null,unknown_count:148,collector_code:'R1',collector_name:'Rider 1',waybill_count:2,total_collected:50000,cash_collected:30000,digital_collected:20000,unclassified_collected:0,confirmed_total:0,pending_total:50000,by_method:{CASH:30000,KBZ_PAY:20000}}]},error:null}}}}:id==='@/lib/paymentAllocations'?helper.exports:require(id)});
+let view;await act(async()=>{view=Renderer.create(React.createElement(module.exports.default,{refreshKey:0}));});
+assert.equal(calls[0].name,'be_finance_collection_totals_v215');assert.equal(calls[0].args.p_group,'PERSON');
+assert.match(JSON.stringify(view.toJSON()),/Unknown collection ways/);assert.match(JSON.stringify(view.toJSON()),/148/);assert.match(JSON.stringify(view.toJSON()),/Not recorded/);assert.match(JSON.stringify(view.toJSON()),/KBZ Pay/);assert.match(JSON.stringify(view.toJSON()),/Rider 1/);assert.match(JSON.stringify(view.toJSON()),/30,000/);
+await act(async()=>view.root.findByType('select').props.onChange({target:{value:'VAN'}}));assert.equal(calls.at(-1).args.p_group,'VAN');
+await act(async()=>view.update(React.createElement(module.exports.default,{refreshKey:1})));assert.equal(calls.length,3,'Finance confirmation refreshes totals');
+await act(async()=>view.unmount());console.log('PASS collection totals UI: RPC, person/van grouping, authoritative amount display and confirmation refresh');
