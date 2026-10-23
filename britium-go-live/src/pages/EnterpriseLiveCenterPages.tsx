@@ -1,5 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
+import CodSettlementReview from "@/components/finance/CodSettlementReview";
+import {useAuth} from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   RefreshCw,
@@ -102,7 +104,7 @@ function Badge({ status }: any) {
     s === "SETTLED" || s === "FINANCE_SETTLED" || s === "DELIVERED" || s === "PAID" ? C.green :
     s.includes("PENDING") || s === "LOADED_TO_VEHICLE" ? C.gold :
     s === "HANDOVER_TO_RIDER" || s === "HANDED_TO_RIDER" ? C.blue :
-    s.includes("FAILED") || s.includes("RETURN") ? C.red :
+    s === "REJECTED" || s.includes("FAILED") || s.includes("RETURN") ? C.red :
     C.sub;
 
   return (
@@ -344,6 +346,8 @@ export function WarehouseLifecycleLivePage() {
 }
 
 export function FinancePortalLivePage() {
+  const {role:financeRole}=useAuth();
+  const canReviewCod=["finance","accountant","superadmin","super_admin"].includes(String(financeRole||"").toLowerCase());
   const state = useRows(
     async () => {
       const [{ data: center, error: centerError }, { data: live, error: liveError }] = await Promise.all([
@@ -523,10 +527,15 @@ export function FinancePortalLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
+              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
               { key: "rider_name", label: "Rider" },
+              { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
+              { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },
               { key: "recipient_name", label: "Recipient" },
               { key: "source_business_date", label: "Service date", render: (r) => text(r.metadata?.source_business_date, dateText(r.delivered_at)) },
-              { key: "cod_expected", label: "Expected collection", align: "right", render: (r) => money(r.cod_expected) },
+              { key: "original_expected", label: "Original amount", align: "right", render: (r) => money(r.metadata?.original_expected_collection ?? r.cod_expected) },
+              { key: "adjustment", label: "Adjustment", align: "right", render: (r) => money(r.metadata?.collection_adjustment_mmk ?? 0) },
+              { key: "cod_expected", label: "Revised expected", align: "right", render: (r) => money(r.cod_expected) },
               { key: "cod_collected", label: "Recorded collection", align: "right", render: (r) => r.metadata?.historical_source_review && r.cod_collected == null ? "Not recorded" : money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },
               { key: "settlement_reference", label: "Reference" },
@@ -540,6 +549,8 @@ export function FinancePortalLivePage() {
 }
 
 export function CodSettlementLivePage() {
+  const {role:financeRole}=useAuth();
+  const canReviewCod=["finance","accountant","superadmin","super_admin"].includes(String(financeRole||"").toLowerCase());
   const state = useRows(
     async () => {
       const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", { p_limit: 500 });
@@ -554,27 +565,6 @@ export function CodSettlementLivePage() {
     return state.rows.filter((r) => !q || [r.wayplan_id, r.delivery_way_id, r.rider_code, r.recipient_name, r.settlement_status, r.metadata?.source_business_date].join(" ").toLowerCase().includes(q));
   }, [state.rows, state.query]);
 
-  async function settle() {
-    const r = state.activeRow;
-    if (!r?.delivery_way_id) {
-      state.setError("Select a COD settlement row first.");
-      return;
-    }
-
-    const ref = r.settlement_reference || `CASH-${r.rider_code || "RIDER"}-${String(r.delivery_way_id).replace(/[^A-Z0-9]/gi, "")}`;
-    const { data, error } = await supabase.rpc("be_finance_settle_wayplan_cod", {
-      p_payload: { wayplan_id: r.wayplan_id, delivery_way_id: r.delivery_way_id, settlement_reference: ref, actor: "cod_settlement_center" },
-    });
-
-    if (error || data?.ok === false) {
-      state.setError(error?.message || data?.error || "Settlement failed.");
-      return;
-    }
-
-    state.setMessage(`Settled rows: ${data?.settled_count || 0}`);
-    await state.load();
-  }
-
   const s = state.data?.summary || {};
 
   return (
@@ -586,7 +576,6 @@ export function CodSettlementLivePage() {
           subtitle="Settle rider COD cash collections with finance reference tracking."
           loading={state.loading}
           onRefresh={state.load}
-          actions={<button disabled={!!state.activeRow?.metadata?.historical_source_review && state.activeRow?.cod_collected == null} onClick={settle} style={btn("green")}><Banknote size={16} /> Settle Selected</button>}
         />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.message && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{state.message}</div>}
@@ -606,10 +595,15 @@ export function CodSettlementLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
+              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
               { key: "rider_name", label: "Rider" },
+              { key: "driver", label: "Driver", render: (r) => <><div>{text(r.driver_name || r.metadata?.driver_name)}</div><small>{text(r.driver_code || r.metadata?.driver_code, "")}</small></> },
+              { key: "helper", label: "Helper", render: (r) => <><div>{text(r.helper_name || r.metadata?.helper_name)}</div><small>{text(r.helper_code || r.metadata?.helper_code, "")}</small></> },
               { key: "recipient_name", label: "Recipient" },
               { key: "source_business_date", label: "Service date", render: (r) => text(r.metadata?.source_business_date, dateText(r.delivered_at)) },
-              { key: "cod_expected", label: "Expected collection", align: "right", render: (r) => money(r.cod_expected) },
+              { key: "original_expected", label: "Original amount", align: "right", render: (r) => money(r.metadata?.original_expected_collection ?? r.cod_expected) },
+              { key: "adjustment", label: "Adjustment", align: "right", render: (r) => money(r.metadata?.collection_adjustment_mmk ?? 0) },
+              { key: "cod_expected", label: "Revised expected", align: "right", render: (r) => money(r.cod_expected) },
               { key: "cod_collected", label: "Recorded collection", align: "right", render: (r) => r.metadata?.historical_source_review && r.cod_collected == null ? "Not recorded" : money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },
               { key: "settlement_reference", label: "Reference" },
@@ -664,6 +658,7 @@ export function FinanceReportLivePage() {
             columns={[
               { key: "settlement_status", label: "Status", render: (r) => <Badge status={r.settlement_status} /> },
               { key: "delivery_way_id", label: "Waybill" },
+              { key: "review_actions", label: "Finance review", render: (r) => <CodSettlementReview row={r} canReview={canReviewCod} onChanged={state.load} /> },
               { key: "rider_name", label: "Rider" },
               { key: "cod_collected", label: "COD", align: "right", render: (r) => money(r.cod_collected) },
               { key: "delivery_fee", label: "Fee", align: "right", render: (r) => money(r.delivery_fee) },
