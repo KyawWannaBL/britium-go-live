@@ -50,6 +50,7 @@ const CODSettlementPage = safeLazy(() => import("@/pages/CODSettlementPage"));
 const CustomerPortalPage = safeLazy(() => import("@/pages/CustomerPortalPage"));
 const CustomerServiceCommandCenterPage = safeLazy(() => import("@/pages/CustomerServiceCommandCenterPage"));
 const CustomerServicePortalPage = safeLazy(() => import("@/pages/CustomerServicePortalPage"));
+const ThirdPartyDeliveryConfirmationPage = safeLazy(() => import("@/pages/ThirdPartyDeliveryConfirmationPage"));
 const DataEntryFinancialV2Page = safeLazy(() => import("@/pages/DataEntryFinancialV2Page"));
 const FinanceDataEntryReviewPage = safeLazy(() => import("@/pages/FinanceDataEntryReviewPage"));
 const MerchantSettlementPage = safeLazy(() => import("@/pages/MerchantSettlementPage"));
@@ -186,6 +187,7 @@ function AppRoutes() {
             <Route path="/branch-office" element={<BranchOfficePage />} />
             <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
             <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+            <Route path="/cs-third-party" element={<ThirdPartyDeliveryConfirmationPage />} />
             <Route path="/data-entry" element={<DataEntryFinancialV2Page />} />
             <Route path="/finance/data-entry-review" element={<FinanceDataEntryReviewPage />} />
             <Route path="/finance/merchant-settlement" element={<MerchantSettlementPage />} />
