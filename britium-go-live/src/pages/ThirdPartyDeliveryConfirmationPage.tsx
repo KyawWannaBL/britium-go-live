@@ -9,7 +9,7 @@ const input:React.CSSProperties={background:'#f8fafc',color:'#111827',padding:'9
 export default function ThirdPartyDeliveryConfirmationPage(){
  const [rows,setRows]=useState<Row[]>([]),[search,setSearch]=useState(''),[filter,setFilter]=useState('ALL'),[selected,setSelected]=useState<Row|null>(null);
  const [outcome,setOutcome]=useState('DELIVERED'),[provider,setProvider]=useState('Royal Express'),[reason,setReason]=useState(''),[note,setNote]=useState(''),[evidence,setEvidence]=useState('');
- const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[total,setTotal]=useState(0);
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0);
  async function refresh(){setBusy(true);try{
   const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:search||null,p_outcome:filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
@@ -17,14 +17,14 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  }catch(e:any){setMessage(e.message);}finally{setBusy(false);}}
  useEffect(()=>{void refresh();},[filter]);
  const chosen=useMemo(()=>rows.find(r=>r.delivery_way_id===selected?.delivery_way_id)||selected,[rows,selected]);
- function choose(r:Row){setSelected(r);setOutcome(r.cs_outcome==='UNCONFIRMED'?'DELIVERED':r.cs_outcome);setProvider(r.provider_code||'Royal Express');setReason(r.reason_code||'');setNote(r.notes||'');setEvidence('');setMessage('');}
- async function save(){if(!chosen)return; if(!note.trim()||note.trim().length<8){setMessage('Enter at least 8 characters describing how the delivery status was verified.');return;}
-  if(outcome!=='DELIVERED'&&!reason){setMessage('A reason is required for non-delivered outcomes.');return;}
-  setBusy(true);try{const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_confirm_v1',{
+ function choose(r:Row){setSelected(r);setOutcome(r.cs_outcome==='UNCONFIRMED'?'DELIVERED':r.cs_outcome);setProvider(r.provider_code||'Royal Express');setReason(r.reason_code||'');setNote(r.notes||'');setEvidence('');setMessage('');setModalError('');}
+ async function save(){if(!chosen)return; if(!note.trim()||note.trim().length<8){setModalError('Enter at least 8 characters describing how the delivery status was verified.');return;}
+  if(outcome!=='DELIVERED'&&!reason){setModalError('Choose a reason for RTO, rejected, postponed or other non-delivered outcomes.');return;}
+  setModalError('');setBusy(true);try{const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_confirm_v1',{
    p_way_id:chosen.delivery_way_id,p_provider:provider,p_outcome:outcome,p_reason:reason,p_note:note,p_evidence:evidence||null,p_expected_revision:chosen.revision||0
   });if(error||!data?.ok)throw new Error(error?.message||data?.error||'Save failed');
   setMessage('Saved CS confirmation. Finance review: '+data.finance_review_status+'. No payment posted.');setSelected(null);await refresh();
- }catch(e:any){setMessage(e.message);}finally{setBusy(false);}}
+ }catch(e:any){setModalError(e.message);}finally{setBusy(false);}}
  return <div style={{color:'#e2e8f0',padding:12,maxWidth:1500,margin:'auto'}}>
   <h1 style={{fontSize:23,fontWeight:700}}>Third-party Delivery Confirmation / ပြင်ပပို့ဆောင်မှု အတည်ပြုခြင်း</h1>
   <p style={{color:'#fbbf24'}}>The schedule is not proof of delivery. CS confirmations create dedicated merchant-account Finance reviews, never automatic cash receipts or settled payments.</p>
@@ -41,21 +41,24 @@ export default function ThirdPartyDeliveryConfirmationPage(){
     <td style={{padding:9}}>{r.delivery_way_id}</td><td>{r.last_schedule_date}</td><td>{r.schedule_occurrences}</td>
     <td style={{color:r.merchant_prefix_conflict?'#ffb36b':undefined}}>{r.merchant_name||'Unresolved'} ({r.merchant_code||'—'}){r.merchant_prefix_conflict?' ⚠':''}</td>
     <td>{r.recipient_name||'—'}</td><td>{r.system_parcel_status||'Not in Parcel Master'}</td><td>{r.cs_outcome}</td><td>{money(r.system_cod_amount)}</td><td>{r.finance_review_status||'Awaiting CS'}</td>
-    <td><button type="button" onClick={()=>choose(r)} style={{padding:'7px 12px',background:'#f5b942',color:'#111',borderRadius:6}}>Review</button></td>
+    <td><button type="button" onClick={()=>choose(r)} style={{padding:'7px 12px',background:'#f5b942',color:'#111',borderRadius:6}}>Confirm / RTO</button></td>
    </tr>)}</tbody>
   </table></div>
-  {chosen&&<section style={{marginTop:20,padding:18,border:'1px solid #54718c',borderRadius:8,background:'#10283c'}}>
-   <h2 style={{fontSize:19,fontWeight:600}}>Confirm {chosen.delivery_way_id} · {chosen.merchant_name||'Merchant unresolved'}</h2>
+  {chosen&&<div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,10,20,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}><section role="dialog" aria-modal="true" aria-label={`Confirm third-party delivery for ${chosen.delivery_way_id}`} style={{width:'min(960px,100%)',maxHeight:'90vh',overflowY:'auto',padding:20,border:'1px solid #54718c',borderRadius:10,background:'#10283c',boxShadow:'0 20px 65px rgba(0,0,0,0.55)'}}>
+   <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'start'}}><h2 style={{fontSize:19,fontWeight:600}}>Confirm {chosen.delivery_way_id} · {chosen.merchant_name||'Merchant unresolved'}</h2><button type="button" aria-label="Close confirmation dialog" onClick={()=>setSelected(null)} style={{fontSize:22,color:'#fff',padding:'3px 10px',border:'1px solid #64748b',borderRadius:6}}>×</button></div>
    <p>Previous CS outcome: {chosen.cs_outcome} · Revision {chosen.revision||0}. Merchant account: {chosen.merchant_code||'not resolved'}.</p>
+   <p style={{fontWeight:600,marginBottom:7}}>Choose a confirmation action:</p>
+   <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16}}>{[{code:'DELIVERED',title:'Delivered / ပို့ပြီး'},{code:'RTO',title:'RTO / ပြန်ပို့'},{code:'REFUSED',title:'Rejected / လက်မခံ'},{code:'FAILED',title:'Failed / မအောင်မြင်'},{code:'POSTPONED',title:'Postponed / ရွှေ့ဆိုင်း'}].map(a=><button type="button" key={a.code} onClick={()=>{setOutcome(a.code);setModalError('');setReason(a.code==='REFUSED'?'RECIPIENT_REFUSED':'');}} style={{padding:'10px 13px',borderRadius:7,border:outcome===a.code?'2px solid #f5b942':'1px solid #6988a0',background:outcome===a.code?'#f5b942':'#1c3c54',color:outcome===a.code?'#142334':'#f8fafc',fontWeight:600}}>{a.title}</button>)}</div>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
     <label>Third-party provider<input style={input} value={provider} onChange={e=>setProvider(e.target.value)} required/></label>
-    <label>Delivery outcome<select style={input} value={outcome} onChange={e=>setOutcome(e.target.value)}>{OUTCOMES.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
+    <label>Delivery outcome<select style={input} value={outcome} onChange={e=>{setOutcome(e.target.value);setReason('');setModalError('');}}>{OUTCOMES.map(v=><option key={v} value={v}>{v}</option>)}</select></label>
     <label>Failure / RTO / postponement reason<select style={input} value={reason} onChange={e=>setReason(e.target.value)}><option value="">Select reason</option>{REASONS.filter(Boolean).map(v=><option key={v}>{v}</option>)}</select></label>
     <label>Evidence reference (optional)<input style={input} value={evidence} onChange={e=>setEvidence(e.target.value)} placeholder="Provider POD, call log or case reference"/></label>
    </div>
    <label style={{display:'block',marginTop:12}}>Verification notes<textarea style={{...input,minHeight:85}} value={note} onChange={e=>setNote(e.target.value)} placeholder="Who confirmed, when, and what the provider reported?"/></label>
+   {modalError&&<p role="alert" style={{padding:10,border:'1px solid #fb7185',background:'#4b1f32',borderRadius:6,color:'#fff'}}>{modalError}</p>}
    <p style={{color:'#ffca79'}}>This saves a CS history event and sends the outcome to a merchant-specific Finance review. It does NOT mark Parcel Master delivered, create a wayplan scan, collect COD or authorize settlement.</p>
    <div style={{display:'flex',gap:10}}><button disabled={busy} onClick={()=>void save()} style={{padding:'10px 18px',background:'#f5b942',color:'#111',borderRadius:6}}>Save confirmation &amp; send to Finance</button><button onClick={()=>setSelected(null)} style={{padding:'10px 18px',border:'1px solid #64748b',borderRadius:6}}>Cancel</button></div>
-  </section>}
+  </section></div>}
  </div>;
 }
