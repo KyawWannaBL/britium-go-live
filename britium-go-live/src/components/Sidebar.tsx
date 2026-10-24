@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { name: "CS Command", path: "/cs-command", icon: HeadphonesIcon },
       { name: "CS Portal", path: "/cs-portal", icon: HeadphonesIcon },
+      { name: "3rd Party Confirmations", path: "/cs-third-party", icon: Truck },
       { name: "Exceptions", path: "/exceptions", icon: AlertTriangle },
     ],
   },
