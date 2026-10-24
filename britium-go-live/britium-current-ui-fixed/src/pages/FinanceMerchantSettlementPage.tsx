@@ -519,6 +519,7 @@ export default function FinanceMerchantSettlementPage() {
             <Kpi label="Customer Collection" value={money(kpis.customer_collection)} />
             <Kpi label="Company Delivery Revenue" value={money(kpis.company_delivery_revenue)} />
             <Kpi label="Merchant Payable" value={money(kpis.merchant_payable)} emphasis />
+            <Kpi label="Delivered · Awaiting COD Remittance (Calculated)" value={money(rows.filter((row) => String(row.status || "").toUpperCase() === "DELIVERED" && row.settlement_state === "WAITING_COD_REMITTANCE" && row.validation_status === "OK").reduce((sum, row) => sum + numberValue(row.merchant_final_settlement_amount), 0))} tone="warning" />
             <Kpi label="Credit to Merchants" value={money(kpis.delivery_excess_credit)} tone="success" />
             <Kpi label="Deduct from Merchants" value={money(kpis.delivery_shortfall)} tone="warning" />
             <Kpi label="Requires Review" value={numberValue(kpis.requires_review).toLocaleString()} tone={numberValue(kpis.requires_review) ? "danger" : "normal"} />
