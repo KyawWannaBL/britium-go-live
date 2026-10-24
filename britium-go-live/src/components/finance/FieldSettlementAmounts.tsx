@@ -5,7 +5,9 @@ const money=(value:unknown)=>{const number=amount(value);return number===null?'N
 
 export default function FieldSettlementAmounts({row}:{row:any}){
  const pending=Number(row.remaining_ways||0)>0;
- const awaiting=pending&&Number(row.delivered_ways||0)===0;
+ const delivered=Number(row.delivered_ways||0);
+ const awaiting=pending&&delivered===0;
+ const awaitingHandover=delivered>0&&Number(row.actual_collected||0)===0;
  const collected=amount(row.actual_collected),cash=amount(row.cash_collected),digital=amount(row.digital_collected);
  const unclassified=collected!==null&&cash!==null&&digital!==null?Math.max(0,collected-cash-digital):null;
  const variance=amount(row.variance_amount);
@@ -16,7 +18,8 @@ export default function FieldSettlementAmounts({row}:{row:any}){
   <div><div style={detail}>Recorded collection</div><strong>{money(row.actual_collected)}</strong>
    <div style={detail}>Cash {money(row.cash_collected)} · Digital {money(row.digital_collected)}{unclassified!==null&&unclassified>0?` · Unclassified ${money(unclassified)}`:''}</div>
    {awaiting&&<div style={{...detail,color:'#f6b84b'}}>Awaiting delivery — expected amounts are not collected receipts.</div>}
+   {awaitingHandover&&<div style={{...detail,color:'#f6b84b'}}>Deliveries recorded — awaiting rider/driver/helper to Finance collection reconciliation. Zero recorded is not proof of zero cash received.</div>}
   </div>
-  <div><div style={detail}>Collection variance</div><strong style={{color:pending||variance===null?'#f6b84b':variance===0?'#34d399':'#f87171'}}>{pending?'Pending completion':money(row.variance_amount)}</strong></div>
+  <div><div style={detail}>Collection variance</div><strong style={{color:pending||variance===null?'#f6b84b':variance===0?'#34d399':'#f87171'}}>{pending?(delivered>0?'Delivery exceptions remain · collection reconciliation pending':'Pending delivery completion'):(awaitingHandover?'Pending Finance handover':money(row.variance_amount))}</strong></div>
  </div>;
 }
