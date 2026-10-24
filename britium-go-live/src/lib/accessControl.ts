@@ -53,6 +53,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
 
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
   ['/cs-', rule('customer-service', 'cs', 'support')],
+  ['/cs-third-party', rule('customer-service','cs','support','finance','finance-user','accountant')],
   ['/merchant-portal', rule('merchant', 'vip-customer')],
   ['/customer-portal', rule('customer')],
   ['/marketing', rule('marketing', 'management', 'director')],
