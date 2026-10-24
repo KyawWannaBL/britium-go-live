@@ -122,6 +122,8 @@ export default function FinanceCodCenterPage() {
   const [rows, setRows] = useState<Row[]>([]);
   const [summary, setSummary] = useState<Row>({});
   const [exceptionHolds, setExceptionHolds] = useState<Row[]>([]);
+  const [reviewRows, setReviewRows] = useState<Row[]>([]);
+  const [reviewError, setReviewError] = useState("");
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [activeRow, setActiveRow] = useState<Row | null>(null);
   const [filter, setFilter] = useState("ALL");
@@ -183,6 +185,11 @@ export default function FinanceCodCenterPage() {
       if (data?.ok === false) throw new Error(data?.error || "Finance COD load failed.");
 
       setRows(Array.isArray(data?.rows) ? data.rows : []);
+      const review = await (supabase as any).from("be_wayplan_cod_settlements")
+        .select("delivery_way_id,wayplan_id,recipient_name,cod_expected,cod_collected,settlement_status,metadata")
+        .in("delivery_way_id",["D1023-KSC-026","D1023-KSC-033","D1023-KSC-042","D1023-KSC-128","D1023-KSC-129","D1021-BBW-067","D1021-RYP-009","D1023-KSC-021","D1023-KSC-024","D1023-KSC-052","D1023-KSC-058"]);
+      setReviewError(review.error ? review.error.message : "");
+      setReviewRows((review.data || []).filter((r: Row) => ["REVIEW_HOLD","FINANCE_REVIEW_QUEUE"].includes(r.metadata?.reconciliation_review_state)));
       setSummary(data?.summary || {});
       setExceptionHolds(Array.isArray(data?.exception_holds) ? data.exception_holds : []);
       if (!activeRow && Array.isArray(data?.rows) && data.rows.length) {
@@ -219,6 +226,10 @@ export default function FinanceCodCenterPage() {
   async function settleSelected() {
     const targets = selectedRows.length ? selectedRows : activeRow ? [activeRow] : [];
 
+    if (targets.some(r => reviewRows.some(v => v.delivery_way_id === r.delivery_way_id))) {
+      setError("Finance reconciliation review required. Verify Way ID, actual COD, and payment evidence before settlement.");
+      return;
+    }
     if (!targets.length) {
       setError("Select at least one COD row to settle.");
       return;
@@ -261,6 +272,10 @@ export default function FinanceCodCenterPage() {
   }
 
   async function settleWholeWayplan() {
+    if (reviewRows.some(r => r.wayplan_id === activeRow?.wayplan_id)) {
+      setError("Wayplan contains Finance review or hold records. Whole-wayplan settlement is blocked.");
+      return;
+    }
     if (!activeRow?.wayplan_id) {
       setError("Select a wayplan row first.");
       return;
@@ -378,6 +393,19 @@ export default function FinanceCodCenterPage() {
           <Card style={{ padding: 12 }}><div style={{ color: C.sub, fontSize: 11 }}>Exception Holds</div><strong style={{ color: C.red, fontSize: 16 }}>{summary.exception_hold_count || 0} / {money(summary.exception_hold_amount)}</strong></Card>
         </div>
 
+        <Card>
+          <h2 style={{margin:"0 0 8px",fontSize:17}}>COD Reconciliation — Review Holds and Finance Queue</h2>
+          <p style={{color:C.sub,fontSize:12}}>Review states are not verified cash receipts or settlements. Verify the original Way ID, recipient, collection amount and payment evidence.</p>
+          {reviewError && <p role="alert" style={{color:C.red}}>Cannot load reconciliation items: {reviewError}</p>}
+          <div style={{overflowX:"auto"}}><table style={{width:"100%",minWidth:850,fontSize:12}}>
+          <thead><tr>{["Way ID","Recipient","Expected COD","Recorded COD","Review status","Review comment"].map(h=><th key={h} style={{padding:8,textAlign:"left"}}>{h}</th>)}</tr></thead>
+          <tbody>{reviewRows.map(r=><tr key={r.delivery_way_id}>
+          <td>{r.delivery_way_id}</td><td>{r.recipient_name || "—"}</td><td>{money(r.cod_expected)}</td>
+          <td>{r.cod_collected == null ? "Not recorded" : money(r.cod_collected)}</td>
+          <td style={{color:r.metadata?.reconciliation_review_state==="REVIEW_HOLD"?C.red:C.gold}}>{r.metadata?.reconciliation_review_state}</td>
+          <td>{r.metadata?.reconciliation_review_comment}</td></tr>)}</tbody></table></div>
+          {!reviewRows.length && !reviewError && <p>No review items visible to this Finance session; this does not indicate clearance.</p>}
+        </Card>
         {exceptionHolds.length > 0 && (
           <Card>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
