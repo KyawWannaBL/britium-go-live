@@ -361,7 +361,7 @@ export default function FinanceCodCenterPage() {
             <div>
               <div style={{ color: C.green, fontSize: 12, fontWeight: 900, letterSpacing: "0.28em" }}>FINANCE OPERATIONS</div>
               <h1 style={{ margin: "8px 0 4px", fontSize: 24 }}>Finance COD Settlement Center</h1>
-              <p style={{ margin: 0, color: C.sub }}>Settle rider COD collections from delivered wayplan stops.</p>
+              <p style={{ margin: 0, color: C.sub }}>Verify actual cash custody and payment evidence before Finance handover and settlement. Expected COD is not cash in hand.</p>
             </div>
 
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -506,7 +506,7 @@ export default function FinanceCodCenterPage() {
                         <div>{text(r.recipient_name)}</div>
                         <div style={{ color: C.sub, fontSize: 11 }}>{text(r.recipient_phone, "-")}</div>
                       </td>
-                      <td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(r.cod_collected)}</td>
+                      <td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}><div>{r.cod_collected == null || (Number(r.cod_collected) === 0 && Number(r.cod_expected || 0) > 0) ? "Not recorded" : money(r.cod_collected)}</div>{Number(r.cod_expected || 0)>0 && Number(r.cod_collected || 0)===0 && <div style={{color:C.gold,fontSize:11}}>Expected: {money(r.cod_expected)} · Awaiting collection verification</div>}</td>
                       <td style={{ padding: 10, textAlign: "right" }}>{money(r.delivery_fee)}</td>
                       <td style={{ padding: 10 }}><Badge status={r.settlement_status} /></td>
                       <td style={{ padding: 10 }}>{text(r.settlement_reference, "-")}</td>
