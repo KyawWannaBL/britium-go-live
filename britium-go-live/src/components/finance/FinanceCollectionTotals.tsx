@@ -8,6 +8,13 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
  const [from,setFrom]=useState(''),[to,setTo]=useState(''),[group,setGroup]=useState('PERSON');
  const [rows,setRows]=useState<any[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);
  const [ground,setGround]=useState<any>(null),[groundError,setGroundError]=useState('');
+ const [reviewQueue,setReviewQueue]=useState<any[]>([]),[reviewError,setReviewError]=useState('');
+ useEffect(()=>{let active=true;(async()=>{try{
+ const {data,error}=await (supabase as any).rpc('be_finance_ground_reconciliation_queue_v1',{p_limit:1000});
+ if(error||!data?.ok)throw new Error(error?.message||data?.error||'Review queue unavailable');
+ if(active){setReviewQueue(Array.isArray(data.rows)?data.rows:[]);setReviewError('');}
+ }catch(e:any){if(active)setReviewError(e?.message||'Review queue unavailable');}})();return()=>{active=false;};},[refreshKey]);
+
  useEffect(()=>{let active=true;(async()=>{try{const {data,error}=await (supabase as any).rpc('be_finance_ground_reported_totals_v1',{p_from:'2026-10-20',p_to:'2026-10-22'});if(error||!data?.ok)throw new Error(error?.message||data?.error||'Unavailable');if(active)setGround(data);}catch(e:any){if(active)setGroundError(e.message);}})();return()=>{active=false};},[refreshKey]);
  useEffect(()=>{let active=true;if(from&&to&&from>to){setError('Start date must be on or before end date.');setRows([]);return;}
  setLoading(true);setRows([]);setError('');
@@ -35,6 +42,16 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
  <thead><tr>{['Service date','Ground-report ways','Finance dated ways','Ground-reported COD','Finance recorded collected','Unreconciled comparison gap','Unknown Finance ways'].map(h=><th key={h} style={{padding:7,textAlign:'left',borderBottom:'1px solid #42617d'}}>{h}</th>)}</tr></thead>
  <tbody>{dailyPosted.map((d:any)=><tr key={d.date}><td style={{padding:7}}>{d.date}</td><td>{d.ways}</td><td>{d.matched}</td><td>{money(d.reported)}</td><td>{money(d.posted)}</td><td style={{color:'#ffca79'}}>{money(d.reported-d.posted)}</td><td>{d.unknown}</td></tr>)}</tbody>
  </table></div>
+ </div>
+
+ <div style={{padding:12,marginBottom:16,border:'1px solid #42617d',borderRadius:8}}>
+ <h4>Parcel-level Finance reconciliation queue — read-only</h4>
+ <p style={{color:'#ffca79',fontSize:12}}>Ground figures are not confirmed receipts. No entries here authorize settlement.</p>
+ {reviewError&&<p role="alert">{reviewError}</p>}
+ {!reviewError&&<><p>Reported parcel rows: {reviewQueue.length}</p><div style={{maxHeight:340,overflow:'auto'}}>
+ <table style={{width:'100%',minWidth:850,fontSize:12}}><thead><tr>{['Date','Way ID','COD reported','Cash','KPay','COD recorded','Finance status','Review status'].map(h=><th key={h} style={{textAlign:'left',padding:6}}>{h}</th>)}</tr></thead>
+ <tbody>{reviewQueue.map((r:any,i:number)=><tr key={i}><td>{r.sheet_date||'-'}</td><td>{r.delivery_way_id||'-'}</td><td>{r.reported_final_cod==null?'Missing':money(r.reported_final_cod)}</td><td>{r.reported_cash==null?'-':money(r.reported_cash)}</td><td>{r.reported_kpay==null?'-':money(r.reported_kpay)}</td><td>{r.ledger_recorded_cod==null?'Not recorded':money(r.ledger_recorded_cod)}</td><td>{r.ledger_settlement_status||'Not linked'}</td><td>{r.review_state||'Pending review'}</td></tr>)}</tbody></table>
+ </div></>}
  </div>
  <div style={{display:'flex',gap:12,flexWrap:'wrap'}}><label>From <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={field}/></label><label>To <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={field}/></label><label>Group by <select value={group} onChange={e=>setGroup(e.target.value)} style={field}><option value="PERSON">Delivery person</option><option value="VAN">Van</option></select></label></div>
  {error&&<p role="alert">{error}</p>}{loading&&<p role="status">Loading collection totals…</p>}
