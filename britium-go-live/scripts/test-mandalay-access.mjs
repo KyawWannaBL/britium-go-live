@@ -1,0 +1,11 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import ts from 'typescript';
+const registry=fs.readFileSync('src/lib/portalRegistry.ts','utf8');
+let access=fs.readFileSync('src/lib/accessControl.ts','utf8').replace(/import .*portalRegistry';/,'');
+const module=ts.transpileModule(registry+'\n'+access,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
+const {canRoleOpenPath}=await import('data:text/javascript;base64,'+Buffer.from(module).toString('base64'));
+for(const path of ['/branch-office','/wayplan-command','/supervisor-wayplan'])assert.equal(canRoleOpenPath('branch-manager',path),true,path);
+for(const path of ['/accounts','/finance/merchant-settlement','/admin-hr','/settings'])assert.equal(canRoleOpenPath('branch-manager',path),false,path);
+for(const path of ['/branch-office','/wayplan-command','/finance','/accounts'])assert.equal(canRoleOpenPath('superadmin',path),true,path);
+console.log('PASS: branch manager wayplan entry with finance/user administration separation and Superadmin coverage');

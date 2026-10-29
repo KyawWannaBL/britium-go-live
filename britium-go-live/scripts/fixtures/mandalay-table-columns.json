@@ -1,0 +1,1346 @@
+[
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "id",
+    "data_type": "uuid",
+    "udt_name": "uuid"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "pickup_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "parcel_sequence",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_way_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "recipient_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "contact_no_1",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "contact_no_2",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "township",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "township_key",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "city",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "region_state",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "recipient_address",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "customer_tier",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "item_price",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "weight_kg",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "surcharge",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_fee",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "cod_amount",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "actual_collect",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "destination",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "pickup_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "remark",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "saved_by_email",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "saved_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "proof_photo_path",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "is_printed",
+    "data_type": "boolean",
+    "udt_name": "bool"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "template_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "way_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "customer_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "merchant_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "parcel_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "source_created_at",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "source_updated_at",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "environment",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "print_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "printed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "printed_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "warehouse_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "way_management_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "finance_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "assigned_rider_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "assigned_rider_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "supervisor_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "inbound_scanned_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "dispatch_scanned_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "return_scanned_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "closed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "close_locked_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "amount_entry_type",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_charges",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "merchant_stated_total_amount",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "additional_customer_charge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "cbm_surcharge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "other_surcharge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "merchant_payable_charges",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "other_merchant_credits",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "base_tariff",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "included_kg",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "chargeable_weight_kg",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "extra_kg",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "weight_surcharge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "gross_system_delivery_charge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "commitment_refund",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "net_system_delivery_charge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "effective_declared_delivery_charge",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_difference",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "settlement_direction",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "merchant_settlement_adjustment",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "merchant_final_settlement_amount",
+    "data_type": "bigint",
+    "udt_name": "int8"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "financial_validation_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "financial_validation_message",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "financial_calculation_version",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "financial_calculated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "financial_quote",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "service_type",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "source_file_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "source_row_number",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "source_row_count",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "photo_evidence_mode",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "photo_bypass_reason",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "os_imported_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "os_imported_by",
+    "data_type": "uuid",
+    "udt_name": "uuid"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_region",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "delivery_route_mode",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "location_required",
+    "data_type": "boolean",
+    "udt_name": "bool"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "handoff_station_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "handoff_station_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "cod_service_fee_rate",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "cod_service_fee_amount",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_data_entry_parcel_details",
+    "column_name": "cod_fee_policy_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "id",
+    "data_type": "uuid",
+    "udt_name": "uuid"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "wayplan_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "stop_sequence",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "pickup_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "pickup_way_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivery_way_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "waybill_no",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "recipient_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "recipient_phone",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "township",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "address",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "cod_amount",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivery_fee",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "parcel_weight_kg",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "stop_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "proof_url",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "metadata",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_action_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivered_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "failed_reason",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "cod_collected",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_proof_url",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "receiver_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "receiver_phone",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "receiver_signature_url",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "loaded_to_vehicle_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "handed_over_to_rider_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_actor",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_notes",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_action",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_hold_reason",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_exception_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_exception_reason",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_received_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "data_entry_completed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "ready_for_dispatch_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_actor_email",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_batch_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "scan_count",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "warehouse_metadata",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "invoice_no",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "tracking_no",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "route_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "optimized_sequence",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivery_township",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "recipient_township",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "amount_to_collect",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "assigned_to",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_email",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "rider_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "dispatch_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "branch_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivery_address",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "delivery_sequence",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "cod_collected_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "cod_collected_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatch_stops",
+    "column_name": "finance_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "id",
+    "data_type": "uuid",
+    "udt_name": "uuid"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "wayplan_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "dispatch_batch_no",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "branch_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "vehicle_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "vehicle_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "driver_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "driver_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "rider_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "rider_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "helper_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "helper_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "wayplan_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_stops",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_parcels",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_cod",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "planned_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "dispatched_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "completed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "created_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "metadata",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_confirmed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "rider_confirmed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_delivered",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_failed",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "total_cod_collected",
+    "data_type": "numeric",
+    "udt_name": "numeric"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "loaded_to_vehicle_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "handed_over_to_rider_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_actor",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_notes",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_batch_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_ready_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_actor_email",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_dispatches",
+    "column_name": "warehouse_metadata",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "id",
+    "data_type": "uuid",
+    "udt_name": "uuid"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "wayplan_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "delivery_way_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "pickup_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "route_zone",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "membership_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "vehicle_type",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "vehicle_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "vehicle_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "rider_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "rider_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "driver_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "driver_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "helper_code",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "helper_name",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "created_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_membership_v40",
+    "column_name": "metadata",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "wayplan_id",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "review_status",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "revision_no",
+    "data_type": "integer",
+    "udt_name": "int4"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "submitted_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "submitted_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "reviewed_by",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "reviewed_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "review_notes",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "rejection_reason",
+    "data_type": "text",
+    "udt_name": "text"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "approval_snapshot",
+    "data_type": "jsonb",
+    "udt_name": "jsonb"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "dispatch_ready_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "dispatched_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  },
+  {
+    "table_name": "be_wayplan_review_v43",
+    "column_name": "updated_at",
+    "data_type": "timestamp with time zone",
+    "udt_name": "timestamptz"
+  }
+]

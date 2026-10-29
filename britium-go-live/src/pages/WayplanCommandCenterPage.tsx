@@ -11,6 +11,7 @@ import {
   RotateCcw,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import MultiVanPlanner from "@/components/MultiVanPlanner";
 import CreatedWayplanRevisionPlanner from "@/components/CreatedWayplanRevisionPlanner";
 import MultiSelectQueueFilter from "@/components/MultiSelectQueueFilter";
@@ -121,13 +122,16 @@ function Card({ children, style, id }: { children: React.ReactNode; style?: Reac
 }
 
 export default function WayplanCommandCenterPage() {
+  const {profile}=useAuth();
+  const branchManager=String(profile?.role||'').replace(/_/g,'-')==='branch-manager';
+  const ownRegion=String(profile?.branch_code||'').toUpperCase()==='MDY'?'MANDALAY':String(profile?.branch_code||'').toUpperCase()==='NPT'?'NAYPYITAW':'YANGON';
   const [loading, setLoading] = useState(false);
   const [readyRows, setReadyRows] = useState<Row[]>([]);
   const [wayplans, setWayplans] = useState<Row[]>([]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [activeWayplan, setActiveWayplan] = useState<Row | null>(null);
   const [regions, setRegions] = useState<WayplanRegionOption[]>([]);
-  const [selectedRegion, setSelectedRegion] = useState<WayplanRegionCode>("YANGON");
+  const [selectedRegion, setSelectedRegion] = useState<WayplanRegionCode>(ownRegion);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
@@ -233,7 +237,8 @@ export default function WayplanCommandCenterPage() {
 
       const q = queueResult.data?.queue || queueResult.data?.data || [];
       const w = wayplanResult.data?.wayplans || wayplanResult.data?.data || [];
-      const regionRows = regionResult.data?.regions || regionResult.data?.data || [];
+      const allRegions = regionResult.data?.regions || regionResult.data?.data || [];
+      const regionRows = branchManager ? allRegions.filter((r:any)=>r.region_code===ownRegion) : allRegions;
       const filteredWayplans = (Array.isArray(w) ? w : []).filter((wayplan) => {
         const code = text(wayplan?.metadata?.region_code || wayplan?.region_code || "YANGON").toUpperCase();
         return code === selectedRegion;
@@ -571,7 +576,7 @@ export default function WayplanCommandCenterPage() {
         <Card>
           <div style={{ marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontSize: 16 }}>Wayplan Region Control</h2>
-            <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>Only active regions can expose a queue or generate a wayplan. Yangon is the current operational focus.</p>
+            <p style={{ margin: "4px 0 0", color: C.sub, fontSize: 12 }}>Active regional queues use the same warehouse, approval and dispatch controls. Branch managers work within their assigned branch.</p>
           </div>
           <div data-wayplan-region-control-v19="true" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
             {regions.map((region) => {
@@ -584,7 +589,7 @@ export default function WayplanCommandCenterPage() {
                   </div>
                   <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
                     <button type="button" onClick={() => focusRegion(region)} disabled={!region.is_active || loading} style={{ ...btn(focused ? "gold" : "plain"), flex: 1, opacity: region.is_active ? 1 : 0.45 }}>Open queue</button>
-                    <button type="button" onClick={() => void toggleRegionActive(region)} disabled={loading} style={btn(region.is_active ? "red" : "green")}>{region.is_active ? "Disable" : "Activate"}</button>
+                    <button type="button" onClick={() => void toggleRegionActive(region)} disabled={loading || branchManager} style={btn(region.is_active ? "red" : "green")}>{region.is_active ? "Disable" : "Activate"}</button>
                   </div>
                 </div>
               );
@@ -698,14 +703,14 @@ export default function WayplanCommandCenterPage() {
               <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
                 <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
-                <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
+                <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || branchManager || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
                 {revisionSource ? <div data-wayplan-revision-actions-v47="true" style={{ display: "grid", gap: 8, border: `1px solid ${C.gold}`, borderRadius: 12, padding: 10, background: "rgba(246,184,75,0.08)" }}>
                   <div style={{ color: C.gold, fontWeight: 900, fontSize: 12 }}>Editing {revisionSource.wayplan_id} · {revisionRows.length} current/revised ways</div>
                   <button style={btn("gold")} disabled={!filteredSelectedRows.length} onClick={addSelectedToRevision}>Add Selected ({filteredSelectedRows.length})</button>
                   <button style={btn("red")} disabled={!removeCount} onClick={removeSelectedFromRevision}>Remove Selected ({removeCount})</button>
                   <button data-wayplan-cancel-edit-v87="true" onClick={cancelRevision} disabled={loading} style={btn("plain")}>Cancel Edit / Back</button>
                 </div> : null}
-                <button data-wayplan-cancel-created-v87="true" onClick={()=>void cancelCreatedWayplan()} disabled={loading || !canEditCreatedWayplan || Boolean(revisionSource)} style={{ ...btn("red"), opacity: canEditCreatedWayplan && !revisionSource ? 1 : 0.45 }}>Delete Generated Wayplan / Return Ways to Queue</button>
+                <button data-wayplan-cancel-created-v87="true" onClick={()=>void cancelCreatedWayplan()} disabled={loading || !canEditCreatedWayplan || branchManager || Boolean(revisionSource)} style={{ ...btn("red"), opacity: canEditCreatedWayplan && !revisionSource ? 1 : 0.45 }}>Delete Generated Wayplan / Return Ways to Queue</button>
                 {!canEditCreatedWayplan && activeWayplan && <div style={{ color: C.sub, fontSize: 11 }}>Add/remove editing and cancellation are locked after the Wayplan leaves CREATED status.</div>}
                 <div data-wayplan-lifecycle-controls-v61="true" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <button

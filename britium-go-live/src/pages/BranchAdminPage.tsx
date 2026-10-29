@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2, CheckCircle2, RefreshCw, Search, Users, XCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import BranchControlWorkbench from '@/components/BranchControlWorkbench';
 
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 
@@ -47,6 +48,7 @@ export default function BranchAdminPage(){
       {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
     </section>
 
+    <BranchControlWorkbench branch={branch}/>
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
       {[["Branches",s.branches||branches.length,Building2],["Active Branches",s.active_branches||0,Building2],["Staff",s.staff||staff.length,Users],["Shipments",s.shipments||shipments.length,Building2],["Pending Shipments",s.pending_shipments||0,Building2],["COD Total",money(s.cod_total),Building2]].map(([l,v,I]:any)=><div key={l} className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4"><div className="flex justify-between text-[10px] font-black uppercase text-[#8fb2c9]"><span>{l}</span><I size={16} className="text-[#38bdf8]"/></div><div className="mt-2 text-xl font-black">{v}</div></div>)}
     </section>

@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from "react";
 import { RefreshCw, Send, ShieldCheck, Truck, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useLanguage } from "@/contexts/LanguageContext";
+import BranchWayplanScan from '@/components/BranchWayplanScan';
 
 type Wayplan = {
   wayplan_id: string;
+  branch_code?: string;
   route_zone?: string;
   parcel_count?: number;
   planned_count?: number;
@@ -249,6 +251,7 @@ export default function SupervisorWayplanReviewPage() {
       {error ? <div className="rounded-xl border border-red-400/40 bg-red-500/10 p-3 text-[12px] text-red-200 flex gap-2"><AlertTriangle size={16}/><span>{error}</span></div> : null}
       {message ? <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-[12px] text-emerald-200 flex gap-2"><CheckCircle2 size={16}/><span>{message}</span></div> : null}
 
+      {selectedId&&<BranchWayplanScan wayplanId={selectedId} branch={branch} onSaved={()=>void loadData(true)}/>}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Stat title="DRAFT WAYPLANS" value={draftCount} subtitle="Needs supervisor review" tone="text-[#f6b84b]" />
         <Stat title="CONFIRMED" value={confirmedCount} subtitle="Approved / released" tone="text-emerald-400" />
