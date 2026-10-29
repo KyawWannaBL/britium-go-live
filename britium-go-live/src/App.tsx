@@ -1,3 +1,4 @@
+import BranchDepartmentRoute from '@/components/branch/BranchDepartmentRoute';
 import { lazy, Suspense, type ReactNode } from "react";
 import { HashRouter, Navigate, Outlet, Route, Routes, useLocation } from "react-router-dom";
 import { Globe } from "lucide-react";
@@ -185,8 +186,8 @@ function AppRoutes() {
           <Route element={<AuthLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/branch-office" element={<BranchOfficePage />} />
-            <Route path="/cs-command" element={<CustomerServiceCommandCenterPage />} />
-            <Route path="/cs-portal" element={<CustomerServicePortalPage />} />
+            <Route path="/cs-command" element={<BranchDepartmentRoute module="cs"><CustomerServiceCommandCenterPage /></BranchDepartmentRoute>} />
+            <Route path="/cs-portal" element={<BranchDepartmentRoute module="cs"><CustomerServicePortalPage /></BranchDepartmentRoute>} />
             <Route path="/cs-third-party" element={<ThirdPartyDeliveryConfirmationPage />} />
             <Route path="/data-entry" element={<DataEntryFinancialV2Page />} />
             <Route path="/finance/data-entry-review" element={<FinanceDataEntryReviewPage />} />
@@ -194,10 +195,10 @@ function AppRoutes() {
             <Route path="/finance/accounting" element={<AccountingPortalPage />} />
             <Route path="/finance/accounting-master" element={<AccountingMasterWorkspacePage />} />
             <Route path="/accounts" element={<AccountsPage />} />
-            <Route path="/admin-hr" element={<AdminHRPage />} />
+            <Route path="/admin-hr" element={<BranchDepartmentRoute module="hr"><AdminHRPage /></BranchDepartmentRoute>} />
             <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/audit-logs" element={<AuditLogsPage />} />
-            <Route path="/biz-dev" element={<BizDevPage />} />
+            <Route path="/biz-dev" element={<BranchDepartmentRoute module="bd"><BizDevPage /></BranchDepartmentRoute>} />
             <Route path="/branch-admin" element={<BranchAdminPage />} />
             <Route path="/cod-settlement" element={<CODSettlementPage />} />
             <Route path="/customer-portal" element={<CustomerPortalPage />} />
@@ -210,9 +211,9 @@ function AppRoutes() {
             <Route path="/go-live-control" element={<GoLiveControlPanel />} />
             <Route path="/invoice-studio" element={<InvoiceStudioPage />} />
             <Route path="/manifest-print" element={<ManifestPrintStudioPage />} />
-            <Route path="/marketing" element={<MarketingPage />} />
-            <Route path="/marketing-portal" element={<MarketingPortalPage />} />
-            <Route path="/master-data" element={<MasterDataPage />} />
+            <Route path="/marketing" element={<BranchDepartmentRoute module="marketing"><MarketingPage /></BranchDepartmentRoute>} />
+            <Route path="/marketing-portal" element={<BranchDepartmentRoute module="marketing"><MarketingPortalPage /></BranchDepartmentRoute>} />
+            <Route path="/master-data" element={<BranchDepartmentRoute module="master"><MasterDataPage /></BranchDepartmentRoute>} />
             <Route path="/merchant-portal" element={<MerchantPortalPage />} />
             <Route path="/pickup-form" element={<PickupFormPage />} />
             <Route path="/profile" element={<ProfilePage />} />
@@ -223,7 +224,7 @@ function AppRoutes() {
             <Route path="/supervisor-portal" element={<SupervisorPickupAssignmentGoLivePage />} />
             <Route path="/supervisor" element={<SupervisorPickupAssignmentGoLivePage />} />
             <Route path="/supervisor-wayplan" element={<SupervisorWayplanReviewPage />} />
-            <Route path="/tariff" element={<TariffPage />} />
+            <Route path="/tariff" element={<BranchDepartmentRoute module="tariff"><TariffPage /></BranchDepartmentRoute>} />
             <Route path="/warehouse" element={<WarehousePage />} />
             <Route path="/warehouse-operations" element={<WarehouseOperationPage />} />
             <Route path="/wayplan-view" element={<WarehouseWayplanViewPage />} />
