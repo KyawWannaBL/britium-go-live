@@ -9,8 +9,13 @@ import EnvironmentBadge from "@/components/system/EnvironmentBadge";
 import WarehousePendingGlobalAlert from "@/components/WarehousePendingGlobalAlert";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { LanguageProvider, useLanguage } from "@/contexts/LanguageContext";
-import { defaultPortalForRole } from "@/lib/portalRegistry";
+import { normalizeRole, defaultPortalForRole } from "@/lib/portalRegistry";
 import { canRoleOpenPath } from "@/lib/accessControl";
+
+function BranchDispatchRoute() {
+  const { profile } = useAuth();
+  return normalizeRole(profile?.role) === 'branch-manager' ? <SupervisorWayplanReviewPage /> : <DispatchCommandCenterPage />;
+}
 
 const GLOBAL_FONT = "font-['Poppins','Noto_Sans_Myanmar',sans-serif] antialiased";
 
@@ -238,7 +243,7 @@ function AppRoutes() {
             <Route path="/templates" element={<GoLiveTemplateCenterPage />} />
             <Route path="/go-live-readiness" element={<UATGoLiveCommandCenterPage />} />
             <Route path="/ops-workflow" element={<UnifiedOperationsWorkflowPage />} />
-            <Route path="/dispatch-command" element={<DispatchCommandCenterPage />} />
+            <Route path="/dispatch-command" element={<BranchDispatchRoute />} />
 
             <Route path="/data-entry-excel" element={<DataEntryExcelRegisterPage />} />
             <Route path="/data-entry-photo" element={<DataEntryPhotoCheckPage />} />

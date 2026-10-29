@@ -74,6 +74,7 @@ export function canRoleOpenPath(rawRole: string | null | undefined, path: string
   const role = normalizeRole(rawRole);
   if (ELEVATED_ROLES.has(role)) return true;
   if (path === '/profile') return role !== 'guest';
+  if (role === 'branch-manager' && ['/warehouse','/warehouse-operations','/warehouse-pending','/warehouse-dispatch-command','/wayplan-view','/rto-report','/ops-workflow','/dispatch-command'].includes(path.replace(/\/$/,''))) return true;
 
   const ruleForPath = PATH_ROLES.find(([prefix]) => path.startsWith(prefix));
   if (ruleForPath) return ruleForPath[1].has(role);

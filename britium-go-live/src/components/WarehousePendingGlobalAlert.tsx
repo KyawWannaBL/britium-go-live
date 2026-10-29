@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { normalizeRole } from "@/lib/portalRegistry";
 
 const ALERT_ROLES = new Set([
-  "warehouse","warehouse-staff","sorter","dispatch",
+  "branch-manager","warehouse","warehouse-staff","sorter","dispatch",
   "supervisor","operations","operations-admin","operation-manager"
 ]);
 
@@ -35,6 +35,7 @@ function returnedAfterDispatch(row:any){
 }
 
 function pending(row:any){
+  if(row.branch_receipt_current === false) return false;
   if(!row.inbound_scan_at || terminal(row) || hasActiveWayplan(row)) return false;
   const delivery=upper(row.delivery_status);
   const stage=upper(row.dispatch_workflow_stage);

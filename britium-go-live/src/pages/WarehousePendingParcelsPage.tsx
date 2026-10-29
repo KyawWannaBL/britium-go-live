@@ -37,6 +37,7 @@ function returnedAfterDispatch(row:any){
 }
 
 function isPendingForWayplan(row:any){
+  if(row.branch_receipt_current === false) return false;
   if(!row.inbound_scan_at || isTerminal(row) || hasActiveWayplan(row)) return false;
 
   const delivery=txt(row.delivery_status).toUpperCase();
