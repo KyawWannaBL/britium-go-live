@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {createRequire} from 'node:module';
+import React from 'react';import Renderer,{act} from 'react-test-renderer';import ts from 'typescript';
+const require=createRequire(import.meta.url);let calls=[],pending=[],defer=false,fail=false;
+const report={ok:true,roster:[{code:'RID001',role:'RIDER',name:'Paing Zay Htut',mobile_auth_ready:true,busy:true}],commissions:[{id:'E1',source_key:'M1',assignee_name:'Paing',operation_type:'DELIVERY',role_code:'RIDER',unit_count:1,commission_mmk:300,event_status:'READY',finance_decision:'NOT_REVIEWED'}],rates:[],commission_total:300,event_count:1,detail_limit:500};
+const rpc=async(name,args)=>{calls.push({name,args});assert.equal(name,'be_branch_workforce_snapshot_v1');if(defer)return new Promise(resolve=>pending.push({args,resolve}));return fail?{error:{message:'Unavailable'}}:{data:report};};
+const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/components/BranchWorkforcePanel.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports,require:id=>id==='@/integrations/supabase/client'?{supabase:{rpc}}:require(id),Intl,Date,console,document:{hidden:false},setInterval:()=>1,clearInterval:()=>{}});
+const Page=module.exports.default,text=n=>typeof n==='string'||typeof n==='number'?String(n):(n.children||[]).map(text).join(' ');let view;
+await act(async()=>{view=Renderer.create(React.createElement(Page,{branch:'MDY'}));});
+assert.equal(calls[0].args.p_branch,'MDY');assert.match(text(view.root),/Paing Zay Htut/);assert.match(text(view.root),/Busy/);assert.match(text(view.root),/NOT REVIEWED/);assert.match(text(view.root),/not payment/i);
+defer=true;await act(async()=>view.root.findByType('input').props.onChange({target:{value:'2026-11-07'}}));await act(async()=>view.root.findByType('input').props.onChange({target:{value:'2026-11-08'}}));
+await act(async()=>pending[1].resolve({data:{...report,roster:[{...report.roster[0],name:'CurrentWorker'}]}}));await act(async()=>pending[0].resolve({data:{...report,roster:[{...report.roster[0],name:'Stale'}]}}));assert.match(text(view.root),/CurrentWorker/);assert.doesNotMatch(text(view.root),/Stale/);
+defer=false;fail=true;await act(async()=>view.root.findByType('button').props.onClick());assert.match(text(view.root),/Unavailable/);assert.doesNotMatch(text(view.root),/CurrentWorker/);await act(async()=>view.unmount());
+console.log('PASS branch workforce UI: scope, crew readiness, review vs payment, stale date responses and failed refresh');

@@ -26,7 +26,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/workforce-commission', rule('finance', 'finance-user', 'accountant')],
 
   ['/data-entry', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
-  ['/waybill-studio', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
+  ['/waybill-studio', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
   ['/waybill-invoice', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse', 'finance')],
   ['/doc-print', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
   ['/templates', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],

@@ -1,4 +1,5 @@
 import {useCallback,useEffect,useState} from 'react';
+import BranchWorkforcePanel from '@/components/BranchWorkforcePanel';
 import {Link} from 'react-router-dom';
 import {supabase} from '@/integrations/supabase/client';
 import {useAuth} from '@/contexts/AuthContext';
@@ -37,7 +38,8 @@ export default function BranchControlWorkbench({branch,initialTab='Transfers'}:{
  return <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5 text-[#eef8ff]">
   <div className="flex flex-wrap justify-between gap-3"><div><h2 className="text-xl font-bold">Branch coordination & administrative control</h2><p className="mt-1 text-sm text-slate-300">Shared with head office · refreshes every 30 seconds · {data.as_of?new Date(data.as_of).toLocaleString('en-GB',{timeZone:'Asia/Yangon'}):'Loading'}</p></div><button className={button} onClick={()=>void load()}>Refresh branch controls</button></div>
   <p className="text-sm text-amber-200">Mandalay setup: joint operation with DK Delivery. Keep the responsible provider on each parcel. Branch takeover has no effective date yet.</p>
-  {(manager||superadmin)&&<div className="flex flex-wrap gap-2"><Link className={button} to="/wayplan-command">Plan branch deliveries</Link><Link className={button} to="/supervisor-wayplan">Review, scan & dispatch</Link></div>}
+  {(manager||superadmin)&&<div className="flex flex-wrap gap-2"><Link className={button} to="/wayplan-command">Plan branch deliveries</Link><Link className={button} to="/supervisor-wayplan">Review, scan & dispatch</Link><Link className={button} to="/waybill-studio">Print branch waybills</Link></div>}
+  <BranchWorkforcePanel branch={branch}/>
   <div className="flex flex-wrap gap-2" role="tablist" aria-label="Branch controls">{['Transfers','Administration & Finance'].map(t=><button key={t} role="tab" aria-selected={tab===t} className={tab===t?button:'rounded-lg border border-slate-500 px-4 py-2'} onClick={()=>setTab(t)}>{t}</button>)}</div>
   {error&&<p role="alert" className="rounded-lg bg-rose-950 p-3">{error}</p>}{notice&&<p role="status" className="rounded-lg bg-emerald-950 p-3">{notice}</p>}
   {tab==='Transfers'?<>
