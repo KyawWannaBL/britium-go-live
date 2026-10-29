@@ -1,6 +1,8 @@
 // @ts-nocheck
 import React, { useEffect, useMemo, useState } from "react";
 import { Download, Printer, RefreshCw, Search } from "lucide-react";
+import { useAuth } from '@/contexts/AuthContext';
+import { normalizeRole } from '@/lib/portalRegistry';
 import { supabase } from "@/integrations/supabase/client";
 
 function text(v:any,fallback=""){ const s=String(v??"").trim(); return s||fallback; }
@@ -8,6 +10,8 @@ function dt(v:any){ if(!v) return ""; const d=new Date(v); return Number.isNaN(d
 function csvCell(v:any){ return '"' + String(v??"").replace(/"/g,'""') + '"'; }
 
 export default function WarehouseRtoReportPage(){
+  const {profile}=useAuth();
+  const isBranchManager=normalizeRole(profile?.role)==='branch-manager';
   const [loading,setLoading]=useState(false);
   const [rows,setRows]=useState<any[]>([]);
   const [merchantOptions,setMerchantOptions]=useState<any[]>([]);
@@ -18,6 +22,7 @@ export default function WarehouseRtoReportPage(){
   const [message,setMessage]=useState("");
 
   async function loadMerchantOptions(){
+    if(isBranchManager) return;
     try{
       const {data,error}=await (supabase as any).rpc("be_get_merchants_dropdown");
       if(error) throw error;

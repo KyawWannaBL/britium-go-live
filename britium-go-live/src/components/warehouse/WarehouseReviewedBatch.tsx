@@ -2,7 +2,7 @@ import {useRef,useState} from 'react';
 import {supabase} from '@/integrations/supabase/client';
 
 type Outcome={id:string;ok:boolean;message:string};
-export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyChange,receivedWayIds=[]}:{onChanged:()=>Promise<unknown>;disabled?:boolean;onBusyChange?:(busy:boolean)=>void;receivedWayIds?:string[]}){
+export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyChange,receivedWayIds=[],warehouseCode='YGN-MAIN'}:{onChanged:()=>Promise<unknown>;disabled?:boolean;onBusyChange?:(busy:boolean)=>void;receivedWayIds?:string[];warehouseCode?:string}){
   const [text,setText]=useState(''),[ids,setIds]=useState<string[]>([]),[confirmed,setConfirmed]=useState(false);
   const [busy,setBusy]=useState(false),[message,setMessage]=useState('');
   const [received,setReceived]=useState<string[]>([]),[ready,setReady]=useState<string[]>([]),[outcomes,setOutcomes]=useState<Outcome[]>([]);
@@ -36,7 +36,7 @@ export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyC
               if(String(matches[0].canonical_id||'').toUpperCase()!==id)throw new Error('Use the canonical Way ID shown by the individual scanner.');
             }
             const result=kind==='inbound'
-              ?await (supabase as any).rpc('be_warehouse_inbound_scan',{p_tracking_no:id,p_warehouse_code:'YGN-MAIN'})
+              ?await (supabase as any).rpc('be_warehouse_inbound_scan',{p_tracking_no:id,p_warehouse_code:warehouseCode})
               :await (supabase as any).rpc('be_warehouse_mark_delivery_ready_v150',{p_delivery_way_id:id});
             if(result.error)throw result.error;
             if(result.data?.ok!==true)throw new Error(result.data?.reason||result.data?.message||result.data?.error||'Operation was not confirmed.');
@@ -55,7 +55,7 @@ export default function WarehouseReviewedBatch({onChanged,disabled=false,onBusyC
   }
   return <section className="mb-4 rounded-xl border border-slate-700 bg-[#0B2133] p-4">
     <h2 className="font-bold">Reviewed bulk inbound scans</h2>
-    <p className="my-2 text-sm text-slate-300">Paste up to 100 D-series Way IDs for parcels physically received at YGN-MAIN. Each scan uses your signed-in warehouse permissions. Finance confirmation remains separate.</p>
+    <p className="my-2 text-sm text-slate-300">Paste up to 100 D-series Way IDs for parcels physically received at {warehouseCode}. Each scan uses your signed-in warehouse permissions. Finance confirmation remains separate.</p>
     <label className="block text-sm">Inbound Way IDs<textarea aria-label="Inbound Way IDs" rows={4} disabled={busy||disabled} value={text} onChange={e=>{setText(e.target.value);setIds([]);setConfirmed(false);setMessage('');}} className="mt-1 block w-full rounded bg-slate-950 p-2"/></label>
     <button type="button" disabled={busy||disabled} onClick={review} className="my-2 rounded bg-sky-700 px-3 py-2">Review inbound list</button>
     {ids.length>0&&<>

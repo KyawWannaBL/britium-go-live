@@ -43,6 +43,8 @@ function statusClass(status?: string) {
 export default function WarehousePage() {
   const { profile } = useAuth();
   const currentRole = normalizeRole(profile?.role);
+  const isBranchManager = currentRole === "branch-manager";
+  const warehouseCode = isBranchManager ? `${String(profile?.branch_code || "").trim().toUpperCase()}-MAIN` : "YGN-MAIN";
   const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
   const batchBusyRef=useRef(false);
@@ -165,7 +167,7 @@ export default function WarehousePage() {
         try{
           const {data,error}=await (supabase as any).rpc("be_warehouse_dispatch_scan_fast_v64",{
             p_scan:item.chosen?.canonical_id||item.code,
-            p_warehouse_code:"YGN-MAIN",
+            p_warehouse_code:warehouseCode,
           });
           if(error) throw error;
           if(data?.ok===false){
@@ -195,7 +197,7 @@ export default function WarehousePage() {
       scheduleBackgroundRefresh();
       focusScanner();
     }
-  },[applyDispatchScanLocally,focusScanner,scheduleBackgroundRefresh]);
+  },[applyDispatchScanLocally,focusScanner,scheduleBackgroundRefresh,warehouseCode]);
 
   const enqueueDispatchScan=useCallback((raw:string,chosen?:any)=>{
     if(batchBusyRef.current){setMessage('Finish the reviewed warehouse batch before scanning dispatch parcels.');return;}
@@ -255,7 +257,7 @@ export default function WarehousePage() {
         res = await supabase.rpc("be_warehouse_inbound_scan", {
           p_tracking_no: tracking,
           p_actor_email: email,
-          p_warehouse_code: "YGN-MAIN",
+          p_warehouse_code: warehouseCode,
         });
       }
 
@@ -270,7 +272,7 @@ export default function WarehousePage() {
           p_delivery_date: reason === "CUSTOMER_REQUESTED_RESCHEDULE" ? rescheduleDate : null,
           p_actor_email: email,
           p_remark: remark || null,
-          p_warehouse_code: "YGN-MAIN",
+          p_warehouse_code: warehouseCode,
         });
       }
 
@@ -801,7 +803,7 @@ export default function WarehousePage() {
         </div>
       </section>
       <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
-        {!isFinanceReadOnly&&<WarehouseReviewedBatch receivedWayIds={rows.filter((row:any)=>['RECEIVED','WAREHOUSE_READY'].includes(String(row.warehouse_scan_status||row.warehouse_status||'').toUpperCase())).map((row:any)=>canonicalDeliveryWayId(row))} disabled={loading||dispatchProcessing||!!scanChoices} onBusyChange={busy=>{batchBusyRef.current=busy;setBatchBusy(busy);scanBusy.current=busy;setLoading(busy);}} onChanged={()=>loadAll()} />}
+        {!isFinanceReadOnly&&<WarehouseReviewedBatch warehouseCode={warehouseCode} receivedWayIds={rows.filter((row:any)=>row.branch_receipt_current!==false && ['RECEIVED','WAREHOUSE_READY'].includes(String(row.warehouse_scan_status||row.warehouse_status||'').toUpperCase())).map((row:any)=>canonicalDeliveryWayId(row))} disabled={loading||dispatchProcessing||!!scanChoices} onBusyChange={busy=>{batchBusyRef.current=busy;setBatchBusy(busy);scanBusy.current=busy;setLoading(busy);}} onChanged={()=>loadAll()} />}
         <div className="mb-2 text-sm font-semibold text-slate-200">Scan Control</div>
         {scanChoices && <div role="dialog" aria-label="Choose matching pickup" className="mb-4 rounded border border-amber-500 p-3">
           <p>Choose the pickup printed on this parcel:</p>
@@ -907,7 +909,7 @@ export default function WarehousePage() {
         </div>
       </section>
 
-      <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
+      {!isBranchManager && <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="mb-2 text-sm font-semibold text-slate-200">
           End Day Close / Auto Drop-off
         </div>
@@ -928,7 +930,8 @@ export default function WarehousePage() {
         <div className="mt-2 text-xs text-slate-400">
           Only parcels with Dispatch Scan / OUT_FOR_DELIVERY and no return scan are converted to DROP_OFF.
         </div>
-      </section>
+      </section>}
+      {isBranchManager && <p className="mb-4 text-sm text-slate-300">Close trips through Supervisor Wayplan after field delivery proof and reconciliation.</p>}
       </>}
 
       <section className="rounded-xl border border-slate-800 bg-[#0B2133]">
