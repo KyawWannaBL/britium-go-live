@@ -7,8 +7,9 @@ export default function FieldSettlementAmounts({row}:{row:any}){
  const pending=Number(row.remaining_ways||0)>0;
  const delivered=Number(row.delivered_ways||0);
  const awaiting=pending&&delivered===0;
- const awaitingHandover=delivered>0&&Number(row.actual_collected||0)===0;
  const collected=amount(row.actual_collected),cash=amount(row.cash_collected),digital=amount(row.digital_collected);
+ const expected=amount(row.expected_cod);
+ const awaitingHandover=delivered>0&&expected!==null&&expected>0&&(collected===null||collected===0);
  const unclassified=collected!==null&&cash!==null&&digital!==null?Math.max(0,collected-cash-digital):null;
  const variance=amount(row.variance_amount);
  const detail:React.CSSProperties={fontSize:11,color:'#9cc2d9',marginTop:4};

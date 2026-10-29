@@ -3,12 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { Building2, RefreshCw, Search, FileEdit, Package, Users, WalletCards } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import BranchControlWorkbench from '@/components/BranchControlWorkbench';
+import {normalizeRole} from '@/lib/portalRegistry';
 
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 
 export default function BranchOfficePage(){
   const {profile}=useAuth();
-  const fixedBranch=String(profile?.branch_code||"").trim().toUpperCase();
+  const enterprise=['superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role));
+  const fixedBranch=enterprise?'':String(profile?.branch_code||"").trim().toUpperCase();
   const [branch,setBranch]=useState(fixedBranch);
   const [data,setData]=useState<any>({summary:{},branches:[],staff:[],shipments:[],amendments:[]});
   const [loading,setLoading]=useState(false);
@@ -56,6 +59,7 @@ export default function BranchOfficePage(){
       {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
     </section>
 
+    <BranchControlWorkbench branch={fixedBranch||branch}/>
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {[
         ["Branch",fixedBranch||branch||"ALL",Building2],

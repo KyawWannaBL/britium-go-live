@@ -42,6 +42,8 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/proof-gallery', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'supervisor', 'operations', 'operations-admin')],
   ['/exceptions', rule('customer-service', 'cs', 'support', 'warehouse', 'warehouse-staff', 'dispatch', 'supervisor', 'operations', 'operations-admin')],
 
+  ['/wayplan-command', rule('branch-manager', 'dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
+  ['/supervisor-wayplan', rule('branch-manager', 'supervisor', 'operations', 'operations-admin')],
   ['/ops-workflow', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/wayplan', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/dispatch-command', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],

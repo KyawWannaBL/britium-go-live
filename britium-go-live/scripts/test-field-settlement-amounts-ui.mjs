@@ -25,14 +25,14 @@ for(const Page of [finance,field]){
  const section=Page===finance?view.root.findAllByType('section').find(s=>s.findAllByType('h2').some(h=>h.props.id==='financial-settlement')):view.root;
  const output=text(section);
  for(const amount of ['1,970,500','1,135,000','937,000','427,500'])assert.ok(output.includes(amount),`Every settlement must show its expected amount (${amount}) while actual collection is zero`);
- assert.match(output,/Expected collection/);assert.match(output,/Awaiting delivery/);assert.match(output,/Pending completion/);
+ assert.match(output,/Expected collection/);assert.match(output,/Awaiting delivery/);assert.match(output,/Pending delivery completion/);
  await act(async()=>view.unmount());
 }
 // A completed split collection displays recorded receipt values, not the route opening amount.
 responseRows=[{...rows[0],wayplan_id:'WP-SPLIT',opening_cod_amount:100000,expected_cod:100000,actual_collected:100000,cash_collected:60000,digital_collected:40000,variance_amount:0,delivered_ways:20,remaining_ways:0,status:'READY_TO_SETTLE'}];
 for(const Page of [finance,field]){
  let view;await act(async()=>{view=Renderer.create(React.createElement(Page));});const output=text(view.root);
- assert.match(output,/60,000/);assert.match(output,/40,000/);assert.match(output,/Recorded collection/);assert.doesNotMatch(output,/Awaiting delivery|Pending completion/);
+ assert.match(output,/60,000/);assert.match(output,/40,000/);assert.match(output,/Recorded collection/);assert.doesNotMatch(output,/Awaiting delivery|Pending delivery completion|Delivery exceptions remain/);
  await act(async()=>view.unmount());
 }
 // Partial completion must not mistake the whole route amount for delivered COD due.
@@ -41,7 +41,7 @@ for(const Page of [finance,field]){
  let view;await act(async()=>{view=Renderer.create(React.createElement(Page));});
  const output=text(view.root.find(n=>n.props['aria-label']==='Settlement amounts'));
  for(const value of ['100,000','25,000','20,000','12,000','5,000','Unclassified 3,000'])assert.ok(output.includes(value),value);
- assert.match(output,/Pending completion/);await act(async()=>view.unmount());
+ assert.match(output,/Delivery exceptions remain/);assert.match(output,/collection reconciliation pending/);await act(async()=>view.unmount());
 }
 // Missing evidence stays unknown; a genuine zero-collection delivery stays zero.
 for(const fixture of [
@@ -51,7 +51,18 @@ for(const fixture of [
  responseRows=[fixture];let view;await act(async()=>{view=Renderer.create(React.createElement(finance));});
  const output=text(view.root.find(n=>n.props['aria-label']==='Settlement amounts'));
  if(fixture.actual_collected===null){assert.match(output,/Not recorded/);assert.doesNotMatch(output,/0 MMK/);}
- else {assert.match(output,/0 MMK/);assert.doesNotMatch(output,/Not recorded|Awaiting delivery|Pending completion/);}
+ else {assert.match(output,/0 MMK/);assert.doesNotMatch(output,/Not recorded|Awaiting delivery|Pending delivery completion|Pending Finance handover|awaiting rider/);}
  await act(async()=>view.unmount());
 }
-console.log('PASS field settlement amounts: both real pages show opening expectations, pending delivery state and recorded split receipts without financial mutations');
+// Zero/missing collection with a positive amount due still needs reconciliation.
+for(const collected of [0,null]){
+ responseRows=[{...rows[0],opening_cod_amount:25000,expected_cod:25000,actual_collected:collected,cash_collected:collected,digital_collected:collected,delivered_ways:1,remaining_ways:0}];
+ for(const Page of [finance,field]){
+  let view;await act(async()=>{view=Renderer.create(React.createElement(Page));});
+  const output=text(view.root.find(n=>n.props['aria-label']==='Settlement amounts'));
+  assert.match(output,/25,000/);assert.match(output,/Pending Finance handover/);assert.match(output,/awaiting rider/);
+  if(collected===null)assert.match(output,/Not recorded/);
+  await act(async()=>view.unmount());
+ }
+}
+console.log('PASS field settlement amounts: pending deliveries, split receipts, unknown amounts, genuine zero due and positive-due handover warnings on both real pages');
