@@ -64,11 +64,11 @@ returns boolean language plpgsql stable security definer set search_path=public,
 declare outcome text;
 begin
  if not public.be_branch_warehouse_visible_v1(p_way) then return false;end if;
- select upper(last_status) into outcome from be_delivery_attempt_state_v39 where delivery_way_id=p_way limit 1;
- if nullif(outcome,'') is not null then return outcome in('RTO','RETURN_TO_SENDER');end if;
- select upper(delivery_status) into outcome from be_dispatch_job_assignments where tracking_no=p_way order by updated_at desc nulls last limit 1;
- if nullif(outcome,'') is not null then return outcome in('RTO','RETURN_TO_SENDER');end if;
- select upper(coalesce(nullif(stop_status,''),nullif(rider_status,''),nullif(dispatch_status,''))) into outcome from be_wayplan_dispatch_stops where delivery_way_id=p_way order by updated_at desc nulls last,created_at desc nulls last limit 1;
+ select x.status into outcome from (
+  select upper(last_status) as status,updated_at as event_at,1 as priority from be_delivery_attempt_state_v39 where delivery_way_id=p_way
+  union all select upper(delivery_status),updated_at,2 from be_dispatch_job_assignments where tracking_no=p_way
+  union all select upper(coalesce(nullif(rider_status,''),nullif(stop_status,''),nullif(dispatch_status,''))),coalesce(updated_at,created_at),3 from be_wayplan_dispatch_stops where delivery_way_id=p_way
+ ) x where nullif(x.status,'') is not null order by x.event_at desc nulls last,x.priority limit 1;
  return coalesce(outcome in('RTO','RETURN_TO_SENDER'),false);
 end $$;
 revoke all on function public.be_branch_warehouse_scope_v1(boolean),public.be_branch_warehouse_visible_v1(text),public.be_branch_warehouse_require_way_v1(text,text),public.be_branch_warehouse_resolve_v1(text),public.be_branch_warehouse_fast_dispatch_v1(text),public.be_branch_warehouse_rto_confirmed_v1(text) from public,anon,authenticated;
