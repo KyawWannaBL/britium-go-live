@@ -19,7 +19,7 @@ Target: early November 2026 joint operation with DK Delivery. Exact opening and 
 - Existing enterprise regression suite passes; production build succeeds.
 - Finance regression follow-up: the full npm test suite now passes. Settlement tests cover current pending states and distinguish genuine zero due from positive-due missing handovers. Totals tests identify each read RPC independently and cover filters, refresh, ground-report separation, unknown amounts and error isolation. The shared settlement display now requires a positive delivered amount due before showing a pending Finance handover; no payment or settlement authority changed. Production build also passes.
 - Broad tsc check encounters existing invalid snippet files: App.additive_pickup_grouping_routes_snippet.tsx, routes/AuthRoutes.snippet.tsx and pages/WaybillStudio.tsx. Vite production build completes.
-- No live parcel/payment data created as test data. No production migration/deployment applied by this release candidate: automatic approval review rejected the broad live RPC migration pending explicit authorization.
+- No live parcel/payment test records were retained. The production migration was applied after explicit release authorization. Live authenticated-role checks passed for MDY scope, YGN denial, Superadmin cross-branch visibility, anonymous denial and protected financial writes. Migration file numbering matches the installed database version. Portal release is tracked in GitHub PR #220; verify the deployed commit before branch launch.
 
 ## Remaining launch checks
 
