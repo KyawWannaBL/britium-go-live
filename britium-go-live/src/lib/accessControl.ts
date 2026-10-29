@@ -6,7 +6,7 @@ const rule = (...roles: string[]) => new Set(roles.map(normalizeRole));
 
 const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/dashboard', rule('management','director','finance','finance-user','accountant','operation-manager','operations','operations-admin','supervisor','warehouse','warehouse-staff','sorter','dispatch','wayplan-manager','customer-service','cs','support','data-entry','encoder','marketing','business-development','biz-dev','hr-admin','branch-office','branch-manager','branch-staff','branch-admin')],
-  ['/admin-hr', rule('hr-admin')],
+  ['/admin-hr', rule('branch-manager', 'hr-admin')],
   ['/audit-logs', rule('management', 'director')],
   ['/settings', rule('management', 'director')],
   ['/go-live-control', rule('management', 'director', 'operations-admin')],
@@ -54,13 +54,16 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/driver', rule('driver', 'supervisor', 'operations', 'operations-admin')],
 
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
+  ['/cs-command', rule('branch-manager','customer-service','cs','support')],
+  ['/cs-portal', rule('branch-manager','customer-service','cs','support')],
+  ['/master-data', rule('branch-manager')],
   ['/cs-', rule('customer-service', 'cs', 'support')],
   ['/cs-third-party', rule('customer-service','cs','support','finance','finance-user','accountant')],
   ['/merchant-portal', rule('merchant', 'vip-customer')],
   ['/customer-portal', rule('customer')],
-  ['/marketing', rule('marketing', 'management', 'director')],
-  ['/biz-dev', rule('business-development', 'biz-dev', 'management', 'director')],
-  ['/tariff', rule('finance', 'finance-user', 'accountant', 'data-entry', 'encoder', 'business-development', 'biz-dev', 'management', 'director')],
+  ['/marketing', rule('branch-manager', 'marketing', 'management', 'director')],
+  ['/biz-dev', rule('branch-manager', 'business-development', 'biz-dev', 'management', 'director')],
+  ['/tariff', rule('branch-manager', 'finance', 'finance-user', 'accountant', 'data-entry', 'encoder', 'business-development', 'biz-dev', 'management', 'director')],
 ];
 
 export function isElevatedRole(rawRole: string | null | undefined): boolean {
