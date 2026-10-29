@@ -1,3 +1,5 @@
+import {useAuth} from '@/contexts/AuthContext';
+import {normalizeRole} from '@/lib/portalRegistry';
 import { localBarcodeUrl, localQrUrl, prepareWaybillCodes } from "@/lib/waybillLocalCodes";
 import { renderAuthorizedPrint } from "@/lib/authorizedPrintPreview";
 import { supabase } from "@/integrations/supabase/client";
@@ -628,11 +630,19 @@ function sharedLabelCss() {
 }
 
 export default function BritiumUnifiedPrintStudioV33() {
+  const {profile}=useAuth();
+  const branchMode=normalizeRole(profile?.role)==='branch-manager';
+  const branchCode=String(profile?.branch_code||'').toUpperCase();
+  async function branchSnapshot(pickup: string|null=null) {
+    const {data,error}=await (supabase as any).rpc('be_branch_waybill_snapshot_v1',{p_branch:branchCode||null,p_pickup:pickup,p_limit:500});
+    if(error)throw error;if(!data?.ok)throw Error('Branch print queue unavailable.');return data;
+  }
   const [pdfBusy,setPdfBusy]=useState(false);
   const pdfOperation=useRef(false);
   const [reprintReason,setReprintReason]=useState("");
   const [printAudit,setPrintAudit]=useState<any>({requests:[],logs:[],can_approve:false,can_reprint:false,native_superadmin_required:true});
   async function refreshPrintAudit() {
+    if(branchMode){setPrintAudit(await branchSnapshot());return;}
     const {data,error}=await (supabase as any).rpc("be_waybill_reprint_status_v2");
     if(error) throw error;
     setPrintAudit(data);
@@ -710,8 +720,8 @@ export default function BritiumUnifiedPrintStudioV33() {
   async function loadRows(preferredPickupId = "") {
     setLoading(true);
     try {
-      const contextPickupId = preferredPickupId || readWaybillPickupContext() || activePickupId;
-      const data = contextPickupId
+      const contextPickupId = branchMode ? preferredPickupId : preferredPickupId || readWaybillPickupContext() || activePickupId;
+      const data = branchMode ? (await branchSnapshot(contextPickupId||null)).rows : contextPickupId
         ? await waybillStudioSnapshotPickupV121(contextPickupId, 5000)
         : await waybillStudioSnapshotV125(500);
       const allRows = Array.isArray(data) ? data : [];
@@ -744,6 +754,7 @@ export default function BritiumUnifiedPrintStudioV33() {
 
   async function guardedPrint(targetRows: PrintRow[]) {
     if(docType==="WAYBILL") return savePdf(targetRows);
+    if(branchMode) throw new Error('Branch printing is limited to waybills.');
     if (!targetRows.length) {
       alert("Select at least one print row.");
       return;
@@ -861,6 +872,7 @@ export default function BritiumUnifiedPrintStudioV33() {
             Waybill Print Studio
           </div>
           <h1 className="mt-3 text-2xl font-black md:text-3xl">Exact multi-size Waybill printing</h1>
+          {branchMode&&<p className="mt-2 text-amber-200">{branchCode} branch: saved, financially valid waybills in branch custody only. First release is audited; a cancelled or failed print requires native Superadmin reprint approval. Showing up to 500 rows.</p>}
           <p className="mt-1 max-w-4xl text-sm leading-6 text-sky-200">
             Select the document paper and label layout. The 4 × 6 thermal combinations follow the four supplied reference designs, while A5 and A4 arrange the same labels at their physical print dimensions.
           </p>
@@ -870,6 +882,7 @@ export default function BritiumUnifiedPrintStudioV33() {
               Document type
               <select
                 value={docType}
+                disabled={branchMode}
                 onChange={(event) => {
                   setDocType(event.target.value as DocType);
                   setSelected([]);
