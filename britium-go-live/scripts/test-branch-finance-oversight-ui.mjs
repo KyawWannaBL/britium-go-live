@@ -1,0 +1,23 @@
+import assert from 'node:assert/strict';import fs from 'node:fs';import vm from 'node:vm';import {createRequire} from 'node:module';
+import React from 'react';import Renderer,{act} from 'react-test-renderer';import ts from 'typescript';
+const require=createRequire(import.meta.url),calls=[];let profile={role:'finance',branch_code:'YGN'},fail=false,defer=false,pending=[];
+const rows=[{branch_code:'MDY',branch_name:'Mandalay',cash_status:'SUBMITTED',cash_report_count:1,counted_cash:0,pending_expenses:100,reviewed_expenses:200,funding_requests:2000000,pending_reviews:2},{branch_code:'NPT',branch_name:'Naypyitaw',cash_status:'NOT_REPORTED',cash_report_count:0,counted_cash:null,pending_expenses:0,reviewed_expenses:0,funding_requests:0,pending_reviews:0}];
+const rpc=async(name,args)=>{calls.push({name,args});assert.equal(name,'be_branch_finance_oversight_v1');if(defer)return new Promise(resolve=>pending.push({args,resolve}));return fail?{data:null,error:{message:'Monitoring unavailable'}}:{data:{ok:true,branches:rows},error:null};};
+const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('src/components/finance/BranchFinanceOversight.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2022}}).outputText,{module,exports:module.exports,require:id=>id==='@/integrations/supabase/client'?{supabase:{rpc}}:id==='@/contexts/AuthContext'?{useAuth:()=>({profile})}:id==='@/lib/portalRegistry'?{normalizeRole:r=>r.replaceAll('_','-')}:id==='@/components/BranchControlWorkbench'?{default:p=>React.createElement('aside',null,`${p.branch}/${p.initialTab}`)}:require(id),Intl,Date,console,document:{hidden:false},setInterval:()=>1,clearInterval:()=>{}});
+const Page=module.exports.default;const text=n=>typeof n==='string'||typeof n==='number'?String(n):(n.children||[]).map(text).join(' ');
+let view;await act(async()=>{view=Renderer.create(React.createElement(Page));});
+assert.equal(calls.length,1);assert.match(calls[0].args.p_day,/^\d{4}-\d{2}-\d{2}$/);
+const table=view.root.findByType('table'),dataRows=table.findByType('tbody').findAllByType('tr');
+assert.equal(text(dataRows[0].findAllByType('td')[2]),'0 MMK');assert.match(text(dataRows[1].findAllByType('td')[2]),/Not reported/);
+assert.match(text(view.root),/not verified bank\/COD receipts/);assert.match(text(view.root),/not payments/);
+await act(async()=>dataRows[0].findByType('button').props.onClick());assert.match(text(view.root),/MDY\/Administration & Finance/);
+defer=true;const date=view.root.findByType('input');
+await act(async()=>date.props.onChange({target:{value:'2026-11-07'}}));await act(async()=>date.props.onChange({target:{value:'2026-11-08'}}));
+await act(async()=>pending[1].resolve({data:{ok:true,branches:[{...rows[0],branch_name:'Current date'}]},error:null}));
+await act(async()=>pending[0].resolve({data:{ok:true,branches:[{...rows[0],branch_name:'Stale date'}]},error:null}));
+assert.match(text(view.root),/Current date/);assert.doesNotMatch(text(view.root),/Stale date/);
+defer=false;fail=true;await act(async()=>view.root.findAllByType('button').find(b=>text(b)==='Refresh branches').props.onClick());assert.match(text(view.root),/Monitoring unavailable/);assert.equal(view.root.findByType('tbody').findAllByType('tr').length,0);
+await act(async()=>view.unmount());const count=calls.length;
+for(const p of [{role:'branch-manager',branch_code:'MDY'},{role:'finance',branch_code:'NPT'}]){profile=p;await act(async()=>{view=Renderer.create(React.createElement(Page));});assert.equal(view.toJSON(),null);await act(async()=>view.unmount());}
+assert.equal(calls.length,count,'non-HQ users do not request a network report');
+console.log('PASS branch Finance UI: HQ access, exact zero, missing reports, record review link, stale date responses and error isolation');

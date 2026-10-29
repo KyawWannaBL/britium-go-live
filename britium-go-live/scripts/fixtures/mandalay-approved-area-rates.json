@@ -1,0 +1,338 @@
+[
+  {
+    "code": "MDY-L01-A1",
+    "destination": "ထုံးဘို",
+    "area": "Single listed rate",
+    "fee": 8000
+  },
+  {
+    "code": "MDY-L02-A1",
+    "destination": "ရတနာပုံတက္ကသိုလ်",
+    "area": "Single listed rate",
+    "fee": 6000
+  },
+  {
+    "code": "MDY-L03-A1",
+    "destination": "မန္တလာတက္ကသိုလ်",
+    "area": "Single listed rate",
+    "fee": 7000
+  },
+  {
+    "code": "MDY-L04-A1",
+    "destination": "စွယ်တော်",
+    "area": "Single listed rate",
+    "fee": 7500
+  },
+  {
+    "code": "MDY-L05-A1",
+    "destination": "ကျောက်မီး",
+    "area": "Single listed rate",
+    "fee": 8000
+  },
+  {
+    "code": "MDY-L06-A1",
+    "destination": "ကုလားကြီး",
+    "area": "Single listed rate",
+    "fee": 9000
+  },
+  {
+    "code": "MDY-M01-A1",
+    "destination": "ရေတံခွန်တောင်",
+    "area": "Sub-area 1",
+    "fee": 7000
+  },
+  {
+    "code": "MDY-M01-A2",
+    "destination": "ရေတံခွန်တောင်",
+    "area": "Sub-area 2",
+    "fee": 8000
+  },
+  {
+    "code": "MDY-M02-A1",
+    "destination": "လက်ကောင်း",
+    "area": "Single listed rate",
+    "fee": 7000
+  },
+  {
+    "code": "MDY-M03-A1",
+    "destination": "တမ္ပဝတော",
+    "area": "Single listed rate",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-M04-A1",
+    "destination": "ဆေးဝါးတက္ကသိုလ်",
+    "area": "Single listed rate",
+    "fee": 8000
+  },
+  {
+    "code": "MDY-M05-A1",
+    "destination": "မဲကင်းကုန်း၊ ပုသိမ်ကြီး",
+    "area": "Sub-area 1",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-M05-A2",
+    "destination": "မဲကင်းကုန်း၊ ပုသိမ်ကြီး",
+    "area": "Sub-area 2",
+    "fee": 6000
+  },
+  {
+    "code": "MDY-M06-A1",
+    "destination": "နည်းပညာတက္ကသိုလ်",
+    "area": "Single listed rate",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-M07-A1",
+    "destination": "အိုးဘို",
+    "area": "Sub-area 1",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-M07-A2",
+    "destination": "အိုးဘို",
+    "area": "Sub-area 2",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-R01-A1",
+    "destination": "ရန်ကင်းတောင်",
+    "area": "Sub-area 1",
+    "fee": 6000
+  },
+  {
+    "code": "MDY-R01-A2",
+    "destination": "ရန်ကင်းတောင်",
+    "area": "Sub-area 2",
+    "fee": 6500
+  },
+  {
+    "code": "MDY-R02-A1",
+    "destination": "ကုန်းတန်း",
+    "area": "Sub-area 1",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-R02-A2",
+    "destination": "ကုန်းတန်း",
+    "area": "Sub-area 2",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-R03-A1",
+    "destination": "ကန်တော်ကြီး မြို့ပိုင်း",
+    "area": "Single listed rate",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-R04-A1",
+    "destination": "ကန်တော်ကြီး အနောက်",
+    "area": "Sub-area 1",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-R04-A2",
+    "destination": "ကန်တော်ကြီး အနောက်",
+    "area": "Sub-area 2",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-R05-A1",
+    "destination": "တမ္ပဝတီ Pro One",
+    "area": "Sub-area 1",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-R05-A2",
+    "destination": "တမ္ပဝတီ Pro One",
+    "area": "Sub-area 2",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-R06-A1",
+    "destination": "အမရပူရ",
+    "area": "Sub-area 1",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-R06-A2",
+    "destination": "အမရပူရ",
+    "area": "Sub-area 2",
+    "fee": 6000
+  },
+  {
+    "code": "MDY-R06-A3",
+    "destination": "အမရပူရ",
+    "area": "Sub-area 3",
+    "fee": 6500
+  },
+  {
+    "code": "MDY-R06-A4",
+    "destination": "အမရပူရ",
+    "area": "Sub-area 4",
+    "fee": 7000
+  },
+  {
+    "code": "MDY-R06-A5",
+    "destination": "အမရပူရ",
+    "area": "Sub-area 5",
+    "fee": 8000
+  },
+  {
+    "code": "MDY-Z01-A1",
+    "destination": "မြောက်ဘက် အပြင်ဘက် နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-Z01-A2",
+    "destination": "မြောက်ဘက် အပြင်ဘက် နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-Z02-A1",
+    "destination": "မြောက်အရှေ့ အပေါ်ပိုင်း နှုန်းထား",
+    "area": "Single listed rate",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-Z03-A1",
+    "destination": "မြောက်အနောက် အပေါ်ပိုင်း နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 3500
+  },
+  {
+    "code": "MDY-Z03-A2",
+    "destination": "မြောက်အနောက် အပေါ်ပိုင်း နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-Z04-A1",
+    "destination": "မြောက်အရှေ့ အတွင်းပိုင်း နှုန်းထား",
+    "area": "Single listed rate",
+    "fee": 3000
+  },
+  {
+    "code": "MDY-Z05-A1",
+    "destination": "မြောက်အနောက် အတွင်းပိုင်း နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 2500
+  },
+  {
+    "code": "MDY-Z05-A2",
+    "destination": "မြောက်အနောက် အတွင်းပိုင်း နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 3000
+  },
+  {
+    "code": "MDY-Z06-A1",
+    "destination": "အရှေ့ဘက် အတွင်း နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 3500
+  },
+  {
+    "code": "MDY-Z06-A2",
+    "destination": "အရှေ့ဘက် အတွင်း နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-Z07-A1",
+    "destination": "အရှေ့ဘက် အပြင် နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-Z07-A2",
+    "destination": "အရှေ့ဘက် အပြင် နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-Z08-A1",
+    "destination": "တောင်အရှေ့ အတွင်းပိုင်း နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 2500
+  },
+  {
+    "code": "MDY-Z08-A2",
+    "destination": "တောင်အရှေ့ အတွင်းပိုင်း နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 3000
+  },
+  {
+    "code": "MDY-Z09-A1",
+    "destination": "တောင်အနောက် ၁၀၁ မှ ၁၀၇ အနီး",
+    "area": "Single listed rate",
+    "fee": 3000
+  },
+  {
+    "code": "MDY-Z10-A1",
+    "destination": "တောင်အရှေ့ ၁၀၁ မှ ၁၀၇ အနီး",
+    "area": "Single listed rate",
+    "fee": 3500
+  },
+  {
+    "code": "MDY-Z11-A1",
+    "destination": "တောင်အနောက် ၁၀၇ မှ ၁၁၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-Z12-A1",
+    "destination": "တောင်အရှေ့ ၁၀၇ မှ ၁၁၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-Z13-A1",
+    "destination": "အနောက်ဘက် အပြင် နှုန်းထား",
+    "area": "Sub-area 1",
+    "fee": 4000
+  },
+  {
+    "code": "MDY-Z13-A2",
+    "destination": "အနောက်ဘက် အပြင် နှုန်းထား",
+    "area": "Sub-area 2",
+    "fee": 4500
+  },
+  {
+    "code": "MDY-Z14-A1",
+    "destination": "တောင်အနောက် ၁၁၅ မှ ၁၂၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 5000
+  },
+  {
+    "code": "MDY-Z15-A1",
+    "destination": "တောင်အရှေ့ ၁၁၅ မှ ၁၂၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 5500
+  },
+  {
+    "code": "MDY-Z16-A1",
+    "destination": "တောင်အနောက် ၁၂၅ မှ ၁၃၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 6000
+  },
+  {
+    "code": "MDY-Z17-A1",
+    "destination": "တောင်အရှေ့ ၁၂၅ မှ ၁၃၅ အနီး",
+    "area": "Single listed rate",
+    "fee": 6500
+  },
+  {
+    "code": "MDY-Z18-A1",
+    "destination": "တောင်အနောက် ၁၃၅ မှ ၁၄၀ အနီး",
+    "area": "Single listed rate",
+    "fee": 7000
+  },
+  {
+    "code": "MDY-Z19-A1",
+    "destination": "တောင်အရှေ့ ၁၃၅ မှ ၁၄၀ အနီး",
+    "area": "Single listed rate",
+    "fee": 7500
+  }
+]

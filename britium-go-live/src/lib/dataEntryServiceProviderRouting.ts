@@ -244,6 +244,13 @@ function computeDataEntryServiceProvider(
       routeRegion = "YANGON";
       deliveryMode = "DOORSTEP_MAP";
       mapRequired = true;
+    } else if (exactProvider === "DK DELIVERY" && /^MDY-[LMRZ]\d{2}-A\d+$/i.test(String(exact?.destination_key || ""))) {
+      // A labelled rate is an explicit operator choice, not a geographic alias.
+      providerCode = "DK DELIVERY";
+      reason = "MANDALAY_DK_SERVICE_AREA";
+      routeRegion = "MANDALAY";
+      deliveryMode = "DOORSTEP_MAP";
+      mapRequired = true;
     } else if (recognizedDestination) {
       routeRegion = "OUTSIDE_CORE";
     }

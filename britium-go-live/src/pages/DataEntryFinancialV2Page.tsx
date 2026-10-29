@@ -695,6 +695,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
           </div>
         ) : null}
         {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {selected.provider_name} · Rack {selected.rack_code || "—"} · {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
+        {selected && /^MDY-[LMRZ]\d{2}-A\d+/.test(selected.destination_key) && <div className="mt-2 text-[11px] text-amber-200">Mandalay area rate selected explicitly. Confirm the recipient's delivery area against the approved rate card. This selection does not infer a street boundary.</div>}
         <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
           <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Provider: <b>{route.providerCode||"UNRESOLVED"}</b></div>
           <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replaceAll("_"," ")}</b></div>

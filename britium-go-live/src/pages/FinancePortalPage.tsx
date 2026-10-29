@@ -2,4 +2,8 @@
 // Backend source is loaded inside EnterpriseLiveCenterPages through:
 // supabase.rpc("be_finance_portal_center")
 
-export { FinancePortalLivePage as default } from "./EnterpriseLiveCenterPages";
+import {FinancePortalLivePage} from './EnterpriseLiveCenterPages';
+import BranchFinanceOversight from '@/components/finance/BranchFinanceOversight';
+export default function FinancePortalPage(){
+ return <><BranchFinanceOversight/><FinancePortalLivePage/></>;
+}

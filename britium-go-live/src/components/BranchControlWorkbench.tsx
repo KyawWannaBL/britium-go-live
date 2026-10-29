@@ -8,7 +8,7 @@ type Row=Record<string,any>;
 const field='w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-black';
 const button='rounded-lg bg-amber-400 px-4 py-2 font-bold text-slate-950 disabled:opacity-40';
 const split=(v:string)=>[...new Set(v.split(/[\s,]+/).map(x=>x.trim()).filter(Boolean))];
-export default function BranchControlWorkbench({branch}:{branch:string}){
+export default function BranchControlWorkbench({branch,initialTab='Transfers'}:{branch:string;initialTab?:'Transfers'|'Administration & Finance'}){
  const {profile}=useAuth();
  const role=normalizeRole(profile?.role);
  const superadmin=['superadmin','super-admin','app-owner','sys'].includes(role);
@@ -16,8 +16,8 @@ export default function BranchControlWorkbench({branch}:{branch:string}){
  const canReview=superadmin||['finance','finance-manager','accountant'].includes(role);
  const [data,setData]=useState<Row>({records:[],transfers:[]});
  const [error,setError]=useState(''); const [notice,setNotice]=useState(''); const [busy,setBusy]=useState(false);
- const [tab,setTab]=useState('Transfers');
- const [record,setRecord]=useState({kind:'SETUP',title:'',amount:'',reference:'',evidence:'',notes:''});
+ const [tab,setTab]=useState(initialTab);
+ const [record,setRecord]=useState({kind:'SETUP',title:'',amount:'',reference:'',evidence:'',notes:'',business_date:new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yangon',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())});
  const [transfer,setTransfer]=useState({from_branch:branch||'MDY',to_branch:branch==='YGN'?'MDY':'YGN',carrier:'',reference:'',reason:'',way_ids:''});
  const [receipt,setReceipt]=useState({id:'',ways:'',reason:''});
  const [review,setReview]=useState({id:'',decision:'APPROVED',reason:''});
@@ -57,6 +57,7 @@ export default function BranchControlWorkbench({branch}:{branch:string}){
    <p className="text-sm text-slate-300">Submit setup requests, expenses, assets, contracts and counted closing cash with evidence references. An approved submission is a document review; payment, verified COD, merchant settlement and GL posting remain in Finance. Record cash-count detail, contract renewal dates and asset custodians in the notes.</p>
    {(manager||superadmin)&&<form className="grid gap-3 md:grid-cols-2" onSubmit={async e=>{e.preventDefault();if(await action({action:'SUBMIT_RECORD',branch,...record,amount:Number(record.amount||0)}))setRecord({...record,title:'',amount:'',reference:'',evidence:'',notes:''});}}>
     <label>Record type<select className={field} value={record.kind} onChange={e=>setRecord({...record,kind:e.target.value})}>{[['SETUP','Setup / budget request'],['EXPENSE','Expense'],['ASSET','Asset'],['CONTRACT','Contract'],['DAILY_CLOSE','Daily counted closing cash']].map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></label>
+    <label>Business date<input required type="date" className={field} value={record.business_date} onChange={e=>setRecord({...record,business_date:e.target.value})}/></label>
     <label>Branch<input className={field} readOnly value={branch||'Select one branch above'}/></label>
     <label>Title<input required className={field} value={record.title} onChange={e=>setRecord({...record,title:e.target.value})}/></label>
     <label>Amount (MMK)<input type="number" min="0" step="0.01" required className={field} value={record.amount} onChange={e=>setRecord({...record,amount:e.target.value})}/></label>
@@ -64,7 +65,7 @@ export default function BranchControlWorkbench({branch}:{branch:string}){
     <label>Evidence document reference / link<input required className={field} value={record.evidence} onChange={e=>setRecord({...record,evidence:e.target.value})}/></label>
     <label className="md:col-span-2">Details / custodian / due date / cash-count breakdown<textarea required className={field} value={record.notes} onChange={e=>setRecord({...record,notes:e.target.value})}/></label><button disabled={busy||!branch} className={button}>Submit for head-office review</button>
    </form>}
-   <div className="max-h-[480px] space-y-3 overflow-auto">{records.map(r=><article key={r.id} className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"><h3 className="font-bold">{r.branch_code} · {r.kind} · {r.title} · {r.status}</h3><p>{Number(r.amount).toLocaleString()} MMK · {r.reference}</p><p className="break-all text-sm">Evidence: {r.evidence}</p><p className="whitespace-pre-wrap text-sm">{r.notes}</p>{r.review_reason&&<p>Review: {r.review_reason}</p>}{canReview&&r.status==='SUBMITTED'&&<button className={button} onClick={()=>setReview({id:r.id,decision:'APPROVED',reason:''})}>Review submission</button>}</article>)}{!records.length&&<p>No administrative or financial submissions recorded.</p>}</div>
+   <div className="max-h-[480px] space-y-3 overflow-auto">{records.map(r=><article key={r.id} className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-3"><h3 className="font-bold">{r.branch_code} · {r.kind} · {r.title} · {r.status}</h3><p>{Number(r.amount).toLocaleString()} MMK · {r.reference}</p><p className="text-sm">Business date: {r.business_date||'Not recorded'}</p><p className="break-all text-sm">Evidence: {r.evidence}</p><p className="whitespace-pre-wrap text-sm">{r.notes}</p>{r.review_reason&&<p>Review: {r.review_reason}</p>}{canReview&&r.status==='SUBMITTED'&&<button className={button} onClick={()=>setReview({id:r.id,decision:'APPROVED',reason:''})}>Review submission</button>}</article>)}{!records.length&&<p>No administrative or financial submissions recorded.</p>}</div>
    {review.id&&<form className="grid gap-2 rounded-xl border border-amber-500 p-3" onSubmit={async e=>{e.preventDefault();if(await action({action:'REVIEW_RECORD',...review}))setReview({id:'',decision:'APPROVED',reason:''});}}><label>Decision<select className={field} value={review.decision} onChange={e=>setReview({...review,decision:e.target.value})}><option>APPROVED</option><option>REJECTED</option></select></label><label>Review reason<textarea required className={field} value={review.reason} onChange={e=>setReview({...review,reason:e.target.value})}/></label><button disabled={busy} className={button}>Save review (no payment)</button><button type="button" onClick={()=>setReview({id:'',decision:'APPROVED',reason:''})}>Cancel review</button></form>}
   </>}
  </section>;
