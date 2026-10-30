@@ -319,11 +319,11 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view enterprise-portal-latest >/dev/null 2>&1; then
-            gh release upload enterprise-portal-latest Britium-Enterprise-Portal.apk enterprise-apk-sha256.txt --clobber
+            gh release upload enterprise-portal-latest Britium-Enterprise-Portal.apk Britium-Express-Enterprise.aab enterprise-apk-sha256.txt enterprise-aab-sha256.txt --clobber
           else
-            gh release create enterprise-portal-latest Britium-Enterprise-Portal.apk enterprise-apk-sha256.txt \
+            gh release create enterprise-portal-latest Britium-Enterprise-Portal.apk Britium-Express-Enterprise.aab enterprise-apk-sha256.txt enterprise-aab-sha256.txt \
               --title "Britium Enterprise Portal Android" \
-              --notes "Latest installable Britium Enterprise Portal Android APK."
+              --notes "Permanent-signed Britium Enterprise Portal APK for direct installation and AAB for Google Play upload. Confirm the Play listing package and upload certificate before submitting."
           fi
 
       - name: Upload workflow artifact

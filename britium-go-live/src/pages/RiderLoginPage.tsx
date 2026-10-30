@@ -54,7 +54,7 @@ export default function RiderLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const apkHref = useMemo(() => "https://www.britiumexpress.app/downloads/Britium-Express-Rider.apk", []);
+  const apkHref = useMemo(() => "https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk", []);
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
