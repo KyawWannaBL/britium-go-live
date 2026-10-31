@@ -566,7 +566,7 @@ function collectRegistrationRows() {
 
 async function saveRegistrationDraft() {
   const rows = collectRegistrationRows();
-  localStorage.setItem("be_dataentry_registration_draft", JSON.stringify({
+  localStorage.setItem("be_dataentry_registration_draft:2026-11-01", JSON.stringify({
     saved_at: new Date().toISOString(),
     rows,
   }));

@@ -8,5 +8,5 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  global: { headers: { "x-britium-data-epoch": "2026-10-20" } },
+  global: { headers: { "x-britium-data-epoch": "2026-11-01" } },
 });

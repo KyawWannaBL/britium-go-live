@@ -2238,7 +2238,7 @@ function FieldPortal() {
         saveSession(refreshed);
       }
       try {
-        localStorage.setItem("britium_rider_last_jobs", JSON.stringify(payload.jobs || []));
+        localStorage.setItem("britium_rider_last_jobs:2026-11-01", JSON.stringify(payload.jobs || []));
       } catch {
         // ignore
       }

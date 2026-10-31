@@ -120,10 +120,10 @@ function normalizeInventoryOption(row: any, index: number) {
 
 function readDeliveryWayOptions() {
   const rows = [
-    ...readArray(["britium.registration.dataEntryRows"]),
-    ...readArray(["britium.registration.latestRows"]),
-    ...readArray(["britium.warehouse.filteredInventory"]),
-    ...readArray(["britium.cs.pickups", "britium.customerService.pickups", "britium.pickup.requests"]),
+    ...readArray(["britium.registration.dataEntryRows:2026-11-01"]),
+    ...readArray(["britium.registration.latestRows:2026-11-01"]),
+    ...readArray(["britium.warehouse.filteredInventory:2026-11-01"]),
+    ...readArray(["britium.cs.pickups", "britium.customerService.pickups", "britium.pickup.requests:2026-11-01"]),
   ];
 
   const seen = new Set();
@@ -479,8 +479,8 @@ export default function WarehouseRegistrationTemplatePage() {
 
   
   function saveQueue() {
-    localStorage.setItem("britium.registration.warehouseRows", JSON.stringify(rows));
-    localStorage.setItem("britium.registration.latestRows", JSON.stringify(rows));
+    localStorage.setItem("britium.registration.warehouseRows:2026-11-01", JSON.stringify(rows));
+    localStorage.setItem("britium.registration.latestRows:2026-11-01", JSON.stringify(rows));
     window.dispatchEvent(
       new CustomEvent("britium:registration-template-saved", {
         detail: { source: "warehouse", rows },
@@ -490,30 +490,30 @@ export default function WarehouseRegistrationTemplatePage() {
   }
 
   function downloadFilteredInventory() {
-    localStorage.setItem("britium.warehouse.filteredInventory", JSON.stringify(filteredRows));
+    localStorage.setItem("britium.warehouse.filteredInventory:2026-11-01", JSON.stringify(filteredRows));
     downloadFile("BE_Warehouse_Filtered_Inventory.csv", rowsToCsv(filteredRows));
     setMessage(`Downloaded ${filteredRows.length} filtered inventory row(s).`);
   }
 
   function generateNextDayWayplan() {
-    localStorage.setItem("britium.wayplan.nextDayQueue", JSON.stringify(nextDayRows));
-    localStorage.setItem("britium.wayplan.nextDayGeneratedAt", new Date().toISOString());
+    localStorage.setItem("britium.wayplan.nextDayQueue:2026-11-01", JSON.stringify(nextDayRows));
+    localStorage.setItem("britium.wayplan.nextDayGeneratedAt:2026-11-01", new Date().toISOString());
     downloadFile("BE_Next_Day_Wayplan_From_Filtered_Inventory.csv", wayplanRowsToCsv(nextDayRows));
     setMessage(`Generated next-day wayplan with ${nextDayRows.length} undelivered / failed / pending row(s).`);
   }
 
   function saveUploadedWarehouseResult() {
     saveQueue();
-    localStorage.setItem("britium.warehouse.filteredInventory", JSON.stringify(filteredRows));
+    localStorage.setItem("britium.warehouse.filteredInventory:2026-11-01", JSON.stringify(filteredRows));
     setMessage(`Saved ${rows.length} uploaded/bulk-loaded warehouse row(s).`);
   }
 
   function deleteAllWarehouseBulkLoadRows() {
-    localStorage.removeItem("britium.registration.warehouseRows");
-    localStorage.removeItem("britium.registration.latestRows");
-    localStorage.removeItem("britium.warehouse.filteredInventory");
-    localStorage.removeItem("britium.wayplan.nextDayQueue");
-    localStorage.removeItem("britium.wayplan.nextDayGeneratedAt");
+    localStorage.removeItem("britium.registration.warehouseRows:2026-11-01");
+    localStorage.removeItem("britium.registration.latestRows:2026-11-01");
+    localStorage.removeItem("britium.warehouse.filteredInventory:2026-11-01");
+    localStorage.removeItem("britium.wayplan.nextDayQueue:2026-11-01");
+    localStorage.removeItem("britium.wayplan.nextDayGeneratedAt:2026-11-01");
 
     setRows([blankRow()]);
     window.dispatchEvent(new CustomEvent("britium:registration-template-saved", {

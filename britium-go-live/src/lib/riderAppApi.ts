@@ -15,7 +15,7 @@ export type OfflineEvent = {
   created_at: string;
 };
 
-const OFFLINE_KEY = "britium:rider-app:offline-events:v1";
+const OFFLINE_KEY = "britium:rider-app:offline-events:v1:2026-11-01";
 const RIDER_KEY   = "britium:rider-app:rider-id:v1";
 const RIDER_CODE_KEY = "britium:rider-app:rider-code:v1";
 

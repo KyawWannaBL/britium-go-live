@@ -5,7 +5,7 @@ import { supabase } from "../integrations/supabase/client";
 
 function getEffectivePickupId(selectedPickupId?: string): string {
   try {
-    return selectedPickupId || window.localStorage.getItem("be_selected_pickup_id") || "";
+    return selectedPickupId || window.localStorage.getItem("be_selected_pickup_id:2026-11-01") || "";
   } catch {
     return selectedPickupId || "";
   }

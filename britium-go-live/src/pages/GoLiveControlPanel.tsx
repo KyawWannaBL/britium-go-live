@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { useEffect, useState } from "react";
-import GoLiveReadyPreview from '@/components/GoLiveReadyPreview';
+import GoLiveCutoverStatus from '@/components/GoLiveCutoverStatus';
 import type { GoLivePreviewClient } from '@/lib/goLiveCutover';
 import { supabase } from "@/integrations/supabase/client";
 import { CheckCircle2, DatabaseZap, Download, RefreshCw, ShieldAlert } from "lucide-react";
@@ -51,7 +51,7 @@ export default function GoLiveControlPanel(){
       </div>
     </section>
 
-    <GoLiveReadyPreview client={supabase as unknown as GoLivePreviewClient}/>
+    <GoLiveCutoverStatus client={supabase as unknown as GoLivePreviewClient}/>
 
     {report&&<section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
       <div className="flex items-center justify-between"><div><h2 className="font-black">Data Availability Report</h2><p className="mt-1 text-xs text-[#8fb2c9]">{report.generated_at}</p></div><span className="rounded-full bg-emerald-500/10 px-4 py-2 text-xs font-black text-emerald-300">{report.overall_status}</span></div>
