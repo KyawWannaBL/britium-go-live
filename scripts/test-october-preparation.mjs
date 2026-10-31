@@ -21,12 +21,17 @@ create table private.be_oct2026_identity_links(parent_table text,parent_column t
 create function private.be_oct2026_key_family(text,text)returns text language sql as $$select case when $1='id'then 'row:'||$2 else 'delivery'end$$;
 create table public.be_data_entry_parcel_details(id uuid primary key,delivery_way_id text,status text,created_at timestamptz default now(),cod_collected numeric default 0);
 create table public.be_wayplan_dispatches(wayplan_id text primary key,wayplan_status text,created_at timestamptz default now(),dispatched_at timestamptz,total_cod_collected numeric default 0);
+create table public.be_data_entry_financial_v2_requests_v58(request_id text primary key,operation text,status text check(status in('IN_PROGRESS','COMPLETE')),response jsonb,created_at timestamptz default now(),completed_at timestamptz);
 create table public.be_party_wallet_accounts(id int primary key,britium_owes numeric);insert into be_party_wallet_accounts values(1,0);
 insert into private.be_cutover_batches_v3 values('10000000-0000-4000-8000-000000000001','ACTIVE','{}','{}',now(),now()+interval '1 hour');
 insert into private.be_cutover_rows_v3 values('10000000-0000-4000-8000-000000000001','be_data_entry_financial_v2_runtime_v58','{"singleton":true,"mutation_mode":"ACTIVE","updated_at":"2026-10-20T00:00:00+00:00"}');
 update private.be_oct2026_epoch set report='{"archive_batch_id":"10000000-0000-4000-8000-000000000001","rows_removed":11}';`);
 const sql=fs.readFileSync(new URL('../supabase/migrations/20261031090106_october_preparation_window.sql',import.meta.url),'utf8');assert.ok(sql.includes('be_preparation_row_allowed_v1'),'preparation migration must define policy');await db.exec(sql);
-for(const t of['be_data_entry_parcel_details','be_wayplan_dispatches','be_party_wallet_accounts'])await db.exec(`create trigger aaa_prep before insert or update or delete on ${t} for each row execute function private.be_oct2026_write_guard()`);
+await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261031101000_registration_request_preparation_completion.sql',import.meta.url),'utf8'));
+for(const t of['be_data_entry_parcel_details','be_wayplan_dispatches','be_party_wallet_accounts','be_data_entry_financial_v2_requests_v58'])await db.exec(`create trigger aaa_prep before insert or update or delete on ${t} for each row execute function private.be_oct2026_write_guard()`);
+// The actual save completes its idempotency request after registering the parcel.
+await db.exec("insert into be_data_entry_financial_v2_requests_v58(request_id,operation,status)values('SAVE-31-OCT','SAVE','IN_PROGRESS');update be_data_entry_financial_v2_requests_v58 set status='COMPLETE',response='{\"persisted\":true}',completed_at=now()where request_id='SAVE-31-OCT'");
+assert.equal((await db.query("select response->>'persisted' saved from be_data_entry_financial_v2_requests_v58 where request_id='SAVE-31-OCT'and completed_at is not null")).rows[0].saved,'true','registration request can complete before delivery opening');
 assert.equal((await db.query('select mutation_mode from be_data_entry_financial_v2_runtime_v58')).rows[0].mutation_mode,'ACTIVE');
 assert.equal((await db.query("select count(*)::int n from private.be_cutover_scope_v3 where table_name='be_data_entry_financial_v2_runtime_v58'")).rows[0].n,0);
 await db.exec("insert into be_data_entry_parcel_details(id,delivery_way_id,status)values('20000000-0000-4000-8000-000000000001','NEW-WAY','REGISTERED');insert into be_wayplan_dispatches(wayplan_id,wayplan_status)values('NEW-PLAN','CREATED')");
@@ -44,6 +49,11 @@ await assert.rejects(db.exec("insert into be_data_entry_parcel_details(id,delive
 for(const [table,row,allowed]of[
 ['be_finance_predispatch_reviews_v1',{finance_status:'APPROVED',cod_service_fee_amount:200},true],
 ['be_data_entry_financial_v2_requests_v58',{status:'COMPLETED'},true],
+...['SAVE','IMPORT','CREATE_WAYBILL','ADD_REGISTRATIONS','SAVE_ALL','SAVE_BATCH_V22'].map(operation=>['be_data_entry_financial_v2_requests_v58',{operation,status:'COMPLETE',completed_at:new Date().toISOString()},true]),
+['be_data_entry_financial_v2_requests_v58',{operation:'PAYMENT',status:'COMPLETE',completed_at:new Date().toISOString()},false],
+['be_data_entry_financial_v2_requests_v58',{operation:'SAVE',status:'IN_PROGRESS',completed_at:new Date().toISOString()},false],
+['be_data_entry_financial_v2_requests_v58',{operation:'SAVE',status:'COMPLETE',completed_at:new Date().toISOString(),paid_at:new Date().toISOString()},false],
+['be_data_entry_parcel_details',{status:'REGISTERED',completed_at:new Date().toISOString()},false],
 ['be_portal_pickup_requests',{pickup_status:'PICKUP_COLLECTED',rider_status:'COMPLETED',pickup_collected_at:new Date().toISOString()},true],
 ['be_document_print_approval_requests',{status:'PENDING_APPROVAL'},true],
 ['be_commission_events',{operation_type:'PICKUP',event_status:'READY'},true],
@@ -63,5 +73,5 @@ for(const [table,row,allowed]of[
 const r=(await db.query('select private.be_preparation_row_allowed_v1($1,$2::jsonb) allowed',[table,JSON.stringify(row)])).rows[0];assert.equal(r.allowed,allowed,`${table} ${JSON.stringify(row)}`);}
 await db.exec("update private.be_oct2026_epoch set cutoff_at=now()-interval '1 second';update be_data_entry_parcel_details set status='DELIVERED',cod_collected=100;update be_party_wallet_accounts set britium_owes=100");
 const visible=(await db.query('select count(*)::int n from be_data_entry_parcel_details where created_at>=public.be_golive_live_cutoff_v1()')).rows[0].n;assert.equal(visible,1,'preparation row stays visible and editable after opening');
-console.log('PASS preparation: exact runtime restore, provenance floor, created planning, no early dispatch/COD/payout, genuine pickup accrued commission only, historical replay denial, post-opening continuity');
+console.log('PASS preparation: registration request completion, exact runtime restore, provenance floor, created planning, no early dispatch/COD/payout, genuine pickup accrued commission only, historical replay denial, post-opening continuity');
 }catch(e){console.error(JSON.stringify({message:e.message,position:e.position,internalPosition:e.internalPosition,internalQuery:e.internalQuery,where:e.where}));process.exitCode=1}finally{await db.close()}
