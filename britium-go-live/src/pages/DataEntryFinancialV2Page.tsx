@@ -1832,7 +1832,7 @@ export default function DataEntryFinancialV2Page() {
       return {...restored,...routingPatch(routeForRow(restored,tariffOptions),restored)};
     });
     // Recover approved adjustments from authoritative parcel records, not older pickup photo evidence.
-    const registeredIds=restoredRows.filter(row=>row.saved&&row.delivery_way_id).map(row=>row.delivery_way_id);
+    const registeredIds=restoredRows.filter(row=>row.delivery_way_id).map(row=>row.delivery_way_id);
     if(registeredIds.length){
       const saved=await (supabase as any).from("parcels")
         .select("way_id,merchant_payable_charges,financial_settled_at").in("way_id",registeredIds);
