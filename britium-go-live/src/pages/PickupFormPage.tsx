@@ -205,6 +205,9 @@ const t = TRANSLATIONS[activeLang];
     const payload = {
       merchant_code: formData.merchantCode,
       merchant_name: merchants.find(m => m.value === formData.merchantCode)?.label,
+      contact_person: formData.contactPerson,
+      phone: formData.phone,
+      pickup_date: formData.pickupDate,
       pickup_address: formData.address,
       pickup_township: formData.township,
       pickup_city: formData.city,
@@ -224,6 +227,11 @@ const t = TRANSLATIONS[activeLang];
     if (error) {
       console.error(error);
       alert(error.message);
+      return;
+    }
+
+    if (data?.ok !== true) {
+      alert(data?.message || data?.error || data?.code || "Pickup request could not be submitted. Please check the form and try again.");
       return;
     }
 
