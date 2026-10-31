@@ -27,7 +27,10 @@ let sql=fs.readFileSync(new URL('../supabase/migrations/20261031093324_cs_pickup
 const submit=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.be_submit_pickup_request'));const cols=submit.match(/insert into public.be_portal_pickup_requests\s*\(([\s\S]*?)\)\s*values/i)[1].split(',').map(x=>x.trim());
 await db.exec(`create table public.be_portal_pickup_requests(${cols.map(c=>`${c} ${c==='metadata'?'jsonb':c==='created_by'?'uuid':c==='pickup_date'?'date':['created_at','updated_at'].includes(c)?'timestamptz':['expected_parcels','parcel_count','expected_parcel_count'].includes(c)?'int':'text'} ${c==='pickup_id'?'primary key':''}`).join(',')})`);
 await db.exec(sql.split('-- Bound historical reconciliation/worklists')[0]);
-assert.equal((await db.query("select public.be_customer_service_can_manage_pickup_request(null,null,'create')ok")).rows[0].ok,true,'default CS capability uses its registered branch');
+await db.exec('alter table public.be_role_authority_matrix enable row level security;grant usage on schema public,auth to authenticated;grant select on public.be_role_authority_matrix to authenticated;set role authenticated');
+assert.equal((await db.query('select count(*)::int n from public.be_role_authority_matrix')).rows[0].n,0,'RLS hides authority matrix from direct client reads');
+assert.equal((await db.query("select public.be_customer_service_can_manage_pickup_request(null,null,'create')ok")).rows[0].ok,true,'authenticated capability uses definer authority and its registered branch');
+await db.exec('reset role');
 assert.equal((await db.query("select public.be_customer_service_can_manage_pickup_request('MDY',null,'create')ok")).rows[0].ok,false,'YGN CS cannot write another branch');
 const submitPickup=async(code)=>(await db.query("select public.be_submit_pickup_request($1::jsonb)r",[JSON.stringify({merchant_code:code,pickup_date:'2026-10-31',parcel_count:1})])).rows[0].r;
 assert.equal((await submitPickup('AYG')).row.branch_code,'YGN');await db.exec("select set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000002',false)");assert.equal((await submitPickup('AMD')).row.branch_code,'MDY');
