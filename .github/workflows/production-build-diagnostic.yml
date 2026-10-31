@@ -20,6 +20,7 @@ jobs:
           cache: npm
           cache-dependency-path: britium-go-live/package-lock.json
       - run: npm ci
+      - run: node ../scripts/test-october-preparation.mjs
       - run: node scripts/test-reason-only-photo-skip.mjs
       - run: node scripts/test-reason-only-photo-skip-db.mjs
       - run: node scripts/test-cod-review-actions-db.mjs

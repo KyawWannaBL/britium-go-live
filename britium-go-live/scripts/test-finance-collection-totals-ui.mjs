@@ -18,7 +18,10 @@ const totalsCalls=()=>calls.filter(c=>c.name==='be_finance_collection_totals_v21
 const text=n=>typeof n==='string'||typeof n==='number'?String(n):(n.children||[]).map(text).join(' ');
 const totalsTable=view=>view.root.findAllByType('table').find(t=>t.findAllByType('th').some(h=>text(h)==='Total (MMK)'));
 let view;await act(async()=>{view=Renderer.create(React.createElement(module.exports.default,{refreshKey:0}));});
-assert.deepEqual(totalsCalls().map(c=>({...c.args})),[{p_from:null,p_to:null,p_group:'PERSON'}]);
+assert.deepEqual(totalsCalls().map(c=>({...c.args})),[{p_from:'2026-11-01',p_to:null,p_group:'PERSON'}]);
+assert.equal(view.root.findAllByType('input')[0].props.value,'2026-11-01','current collections start at the November service opening');
+assert.match(text(view.root.findByType('summary')),/Historical reconciliation evidence/);
+assert.ok(!view.root.findByType('details').props.open,'historical reconciliation stays separate and collapsed');
 let table=totalsTable(view),output=text(table);
 for(const value of ['Unknown collection ways','148','Not recorded','KBZ Pay','Rider 1','30,000','50,000'])assert.ok(output.includes(value),value);
 assert.ok(!output.includes('GROUND-ONLY')&&!output.includes('999,999'),'unverified ground schedules must not become recorded collection totals');
