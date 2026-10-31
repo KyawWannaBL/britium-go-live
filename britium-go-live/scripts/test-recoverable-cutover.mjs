@@ -63,7 +63,7 @@ try {
  assert.equal((await db.query('select britium_owes from be_party_wallet_accounts')).rows[0].britium_owes,'1754550');
  assert.equal((await db.query('select pending_balance from wallet_accounts')).rows[0].pending_balance,'50');
  await db.exec('update be_party_wallet_accounts set britium_owes=0,owes_britium=0,net_position=0;update wallet_accounts set balance=0,available_balance=0,pending_balance=0');
- const rehearsal=(await db.query("select private.be_cutover_rehearse_v3('${futureCutover}','Owner authorized archival') r")).rows[0].r;assert.equal(rehearsal.rolled_back,true);assert.equal(rehearsal.source_and_protected_hashes_unchanged,true);
+ const rehearsal=(await db.query(`select private.be_cutover_rehearse_v3('${futureCutover}','Owner authorized archival') r`)).rows[0].r;assert.equal(rehearsal.rolled_back,true);assert.equal(rehearsal.source_and_protected_hashes_unchanged,true);
  const e=await prepare();await db.query('update private.be_cutover_batches_v3 set activation_authorized=true where id=$1',[e.batch_id]);await db.query("update private.be_cutover_batches_v3 set expires_at=now()-interval '1 second' where id=$1",[e.batch_id]);
  await assert.rejects(db.query('select private.be_cutover_archive_v3($1)',[e.batch_id]),/MANIFEST_EXPIRED/);
  console.log('PASS archive/restore: exact recovery, preserved masters/epoch/sequence, privilege denial, liabilities, manifest drift and expiry');
