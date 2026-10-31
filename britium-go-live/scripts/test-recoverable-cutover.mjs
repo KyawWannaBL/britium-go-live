@@ -3,6 +3,8 @@ import {readMigrationFixture} from './read-migration-fixture.mjs';
 import assert from 'node:assert/strict';
 import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
+// Test a future cutover relative to execution time; never relax production safety guards.
+const futureCutover=new Date(Date.now()+366*24*60*60*1000).toISOString();
 try {
  await db.exec(`create schema private;create schema auth;create role anon;create role authenticated;create role service_role;
  create table private.be_oct2026_scope(table_name text primary key);
@@ -27,7 +29,7 @@ try {
  await db.exec(readMigrationFixture('20261031081450_november_retired_awb_guard.sql'));
  await db.exec(readMigrationFixture('20261031081942_november_retired_business_aliases.sql'));
  await db.exec(readMigrationFixture('20261031081326_fix_cutover_rehearsal_variable.sql'));
- const prepare=async()=> (await db.query(`select private.be_cutover_prepare_v3('2026-11-01T00:00:00+06:30','Owner authorized all current transactions') r`)).rows[0].r;
+ const prepare=async()=> (await db.query(`select private.be_cutover_prepare_v3('${futureCutover}','Owner authorized all current transactions') r`)).rows[0].r;
  let m=await prepare();assert.equal(m.tables.length,4);assert.equal(m.total_rows,4);assert.equal(m.finance.status,'PASS');const old=m.batch_id;
  await db.exec('set role authenticated');await assert.rejects(prepare(),/permission denied/i);await db.exec('reset role');
  await db.exec('update be_party_wallet_accounts set britium_owes=1754550');m=await prepare();assert.equal(m.finance.status,'BLOCKED');assert.equal(m.finance.britium_owes,1754550);
@@ -38,7 +40,10 @@ try {
  m=await prepare();await db.query('update private.be_cutover_batches_v3 set activation_authorized=true where id=$1',[m.batch_id]);await db.query(`update private.be_cutover_batches_v3 set evidence=' {"dependency_consumer_review":"PASS","recovery_rehearsal":"PASS","active_path_security":"PASS"}' where id=$1`,[m.batch_id]);await db.query('select private.be_cutover_archive_v3($1)',[m.batch_id]);
  assert.equal((await db.query('select count(*)::int n from cutover_parcels')).rows[0].n,0);
  assert.equal((await db.query('select count(*)::int n from private.be_cutover_rows_v3 where batch_id=$1',[m.batch_id])).rows[0].n,5);
- await db.exec(`update private.be_oct2026_epoch set cutoff_at=now()-interval '1 second';set session authorization authenticator;select set_config('request.headers','{"x-britium-data-epoch":"2026-11-01"}',false)`);
+ await db.exec("update private.be_oct2026_epoch set cutoff_at=now()-interval '1 second'");
+ const activeEpoch=(await db.query("select epoch from private.be_oct2026_epoch")).rows[0].epoch;
+ await db.exec("set session authorization authenticator");
+ await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({"x-britium-data-epoch":null}).replace("null",JSON.stringify(activeEpoch))]);
  await assert.rejects(db.query("insert into cutover_parcels(id,way_id) overriding system value values(99,'HISTORY')"),/RETIRED_TRANSACTION_REJECTED/);
  await assert.rejects(db.query("insert into cutover_parcels(id,way_id,awb) overriding system value values(99,'NEW-ID','OLD-AWB')"),/RETIRED_TRANSACTION_REJECTED/);
  for(const [key,value] of [['wayplan_no','OLD-WAYPLAN'],['manifest_no','OLD-MANIFEST'],['pickup_request_code','OLD-PICKUP']])await assert.rejects(db.query(`insert into cutover_parcels(id,${key}) overriding system value values(99,$1)`,[value]),/RETIRED_TRANSACTION_REJECTED/);
@@ -61,7 +66,7 @@ try {
  assert.equal((await db.query('select britium_owes from be_party_wallet_accounts')).rows[0].britium_owes,'1754550');
  assert.equal((await db.query('select pending_balance from wallet_accounts')).rows[0].pending_balance,'50');
  await db.exec('update be_party_wallet_accounts set britium_owes=0,owes_britium=0,net_position=0;update wallet_accounts set balance=0,available_balance=0,pending_balance=0');
- const rehearsal=(await db.query("select private.be_cutover_rehearse_v3('2026-11-01T00:00:00+06:30','Owner authorized archival') r")).rows[0].r;assert.equal(rehearsal.rolled_back,true);assert.equal(rehearsal.source_and_protected_hashes_unchanged,true);
+ const rehearsal=(await db.query(`select private.be_cutover_rehearse_v3('${futureCutover}','Owner authorized archival') r`)).rows[0].r;assert.equal(rehearsal.rolled_back,true);assert.equal(rehearsal.source_and_protected_hashes_unchanged,true);
  const e=await prepare();await db.query('update private.be_cutover_batches_v3 set activation_authorized=true where id=$1',[e.batch_id]);await db.query("update private.be_cutover_batches_v3 set expires_at=now()-interval '1 second' where id=$1",[e.batch_id]);
  await assert.rejects(db.query('select private.be_cutover_archive_v3($1)',[e.batch_id]),/MANIFEST_EXPIRED/);
  console.log('PASS archive/restore: exact recovery, preserved masters/epoch/sequence, privilege denial, liabilities, manifest drift and expiry');
