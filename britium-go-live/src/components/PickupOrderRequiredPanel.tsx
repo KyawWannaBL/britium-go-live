@@ -51,7 +51,7 @@ function labelOf(p: PickupOption): string {
 export default function PickupOrderRequiredPanel() {
   const [rows, setRows] = useState<PickupOption[]>([]);
   const [selected, setSelected] = useState<string>(() => {
-    try { return localStorage.getItem("be_selected_pickup_id") || ""; } catch { return ""; }
+    try { return localStorage.getItem("be_selected_pickup_id:2026-11-01") || ""; } catch { return ""; }
   });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("Loading pickup orders from backend...");
@@ -84,7 +84,7 @@ export default function PickupOrderRequiredPanel() {
 
   function choose(value: string) {
     setSelected(value);
-    try { localStorage.setItem("be_selected_pickup_id", value); } catch {}
+    try { localStorage.setItem("be_selected_pickup_id:2026-11-01", value); } catch {}
     const row = rows.find((item) => pickupIdOf(item) === value) || null;
     window.dispatchEvent(new CustomEvent("be:pickup-selected", { detail: { pickup_id: value, pickup: row } }));
   }

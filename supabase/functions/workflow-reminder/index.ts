@@ -4,7 +4,7 @@ Deno.serve(async () => {
   try {
     const url = Deno.env.get("SUPABASE_URL")!;
     const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const supabase = createClient(url, serviceRole);
+    const supabase = createClient(url, serviceRole, {global:{headers:{"x-britium-data-epoch":"2026-11-01"}}});
 
     const nowIso = new Date().toISOString();
 

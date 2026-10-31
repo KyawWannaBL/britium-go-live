@@ -7,10 +7,10 @@ import { useLanguage } from "@/contexts/LanguageContext";
 type Row = Record<string, any>;
 
 const QUEUE_KEYS = [
-  "britium_go_live_cs_pickups",
-  "britium.pickup.requests",
-  "britium.registration.dataEntryRows",
-  "britium.supervisor.assignmentQueue",
+  "britium_go_live_cs_pickups:2026-11-01",
+  "britium.pickup.requests:2026-11-01",
+  "britium.registration.dataEntryRows:2026-11-01",
+  "britium.supervisor.assignmentQueue:2026-11-01",
 ];
 
 function clean(value: any, fallback = "") {

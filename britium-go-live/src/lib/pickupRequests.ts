@@ -15,7 +15,7 @@ export type PickupRequest = {
   createdAt: string;
 };
 
-export const PICKUP_REQUESTS_STORAGE_KEY = "britium_pickup_requests";
+export const PICKUP_REQUESTS_STORAGE_KEY = "britium_pickup_requests:2026-11-01";
 
 export function loadPickupRequests(): PickupRequest[] {
   if (typeof window === "undefined") return [];

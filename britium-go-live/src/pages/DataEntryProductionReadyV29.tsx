@@ -395,7 +395,7 @@ export default function DataEntryProductionReadyV29() {
   }
 
   async function saveDraft() {
-    const key = `be_data_entry_draft_${pickupId}`;
+    const key = `be_data_entry_draft_2026-11-01_${pickupId}`;
     localStorage.setItem(key, JSON.stringify(rows));
     const actor = await currentEmail();
 
