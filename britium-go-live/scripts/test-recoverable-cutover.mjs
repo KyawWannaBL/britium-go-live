@@ -40,7 +40,9 @@ try {
  m=await prepare();await db.query('update private.be_cutover_batches_v3 set activation_authorized=true where id=$1',[m.batch_id]);await db.query(`update private.be_cutover_batches_v3 set evidence=' {"dependency_consumer_review":"PASS","recovery_rehearsal":"PASS","active_path_security":"PASS"}' where id=$1`,[m.batch_id]);await db.query('select private.be_cutover_archive_v3($1)',[m.batch_id]);
  assert.equal((await db.query('select count(*)::int n from cutover_parcels')).rows[0].n,0);
  assert.equal((await db.query('select count(*)::int n from private.be_cutover_rows_v3 where batch_id=$1',[m.batch_id])).rows[0].n,5);
- await db.exec(`update private.be_oct2026_epoch set cutoff_at=now()-interval '1 second';set session authorization authenticator;select set_config('request.headers','{"x-britium-data-epoch":"2026-11-01"}',false)`);
+ await db.exec("update private.be_oct2026_epoch set cutoff_at=now()-interval '1 second';set session authorization authenticator");
+ const activeEpoch=(await db.query("select epoch from private.be_oct2026_epoch")).rows[0].epoch;
+ await db.query("select set_config('request.headers',$1,false)",[JSON.stringify({"x-britium-data-epoch":null}).replace("null",JSON.stringify(activeEpoch))]);
  await assert.rejects(db.query("insert into cutover_parcels(id,way_id) overriding system value values(99,'HISTORY')"),/RETIRED_TRANSACTION_REJECTED/);
  await assert.rejects(db.query("insert into cutover_parcels(id,way_id,awb) overriding system value values(99,'NEW-ID','OLD-AWB')"),/RETIRED_TRANSACTION_REJECTED/);
  for(const [key,value] of [['wayplan_no','OLD-WAYPLAN'],['manifest_no','OLD-MANIFEST'],['pickup_request_code','OLD-PICKUP']])await assert.rejects(db.query(`insert into cutover_parcels(id,${key}) overriding system value values(99,$1)`,[value]),/RETIRED_TRANSACTION_REJECTED/);
