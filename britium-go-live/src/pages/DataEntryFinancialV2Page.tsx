@@ -710,6 +710,9 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const [deleteReason,setDeleteReason]=useState("");
   useEffect(()=>{setDeleteOpen(false);setDeleteReason("")},[row.pickup_id,row.parcel_sequence]);
   const c = row.calculation || {};
+  const deliverySurplus = Math.max(0,Number(c.delivery_difference||0));
+  const approvedSurplusForBritium = Math.min(deliverySurplus,Math.max(0,Number(row.merchant_payable_charges||0)));
+  const totalBritiumEntitlement = Number(c.net_system_delivery_charge||0)+approvedSurplusForBritium;
   const pickupPaymentType = selectedPaymentType || "COD";
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -1031,6 +1034,20 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             {!stationReady?<div className="mt-2 text-[10px] font-bold text-rose-300">Terminal name and delivery charge are required before Calculate/Save.</div>:null}
           </div>:null}
 
+          {deliverySurplus>0 && !isExact(type) ? <div className="rounded-xl border border-amber-300/40 bg-[#132b39] p-3 text-xs text-white" data-surplus-beneficiary-choice="true">
+            <label className="block font-bold text-amber-200" htmlFor={`surplus-beneficiary-${index}`}>Delivery-price surplus beneficiary · {money(deliverySurplus)}</label>
+            <select id={`surplus-beneficiary-${index}`} className={`${inputClass} mt-2 !bg-white !text-black`} value={approvedSurplusForBritium===deliverySurplus?"BRITIUM":approvedSurplusForBritium===0?"MERCHANT":"CUSTOM"} disabled={row.waybillPublished||busy} onChange={e=>{
+              const beneficiary=e.target.value;
+              if(beneficiary==="CUSTOM")return;
+              updateRow(index,{merchant_payable_charges:beneficiary==="BRITIUM"?deliverySurplus:0,calculation:{},message:`Surplus allocated to ${beneficiary}. Recalculate and review before saving.`});
+            }}>
+              <option value="MERCHANT">Merchant — credit extra charge to merchant</option>
+              <option value="BRITIUM">Britium — retain extra charge for special handling</option>
+              {approvedSurplusForBritium>0&&approvedSurplusForBritium<deliverySurplus?<option value="CUSTOM">Mixed allocation — review in Finance</option>:null}
+            </select>
+            <p className="mt-2 text-[10px] text-cyan-100">Britium entitlement shown here includes the allocated surplus. Save/recalculate after selection; this does not change receiver COD.</p>
+          </div> : null}
+
           {fullMode ? <details data-financial-details-v85="true" className="rounded-xl border border-[#8d7b55] bg-[#bfb6a2]">
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-[#2b2416]">Financial Calculation Details · click only when needed</summary>
             <div className="border-t border-[#8d7b55] p-3 text-[11px]">
@@ -1041,7 +1058,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
                 <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
                 <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
-                <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
+                <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
                 <div className="flex justify-between gap-4"><span>Delivery Difference</span><b>{money(c.delivery_difference)}</b></div>
                 <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement (not customer total)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
               </div>
@@ -1055,7 +1072,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(c.net_system_delivery_charge)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
               <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2"><span className="font-black text-[#8db4ce]">Merchant Settlement (internal)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
           </div>}
@@ -1104,7 +1121,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <MoneyBox label="Backend Surcharges" value={c.backend_calculated_delivery_surcharges} />
                 <MoneyBox label="Base Tariff" value={c.base_tariff} />
                 <MoneyBox label="Weight Surcharge" value={c.weight_surcharge} />
-                <MoneyBox label="Britium Entitlement" value={c.net_system_delivery_charge} highlight />
+                <MoneyBox label="Britium Entitlement (allocated)" value={totalBritiumEntitlement} highlight />
                 <MoneyBox label="Delivery Difference" value={c.delivery_difference} />
                 <MoneyBox label="Merchant Settlement" value={c.merchant_final_settlement_amount} highlight />
               </div>
