@@ -1831,6 +1831,24 @@ export default function DataEntryFinancialV2Page() {
         message:draft.skipped?"Pending clarification saved. Resume when details are available.":"Draft restored. Review and save."};
       return {...restored,...routingPatch(routeForRow(restored,tariffOptions),restored)};
     });
+    // Recover approved adjustments from authoritative parcel records, not older pickup photo evidence.
+    const registeredIds=restoredRows.filter(row=>row.saved&&row.delivery_way_id).map(row=>row.delivery_way_id);
+    if(registeredIds.length){
+      const saved=await (supabase as any).from("parcels")
+        .select("way_id,merchant_payable_charges,financial_settled_at").in("way_id",registeredIds);
+      if(saved.error)throw new Error("Saved settlement adjustment cannot be verified: "+saved.error.message);
+      const byWay=new Map<string,any>((saved.data||[]).map((parcel:any)=>[text(parcel.way_id),parcel]));
+      for(const row of restoredRows){
+        const parcel=byWay.get(row.delivery_way_id);
+        if(!parcel||parcel.financial_settled_at)continue;
+        const charge=Number(parcel.merchant_payable_charges||0);
+        if(charge>0&&Number(row.merchant_payable_charges||0)!==charge){
+          row.merchant_payable_charges=charge;
+          row.calculation={};
+          row.message="Saved Finance merchant charge loaded; recalculate before settlement.";
+        }
+      }
+    }
     const locations=new Map<string,any>();
     for(let offset=0;offset<restoredRows.length;offset+=100){
       const result=await (supabase as any).rpc("be_delivery_location_batch_v10",{p_delivery_way_ids:restoredRows.slice(offset,offset+100).map(row=>row.delivery_way_id)});
