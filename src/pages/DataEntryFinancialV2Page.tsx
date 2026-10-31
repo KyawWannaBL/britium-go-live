@@ -1022,6 +1022,31 @@ export default function DataEntryFinancialV2Page() {
         ...(option&&row.delivery_charges===""?{delivery_charges:tariffRate(option,row.customer_tier)}:{}),
       };
     });
+    // Persisted merchant settlement adjustments are authoritative when reopening a registered waybill.
+    // Proof rows can predate the approved adjustment and otherwise recalculate a merchant credit twice.
+    const registeredWayIds=nextRows.filter(row=>row.saved&&row.delivery_way_id).map(row=>row.delivery_way_id);
+    if(registeredWayIds.length){
+      const parcelResponse=await (supabase as any)
+        .from("parcels")
+        .select("way_id,merchant_payable_charges,other_merchant_credits,financial_settled_at")
+        .in("way_id",registeredWayIds);
+      if(parcelResponse.error){
+        console.warn("Unable to reconcile approved merchant settlement adjustments.",parcelResponse.error.message);
+      }else{
+        const parcelMap=new Map<string,any>((parcelResponse.data||[]).map((parcel:any)=>[text(parcel.way_id),parcel]));
+        for(let index=0;index<nextRows.length;index++){
+          const row=nextRows[index];
+          const savedParcel=parcelMap.get(row.delivery_way_id);
+          if(!savedParcel||savedParcel.financial_settled_at)continue;
+          const approvedCharge=Number(savedParcel.merchant_payable_charges||0);
+          // The server projection is the source of truth; never replace a nonzero user-entered adjustment.
+          if(approvedCharge>0&&Number(row.merchant_payable_charges||0)===0){
+            nextRows[index]={...row,merchant_payable_charges:approvedCharge,
+              message:"Approved merchant settlement charge loaded from the saved parcel. Recalculate to verify payable."};
+          }
+        }
+      }
+    }
     return {tierAccess:nextTierAccess,rows:nextRows};
   }
 
