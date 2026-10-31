@@ -30,6 +30,7 @@ const TRANSLATIONS = {
     phMerchant: "Type merchant name or code...",
     merchantHint: "Start typing to search the merchant master. Select a suggestion to link the merchant.",
     merchantUnlinked: "No exact merchant-master match yet.",
+    refreshMerchants: "Refresh merchants",
     loading: "Loading..."
   },
   my: {
@@ -57,6 +58,7 @@ const TRANSLATIONS = {
     phMerchant: "Merchant အမည် သို့ Code ရိုက်ရှာပါ...",
     merchantHint: "Merchant Master ထဲမှ အမည်/Code ကို စာရိုက်ရှာပြီး suggestion ကို ရွေးပါ။",
     merchantUnlinked: "Merchant Master နှင့် တိတိကျကျ မချိတ်ရသေးပါ။",
+    refreshMerchants: "Merchant စာရင်း ပြန်ယူမည်",
     loading: "ဒေတာရယူနေပါသည်..."
   }
 };
@@ -81,6 +83,7 @@ const t = TRANSLATIONS[activeLang];
   // --- STATE ---
   const [merchants, setMerchants] = useState<any[]>([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [merchantOptionsError, setMerchantOptionsError] = useState("");
   const [autofilling, setAutofilling] = useState(false);
   const [merchantQuery, setMerchantQuery] = useState("");
 
@@ -104,38 +107,36 @@ const t = TRANSLATIONS[activeLang];
     instructions: ""
   });
 
-  // --- FIX 1: Replace merchant loading ---
-  useEffect(() => {
-    async function fetchOptions() {
-      setLoadingOptions(true);
-      const { data, error } = await supabase.rpc("be_get_merchants_dropdown");
-
-      if (error) {
-        console.error("Merchant dropdown loading failed:", error);
-        setLoadingOptions(false);
-        return;
-      }
-
-      setMerchants(data?.options ?? []);
+  async function refreshMerchants() {
+    setLoadingOptions(true);
+    setMerchantOptionsError("");
+    try {
+      const {data,error}=await supabase.rpc("be_get_merchants_dropdown");
+      if(error) throw error;
+      if(!Array.isArray(data?.options)) throw new Error("Merchant list could not be loaded. Please refresh merchants.");
+      setMerchants(data.options);
+      setFormData(prev=>prev.merchantCode && !data.options.some((m:any)=>m.value===prev.merchantCode)
+        ? {...prev,merchantCode:""} : prev);
+    } catch(error:any) {
+      setMerchantOptionsError(error?.message || "Merchant list could not be loaded. Please refresh merchants.");
+    } finally {
       setLoadingOptions(false);
     }
-    fetchOptions();
-  }, []);
+  }
+  useEffect(()=>{void refreshMerchants();},[]);
 
-  // --- V130: Searchable merchant master selector ---
   const normalizedMerchantText = (value: unknown) =>
-    String(value ?? "").trim().toLocaleLowerCase();
+    String(value ?? "").normalize("NFC").replace(/[\u200B-\u200D\uFEFF]/g,"").trim().replace(/\s+/g," ").toLocaleLowerCase();
 
   const findMerchantByQuery = (raw: string) => {
     const q = normalizedMerchantText(raw);
     if (!q) return undefined;
-    return merchants.find((m) => {
-      const code = normalizedMerchantText(m.value);
-      const label = normalizedMerchantText(m.label);
-      const displayDash = normalizedMerchantText(`${m.label} — ${m.value}`);
-      const displayHyphen = normalizedMerchantText(`${m.label} - ${m.value}`);
-      return q === code || q === label || q === displayDash || q === displayHyphen;
-    });
+    const matches=merchants.filter(m=>[
+      m.value,m.merchant_code,m.label,m.merchant_name,m.business_name,m.sender_name,
+      ...(Array.isArray(m.search_names)?m.search_names:[]),
+      `${m.label} — ${m.value}`,`${m.label} - ${m.value}`
+    ].some(name=>normalizedMerchantText(name)===q));
+    return new Set(matches.map(m=>m.value)).size===1 ? matches[0] : undefined;
   };
 
   const applyMerchant = (selected: any) => {
@@ -204,7 +205,7 @@ const t = TRANSLATIONS[activeLang];
 
     const payload = {
       merchant_code: formData.merchantCode,
-      merchant_name: merchants.find(m => m.value === formData.merchantCode)?.label,
+      merchant_name: merchants.find(m => m.value === formData.merchantCode)?.merchant_name || merchants.find(m => m.value === formData.merchantCode)?.label,
       contact_person: formData.contactPerson,
       phone: formData.phone,
       pickup_date: formData.pickupDate,
@@ -311,9 +312,13 @@ const t = TRANSLATIONS[activeLang];
               />
               <datalist id="pickup-merchant-master-options-v130">
                 {merchants.map(m => (
-                  <option key={m.value} value={`${m.label} — ${m.value}`} />
+                  <option key={m.value} value={m.label} />
                 ))}
               </datalist>
+              <button type="button" onClick={refreshMerchants} disabled={loadingOptions} className="mt-2 text-xs text-[#f6b84b] disabled:opacity-50">
+                {t.refreshMerchants}
+              </button>
+              {merchantOptionsError && <div role="alert" className="mt-2 text-xs text-red-300">{merchantOptionsError}</div>}
               <div className={`mt-2 text-[11px] ${formData.merchantCode ? "text-emerald-300" : "text-slate-400"}`}>
                 {formData.merchantCode
                   ? `${merchantQuery} · ${formData.merchantCode}`
