@@ -713,6 +713,13 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const deliverySurplus = Math.max(0,Number(c.delivery_difference||0));
   const approvedSurplusForBritium = Math.min(deliverySurplus,Math.max(0,Number(row.merchant_payable_charges||0)));
   const totalBritiumEntitlement = Number(c.net_system_delivery_charge||0)+approvedSurplusForBritium;
+  const feeElection = /\\[COD_FEE_ELECTION:(COLLECT|WAIVE)\\]/.exec(text(row.remarks))?.[1] || "UNSELECTED";
+  const feeReason = /\\[COD_FEE_REASON:([^\\]\\n]*)\\]/.exec(text(row.remarks))?.[1] || "";
+  const writeFeeChoice = (choice:string, reason:string) => {
+    const clean=text(row.remarks).replace(/\\s*\\[COD_FEE_ELECTION:(?:COLLECT|WAIVE)\\]/g,"").replace(/\\s*\\[COD_FEE_REASON:[^\\]\\n]*\\]/g,"").trim();
+    const entries=choice==="UNSELECTED"?"":` [COD_FEE_ELECTION:${choice}]${choice==="WAIVE"&&reason.trim()?` [COD_FEE_REASON:${reason.trim().replace(/[\\]\\n]/g," ")}]`:""}`;
+    updateRow(index,{remarks:(clean+entries).trim(),message:"COD fee instruction recorded in remarks. Finance must approve and post any fee separately."});
+  };
   const pickupPaymentType = selectedPaymentType || "COD";
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
@@ -1046,6 +1053,17 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               {approvedSurplusForBritium>0&&approvedSurplusForBritium<deliverySurplus?<option value="CUSTOM">Mixed allocation — review in Finance</option>:null}
             </select>
             <p className="mt-2 text-[10px] text-cyan-100">Britium entitlement shown here includes the allocated surplus. Save/recalculate after selection; this does not change receiver COD.</p>
+          </div> : null}
+
+          {!isExact(type) ? <div className="rounded-xl border border-cyan-300/35 bg-[#102a3c] p-3 text-xs" data-cod-fee-election="true">
+            <label className="mb-2 block font-bold text-cyan-100">COD collection service fee · operator instruction</label>
+            <select aria-label="Collect COD service fee" className={`${inputClass} !bg-white !text-black`} value={feeElection} disabled={row.waybillPublished||busy} onChange={e=>writeFeeChoice(e.target.value,feeReason)}>
+              <option value="UNSELECTED">Select fee instruction</option>
+              <option value="COLLECT">Yes — request COD service fee</option>
+              <option value="WAIVE">No — request COD fee waiver</option>
+            </select>
+            {feeElection==="WAIVE" ? <div className="mt-2"><Field label="Waiver reason (required for Finance approval)"><BufferedDataEntryInput className={inputClass} value={feeReason} onCommit={value=>writeFeeChoice("WAIVE",value)}/></Field>{!feeReason.trim()?<p className="mt-1 text-amber-200">Reason required; Finance should not approve this waiver yet.</p>:null}</div>:null}
+            <p className="mt-2 text-cyan-100">Indicative fee: {money(codFeePreview(c.cod_amount,pickupPaymentType).amount)}. This instruction does not change receiver COD automatically; Finance must confirm the fee payer and post it through an approved settlement process.</p>
           </div> : null}
 
           {fullMode ? <details data-financial-details-v85="true" className="rounded-xl border border-[#8d7b55] bg-[#bfb6a2]">
