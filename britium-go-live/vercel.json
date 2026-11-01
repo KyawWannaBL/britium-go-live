@@ -58,7 +58,27 @@
       "destination": "https://dltavabvjwocknkyvwgz.supabase.co/:path*"
     },
     {
-      "source": "/(.*)",
+      "source": "/login",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/signup",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/forgot-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/reset-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/must-change-password",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/rider-dashboard",
       "destination": "/index.html"
     }
   ],
