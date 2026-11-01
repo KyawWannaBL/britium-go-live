@@ -27,7 +27,7 @@ const CHUNK_RECOVERY_COOLDOWN_MS = 60_000;
 
 function isChunkLoadError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
-  return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|loading (?:css )?chunk .* failed|failed to load module script|failed to preload|load failed|mime type of ["']text\\/html|unexpected token ['"]?</i.test(message);
+  return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|loading (?:css )?chunk .* failed|failed to load module script|failed to preload|load failed|mime type of ["']text\/html|unexpected token ['"]?</i.test(message);
 }
 
 function reloadCurrentPortalVersion(): void {
