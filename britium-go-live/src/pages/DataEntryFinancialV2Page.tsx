@@ -1440,6 +1440,7 @@ export default function DataEntryFinancialV2Page() {
   const [mutationMode,setMutationMode]=useState("MUTATION_SHADOW");
   const [pickups,setPickups]=useState<Pickup[]>([]);
   const [selectedPickupId,setSelectedPickupId]=useState("");
+  const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS">("ENTRY");
   const [rows,setRows]=useState<ParcelRow[]>([]);
   const [rowsPickupId,setRowsPickupId]=useState("");
   const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
@@ -3590,66 +3591,11 @@ export default function DataEntryFinancialV2Page() {
           </div>
         :null}
 
-        <section className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
-          <div className="flex flex-wrap items-end gap-3">
-            <div className="min-w-[320px] flex-1">
-              <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
-              <select data-pickup-review-select="true" className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
-                <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
-                {pickups.map(p=>{
-                  const authorized=authorizedParcelCount(p);
-                  const registered=positiveInt(p.registered_parcels);
-                  const remaining=Math.max(authorized-registered,0);
-                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
-                })}
-              </select>
-            </div>
-            <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
-            <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
-            <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
-            <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
-            <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">SKIP PHOTO REVIEW WITH REASON FOR ALL ({pendingPhotoWaiverRows.length})</button>
-            <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
-            <button
-              type="button"
-              onClick={()=>void createAndGenerateWaybill()}
-              disabled={!rows.length || waybillBusy || bulkSaving || bulkCalculating}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50"
-            >
-              {waybillBusy
-                ? <Loader2 size={14} className="animate-spin"/>
-                : <Save size={14}/>
-              }
-              GENERATE COMPLETED WAYBILLS
-            </button>
-            <button type="button" onClick={()=>{const row=rows[pageStart];if(row) void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating} className="rounded-lg border border-emerald-300/50 bg-emerald-700 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">GENERATE CURRENT PARCEL WAYBILL</button>
-            <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
-            <DataEntryOsBulkImport
-              pickups={pickups as OsBulkPickup[]}
-              selectedPickupId={selectedPickupId}
-              sequenceFloorByPickup={sequenceFloorByPickup}
-              busy={loadingRows||bulkCalculating||bulkSaving||waybillBusy||addingRegistration}
-              onPickupChange={setSelectedPickupId}
-              onApply={applyOsImport}
-            />
-          </div>
-          {bulkUploadSelected?<div className="mt-4 rounded-xl border border-cyan-300/35 bg-cyan-400/5 p-4 text-[11px] leading-5 text-cyan-100"><b>Bulk upload mode:</b> attach the 12-column template. Way ID / Pickup ID assigns each row to its pickup and Merchant Name / Merchant ID is checked before any registrations are authorized. After staging, review the separate pickup batches below.</div>:null}
-          {bulkImportOrder.length?<div data-os-bulk-pickup-queue-v16="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
-            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Bulk upload pickup queue</div>
-            <div className="mt-1 text-[10px] text-[#8db4ce]">Open each matched pickup, verify its drop points, then run Calculate All and Save All. Saved batches are marked below.</div>
-            <div className="mt-3 flex flex-wrap gap-2">{bulkImportOrder.map((pickupId)=>{
-              const draft=bulkImportDrafts[pickupId];
-              return <button key={pickupId} type="button" onClick={()=>setSelectedPickupId(pickupId)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${selectedPickupId===pickupId?"border-cyan-300 bg-cyan-400 text-[#04111d]":draft?.saved?"border-emerald-400/50 bg-emerald-500/10 text-emerald-200":"border-[#31506a] bg-[#12314a] text-[#bfe8ff]"}`}>{pickupId} · {draft?.rows.length||0} row(s) · {draft?.saved?"SAVED":"REVIEW"}</button>;
-            })}</div>
-          </div>:null}
-          {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
-            <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
-            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
-            <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
-            <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
-            <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
-          </div>:null}
-
+        <nav role="tablist" aria-label="Data Entry workspace tabs" className="flex flex-wrap gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] p-2">
+          <button role="tab" aria-selected={dataEntryTab==="ENTRY"} type="button" onClick={()=>setDataEntryTab("ENTRY")} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="ENTRY"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>PARCEL REGISTRATION</button>
+          <button role="tab" aria-selected={dataEntryTab==="STAFF_PROGRESS"} type="button" onClick={()=>{setDataEntryTab("STAFF_PROGRESS");void loadStaffProgress(progressDate);}} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="STAFF_PROGRESS"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>DATA ENTRY STAFF PROGRESS</button>
+        </nav>
+        {dataEntryTab==="STAFF_PROGRESS"?<div role="tabpanel" aria-label="Data Entry Staff Progress">
           <div data-data-entry-staff-progress-v96="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
@@ -3721,6 +3667,68 @@ export default function DataEntryFinancialV2Page() {
               </table>
             </div>
           </div>
+        </div>:null}
+        <div role="tabpanel" aria-label="Parcel Registration" className={dataEntryTab==="ENTRY"?"space-y-4":"hidden"}>
+        <section className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[320px] flex-1">
+              <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
+              <select data-pickup-review-select="true" className={inputClass} value={selectedPickupId} onChange={(e)=>setSelectedPickupId(e.target.value)}>
+                <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload · Way ID + Merchant Name</option>
+                {pickups.map(p=>{
+                  const authorized=authorizedParcelCount(p);
+                  const registered=positiveInt(p.registered_parcels);
+                  const remaining=Math.max(authorized-registered,0);
+                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
+                })}
+              </select>
+            </div>
+            <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
+            <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+            <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
+            <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
+            <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">SKIP PHOTO REVIEW WITH REASON FOR ALL ({pendingPhotoWaiverRows.length})</button>
+            <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
+            <button
+              type="button"
+              onClick={()=>void createAndGenerateWaybill()}
+              disabled={!rows.length || waybillBusy || bulkSaving || bulkCalculating}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50"
+            >
+              {waybillBusy
+                ? <Loader2 size={14} className="animate-spin"/>
+                : <Save size={14}/>
+              }
+              GENERATE COMPLETED WAYBILLS
+            </button>
+            <button type="button" onClick={()=>{const row=rows[pageStart];if(row) void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating} className="rounded-lg border border-emerald-300/50 bg-emerald-700 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">GENERATE CURRENT PARCEL WAYBILL</button>
+            <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
+            <DataEntryOsBulkImport
+              pickups={pickups as OsBulkPickup[]}
+              selectedPickupId={selectedPickupId}
+              sequenceFloorByPickup={sequenceFloorByPickup}
+              busy={loadingRows||bulkCalculating||bulkSaving||waybillBusy||addingRegistration}
+              onPickupChange={setSelectedPickupId}
+              onApply={applyOsImport}
+            />
+          </div>
+          {bulkUploadSelected?<div className="mt-4 rounded-xl border border-cyan-300/35 bg-cyan-400/5 p-4 text-[11px] leading-5 text-cyan-100"><b>Bulk upload mode:</b> attach the 12-column template. Way ID / Pickup ID assigns each row to its pickup and Merchant Name / Merchant ID is checked before any registrations are authorized. After staging, review the separate pickup batches below.</div>:null}
+          {bulkImportOrder.length?<div data-os-bulk-pickup-queue-v16="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
+            <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Bulk upload pickup queue</div>
+            <div className="mt-1 text-[10px] text-[#8db4ce]">Open each matched pickup, verify its drop points, then run Calculate All and Save All. Saved batches are marked below.</div>
+            <div className="mt-3 flex flex-wrap gap-2">{bulkImportOrder.map((pickupId)=>{
+              const draft=bulkImportDrafts[pickupId];
+              return <button key={pickupId} type="button" onClick={()=>setSelectedPickupId(pickupId)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${selectedPickupId===pickupId?"border-cyan-300 bg-cyan-400 text-[#04111d]":draft?.saved?"border-emerald-400/50 bg-emerald-500/10 text-emerald-200":"border-[#31506a] bg-[#12314a] text-[#bfe8ff]"}`}>{pickupId} · {draft?.rows.length||0} row(s) · {draft?.saved?"SAVED":"REVIEW"}</button>;
+            })}</div>
+          </div>:null}
+          {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+            <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
+            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
+            <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
+            <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
+            <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
+          </div>:null}
+
           <div data-location-review-recovery="true" className="mt-4 rounded-xl border border-amber-300/40 bg-amber-400/10 p-4">
             <div className="mb-3 text-[11px] leading-5 text-amber-100">Resume location review after a crash or sign-in: upload your corrected review workbook directly. Select the original pickup date range above. Completed corrections stay saved; you do not need to repeat the original location review.</div>
                 <label className={`inline-flex items-center gap-2 rounded-lg bg-amber-400 px-4 py-2.5 text-[10px] font-black text-[#04111d] ${locationReviewBusy?"pointer-events-none opacity-40":"cursor-pointer"}`}><Upload size={14}/>RE-UPLOAD CORRECTED EXCEL<input ref={locationReviewInputRef} type="file" accept=".xlsx" className="hidden" onChange={(event)=>void uploadConsolidatedLocationReview(event.target.files?.[0])}/></label>
@@ -3812,6 +3820,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
         </section>
         {!fullRegistration?workspace:null}
+        </div>
       </div>
 
       {fullRegistration?<div data-full-review-sheet="true" className="fixed inset-0 z-[9999] overflow-auto bg-[#04111d]">
