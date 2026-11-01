@@ -1972,6 +1972,7 @@ function FieldPortal() {
   const workflowPhotoOperation = useRef<{ id: string; jobId: string; modal: ModalMode; controller: AbortController; previewUrl?: string } | null>(null);
   const pendingUploads = useRef(new Map<string, Promise<any>>());
   const modalSubmissionId = useRef("");
+  const submissionInFlight = useRef(false);
 
   selectedJobRef.current = selectedJob;
   modalRef.current = modal;
@@ -2684,7 +2685,10 @@ function FieldPortal() {
       });
 
       if (reviewQueueError) {
-        console.warn("Photo review queue RPC unavailable; proof remains uploaded", reviewQueueError);
+        // Storage and proof persistence may have succeeded, but the required
+        // Data Entry review step did not. Keep the photo and permit safe retry.
+        updateParcelRow(rowId, { photoUrl: publicUrl, previewUrl: publicUrl, uploadStatus: "failed", uploadError: "Photo saved but review submission failed: " + reviewQueueError.message } as any);
+        throw new Error("Photo saved, but Data Entry review submission failed. Retry Save Parcel to finish review submission.");
       }
 
       updateParcelRow(rowId, {
@@ -2788,6 +2792,10 @@ function FieldPortal() {
         setMessage(summary);
         alert(summary);
       }
+    } catch (batchError: any) {
+      const summary = `Bulk upload interrupted after ${uploadedCount}/${rowsToUpload.length} parcel(s): ${batchError?.message || "Connection failed"}. Reopen this pickup and retry unsent photos.`;
+      setError(summary);
+      setMessage(summary);
     } finally {
       setUploadingAll(false);
       setBusy(false);
@@ -2961,7 +2969,7 @@ function FieldPortal() {
   }
 
   async function submitModal() {
-    if (!selectedJob || !session) return;
+    if (!selectedJob || !session || submissionInFlight.current) return;
 
     const supabase = getRiderSupabase();
 
@@ -3015,6 +3023,11 @@ function FieldPortal() {
     }
 
     if (modal === "delivery") {
+      const collected = Number(codCollected);
+      if (!codCollected.trim() || !Number.isFinite(collected) || collected < 0) {
+        setError("Enter a valid non-negative COD / payment collection amount.");
+        return;
+      }
       if (!recipientName.trim()) {
         setError("Recipient name is required before marking delivered.");
         return;
@@ -3072,6 +3085,10 @@ function FieldPortal() {
         return;
       }
 
+      if (rule.code === "CUSTOMER_REQUESTED_RESCHEDULE") {
+        const myanmarToday = new Intl.DateTimeFormat("en-CA", { timeZone:"Asia/Yangon", year:"numeric", month:"2-digit", day:"2-digit" }).format(new Date());
+        if (rescheduleDate < myanmarToday) { setError("Reschedule date cannot be in the past (Myanmar time)."); return; }
+      }
       action = "exception";
       payload = {
         process_type: rule.processType,
@@ -3092,6 +3109,7 @@ function FieldPortal() {
       note = remark.trim();
     }
 
+    submissionInFlight.current = true;
     setBusy(true);
     setError("");
 
@@ -3169,6 +3187,7 @@ function FieldPortal() {
     } catch (err: any) {
       setError(err?.message || `Could not update ${id}.`);
     } finally {
+      submissionInFlight.current = false;
       setBusy(false);
     }
   }
@@ -3560,7 +3579,7 @@ function FieldPortal() {
             <div style={{color:C.gold,fontSize:13}}>Are recipient, COD/payment, proof photo and signature all confirmed?</div>
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <button type="button" onClick={()=>{setDeliveryConfirmChoice("no");setDeliveryConfirmOpen(false);setTimeout(()=>setDeliveryConfirmChoice(""),0);}} style={buttonStyle("plain")}>No</button>
-              <button type="button" onClick={async()=>{setDeliveryConfirmChoice("yes");setDeliveryConfirmOpen(false);await submitModal();}} style={{...buttonStyle("gold"),background:deliveryConfirmChoice==="yes"?C.purple:C.gold}}>Yes</button>
+              <button type="button" disabled={busy} onClick={async()=>{if(submissionInFlight.current)return;setDeliveryConfirmChoice("yes");setDeliveryConfirmOpen(false);await submitModal();}} style={{...buttonStyle("gold"),background:deliveryConfirmChoice==="yes"?C.purple:C.gold}}>Yes</button>
             </div>
           </Card>
         </div>
