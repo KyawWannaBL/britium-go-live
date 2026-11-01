@@ -1557,9 +1557,24 @@ export default function DataEntryFinancialV2Page() {
         if(batch.length<500)break;
       }
       setDailyRegistered(gathered);
+      if(!gathered.length)setDailyGridError("No saved registrations exist for this Myanmar date. Choose the actual registration date to view all merchants.");
     }catch(error:any){setDailyGridError(error?.message||"Daily registration records could not be loaded.");setDailyRegistered([]);}
     finally{setDailyGridBusy(false);}
   },[dailyGridDate]);
+  // The selected pickup can have historical registrations on a different day.
+  // Default the global grid to the most recent actual registration day, not the browser clock.
+  useEffect(()=>{
+    let alive=true;
+    (async()=>{
+      const result=await (supabase as any).from("be_data_entry_parcel_details")
+        .select("saved_at").not("saved_at","is",null).order("saved_at",{ascending:false}).limit(1);
+      const latest=result.data?.[0]?.saved_at;
+      if(!alive||result.error||!latest)return;
+      const localDay=new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(latest));
+      setDailyGridDate(localDay);
+    })();
+    return()=>{alive=false;};
+  },[]);
   useEffect(()=>{void refreshDailyGrid();},[refreshDailyGrid]);
   const registrationGridRows=useMemo(()=>{
     const query=gridSearch.trim().toLowerCase();
@@ -1567,7 +1582,7 @@ export default function DataEntryFinancialV2Page() {
     const selectedIds=new Set(selected.filter(item=>item.row.saved).map(item=>item.row.delivery_way_id));
     const allRegistered=dailyRegistered.filter(item=>!selectedIds.has(item.delivery_way_id)).map(item=>({index:-1,row:{
       pickup_id:item.pickup_id,parcel_sequence:Number(item.parcel_sequence)||0,delivery_way_id:item.delivery_way_id,
-      sourceMerchantName:item.merchant_id||"—",recipient_name:item.recipient_name||"",recipient_phone:item.contact_no_1||"",
+      sourceMerchantName:item.merchant_id||((item.delivery_way_id||"").split("-")[1])||"—",recipient_name:item.recipient_name||"",recipient_phone:item.contact_no_1||"",
       township:item.township||"",delivery_address:item.recipient_address||"",item_price:item.item_price??0,
       delivery_charges:item.delivery_charges??item.delivery_fee??0,weight_kg:item.weight_kg??"",
       cbm_surcharge:0,other_surcharge:0,calculation:{weight_surcharge:item.weight_surcharge??item.surcharge??0,cod_amount:item.cod_amount},
