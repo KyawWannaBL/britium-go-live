@@ -56,10 +56,6 @@
     {
       "source": "/supabase/:path*",
       "destination": "https://dltavabvjwocknkyvwgz.supabase.co/:path*"
-    },
-    {
-      "source": "/(.*)",
-      "destination": "/index.html"
     }
   ],
   "headers": [
