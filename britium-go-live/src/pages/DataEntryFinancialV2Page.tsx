@@ -713,11 +713,11 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const deliverySurplus = Math.max(0,Number(c.delivery_difference||0));
   const approvedSurplusForBritium = Math.min(deliverySurplus,Math.max(0,Number(row.merchant_payable_charges||0)));
   const totalBritiumEntitlement = Number(c.net_system_delivery_charge||0)+approvedSurplusForBritium;
-  const feeElection = /\\[COD_FEE_ELECTION:(COLLECT|WAIVE)\\]/.exec(text(row.remarks))?.[1] || "UNSELECTED";
-  const feeReason = /\\[COD_FEE_REASON:([^\\]\\n]*)\\]/.exec(text(row.remarks))?.[1] || "";
+  const feeElection = /\[COD_FEE_ELECTION:(COLLECT|WAIVE)\]/.exec(text(row.remarks))?.[1] || "UNSELECTED";
+  const feeReason = /\[COD_FEE_REASON:([^\]\r\n]*)\]/.exec(text(row.remarks))?.[1] || "";
   const writeFeeChoice = (choice:string, reason:string) => {
-    const clean=text(row.remarks).replace(/\\s*\\[COD_FEE_ELECTION:(?:COLLECT|WAIVE)\\]/g,"").replace(/\\s*\\[COD_FEE_REASON:[^\\]\\n]*\\]/g,"").trim();
-    const entries=choice==="UNSELECTED"?"":` [COD_FEE_ELECTION:${choice}]${choice==="WAIVE"&&reason.trim()?` [COD_FEE_REASON:${reason.trim().replace(/[\\]\\n]/g," ")}]`:""}`;
+    const clean=text(row.remarks).replace(/\s*\[COD_FEE_ELECTION:(?:COLLECT|WAIVE)\]/g,"").replace(/\s*\[COD_FEE_REASON:[^\]\r\n]*\]/g,"").trim();
+    const entries=choice==="UNSELECTED"?"":` [COD_FEE_ELECTION:${choice}]${choice==="WAIVE"&&reason.trim()?` [COD_FEE_REASON:${reason.trim().replace(/[\]\r\n]/g," ")}]`:""}`;
     updateRow(index,{remarks:(clean+entries).trim(),message:"COD fee instruction recorded in remarks. Finance must approve and post any fee separately."});
   };
   const pickupPaymentType = selectedPaymentType || "COD";
