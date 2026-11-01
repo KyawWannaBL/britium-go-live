@@ -2684,7 +2684,10 @@ function FieldPortal() {
       });
 
       if (reviewQueueError) {
-        console.warn("Photo review queue RPC unavailable; proof remains uploaded", reviewQueueError);
+        // Storage and proof persistence may have succeeded, but the required
+        // Data Entry review step did not. Keep the photo and permit safe retry.
+        updateParcelRow(rowId, { photoUrl: publicUrl, previewUrl: publicUrl, uploadStatus: "failed", uploadError: "Photo saved but review submission failed: " + reviewQueueError.message } as any);
+        throw new Error("Photo saved, but Data Entry review submission failed. Retry Save Parcel to finish review submission.");
       }
 
       updateParcelRow(rowId, {
@@ -2788,6 +2791,10 @@ function FieldPortal() {
         setMessage(summary);
         alert(summary);
       }
+    } catch (batchError: any) {
+      const summary = `Bulk upload interrupted after ${uploadedCount}/${rowsToUpload.length} parcel(s): ${batchError?.message || "Connection failed"}. Reopen this pickup and retry unsent photos.`;
+      setError(summary);
+      setMessage(summary);
     } finally {
       setUploadingAll(false);
       setBusy(false);
