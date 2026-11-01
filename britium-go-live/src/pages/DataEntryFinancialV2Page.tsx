@@ -1536,10 +1536,45 @@ export default function DataEntryFinancialV2Page() {
     !row.photoReviewed &&
     !row.photoTemporaryWaiver
   ),[rows]);
+  const [dailyGridDate,setDailyGridDate]=useState(()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
+  const [dailyRegistered,setDailyRegistered]=useState<any[]>([]);
+  const [dailyGridBusy,setDailyGridBusy]=useState(false);
+  const [dailyGridError,setDailyGridError]=useState("");
+  const refreshDailyGrid=useCallback(async()=>{
+    if(!dailyGridDate)return;
+    setDailyGridBusy(true);setDailyGridError("");
+    try{
+      const start=new Date(dailyGridDate+"T00:00:00+06:30").toISOString();
+      const end=new Date(new Date(start).getTime()+86400000).toISOString();
+      const gathered:any[]=[];
+      for(let offset=0;offset<10000;offset+=500){
+        const result=await (supabase as any).from("be_data_entry_parcel_details")
+          .select("pickup_id,parcel_sequence,delivery_way_id,merchant_id,recipient_name,contact_no_1,township,recipient_address,item_price,delivery_charges,delivery_fee,weight_kg,surcharge,weight_surcharge,cod_amount,saved_at")
+          .gte("saved_at",start).lt("saved_at",end).order("saved_at",{ascending:false}).range(offset,offset+499);
+        if(result.error)throw result.error;
+        const batch=Array.isArray(result.data)?result.data:[];
+        gathered.push(...batch);
+        if(batch.length<500)break;
+      }
+      setDailyRegistered(gathered);
+    }catch(error:any){setDailyGridError(error?.message||"Daily registration records could not be loaded.");setDailyRegistered([]);}
+    finally{setDailyGridBusy(false);}
+  },[dailyGridDate]);
+  useEffect(()=>{void refreshDailyGrid();},[refreshDailyGrid]);
   const registrationGridRows=useMemo(()=>{
     const query=gridSearch.trim().toLowerCase();
-    return rows
-      .map((row,index)=>({row,index}))
+    const selected=rows.map((row,index)=>({row,index}));
+    const selectedIds=new Set(selected.filter(item=>item.row.saved).map(item=>item.row.delivery_way_id));
+    const allRegistered=dailyRegistered.filter(item=>!selectedIds.has(item.delivery_way_id)).map(item=>({index:-1,row:{
+      pickup_id:item.pickup_id,parcel_sequence:Number(item.parcel_sequence)||0,delivery_way_id:item.delivery_way_id,
+      sourceMerchantName:item.merchant_id||"—",recipient_name:item.recipient_name||"",recipient_phone:item.contact_no_1||"",
+      township:item.township||"",delivery_address:item.recipient_address||"",item_price:item.item_price??0,
+      delivery_charges:item.delivery_charges??item.delivery_fee??0,weight_kg:item.weight_kg??"",
+      cbm_surcharge:0,other_surcharge:0,calculation:{weight_surcharge:item.weight_surcharge??item.surcharge??0,cod_amount:item.cod_amount},
+      saved:true,skipped:false,amount_entry_type:"ITEM_PRICE_PLUS_DECLARED_DELIVERY"
+    } as ParcelRow}));
+    return [...selected,...allRegistered]
+      
       .filter(({row})=>gridFilter==="REGISTERED"?row.saved:gridFilter==="PENDING"?!row.saved:true)
       .filter(({row})=>{
         if(!query) return true;
@@ -1560,8 +1595,8 @@ export default function DataEntryFinancialV2Page() {
         if(a.row.saved!==b.row.saved) return a.row.saved?-1:1;
         return a.row.parcel_sequence-b.row.parcel_sequence;
       });
-  },[rows,gridSearch,gridFilter,selectedPickup?.merchant_id,selectedPickup?.merchant_name]);
-  const registeredRowCount=useMemo(()=>rows.filter((row)=>row.saved).length,[rows]);
+  },[rows,dailyRegistered,gridSearch,gridFilter,selectedPickup?.merchant_id,selectedPickup?.merchant_name]);
+  const registeredRowCount=useMemo(()=>dailyRegistered.length,[dailyRegistered]);
 
   const updateRow=useCallback((index:number,patch:Partial<ParcelRow>)=>{
     setRows(current=>{
@@ -3441,10 +3476,11 @@ export default function DataEntryFinancialV2Page() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">{fullRegistration?"REGISTERED DATA / စာရင်းသွင်းပြီး":"Registration Grid"}</div>
-                <div className="mt-1 text-[11px] text-[#8db4ce]">Registered {registeredRowCount} of {rows.length} · Remaining {Math.max(rows.length-registeredRowCount,0)}</div>
+                <div className="mt-1 text-[11px] text-[#8db4ce]">Day {dailyGridDate} · All merchants registered: {registeredRowCount} · Selected pickup: {rows.filter(row=>row.saved).length}/{rows.length}</div>
               </div>
               <div className="text-[9px] italic text-[#7aa7c6]">Grid auto-updates from the recycled form.</div>
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white"><label htmlFor="all-merchant-grid-date">Registration day (Myanmar)</label><input id="all-merchant-grid-date" type="date" className="rounded border border-[#31506a] bg-white px-2 py-1 text-black" value={dailyGridDate} onChange={e=>setDailyGridDate(e.target.value)}/><button type="button" onClick={()=>void refreshDailyGrid()} className="rounded border border-cyan-400/40 px-3 py-1 text-cyan-100">Refresh all merchants</button>{dailyGridBusy?<span>Loading…</span>:null}{dailyGridError?<span className="text-rose-300">{dailyGridError}</span>:null}</div>
             {!fullRegistration?<div className="mt-3 flex flex-wrap items-center gap-2">
               <input className={`${inputClass} min-w-[220px] flex-1`} value={gridSearch} onChange={(event)=>setGridSearch(event.target.value)} placeholder="Search Way ID, recipient, phone, township, address…"/>
               {(["ALL","REGISTERED","PENDING"] as const).map((filter)=><button key={filter} type="button" onClick={()=>setGridFilter(filter)} className={`rounded-lg border px-3 py-2 text-[10px] font-black ${gridFilter===filter?"border-[#f6b84b] bg-[#f6b84b]/15 text-[#ffd36f]":"border-[#31506a] bg-[#071b2b] text-[#9cc2d9]"}`}>{filter}{filter==="REGISTERED"?` (${registeredRowCount})`:filter==="PENDING"?` (${Math.max(rows.length-registeredRowCount,0)})`:""}</button>)}
@@ -3470,13 +3506,13 @@ export default function DataEntryFinancialV2Page() {
               </thead>
               <tbody>
                 {registrationGridRows.map(({row,index})=>{
-                  const selected=index===pageStart;
+                  const selected=index>=0&&index===pageStart;
                   const surcharge=num(row.cbm_surcharge)+num(row.other_surcharge)+num(row.calculation?.weight_surcharge);
                   const finalCod=row.calculation?.cod_amount ?? (row.amount_entry_type==="EXACT_COLLECTION_AMOUNT"?row.merchant_stated_total_amount:"");
                   const status=row.saved?"REGISTERED":row.skipped?"PENDING":"DRAFT";
                   return <tr
                     key={row.pickup_id+":"+row.parcel_sequence}
-                    onDoubleClick={()=>setPageIndex(index)}
+                    onDoubleClick={()=>{if(index>=0)setPageIndex(index);}}
                     className={`border-b border-slate-200 ${selected?"bg-sky-100":row.saved?"bg-emerald-50":"bg-white hover:bg-slate-50"}`}
                   >
                     <td className="px-3 py-2 font-black text-slate-500">{row.parcel_sequence}</td>
@@ -3489,7 +3525,7 @@ export default function DataEntryFinancialV2Page() {
                     <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.item_price)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{money(row.delivery_charges)}</td>
                     <td className="whitespace-nowrap px-3 py-2 text-right">{row.weight_kg===""?"—":Number(row.weight_kg).toLocaleString("en-US")}</td>
-                    {!fullRegistration?<><td className="whitespace-nowrap px-3 py-2 text-right">{surcharge?money(surcharge):"—"}</td><td className="whitespace-nowrap px-3 py-2 text-right font-black text-slate-900">{money(finalCod)}</td><td className="px-3 py-2"><span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.saved?"border-emerald-300 bg-emerald-100 text-emerald-800":row.skipped?"border-amber-300 bg-amber-100 text-amber-800":"border-slate-300 bg-slate-100 text-slate-700"}`}>{status}</span></td><td className="px-3 py-2"><button type="button" onClick={()=>setPageIndex(index)} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 font-black text-sky-800">{selected?"EDITING":"OPEN"}</button></td></>:null}
+                    {!fullRegistration?<><td className="whitespace-nowrap px-3 py-2 text-right">{surcharge?money(surcharge):"—"}</td><td className="whitespace-nowrap px-3 py-2 text-right font-black text-slate-900">{money(finalCod)}</td><td className="px-3 py-2"><span className={`rounded-full border px-2 py-1 text-[9px] font-black ${row.saved?"border-emerald-300 bg-emerald-100 text-emerald-800":row.skipped?"border-amber-300 bg-amber-100 text-amber-800":"border-slate-300 bg-slate-100 text-slate-700"}`}>{status}</span></td><td className="px-3 py-2"><button type="button" onClick={()=>{if(index>=0)setPageIndex(index);}} disabled={index<0} className="rounded-lg border border-sky-300 bg-sky-50 px-3 py-1.5 font-black text-sky-800">{index<0?"VIEW ONLY":selected?"EDITING":"OPEN"}</button></td></>:null}
                   </tr>;
                 })}
                 {!registrationGridRows.length?<tr><td colSpan={fullRegistration?10:14} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">No registration rows match the current search/filter.</td></tr>:null}
