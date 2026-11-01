@@ -12,11 +12,15 @@ const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const isNativeApp = Capacitor.isNativePlatform();
 const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
-const supabaseUrl = shouldUseWebProxy ? `${window.location.origin}/supabase` : directSupabaseUrl;
+// Native bundles do not share the browser origin with our portal. Route native API
+// traffic via the same HTTPS proxy as the web app; builds can override the
+// endpoint with VITE_NATIVE_SUPABASE_PROXY_URL when required.
+const nativeProxyUrl = String(import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase").trim().replace(/\\/$/,"");
+const supabaseUrl = isNativeApp ? nativeProxyUrl : shouldUseWebProxy ? `${window.location.origin}/supabase` : directSupabaseUrl;
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
 
 if (isNativeApp) {
-  console.info("[Britium Supabase] Native app detected; using direct Supabase HTTPS endpoint.");
+  console.info("[Britium Supabase] Native app detected; using Britium HTTPS API proxy.");
 }
 
 const authStorageKey = (() => {
