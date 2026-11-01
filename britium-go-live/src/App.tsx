@@ -19,24 +19,59 @@ function BranchDispatchRoute() {
 
 const GLOBAL_FONT = "font-['Poppins','Noto_Sans_Myanmar',sans-serif] antialiased";
 
+// Recover a stale Vite chunk after deployment, but never enter a reload loop.
+const CHUNK_RECOVERY_KEY = "britium_chunk_recovery_at";
+const CHUNK_RECOVERY_COOLDOWN_MS = 60_000;
+
+function isChunkLoadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|loading (?:css )?chunk .* failed|failed to load module script|failed to preload|load failed|mime type of ["']text\/html|unexpected token ['"]?</i.test(message);
+}
+
+function recoverFromStaleChunk(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const previous = Number(window.sessionStorage.getItem(CHUNK_RECOVERY_KEY) || "0");
+    if (Date.now() - previous < CHUNK_RECOVERY_COOLDOWN_MS) return false;
+    window.sessionStorage.setItem(CHUNK_RECOVERY_KEY, String(Date.now()));
+  } catch {
+    // Without session storage, there is no safe way to bound automatic reloads.
+    return false;
+  }
+  window.location.reload();
+  return true;
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("vite:preloadError", (event: Event) => {
+    const preloadError = (event as Event & { payload?: unknown }).payload;
+    if (isChunkLoadError(preloadError) && recoverFromStaleChunk()) {
+      event.preventDefault();
+    }
+  });
+}
+
 const safeLazy = (importPage: () => Promise<{ default: React.ComponentType }>) =>
   lazy(() =>
-    importPage().catch((error: Error) => {
+    importPage().catch((error: unknown) => {
       console.error("Module load error", error);
-      const isChunkError = error.message?.includes("Failed to fetch dynamically imported module");
-      const hasReloaded = sessionStorage.getItem("vite_chunk_reload");
-
-      if (isChunkError && !hasReloaded) {
-        sessionStorage.setItem("vite_chunk_reload", "true");
-        window.location.reload();
+      if (isChunkLoadError(error) && recoverFromStaleChunk()) {
         return { default: () => null };
       }
-
-      sessionStorage.removeItem("vite_chunk_reload");
       return {
         default: () => (
-          <div className={`flex h-screen w-full items-center justify-center bg-[#061524] text-[12px] font-bold uppercase tracking-widest text-[#ff4f86] ${GLOBAL_FONT}`}>
-            Failed to load module. Please refresh your browser.
+          <div className={`flex min-h-screen w-full flex-col items-center justify-center gap-5 bg-[#061524] px-5 text-center text-[#c8dff0] ${GLOBAL_FONT}`}>
+            <h2 className="text-lg font-bold">Unable to load this screen</h2>
+            <p className="max-w-md text-sm">
+              The portal could not load the required files. Reload to request the latest version.
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-lg bg-[#f6b84b] px-6 py-3 text-sm font-bold text-[#061524] hover:bg-[#e5a93a]"
+            >
+              Reload screen
+            </button>
           </div>
         ),
       };
