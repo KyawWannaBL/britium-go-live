@@ -19,7 +19,9 @@ function BranchDispatchRoute() {
 
 const GLOBAL_FONT = "font-['Poppins','Noto_Sans_Myanmar',sans-serif] antialiased";
 
-// Recover a stale Vite chunk after deployment, but never enter a reload loop.
+// Browser tabs can reference removed hashed chunks after a Production deployment.
+// Refresh the document with a unique query string so a stale HTML or service
+// worker cache cannot keep returning the retired bundle.
 const CHUNK_RECOVERY_KEY = "britium_chunk_recovery_at";
 const CHUNK_RECOVERY_COOLDOWN_MS = 60_000;
 
@@ -28,17 +30,41 @@ function isChunkLoadError(error: unknown): boolean {
   return /failed to fetch dynamically imported module|importing a module script failed|error loading dynamically imported module|loading (?:css )?chunk .* failed|failed to load module script|failed to preload|load failed|mime type of ["']text\/html|unexpected token ['"]?</i.test(message);
 }
 
+function reloadCurrentPortalVersion(): void {
+  if (typeof window === "undefined") return;
+  const next = new URL(window.location.href);
+  next.searchParams.set("be_latest", Date.now().toString());
+
+  // Some older versions installed a service worker; remove its document
+  // interception without touching localStorage, IndexedDB or parcel drafts.
+  const navigate = () => window.location.replace(next.toString());
+  if ("serviceWorker" in navigator) {
+    void navigator.serviceWorker.getRegistrations()
+      .then((registrations) =>
+        Promise.allSettled(
+          registrations
+            .filter((registration) => registration.scope.startsWith(window.location.origin + "/"))
+            .map((registration) => registration.unregister()),
+        ),
+      )
+      .catch((error) => console.warn("Service worker refresh was unavailable", error))
+      .finally(navigate);
+    return;
+  }
+  navigate();
+}
+
 function recoverFromStaleChunk(): boolean {
   if (typeof window === "undefined") return false;
   try {
     const previous = Number(window.sessionStorage.getItem(CHUNK_RECOVERY_KEY) || "0");
-    if (Date.now() - previous < CHUNK_RECOVERY_COOLDOWN_MS) return false;
+    if (previous && Date.now() - previous < CHUNK_RECOVERY_COOLDOWN_MS) return false;
     window.sessionStorage.setItem(CHUNK_RECOVERY_KEY, String(Date.now()));
   } catch {
-    // Without session storage, there is no safe way to bound automatic reloads.
+    // Never auto-reload indefinitely if session storage is unavailable.
     return false;
   }
-  window.location.reload();
+  reloadCurrentPortalVersion();
   return true;
 }
 
@@ -58,20 +84,24 @@ const safeLazy = (importPage: () => Promise<{ default: React.ComponentType }>) =
       if (isChunkLoadError(error) && recoverFromStaleChunk()) {
         return { default: () => null };
       }
+      const details = error instanceof Error ? error.message : String(error ?? "Unknown module error");
       return {
         default: () => (
           <div className={`flex min-h-screen w-full flex-col items-center justify-center gap-5 bg-[#061524] px-5 text-center text-[#c8dff0] ${GLOBAL_FONT}`}>
-            <h2 className="text-lg font-bold">Unable to load this screen</h2>
+            <h2 className="text-lg font-bold">Unable to open this screen</h2>
             <p className="max-w-md text-sm">
-              The portal could not load the required files. Reload to request the latest version.
+              A required application module could not start. Try fetching the current version.
             </p>
             <button
               type="button"
-              onClick={() => window.location.reload()}
+              onClick={reloadCurrentPortalVersion}
               className="rounded-lg bg-[#f6b84b] px-6 py-3 text-sm font-bold text-[#061524] hover:bg-[#e5a93a]"
             >
-              Reload screen
+              Load latest version
             </button>
+            <p className="max-w-lg break-all text-xs text-[#7590a7]" role="status">
+              Technical detail: {details}
+            </p>
           </div>
         ),
       };
