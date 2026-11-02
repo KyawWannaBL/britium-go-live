@@ -89,6 +89,7 @@ type Pickup = {
   registered_parcels: number;
   pickup_date: string;
   created_at: string;
+  official_registration_date: string;
   pickup_status: string;
   workflow_stage: string;
 };
@@ -230,6 +231,7 @@ function normalizePickup(row: any): Pickup | null {
     registered_parcels: positiveInt(row?.registered_parcels || row?.registered_parcel_count),
     pickup_date: text(row?.pickup_date).trim(),
     created_at: text(row?.created_at).trim(),
+    official_registration_date: text(row?.created_at).trim() ? new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date(row.created_at)) : "",
     pickup_status: text(row?.pickup_status).trim(),
     workflow_stage: text(row?.workflow_stage).trim(),
   };
@@ -2162,6 +2164,8 @@ export default function DataEntryFinancialV2Page() {
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
             <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
+            <div className={serverClass}>Official Registration Date (CS submission): <b>{selectedPickup.official_registration_date||"Unavailable"}</b></div>
+            <div className={serverClass}>Scheduled Pickup: <b>{selectedPickup.pickup_date||"—"}</b></div>
             <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
