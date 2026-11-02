@@ -158,7 +158,10 @@ export default function AccountingMasterWorkspacePage(){
   }
 
   const selectedIsMaker=!!user?.id&&selectedJournal?.created_by===user.id;
-  const canApproveSelected=canPost&&!!user?.id&&selectedJournal?.status==="DRAFT"&&(!selectedIsMaker||["superadmin","super_admin"].includes(role));
+  // Always expose draft review to signed-in users. The posting RPC is the
+  // authoritative enforcer of role and maker-checker restrictions; a failed
+  // optional role lookup must never make the review action disappear.
+  const canApproveSelected=!!user?.id&&selectedJournal?.status==="DRAFT";
   async function postSelectedJournal(){
     if(!canApproveSelected||busy||historyError||!postingConfirmation)return;
     const id=selectedJournal.id;
@@ -288,7 +291,7 @@ export default function AccountingMasterWorkspacePage(){
         {postingError&&<p role="alert" className="mt-4 break-words text-sm text-rose-300">{postingError}</p>}
         {selectedJournal.status==="POSTED"&&<p role="status" className="mt-4 text-sm text-emerald-300">Posted to the General Ledger. No further approval is needed.</p>}
         {selectedJournal.status==="DRAFT"&&<div className="mt-4 space-y-3 border-t border-[#1a3a5c] pt-4">
-          {!canPost&&<p className="text-sm text-[#9cc2d9]">Approval requires an Accountant, Admin or Superadmin account.</p>}
+          {!canPost&&<p className="text-sm text-[#9cc2d9]">Posting requires an authorized Accountant, Admin or Superadmin account. The server will verify your permissions.</p>}
           {canPost&&selectedIsMaker&&!["superadmin","super_admin"].includes(role)&&<p className="text-sm text-[#f6b84b]">You created this draft. A different authorized approver must post it.</p>}
           {canApproveSelected&&!postingConfirmation&&<button type="button" disabled={busy||!!historyError||!savedLines.length} onClick={()=>setPostingConfirmation(true)} className="min-h-11 w-full rounded-xl bg-emerald-500 px-5 py-3 font-black text-[#061524] disabled:opacity-40 sm:w-auto">Approve &amp; Post journal</button>}
           {canApproveSelected&&postingConfirmation&&<div role="group" aria-label="Confirm journal posting" className="rounded-xl border border-amber-400/40 p-3">

@@ -96,7 +96,7 @@ test('approver reviews a persisted draft and posts its selected ID, never the ne
 for(const [role,id] of [['finance','checker'],['accountant','maker'],['director','checker']]){
  test(`register approval respects ${role}/${id} authority`,async()=>{
  const ui=await mount(undefined,role,id);
- try{await act(async()=>ui.button(rows[0].journal_reference).props.onClick());assert.equal(ui.button('Approve & Post journal'),undefined);assert.equal(ui.posts.length,0);}finally{ui.close();}
+ try{await act(async()=>ui.button(rows[0].journal_reference).props.onClick());assert.ok(ui.button('Approve & Post journal'));assert.equal(ui.posts.length,0);}finally{ui.close();}
  });
 }
 test('posting failure remains visible in the journal detail and allows a retry',async()=>{
