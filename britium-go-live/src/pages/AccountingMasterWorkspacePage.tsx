@@ -35,7 +35,20 @@ function SearchMaster({kind,value,onSelect,placeholder}:{kind:string;value:any;o
 
 export default function AccountingMasterWorkspacePage(){
   const {profile,user}=useAuth();
-  const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
+  const [postingRole,setPostingRole]=useState("");
+  // Match the exact authoritative role evaluated by be_accounting_manual_journal_post_v1.
+  // AuthContext profile.role can differ from the account registry/delegated role.
+  useEffect(()=>{
+    let active=true;
+    setPostingRole("");
+    if(!user?.id)return;
+    void (async()=>{
+      const {data,error}=await (supabase as any).rpc("be_current_role");
+      if(active&&!error)setPostingRole(String(data||"").toLowerCase().replaceAll("-","_"));
+    })();
+    return ()=>{active=false};
+  },[user?.id]);
+  const role=postingRole;
   const canPost=["accountant","superadmin","super_admin","admin"].includes(role);
   const [tab,setTab]=useState("journal");
   const [message,setMessage]=useState("");
