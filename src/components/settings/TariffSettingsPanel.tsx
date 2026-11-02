@@ -163,6 +163,8 @@ export function TariffSettingsPanel({
 }: {
   language: Language;
 }) {
+  const [newTier,setNewTier]=useState("");
+  const [canManage,setCanManage]=useState(false);
   const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS">("BRITIUM");
   const [rows, setRows] = useState<TariffDraft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,6 +186,8 @@ export function TariffSettingsPanel({
       if (error) throw error;
 
       setRows(normalizeRows(data));
+      const rights=await supabase.rpc("be_tariff_rights_list_v1");
+      setCanManage(Boolean((rights.data as any)?.can_manage));
     } catch (error) {
       setRows([]);
       setErrorMessage(errorText(language, error));
@@ -280,6 +284,7 @@ export function TariffSettingsPanel({
     <div className="mt-6">
       <div className="mb-4 flex gap-2 rounded-2xl border bg-white p-2">{(["BRITIUM","ROYAL EXPRESS"] as const).map(provider=><button key={provider} type="button" onClick={()=>setActiveTab(provider)} className={`rounded-xl px-5 py-3 font-bold ${activeTab===provider?"bg-blue-900 text-white":"bg-slate-100 text-slate-700"}`}>{provider==="BRITIUM"?"Britium Tariff":"Royal Express Tariff"}</button>)}</div>
       {activeTab==="ROYAL EXPRESS" ? <ProviderTariffManager provider="ROYAL EXPRESS" language={language}/> : <>
+      {canManage&&<div className="flex gap-2 p-3"><input aria-label="New tier" value={newTier} onChange={e=>setNewTier(e.target.value)} placeholder="New Britium tier" className="rounded-lg border p-2"/><button type="button" onClick={async()=>{const {error}=await supabase.rpc("be_tariff_tier_manage_v1",{p_action:"ADD",p_tier:newTier,p_base_fee:4000,p_extra_per_kg:500,p_free_kg:3,p_highway_fee:0});if(error)setErrorMessage(error.message);else{setNewTier("");await loadTariffs();}}}>Add tier</button></div>}
       <div className="rounded-[32px] border border-black/10 bg-white/55 p-6 shadow-sm backdrop-blur-md">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
