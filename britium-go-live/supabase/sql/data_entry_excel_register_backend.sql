@@ -380,7 +380,7 @@ begin
     select
       n.*,
       count(*) over (partition by pickup_date, merchant_code) as parcel_count,
-      row_number() over (partition by pickup_date, merchant_code order by row_no) as delivery_seq
+      row_number() over (partition by pickup_date order by row_no) as delivery_seq
     from normalized n
   ),
   charges as (
