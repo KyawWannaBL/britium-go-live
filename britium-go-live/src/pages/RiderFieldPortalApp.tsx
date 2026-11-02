@@ -3745,7 +3745,7 @@ function FieldPortal() {
                 <div style={{ display: "grid", gap: 12 }}>
                   <div><label>Recipient name</label><input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} style={inputStyle()} /></div>
                   <div><label>Recipient phone</label><input value={recipientPhone} onChange={(e) => setRecipientPhone(e.target.value)} style={inputStyle()} /></div>
-                  <div><label>COD / Payment collected amount</label><input type="number" min="0" step="0.01" value={codCollected} onChange={(e) => setCodCollected(e.target.value)} style={inputStyle()} /></div>
+                  <div><label>COD / Payment collected amount</label><input type="number" min="0" step="0.01" value={codCollected} onChange={(e) => { const nextAmount = e.target.value; setCodCollected(nextAmount); setPaymentAllocations((previous) => { if (previous.length === 0) return nextAmount.trim() && Number(nextAmount) > 0 ? [{ method: "CASH", amount: nextAmount, reference: "" }] : []; if (previous.length === 1 && previous[0].method === "CASH" && !previous[0].reference) return nextAmount.trim() && Number(nextAmount) > 0 ? [{ ...previous[0], amount: nextAmount }] : []; return previous; }); }} style={inputStyle()} /></div>
                   <PaymentAllocationEditor value={paymentAllocations} onChange={setPaymentAllocations} disabled={busy}/>
                   <div><label>Required delivery proof photo</label><input type="file" accept="image/*" capture="environment" disabled={busy || proofPreparing} onChange={(event) => void handleProof(event)} style={inputStyle()} /></div>
                   {proofPreparing && <div style={{ color: C.blue }}>Compressing in a background worker…</div>}
