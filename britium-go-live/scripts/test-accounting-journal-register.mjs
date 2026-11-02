@@ -19,6 +19,7 @@ async function mount(initial = { data: { ok: true, rows }, error: null }, role =
   const responses = [initial];
   const rpc = async (name,args) => {
     if(name==='be_accounting_manual_journal_post_v1'){posts.push(args);return postResponses.shift()||{data:{ok:true,status:'POSTED',journal_reference:rows[0].journal_reference}};}
+    if (name === 'be_current_role') return { data: role, error: null };
     if (name === 'be_accounting_master_search_v1') return { data: { ok: true, rows: [] }, error: null };
     assert.equal(name, 'be_accounting_manual_journal_snapshot_v1', 'viewing journals must never save or post them');
     const next = responses.shift() || { data: { ok: true, rows }, error: null };
