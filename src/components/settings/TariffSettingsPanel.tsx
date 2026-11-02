@@ -473,6 +473,7 @@ export function TariffSettingsPanel({
                               "သိမ်းမည်",
                             )}
                       </button>
+                      {canManage && <button type="button" className="ml-2 rounded-lg bg-red-100 px-3 py-2 text-red-900" onClick={async()=>{if(!window.confirm(`Deactivate ${row.tier_name}?`))return;const {error}=await supabase.rpc("be_tariff_tier_manage_v1",{p_action:"REMOVE",p_tier:row.tier_name});if(error)setErrorMessage(error.message);else await loadTariffs();}}>Remove</button>}
                     </td>
                   </tr>
                 );
