@@ -163,6 +163,7 @@ export function TariffSettingsPanel({
 }: {
   language: Language;
 }) {
+  const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS">("BRITIUM");
   const [rows, setRows] = useState<TariffDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTier, setSavingTier] = useState<string | null>(
@@ -277,6 +278,8 @@ export function TariffSettingsPanel({
 
   return (
     <div className="mt-6">
+      <div className="mb-4 flex gap-2 rounded-2xl border bg-white p-2">{(["BRITIUM","ROYAL EXPRESS"] as const).map(provider=><button key={provider} type="button" onClick={()=>setActiveTab(provider)} className={`rounded-xl px-5 py-3 font-bold ${activeTab===provider?"bg-blue-900 text-white":"bg-slate-100 text-slate-700"}`}>{provider==="BRITIUM"?"Britium Tariff":"Royal Express Tariff"}</button>)}</div>
+      {activeTab==="ROYAL EXPRESS" ? <ProviderTariffManager provider="ROYAL EXPRESS" language={language}/> : <>
       <div className="rounded-[32px] border border-black/10 bg-white/55 p-6 shadow-sm backdrop-blur-md">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -503,6 +506,42 @@ export function TariffSettingsPanel({
           </table>
         </div>
       </div>
+      </>}
     </div>
   );
+}
+
+
+type CatalogTariff = {destination_key:string;destination_name:string;standard_rate_mmk:number;is_active:boolean;provider_code:string};
+function ProviderTariffManager({provider,language}:{provider:"ROYAL EXPRESS";language:Language}){
+ const [items,setItems]=useState<CatalogTariff[]>([]);
+ const [rights,setRights]=useState<{can_manage:boolean;is_superadmin:boolean;rights:{role_code:string;can_manage:boolean}[]}|null>(null);
+ const [name,setName]=useState(""); const [price,setPrice]=useState("5000");
+ const [editing,setEditing]=useState<Record<string,{name:string;price:string}>>({});
+ const [working,setWorking]=useState(false); const [message,setMessage]=useState("");
+ const refresh=useCallback(async()=>{
+   const [catalog,access]=await Promise.all([supabase.from("be_data_entry_tariff_catalog").select("destination_key,destination_name,standard_rate_mmk,is_active,provider_code").eq("provider_code",provider).order("destination_name"),supabase.rpc("be_tariff_rights_list_v1")]);
+   if(catalog.error) throw catalog.error; if(access.error) throw access.error;
+   setItems((catalog.data||[]) as CatalogTariff[]);setRights(access.data as any);
+ },[provider]);
+ useEffect(()=>{void refresh().catch(e=>setMessage(e.message));},[refresh]);
+ async function mutate(action:"ADD"|"EDIT"|"REMOVE"|"SAVE",key:string,displayName:string,amount:string){
+   if(!rights?.can_manage){setMessage("Tariff edit permission required.");return;}
+   if(action!=="REMOVE"&&(!/^\\d+$/.test(amount)||!displayName.trim())){setMessage("Enter a valid destination and whole-number price.");return;}
+   if(action==="REMOVE"&&!window.confirm("Deactivate this tariff? Existing historical records will be preserved."))return;
+   setWorking(true);setMessage("");try{
+     const {data,error}=await supabase.rpc("be_tariff_catalog_manage_v1",{p_provider:provider,p_action:action,p_key:key,p_name:displayName,p_rate:action==="REMOVE"?null:Number(amount)});
+     if(error)throw error;if((data as any)?.ok!==true)throw Error("Tariff update rejected");
+     await refresh();setMessage("Saved successfully.");if(action==="ADD")setName("");
+   }catch(e:any){setMessage(e?.message||"Unable to save tariff.");}finally{setWorking(false);}
+ }
+ async function toggle(role:string,allowed:boolean){setWorking(true);try{const {error}=await supabase.rpc("be_tariff_rights_manage_v1",{p_role:role,p_allowed:allowed});if(error)throw error;await refresh();setMessage("Permission updated.");}catch(e:any){setMessage(e.message);}finally{setWorking(false);}}
+ return <div className="rounded-3xl border bg-white p-5 space-y-4">
+   <h3 className="text-xl font-black">Royal Express — Destination Tariffs</h3>
+   <p className="text-sm text-slate-600">Provider-specific rates; does not change Britium tariffs. Removing a tariff deactivates it and preserves its audit history.</p>
+   {message&&<div role="status" className="rounded-xl bg-blue-50 p-3 text-sm">{message}</div>}
+   {rights?.can_manage&&<div className="grid gap-2 md:grid-cols-[1fr_160px_auto]"><input aria-label="Destination name" value={name} onChange={e=>setName(e.target.value)} placeholder="New destination (e.g. ထောက်ကြံ့)" className="rounded-xl border p-3"/><input type="number" min="0" aria-label="Standard tariff MMK" value={price} onChange={e=>setPrice(e.target.value)} className="rounded-xl border p-3"/><button disabled={working||!name.trim()} className="rounded-xl bg-blue-900 p-3 font-bold text-white disabled:opacity-50" onClick={()=>void mutate("ADD",name.trim().toLowerCase()+" (royal)",name.trim()+" (Royal)",price)}>Add</button></div>}
+   <div className="max-h-[520px] overflow-auto"><table className="w-full min-w-[560px] text-sm"><thead><tr className="text-left"><th className="p-2">Destination</th><th className="p-2">Standard MMK</th><th className="p-2">Status</th><th className="p-2">Actions</th></tr></thead><tbody>{items.map(t=>{const edit=editing[t.destination_key]||{name:t.destination_name,price:String(t.standard_rate_mmk)};return <tr key={t.destination_key} className="border-t"><td className="p-2"><input className="w-full rounded-lg border p-2" disabled={!rights?.can_manage||working} value={edit.name} onChange={e=>setEditing(v=>({...v,[t.destination_key]:{...edit,name:e.target.value}}))}/></td><td className="p-2"><input className="w-28 rounded-lg border p-2" type="number" disabled={!rights?.can_manage||working} value={edit.price} onChange={e=>setEditing(v=>({...v,[t.destination_key]:{...edit,price:e.target.value}}))}/></td><td className="p-2">{t.is_active?"Active":"Inactive"}</td><td className="p-2 whitespace-nowrap">{rights?.can_manage&&<><button disabled={working} className="mr-2 rounded-lg bg-blue-900 px-3 py-2 text-white" onClick={()=>void mutate("SAVE",t.destination_key,edit.name,edit.price)}>Save / Edit</button><button disabled={working||!t.is_active} className="rounded-lg bg-rose-100 px-3 py-2 text-rose-900" onClick={()=>void mutate("REMOVE",t.destination_key,edit.name,edit.price)}>Remove</button></>}</td></tr>})}</tbody></table></div>
+   {rights?.is_superadmin&&<section className="space-y-2 rounded-xl border p-3"><h4 className="font-black">Super Admin — Revoke / Grant Tariff Editing Rights</h4>{(rights.rights||[]).map(role=><label key={role.role_code} className="flex items-center gap-2"><input type="checkbox" checked={role.can_manage} disabled={working} onChange={e=>void toggle(role.role_code,e.target.checked)}/>{role.role_code}</label>)}</section>}
+ </div>;
 }
