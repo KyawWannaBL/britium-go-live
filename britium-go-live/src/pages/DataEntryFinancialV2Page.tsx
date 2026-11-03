@@ -1,4 +1,5 @@
 import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
+import { CorporateDataEntryBinding } from "@/components/tariff/CorporateTariffPanel";
 import { scopeReadySequences } from "@/lib/waybillPublicationScope";
 import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
 import BufferedDataEntryInput from "@/components/BufferedDataEntryInput";
@@ -3591,6 +3592,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
         :null}
 
+        {selectedPickup?.merchant_id && <CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/>}
         <nav role="tablist" aria-label="Data Entry workspace tabs" className="flex flex-wrap gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] p-2">
           <button role="tab" aria-selected={dataEntryTab==="ENTRY"} type="button" onClick={()=>setDataEntryTab("ENTRY")} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="ENTRY"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>PARCEL REGISTRATION</button>
           <button role="tab" aria-selected={dataEntryTab==="STAFF_PROGRESS"} type="button" onClick={()=>{setDataEntryTab("STAFF_PROGRESS");void loadStaffProgress(progressDate);}} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="STAFF_PROGRESS"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>DATA ENTRY STAFF PROGRESS</button>
