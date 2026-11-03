@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Calculator, Database, Edit3, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { CorporateTariffPanel } from "@/components/tariff/CorporateTariffPanel";
 
 type TariffRow = {
   id: string; township: string; zone: string; tier: string; baseFee: number;
@@ -66,7 +67,7 @@ export default function TariffPage(){
   const isSuperadmin=role==="superadmin"||role==="super_admin";
   const [canEdit,setCanEdit]=useState(false);
   const [rights,setRights]=useState<any>(null);
-  const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS">("BRITIUM");
+  const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS"|"CORPORATE">("BRITIUM");
   const [royal,setRoyal]=useState<any[]>([]);
   const [royalSearch,setRoyalSearch]=useState("");
   const [royalEdit,setRoyalEdit]=useState<any>(null);
@@ -231,13 +232,13 @@ export default function TariffPage(){
       </header>
 
       <nav aria-label="Tariff provider" className="flex flex-wrap gap-2 rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-3">
-        {(["BRITIUM","ROYAL EXPRESS"] as const).map(provider=><button key={provider} type="button"
+        {(["BRITIUM","ROYAL EXPRESS","CORPORATE"] as const).map(provider=><button key={provider} type="button"
           onClick={()=>setActiveTab(provider)} aria-pressed={activeTab===provider}
           className={"rounded-xl px-5 py-3 text-sm font-black "+(activeTab===provider?"bg-[#f6b84b] text-[#061524]":"bg-[#061524] text-[#c8dff0]")}>
-          {provider==="BRITIUM"?"Britium Tariffs":"Royal Express Tariffs"}
+          {provider==="BRITIUM"?"Britium Tariffs":provider==="ROYAL EXPRESS"?"Royal Express Tariffs":"Corporate Services Tariffs"}
         </button>)}
       </nav>
-      {activeTab==="ROYAL EXPRESS" ? <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+      {activeTab==="CORPORATE" ? <CorporateTariffPanel canEdit={canEdit} isSuperadmin={Boolean(rights?.is_superadmin)}/> : activeTab==="ROYAL EXPRESS" ? <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="text-xl font-black text-white">Royal Express — Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{royal.length} destinations · Changes save to the live catalog through the audited tariff RPC.</p></div>
           <input aria-label="Search Royal Express destinations" value={royalSearch} onChange={e=>setRoyalSearch(e.target.value)}

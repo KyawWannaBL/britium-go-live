@@ -1,5 +1,6 @@
 import React, {useEffect,useMemo,useState} from 'react';
 import {supabase} from '@/integrations/supabase/client';
+import {CorporateThirdPartyContext} from '@/components/tariff/CorporateTariffPanel';
 
 const OUTCOMES=['DELIVERED','RTO','FAILED','POSTPONED','NO_ATTEMPT','UNREACHABLE','REFUSED','ADDRESS_ISSUE','LOST','DAMAGED','HANDED_TO_PARTNER','OTHER'];
 const REASONS=['','PHONE_OFF','NOT_ANSWERING','UNREACHABLE','OUT_OF_AREA','ADDRESS_INCORRECT','RECIPIENT_REFUSED','RECIPIENT_ABSENT','TIME_NOT_ENOUGH','CUSTOMER_REQUESTED_POSTPONEMENT','DAMAGED','LOST','RTO_REQUESTED','OTHER'];
@@ -14,7 +15,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
   const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:search||null,p_outcome:filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
   setRows(data.rows||[]);setTotal(data.total||0);
- }catch(e:any){setMessage(e.message);}finally{setBusy(false);}}
+ }catch(e:any){setRows([]);setTotal(0);setMessage(e.message);}finally{setBusy(false);}}
  useEffect(()=>{void refresh();},[filter]);
  const chosen=useMemo(()=>rows.find(r=>r.delivery_way_id===selected?.delivery_way_id)||selected,[rows,selected]);
  function choose(r:Row){setSelected(r);setOutcome(r.cs_outcome==='UNCONFIRMED'?'DELIVERED':r.cs_outcome);setProvider(r.provider_code||'Royal Express');setReason(r.reason_code||'');setNote(r.notes||'');setEvidence('');setMessage('');setModalError('');}
@@ -35,6 +36,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
   </div>
   <p>{total} unique Ways matching this filter. Repeated scheduling dates are combined per Way ID.</p>
   {message&&<p role="status" style={{padding:12,background:'#17324b',borderRadius:6}}>{message}</p>}
+  {total===0&&<p role="status" style={{padding:12,border:'1px solid #486a88',borderRadius:7,margin:'8px 0',color:'#fbbf24'}}>No current third-party schedule qualifies under the live go-live cutoff. Historical schedules are intentionally excluded; this is not proof of delivery. Check current wayplan scheduling or search a newly scheduled Way ID.</p>}
   <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:940}}>
    <thead><tr>{['Way ID','Latest schedule','Attempts in schedule','Merchant account','Recipient','System status','CS status','Expected COD','Finance review','Action'].map(x=><th key={x} style={{textAlign:'left',padding:10,background:'#193a55'}}>{x}</th>)}</tr></thead>
    <tbody>{rows.map(r=><tr key={r.delivery_way_id} style={{borderBottom:'1px solid #36506a'}}>
@@ -47,6 +49,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
   {chosen&&<div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,10,20,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:16}}><section role="dialog" aria-modal="true" aria-label={`Confirm third-party delivery for ${chosen.delivery_way_id}`} style={{width:'min(960px,100%)',maxHeight:'90vh',overflowY:'auto',padding:20,border:'1px solid #54718c',borderRadius:10,background:'#10283c',boxShadow:'0 20px 65px rgba(0,0,0,0.55)'}}>
    <div style={{display:'flex',justifyContent:'space-between',gap:12,alignItems:'start'}}><h2 style={{fontSize:19,fontWeight:600}}>Confirm {chosen.delivery_way_id} · {chosen.merchant_name||'Merchant unresolved'}</h2><button type="button" aria-label="Close confirmation dialog" onClick={()=>setSelected(null)} style={{fontSize:22,color:'#fff',padding:'3px 10px',border:'1px solid #64748b',borderRadius:6}}>×</button></div>
    <p>Previous CS outcome: {chosen.cs_outcome} · Revision {chosen.revision||0}. Merchant account: {chosen.merchant_code||'not resolved'}.</p>
+   <CorporateThirdPartyContext wayId={chosen.delivery_way_id}/>
    <p style={{fontWeight:600,marginBottom:7}}>Choose a confirmation action:</p>
    <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:16}}>{[{code:'DELIVERED',title:'Delivered / ပို့ပြီး'},{code:'RTO',title:'RTO / ပြန်ပို့'},{code:'REFUSED',title:'Rejected / လက်မခံ'},{code:'FAILED',title:'Failed / မအောင်မြင်'},{code:'POSTPONED',title:'Postponed / ရွှေ့ဆိုင်း'}].map(a=><button type="button" key={a.code} onClick={()=>{setOutcome(a.code);setModalError('');setReason(a.code==='REFUSED'?'RECIPIENT_REFUSED':'');}} style={{padding:'10px 13px',borderRadius:7,border:outcome===a.code?'2px solid #f5b942':'1px solid #6988a0',background:outcome===a.code?'#f5b942':'#1c3c54',color:outcome===a.code?'#142334':'#f8fafc',fontWeight:600}}>{a.title}</button>)}</div>
    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))',gap:12}}>
