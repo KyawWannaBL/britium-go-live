@@ -3,7 +3,7 @@ const GOOGLE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:compu
 const MAPBOX_MATRIX_BASE = "https://api.mapbox.com/directions-matrix/v1/mapbox/driving";
 const GOOGLE_BATCH = 10;
 const MAPBOX_BATCH = 12;
-const DEFAULT_PROVIDER_MODE = "MAPBOX_PREFERRED_BILLING_HOLD";
+const DEFAULT_PROVIDER_MODE = "GOOGLE_ONLY";
 
 function env(...names){for(const name of names){const value=String(process.env[name]||"").trim();if(value)return value;}return "";}
 function json(body,status=200,headers={}){return Response.json(body,{status,headers:{"Cache-Control":"no-store",...headers}});}
@@ -201,7 +201,24 @@ export default {
         }
       }
 
-      if (oneToMany) return (await useMapbox()) || localFallback();
+      if (oneToMany) {
+        if (googleAllowed) {
+          try {
+            const matrix = await googleMatrix(points, googleKey);
+            const durations = matrix.durations[0].slice(1);
+            const distances = matrix.distances[0].slice(1);
+            if (durations.some((v,i) => !Number.isFinite(v) || !Number.isFinite(distances[i]))) {
+              throw new Error("Google Routes could not reach every destination from the office.");
+            }
+            return json({ok:true,source:"GOOGLE_ROUTES",estimated:false,
+              durations:[durations],distances:[distances],request_count:matrix.requestCount});
+          } catch (error) {
+            diagnostics.push(`Google Routes origin matrix: ${String(error?.message || error).slice(0,300)}`);
+          }
+        }
+        if (mapboxAllowed) return (await useMapbox()) || localFallback();
+        return localFallback();
+      }
       if (mapboxPreferred) {
         const mapboxResult = await useMapbox();
         if (mapboxResult) return mapboxResult;
