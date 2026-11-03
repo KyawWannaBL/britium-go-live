@@ -23,6 +23,9 @@ export default function FinancePortal() {
   const [weightReviewRows,setWeightReviewRows]=useState<any[]>([]);
   const [weightReviewError,setWeightReviewError]=useState("");
   const [weightReviewLoading,setWeightReviewLoading]=useState(false);
+  const [weightReviewReasons,setWeightReviewReasons]=useState<Record<string,string>>({});
+  const [weightReviewDeciding,setWeightReviewDeciding]=useState("");
+  const [weightReviewSuccess,setWeightReviewSuccess]=useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fieldDate, setFieldDate] = useState(() => new Date().toISOString().slice(0,10));
@@ -166,6 +169,19 @@ export default function FinancePortal() {
     setPartyWalletLoading(false);
   }
 
+  async function decideWeightReview(id:string,decision:"APPROVED"|"REJECTED"){
+    const reason=(weightReviewReasons[id]||"").trim();
+    if(reason.length<5){setWeightReviewError("Enter a review reason of at least five characters.");return;}
+    if(!window.confirm(`${decision==="APPROVED"?"Approve":"Reject"} this weight-review request? This will NOT change parcel COD or settlement balances.`))return;
+    setWeightReviewDeciding(id);setWeightReviewError("");setWeightReviewSuccess("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_finance_decide_field_weight_review_v1",{p_request_id:id,p_decision:decision,p_reason:reason});
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Decision could not be saved.");
+      setWeightReviewSuccess(`${decision} recorded with an audit trail. Financial amounts remain unchanged.`);
+      await loadWeightReviews();
+    }catch(e:any){setWeightReviewError(e?.message||"Unable to save weight review decision.");}
+    finally{setWeightReviewDeciding("");}
+  }
   async function loadWeightReviews(){
     setWeightReviewLoading(true);setWeightReviewError("");
     try{
@@ -212,9 +228,16 @@ export default function FinancePortal() {
           <p>Requests submitted by assigned Riders, Drivers and Helpers. Review the physical evidence, verify chargeable weight and correct the official COD using the existing authorized Finance workflow. This queue does not change amounts automatically.</p>
           <button type="button" onClick={()=>void loadWeightReviews()} disabled={weightReviewLoading} style={S.approveBtn}>{weightReviewLoading?"Loading…":"Refresh requests"}</button>
           {weightReviewError&&<p role="alert" style={{color:"#b91c1c"}}>{weightReviewError}</p>}
-          <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Way ID / Wayplan</th><th style={S.th}>Requested kg</th><th style={S.th}>Registered kg</th><th style={S.th}>Current COD</th><th style={S.th}>Reason / Worker</th><th style={S.th}>Submitted</th></tr></thead>
-          <tbody>{weightReviewRows.map(row=><tr key={row.id}><td style={S.td}><b>{row.delivery_way_id}</b><div style={{fontSize:11}}>{row.wayplan_id}</div></td><td style={S.td}>{row.requested_weight_kg}</td><td style={S.td}>{row.current_data_entry_weight_kg??"Unknown"}</td><td style={S.td}>{Number(row.current_data_entry_cod||0).toLocaleString()} MMK</td><td style={S.td}>{row.reason}<div style={{fontSize:11}}>{row.requested_worker_code}</div></td><td style={S.td}>{new Date(row.created_at).toLocaleString()}</td></tr>)}
-          {!weightReviewLoading&&weightReviewRows.length===0&&<tr><td style={S.empty} colSpan={6}>No pending weight correction requests.</td></tr>}</tbody></table></div>
+          {weightReviewSuccess&&<p role="status" style={{color:"#166534",fontWeight:700}}>{weightReviewSuccess}</p>}
+          <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Way ID / Wayplan</th><th style={S.th}>Requested kg</th><th style={S.th}>Registered kg</th><th style={S.th}>Current COD</th><th style={S.th}>Reason / Worker</th><th style={S.th}>Submitted</th><th style={S.th}>Finance Decision</th></tr></thead>
+          <tbody>{weightReviewRows.map(row=><tr key={row.id}><td style={S.td}><b>{row.delivery_way_id}</b><div style={{fontSize:11}}>{row.wayplan_id}</div></td><td style={S.td}>{row.requested_weight_kg}</td><td style={S.td}>{row.current_data_entry_weight_kg??"Unknown"}</td><td style={S.td}>{Number(row.current_data_entry_cod||0).toLocaleString()} MMK</td><td style={S.td}>{row.reason}<div style={{fontSize:11}}>{row.requested_worker_code}</div></td><td style={S.td}>{new Date(row.created_at).toLocaleString()}</td><td style={S.td}>
+          <textarea aria-label={`Review reason for ${row.delivery_way_id}`} placeholder="Mandatory review reason / supporting evidence" value={weightReviewReasons[row.id]||""} onChange={e=>setWeightReviewReasons(old=>({...old,[row.id]:e.target.value}))} style={{minWidth:190,padding:8,border:"1px solid #cbd5e1",borderRadius:8}} />
+          <div style={{display:"flex",gap:6,marginTop:6}}>
+            <button type="button" disabled={!!weightReviewDeciding||(weightReviewReasons[row.id]||"").trim().length<5} onClick={()=>void decideWeightReview(row.id,"APPROVED")} style={{...S.approveBtn,opacity:weightReviewDeciding?0.5:1}}>Approve</button>
+            <button type="button" disabled={!!weightReviewDeciding||(weightReviewReasons[row.id]||"").trim().length<5} onClick={()=>void decideWeightReview(row.id,"REJECTED")} style={{...S.approveBtn,background:"#b91c1c",opacity:weightReviewDeciding?0.5:1}}>Reject</button>
+          </div>
+          </td></tr>)}
+          {!weightReviewLoading&&weightReviewRows.length===0&&<tr><td style={S.empty} colSpan={7}>No pending weight correction requests.</td></tr>}</tbody></table></div>
         </section>}
         {/* FIELD DELIVERY DAILY */}
         {tab === "field-delivery" && (
