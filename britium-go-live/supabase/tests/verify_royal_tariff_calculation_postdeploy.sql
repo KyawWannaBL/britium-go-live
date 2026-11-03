@@ -31,8 +31,12 @@ begin
     20000,5000,null,0,0,0,0,0,5,0
   );
   v_surcharge := coalesce((v_quote->>'weight_surcharge')::bigint,-1);
-  if v_quote->>'validation_status'<>'OK' or v_surcharge<0 then
-    raise exception 'ROYAL_WEIGHT_SURCHARGE_INVALID: %',v_quote;
+  if v_quote->>'validation_status'<>'OK'
+     or v_surcharge<>1000
+     or (v_quote->>'cod_amount')::bigint<>26000
+     or (v_quote->>'net_system_delivery_charge')::bigint<>6000
+     or (v_quote->>'merchant_final_settlement_amount')::bigint<>20000 then
+    raise exception 'ROYAL_KG_COD_OR_SETTLEMENT_INVALID: %',v_quote;
   end if;
 
   -- Unsupported names should NOT silently inherit another town's 5,000 Ks rate.
