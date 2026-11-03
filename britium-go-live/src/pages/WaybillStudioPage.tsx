@@ -72,7 +72,7 @@ function readWaybillPickupContext() {
 type DocType = "WAYBILL" | "INVOICE" | "DOCUMENT";
 type Paper = "4x6" | "A5" | "A4";
 type Label = "4x6" | "4x3" | "4x2" | "2x3" | "2x1.5";
-type PrinterProfile = "NIPPON_POS_4X6" | "BROWSER_DEFAULT";
+type PrinterProfile = "NIPPON_RP400H_100X150" | "NIPPON_POS_4X6" | "BROWSER_DEFAULT";
 
 type PrintRow = Record<string, any> & {
   waybill_no?: string;
@@ -707,15 +707,23 @@ export default function BritiumUnifiedPrintStudioV33() {
   const [docType, setDocType] = useState<DocType>("WAYBILL");
   const [paper, setPaper] = useState<Paper>("4x6");
   const [label, setLabel] = useState<Label>("4x6");
-  const [printerProfile, setPrinterProfile] = useState<PrinterProfile>("NIPPON_POS_4X6");
+  const [printerProfile, setPrinterProfile] = useState<PrinterProfile>("NIPPON_RP400H_100X150");
   const [rows, setRows] = useState<PrintRow[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
   const [message, setMessage] = useState("Waybill Print Studio is ready.");
   const [loading, setLoading] = useState(false);
   const [activePickupId, setActivePickupId] = useState(() => readWaybillPickupContext());
 
-  const layout = useMemo(() => layoutFor(paper, label), [paper, label]);
-  const page = paperSize(paper);
+  // Physical 100 × 150 mm RP-400H stock is slightly smaller than true 4 × 6 inch stock.
+  // Keep both formats available and never distort labels with browser print scaling.
+  const isRp400h = printerProfile === "NIPPON_RP400H_100X150";
+  const layout = useMemo<Layout>(() => isRp400h
+    ? { columns: 1, rows: 1, perSheet: 1, labelWidth: "100mm", labelHeight: "150mm",
+        description: "RP-400H: exact 100 × 150 mm portrait; one waybill per physical label." }
+    : layoutFor(paper, label), [paper, label, isRp400h]);
+  const page = isRp400h
+    ? { width: "100mm", height: "150mm", page: "100mm 150mm" }
+    : paperSize(paper);
 
   async function loadRows(preferredPickupId = "") {
     setLoading(true);
@@ -847,21 +855,23 @@ export default function BritiumUnifiedPrintStudioV33() {
       setMessage("The browser blocked the printer test. Allow pop-ups for Britium Express and try again.");
       return;
     }
+    const testMedia = isRp400h ? "100mm 150mm" : page.page;
+    const testSize = isRp400h ? "100 × 150 mm" : page.width + " × " + page.height;
     const html=`<!doctype html><html><head><title>BRITIUM TEST LABEL — NOT A WAYBILL</title>
-      <style>@page{size:4in 6in;margin:0}html,body{margin:0;padding:0;background:#fff}
-      .test{width:4in;height:6in;box-sizing:border-box;border:4px dashed #000;
-        font:18px Arial,sans-serif;display:flex;flex-direction:column;align-items:center;
-        justify-content:center;text-align:center;padding:16px;gap:20px}
-      .test strong{font-size:32px}.test p{margin:0}
+      <style>@page{size:${testMedia};margin:0}html,body{margin:0;padding:0;background:#fff}
+      .test{width:${page.width};height:${page.height};box-sizing:border-box;border:1mm dashed #000;
+        font:15px Arial,sans-serif;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;text-align:center;padding:6mm;gap:8mm}
+      .test strong{font-size:24px}.test p{margin:0}
       @media screen{.test{margin:16px auto}button{margin:12px;padding:12px}}
       @media print{button{display:none}}</style></head><body>
-      <div class="test"><strong>NIPPON POS</strong><strong>PRINT TEST ONLY</strong>
-      <p>4 × 6 inch (100 × 150 mm)</p><p>NO WAYBILL / NO PARCEL / NO COD</p>
-      <p>Select the installed Nippon POS printer, 4×6 media, 100% scale and zero margins.</p></div>
+      <div class="test"><strong>NIPPON RP-400H</strong><strong>PRINT TEST ONLY</strong>
+      <p>${testSize} — portrait</p><p>NO WAYBILL / NO PARCEL / NO COD</p>
+      <p>Select installed RP-400H printer, matching label stock, 100% scale and no margins.</p></div>
       <button onclick="window.print()">PRINT TEST LABEL</button>
       </body></html>`;
     win.document.open();win.document.write(html);win.document.close();win.focus();
-    setMessage("Printer test opened. It does not generate a waybill or consume an audited print release. Select Nippon POS in the browser print dialog.");
+    setMessage("RP-400H calibration label opened. It creates no waybill and consumes no print release. Select your installed RP-400H and the physical label size in the print dialog.");
   }
 
   function buildPrintHtml(targetRows: PrintRow[]) {
@@ -931,11 +941,12 @@ export default function BritiumUnifiedPrintStudioV33() {
               Paper size
               <select
                 value={paper}
+                disabled={isRp400h}
                 onChange={(event) => setPaper(event.target.value as Paper)}
                 className="mt-1 h-11 w-full rounded-xl border border-sky-800 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-amber-400"
               >
                 {(Object.keys(PAPER_LABELS) as Paper[]).map((key) => (
-                  <option key={key} value={key}>{PAPER_LABELS[key]}</option>
+                  <option key={key} value={key}>{isRp400h && key==="4x6" ? "RP-400H — 100 × 150 mm" : PAPER_LABELS[key]}</option>
                 ))}
               </select>
             </label>
@@ -947,11 +958,12 @@ export default function BritiumUnifiedPrintStudioV33() {
                 onChange={(event) => {
                   const profile=event.target.value as PrinterProfile;
                   setPrinterProfile(profile);
-                  if(profile==="NIPPON_POS_4X6"){setPaper("4x6");setLabel("4x6");}
+                  if(profile==="NIPPON_POS_4X6" || profile==="NIPPON_RP400H_100X150"){setPaper("4x6");setLabel("4x6");}
                 }}
                 className="mt-1 h-11 w-full rounded-xl border border-sky-800 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-amber-400"
               >
-                <option value="NIPPON_POS_4X6">NIPPON POS — 4in × 6in</option>
+                <option value="NIPPON_RP400H_100X150">NIPPON RP-400H — 100 × 150 mm</option>
+                <option value="NIPPON_POS_4X6">NIPPON POS — true 4 × 6 in (101.6 × 152.4 mm)</option>
                 <option value="BROWSER_DEFAULT">Other installed printer</option>
               </select>
             </label>
@@ -960,11 +972,12 @@ export default function BritiumUnifiedPrintStudioV33() {
               Waybill layout
               <select
                 value={label}
+                disabled={isRp400h}
                 onChange={(event) => setLabel(event.target.value as Label)}
                 className="mt-1 h-11 w-full rounded-xl border border-sky-800 bg-slate-950 px-3 text-sm font-bold text-white outline-none focus:border-amber-400"
               >
                 {(Object.keys(LABEL_LABELS) as Label[]).map((key) => (
-                  <option key={key} value={key}>{LABEL_LABELS[key]}</option>
+                  <option key={key} value={key}>{isRp400h && key==="4x6" ? "RP-400H — one 100 × 150 mm waybill" : LABEL_LABELS[key]}</option>
                 ))}
               </select>
             </label>
@@ -973,7 +986,7 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
               <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
-              <Button tone="blue" disabled={pdfBusy} onClick={printNipponTestLabel}>Test Nippon POS (no waybill)</Button>
+              <Button tone="blue" disabled={pdfBusy} onClick={printNipponTestLabel}>Test RP-400H (no waybill)</Button>
               {printAudit.can_approve && <Button tone="green" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={()=>void approveSelectedReprints()}>Approve selected reprints</Button>}
               <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Print / Save PDF"}</Button>
               <Button tone="gold" disabled={pdfBusy || !selectedRows.length} onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
@@ -981,10 +994,11 @@ export default function BritiumUnifiedPrintStudioV33() {
             </div>
           </div>
 
-          {printerProfile==="NIPPON_POS_4X6" ? <p className="mt-3 rounded-xl border border-emerald-700/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">NIPPON POS setup: select the installed NIPPON POS printer in the Windows print dialog, paper 4 × 6 inches (101.6 × 152.4 mm), portrait, scale 100%, margins None, headers/footers Off. Browser security requires the printer to be selected in the print dialog.</p> : null}
+          {isRp400h ? <p className="mt-3 rounded-xl border border-emerald-700/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">NIPPON RP-400H: exact 100 × 150 mm media, portrait, 1 label/sheet, 100% scale, margins None, headers/footers Off. Install the RP400H driver and select the physical printer in the Windows print dialog. This website cannot automatically select a USB printer. If your actual sticker roll is 101.6 × 152.4 mm, choose the true 4 × 6 in profile instead. <a className="underline" href="https://www.rongtatech.com/driver-download/2/" target="_blank" rel="noopener noreferrer">RP400H-compatible Windows driver</a>.</p> : null}
+          {printerProfile==="NIPPON_POS_4X6" ? <p className="mt-3 rounded-xl border border-emerald-700/50 bg-emerald-400/10 px-3 py-2 text-sm font-bold text-emerald-200">NIPPON POS setup: use true 4 × 6 in (101.6 × 152.4 mm) stock, portrait, 100% scale, margins None, headers/footers Off. Select the installed printer in the browser dialog. For 100 × 150 mm labels choose the RP-400H profile.</p> : null}
 
           <div className="mt-4 grid gap-2 text-sm md:grid-cols-4">
-            <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Paper:</b> {PAPER_LABELS[paper]}</div>
+            <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Paper:</b> {isRp400h ? "100 × 150 mm RP-400H" : PAPER_LABELS[paper]}</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Per sheet:</b> {layout.perSheet} ({layout.columns} × {layout.rows})</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Selected:</b> {selected.length}</div>
             <div className="rounded-xl border border-sky-900 bg-slate-950/60 p-3"><b className="text-amber-300">Pickup:</b> {activePickupId || "All live rows"}</div>
