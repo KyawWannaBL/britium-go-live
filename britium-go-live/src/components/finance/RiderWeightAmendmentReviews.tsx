@@ -102,7 +102,11 @@ export default function RiderWeightAmendmentReviews() {
             <td style={{ padding: 10 }}>{row.reason || "—"}<div style={{ opacity: .7 }}>{row.requested_worker_code || ""}</div></td>
             <td style={{ padding: 10 }}>{row.created_at ? new Date(row.created_at).toLocaleString() : "—"}</td>
             <td style={{ padding: 10, minWidth: 215 }}>
-              <textarea aria-label={`Decision reason for ${row.delivery_way_id || row.id}`} value={notes[row.id] || ""} onChange={e => setNotes(v => ({ ...v, [row.id]: e.target.value }))} placeholder="Reason / evidence (required)" style={{ width: "100%", padding: 8, borderRadius: 6, color: "#111", background: "white" }} />
+              <label style={{display:"block",marginBottom:5,fontWeight:700}} htmlFor={`weight-review-reason-${row.id}`}>Finance decision reason (minimum 8 characters)</label>
+              <textarea id={`weight-review-reason-${row.id}`} aria-label={`Decision reason for ${row.delivery_way_id || row.id}`} aria-describedby={`weight-review-reason-help-${row.id}`} value={notes[row.id] || ""} onChange={e => setNotes(v => ({ ...v, [row.id]: e.target.value }))} placeholder="Example: Verified revised weight and COD against parcel evidence" style={{ width: "100%", padding: 8, borderRadius: 6, color: "#111", background: "white" }} />
+              <p id={`weight-review-reason-help-${row.id}`} role="status" style={{fontSize:12,margin:"4px 0 8px",color:(notes[row.id]||"").trim().length>=8?"#86efac":"#fcd34d"}}>
+                {(notes[row.id]||"").trim().length}/8 characters required. {(notes[row.id]||"").trim().length>=8?"Reason accepted.":"Enter a specific Finance justification to enable Approve or Reject."}
+              </p>
               <button type="button" style={{...button,background:"#93c5fd",marginTop:6}}
                 disabled={!!busy||!!previewBusy||loading} onClick={()=>void preview(row)}>
                 {previewBusy===row.id?"Calculating...":"Preview recalculated amount"}
@@ -129,8 +133,18 @@ export default function RiderWeightAmendmentReviews() {
                 <div>Merchant settlement if COD changed: {Number(quotes[row.id].update_cod_merchant_settlement_mmk||0).toLocaleString()} MMK</div>
                 {quotes[row.id].cash_or_settlement_locked&&<p style={{color:"#fcd34d"}}>Cash or settlement is locked. Approval records a required Finance adjustment; no existing collected COD is overwritten.</p>}
               </div>}
+              <p style={{fontSize:12,color:"#dbeafe",margin:"8px 0 4px"}}>
+                {!(notes[row.id]||"").trim() || (notes[row.id]||"").trim().length<8
+                  ? "Approval locked: enter at least 8 characters in the Finance decision reason."
+                  : !quotes[row.id] ? "Approval locked: preview the recalculated amount first."
+                  : !policies[row.id] ? "Approval locked: select Change COD or Keep COD unchanged."
+                  : quotes[row.id].cash_or_settlement_locked && policies[row.id]==="UPDATE_COD"
+                    ? "Approval locked: collected/closed COD cannot be changed."
+                    : busy || previewBusy || loading ? "Approval locked: another operation is in progress."
+                    : "Ready for Finance approval. Review the COD decision before confirming."}
+              </p>
               <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                <button type="button" style={button} disabled={!!busy || !!previewBusy || loading || !quotes[row.id] || !policies[row.id] || (notes[row.id] || "").trim().length < 8} onClick={() => void decide(row, "APPROVED")}>Approve</button>
+                <button type="button" title="Requires a recalculation preview, COD policy and Finance reason of at least 8 characters" style={button} disabled={!!busy || !!previewBusy || loading || !quotes[row.id] || !policies[row.id] || (notes[row.id] || "").trim().length < 8 || (policies[row.id]==="UPDATE_COD" && quotes[row.id]?.cod_change_allowed!==true)} onClick={() => void decide(row, "APPROVED")}>Approve</button>
                 <button type="button" style={{ ...button, background: "#fecaca" }} disabled={!!busy || loading || (notes[row.id] || "").trim().length < 8} onClick={() => void decide(row, "REJECTED")}>Reject</button>
               </div>
             </td>
