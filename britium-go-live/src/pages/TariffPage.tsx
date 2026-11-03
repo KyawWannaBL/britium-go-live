@@ -36,10 +36,14 @@ function rowsFrom(v:any,source:string){
 }
 async function loadTownshipTariffs(){
   const errors:string[]=[];
-  // Canonical operational delivery tariff master comes first because this is
-  // the backend used by routing/calculation and is the only township source
-  // exposed for direct Superadmin editing from this portal.
-  for(const table of ["be_delivery_tariff_master_v13","be_md_tariffs","tariff_master","township_tariffs","tariffs"]){
+  // The canonical table is RLS-protected; use its authenticated, role-scoped RPC.
+  try {
+    const {data,error}=await (supabase as any).rpc("be_delivery_tariff_list_v2");
+    if(error)throw error;
+    const rows=rowsFrom(data,"RPC be_delivery_tariff_list_v2");
+    if(rows.length)return {rows,source:"RPC be_delivery_tariff_list_v2"};
+  }catch(e:any){errors.push("canonical tariff RPC: "+(e?.message||"unavailable"))}
+  for(const table of ["be_md_tariffs","tariff_master","township_tariffs","tariffs"]){
     try{
       const {data,error}=await (supabase as any).from(table).select("*").limit(3000);
       if(error)throw error;
@@ -294,7 +298,7 @@ export default function TariffPage(){
           <button onClick={()=>void saveOperationalTariff()} disabled={saving} className="mt-4 inline-flex h-11 items-center gap-2 rounded-xl bg-[#f6b84b] px-5 font-black text-[#061524] disabled:opacity-50"><Save size={16}/>{saving?"Saving...":"Save Operational Tariff to Supabase"}</button>
         </div>}
         <div className="overflow-x-auto bg-white"><table className="min-w-[1200px] w-full text-left text-sm text-[#061524]"><thead className="bg-[#f6b84b] text-[11px] uppercase"><tr>{["Destination","Zone","Tier","Base Charge","Included KG","Extra / KG","Status","Note","Source","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>
-          {filtered.map(r=><tr key={r.id} className="border-t border-slate-200 hover:bg-amber-50"><td className="p-3 font-black">{r.township}</td><td>{r.zone}</td><td className="font-black">{r.tier}</td><td className="text-right font-black">{r.baseFee.toLocaleString()} MMK</td><td className="text-right">{r.includedKg}</td><td className="text-right">{r.extraPerKg.toLocaleString()} MMK</td><td><span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">{r.status}</span></td><td className="max-w-[300px] p-3">{r.note}</td><td className="max-w-[240px] text-xs font-bold">{r.source}</td><td className="p-3">{canEdit&&r.source==="table be_delivery_tariff_master_v13"?<div className="flex gap-2"><button onClick={()=>setEditOperational({...r})} className="inline-flex items-center gap-1 rounded-lg border border-[#061524]/20 px-3 py-2 text-xs font-black"><Edit3 size={14}/>Edit</button><button disabled={!isSuperadmin||saving} onClick={()=>void deleteOperationalTariff(r)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-black text-rose-700"><Trash2 size={14}/>Delete</button></div>:<span className="text-xs text-slate-400">Read only</span>}</td></tr>)}
+          {filtered.map(r=><tr key={r.id} className="border-t border-slate-200 hover:bg-amber-50"><td className="p-3 font-black">{r.township}</td><td>{r.zone}</td><td className="font-black">{r.tier}</td><td className="text-right font-black">{r.baseFee.toLocaleString()} MMK</td><td className="text-right">{r.includedKg}</td><td className="text-right">{r.extraPerKg.toLocaleString()} MMK</td><td><span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black text-emerald-800">{r.status}</span></td><td className="max-w-[300px] p-3">{r.note}</td><td className="max-w-[240px] text-xs font-bold">{r.source}</td><td className="p-3">{canEdit&&(r.source==="RPC be_delivery_tariff_list_v2"||r.source==="table be_delivery_tariff_master_v13")?<div className="flex gap-2"><button onClick={()=>setEditOperational({...r})} className="inline-flex items-center gap-1 rounded-lg border border-[#061524]/20 px-3 py-2 text-xs font-black"><Edit3 size={14}/>Edit</button><button disabled={!isSuperadmin||saving} onClick={()=>void deleteOperationalTariff(r)} className="inline-flex items-center gap-1 rounded-lg border border-rose-300 px-3 py-2 text-xs font-black text-rose-700"><Trash2 size={14}/>Delete</button></div>:<span className="text-xs text-slate-400">Read only</span>}</td></tr>)}
           {!filtered.length&&<tr><td colSpan={10} className="p-12 text-center font-black">No tariff rows match the search.</td></tr>}
         </tbody></table></div>
       </section>
