@@ -15,11 +15,14 @@ import {
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "field-delivery" | "cod" | "settlements" | "wallets" | "payouts" | "vouchers";
+type Tab = "overview" | "field-delivery" | "weight-reviews" | "cod" | "settlements" | "wallets" | "payouts" | "vouchers";
 
 export default function FinancePortal() {
   const { user, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("overview");
+  const [weightReviewRows,setWeightReviewRows]=useState<any[]>([]);
+  const [weightReviewError,setWeightReviewError]=useState("");
+  const [weightReviewLoading,setWeightReviewLoading]=useState(false);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fieldDate, setFieldDate] = useState(() => new Date().toISOString().slice(0,10));
@@ -55,6 +58,7 @@ export default function FinancePortal() {
   const tabs: { id: Tab; label: string }[] = [
     { id: "overview", label: "💰 Overview" },
     { id: "field-delivery", label: "🚚 Field Delivery Daily" },
+    { id: "weight-reviews", label: "⚖️ Parcel Weight Reviews" },
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
     { id: "wallets", label: "👛 Settlement Wallets" },
@@ -162,7 +166,16 @@ export default function FinancePortal() {
     setPartyWalletLoading(false);
   }
 
+  async function loadWeightReviews(){
+    setWeightReviewLoading(true);setWeightReviewError("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_finance_field_weight_review_queue_v1");
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Unable to load weight correction queue.");
+      setWeightReviewRows(Array.isArray(data.rows)?data.rows:[]);
+    }catch(e:any){setWeightReviewError(e?.message||"Weight review queue unavailable.");}finally{setWeightReviewLoading(false);}
+  }
   useEffect(() => {
+    if (tab === "weight-reviews") void loadWeightReviews();
     if (tab === "field-delivery") void loadFieldDaily();
     if (tab === "wallets") void loadPartyWallets();
     if (tab === "payouts") void loadPayoutQueue();
@@ -194,6 +207,15 @@ export default function FinancePortal() {
           <OverviewSection data={overview.data as Record<string, unknown>} loading={overview.isLoading} error={overview.error?.message} />
         )}
 
+        {tab === "weight-reviews" && <section style={{padding:20,background:"#fff",borderRadius:12}}>
+          <h2 style={S.h2}>Parcel Weight / COD Correction Requests</h2>
+          <p>Requests submitted by assigned Riders, Drivers and Helpers. Review the physical evidence, verify chargeable weight and correct the official COD using the existing authorized Finance workflow. This queue does not change amounts automatically.</p>
+          <button type="button" onClick={()=>void loadWeightReviews()} disabled={weightReviewLoading} style={S.approveBtn}>{weightReviewLoading?"Loading…":"Refresh requests"}</button>
+          {weightReviewError&&<p role="alert" style={{color:"#b91c1c"}}>{weightReviewError}</p>}
+          <div style={S.tableWrap}><table style={S.table}><thead><tr><th style={S.th}>Way ID / Wayplan</th><th style={S.th}>Requested kg</th><th style={S.th}>Registered kg</th><th style={S.th}>Current COD</th><th style={S.th}>Reason / Worker</th><th style={S.th}>Submitted</th></tr></thead>
+          <tbody>{weightReviewRows.map(row=><tr key={row.id}><td style={S.td}><b>{row.delivery_way_id}</b><div style={{fontSize:11}}>{row.wayplan_id}</div></td><td style={S.td}>{row.requested_weight_kg}</td><td style={S.td}>{row.current_data_entry_weight_kg??"Unknown"}</td><td style={S.td}>{Number(row.current_data_entry_cod||0).toLocaleString()} MMK</td><td style={S.td}>{row.reason}<div style={{fontSize:11}}>{row.requested_worker_code}</div></td><td style={S.td}>{new Date(row.created_at).toLocaleString()}</td></tr>)}
+          {!weightReviewLoading&&weightReviewRows.length===0&&<tr><td style={S.empty} colSpan={6}>No pending weight correction requests.</td></tr>}</tbody></table></div>
+        </section>}
         {/* FIELD DELIVERY DAILY */}
         {tab === "field-delivery" && (
           <div>
