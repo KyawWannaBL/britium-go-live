@@ -84,18 +84,43 @@ begin
            note=concat('Royal catalog synchronized: ',new.destination_key)
      where id=v_id and base_tariff is distinct from new.standard_rate_mmk::bigint;
   else
-    -- Royal STANDARD rate convention already used by 210 live finance entries.
-    -- Other merchant tiers remain separately approved and are not fabricated.
-    insert into public.be_parcel_tariffs_v2(
-      id,township,customer_tier,tariff_zone,tariff_zone_code,base_tariff,
-      included_kg,extra_per_kg,commitment_min_ways,commitment_refund_per_way,
-      status,effective_from,note
-    ) values(
-      nextval('public.be_parcel_tariffs_v2_id_seq'),new.destination_name,'STANDARD',
-      'ROYAL','ROYAL',new.standard_rate_mmk::bigint,3,500,0,0,
-      'ACTIVE',public.be_business_date(),
-      concat('Approved Royal catalog synchronized: ',new.destination_key)
-    );
+    -- An inactive same-day version cannot be duplicated because the Finance
+    -- master is unique on township, tier and effective_from. Reactivate the
+    -- same approved Royal row rather than inserting a conflicting version.
+    select count(*),max(t.id) into v_existing,v_id
+    from public.be_parcel_tariffs_v2 t
+    where t.township=new.destination_name
+      and t.customer_tier='STANDARD'
+      and t.effective_from=public.be_business_date()
+      and t.status='INACTIVE';
+    if v_existing>1 then
+      raise exception 'ROYAL_FINANCE_DUPLICATE_SAME_DAY_VERSION' using errcode='23505';
+    end if;
+    if v_existing=1 then
+      select tariff_zone_code into v_zone
+      from public.be_parcel_tariffs_v2 where id=v_id;
+      if v_zone<>'ROYAL' then
+        raise exception 'ROYAL_FINANCE_OTHER_PROVIDER_CONFLICT' using errcode='23505';
+      end if;
+      update public.be_parcel_tariffs_v2
+        set status='ACTIVE',effective_to=null,
+            base_tariff=new.standard_rate_mmk::bigint,updated_at=now(),
+            note=concat('Royal catalog reactivated: ',new.destination_key)
+        where id=v_id;
+    else
+      -- Royal STANDARD convention: 3 kg included and 500 MMK per extra kg.
+      -- Never invent ROYAL or COMMITMENT merchant-tier prices.
+      insert into public.be_parcel_tariffs_v2(
+        id,township,customer_tier,tariff_zone,tariff_zone_code,base_tariff,
+        included_kg,extra_per_kg,commitment_min_ways,commitment_refund_per_way,
+        status,effective_from,note
+      ) values(
+        nextval('public.be_parcel_tariffs_v2_id_seq'),new.destination_name,'STANDARD',
+        'ROYAL','ROYAL',new.standard_rate_mmk::bigint,3,500,0,0,
+        'ACTIVE',public.be_business_date(),
+        concat('Approved Royal catalog synchronized: ',new.destination_key)
+      );
+    end if;
   end if;
   return new;
 end;
