@@ -121,7 +121,7 @@ begin
     'access', v_access
   );
 end
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_data_entry_financial_v2_create_ready_waybill(p_payload jsonb)
@@ -408,7 +408,7 @@ begin
 
   return v_response;
 end
-$function$
+$function$;
 
 
 -- Preserve RPC grants to authenticated staff; no new public access is given.
