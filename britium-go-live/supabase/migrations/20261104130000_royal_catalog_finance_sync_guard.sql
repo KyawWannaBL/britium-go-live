@@ -74,15 +74,36 @@ begin
   end if;
 
   if v_existing=1 then
+    -- Keep previously effective prices immutable. Repricing an existing Royal
+    -- tariff must create a new daily version, not rewrite historical terms.
     select tariff_zone_code into v_zone
-      from public.be_parcel_tariffs_v2 where id=v_id;
+      from public.be_parcel_tariffs_v2 where id=v_id for update;
     if v_zone<>'ROYAL' then
       raise exception 'ROYAL_FINANCE_OTHER_PROVIDER_CONFLICT' using errcode='23505';
     end if;
-    update public.be_parcel_tariffs_v2
-       set base_tariff=new.standard_rate_mmk::bigint, updated_at=now(),
-           note=concat('Royal catalog synchronized: ',new.destination_key)
-     where id=v_id and base_tariff is distinct from new.standard_rate_mmk::bigint;
+    if (select base_tariff from public.be_parcel_tariffs_v2 where id=v_id)
+        is distinct from new.standard_rate_mmk::bigint then
+      if (select effective_from from public.be_parcel_tariffs_v2 where id=v_id)
+          >=public.be_business_date() then
+        raise exception 'ROYAL_SAME_DAY_REPRICING_REQUIRES_FINANCE_REVIEW'
+          using errcode='23505';
+      end if;
+      -- Expire the old rate yesterday; it remains historically queryable.
+      update public.be_parcel_tariffs_v2
+         set effective_to=public.be_business_date()-1,updated_at=now()
+       where id=v_id;
+      insert into public.be_parcel_tariffs_v2(
+        id,township,customer_tier,tariff_zone,tariff_zone_code,base_tariff,
+        included_kg,extra_per_kg,commitment_min_ways,commitment_refund_per_way,
+        status,effective_from,note
+      )
+      select nextval('public.be_parcel_tariffs_v2_id_seq'),t.township,
+        'STANDARD',t.tariff_zone,t.tariff_zone_code,new.standard_rate_mmk::bigint,
+        t.included_kg,t.extra_per_kg,t.commitment_min_ways,
+        t.commitment_refund_per_way,'ACTIVE',public.be_business_date(),
+        concat('Royal catalog version published: ',new.destination_key)
+      from public.be_parcel_tariffs_v2 t where t.id=v_id;
+    end if;
   else
     -- An inactive same-day version cannot be duplicated because the Finance
     -- master is unique on township, tier and effective_from. Reactivate the
@@ -102,9 +123,14 @@ begin
       if v_zone<>'ROYAL' then
         raise exception 'ROYAL_FINANCE_OTHER_PROVIDER_CONFLICT' using errcode='23505';
       end if;
+      if (select base_tariff from public.be_parcel_tariffs_v2 where id=v_id)
+          is distinct from new.standard_rate_mmk::bigint then
+        raise exception 'ROYAL_SAME_DAY_REPRICING_REQUIRES_FINANCE_REVIEW'
+          using errcode='23505';
+      end if;
       update public.be_parcel_tariffs_v2
         set status='ACTIVE',effective_to=null,
-            base_tariff=new.standard_rate_mmk::bigint,updated_at=now(),
+            updated_at=now(),
             note=concat('Royal catalog reactivated: ',new.destination_key)
         where id=v_id;
     else
