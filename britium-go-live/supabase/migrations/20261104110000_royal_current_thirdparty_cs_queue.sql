@@ -91,7 +91,7 @@ begin
  where (nullif(btrim(coalesce(p_search,'')),'') is null or delivery_way_id ilike '%'||p_search||'%' or merchant_name ilike '%'||p_search||'%')
  and (upper(coalesce(p_outcome,'ALL'))='ALL' or cs_outcome=upper(p_outcome))
  order by last_schedule_date desc,delivery_way_id limit least(greatest(coalesce(p_limit,200),1),300)) i;
- return jsonb_build_object('ok',true,'total',v_total,'rows',v_rows,'source','third_party_schedule_only_not_proof_of_delivery','finance_rule','confirmation creates per-merchant Finance review, not paid settlement');
+ return jsonb_build_object('ok',true,'total',v_total,'rows',v_rows,'source','current_royal_or_live_thirdparty_schedule_not_proof_of_delivery','finance_rule','confirmation creates per-merchant Finance review, not paid settlement');
 end $function$
 ;
 
