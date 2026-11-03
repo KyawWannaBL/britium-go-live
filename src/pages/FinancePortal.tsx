@@ -33,6 +33,9 @@ export default function FinancePortal() {
   const [codEvidenceRefs,setCodEvidenceRefs]=useState<Record<string,string>>({});
   const [codReviewBusy,setCodReviewBusy]=useState("");
   const [codReviewSuccess,setCodReviewSuccess]=useState("");
+  const [codTransfers,setCodTransfers]=useState<Record<string,{rows:any[];total:number;bank_verified_count:number}>>({});
+  const [codTransfersBusy,setCodTransfersBusy]=useState("");
+  const [codTransfersError,setCodTransfersError]=useState<Record<string,string>>({});
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fieldDate, setFieldDate] = useState(() => new Date().toISOString().slice(0,10));
@@ -190,6 +193,15 @@ export default function FinancePortal() {
     }catch(e:any){setWeightReviewError(e?.message||"Unable to save weight review decision.");}
     finally{setWeightReviewDeciding("");}
   }
+  async function loadCodTransferEvidence(id:string){
+    setCodTransfersBusy(id);setCodTransfersError(old=>({...old,[id]:""}));
+    try{
+      const {data,error}=await (supabase as any).rpc("be_finance_cod_exception_transfers_v1",{p_exception_id:id});
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Unable to load transfer evidence.");
+      setCodTransfers(old=>({...old,[id]:{rows:Array.isArray(data.rows)?data.rows:[],total:Number(data.total||0),bank_verified_count:Number(data.bank_verified_count||0)}}));
+    }catch(e:any){setCodTransfersError(old=>({...old,[id]:e?.message||"Evidence unavailable."}));}
+    finally{setCodTransfersBusy("");}
+  }
   async function loadCodExceptions(){
     setCodExceptionsLoading(true);setCodExceptionsError("");
     try{
@@ -291,6 +303,21 @@ export default function FinancePortal() {
             <td style={S.td}>{row.registered_weight_kg||"—"} kg / {Number(row.existing_system_weight_surcharge||0).toLocaleString()} MMK</td>
             <td style={S.td}>
               <div style={{fontSize:12}}>{row.reason}</div>
+              <div style={{padding:8,marginTop:8,border:"1px solid #cbd5e1",borderRadius:8}}>
+                <button type="button" style={S.approveBtn} disabled={codTransfersBusy===row.id} onClick={()=>void loadCodTransferEvidence(row.id)}>
+                  {codTransfersBusy===row.id?"Loading…":"View saved transfer evidence"}
+                </button>
+                {codTransfersError[row.id]&&<p role="alert" style={{color:"#b91c1c"}}>{codTransfersError[row.id]}</p>}
+                {codTransfers[row.id]&&<div style={{marginTop:8,fontSize:12}}>
+                  <div style={{fontWeight:700}}>Saved transfers: {codTransfers[row.id].rows.length} · Total {codTransfers[row.id].total.toLocaleString()} MMK</div>
+                  <div>Bank-verified transactions: {codTransfers[row.id].bank_verified_count} of {codTransfers[row.id].rows.length}</div>
+                  {codTransfers[row.id].rows.map((t:any,i:number)=><div key={t.reference||i} style={{padding:"5px 0",borderTop:"1px solid #e2e8f0"}}>
+                    {t.provider} · {Number(t.amount||0).toLocaleString()} MMK · {t.reference}
+                    <div>{t.verification_status==="BANK_VERIFIED"?"Bank verified":"Screenshot evidence — bank verification pending"}</div>
+                  </div>)}
+                  <small>Transfer evidence does not equal a posted or settled cash collection.</small>
+                </div>}
+              </div>
               <input aria-label={`Evidence reference for ${row.delivery_way_id}`} placeholder="Payment receipt/reference URL or ID" value={codEvidenceRefs[row.id]??row.evidence_reference??""} onChange={e=>setCodEvidenceRefs(old=>({...old,[row.id]:e.target.value}))} style={{width:"100%",padding:8,marginTop:6,border:"1px solid #cbd5e1",borderRadius:8}} />
               <textarea aria-label={`Finance review note for ${row.delivery_way_id}`} placeholder="Review reason (required)" value={codReviewNotes[row.id]||""} onChange={e=>setCodReviewNotes(old=>({...old,[row.id]:e.target.value}))} style={{width:"100%",padding:8,marginTop:6,border:"1px solid #cbd5e1",borderRadius:8}} />
               {row.status!=="REJECTED"&&row.status!=="RESOLVED"&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
