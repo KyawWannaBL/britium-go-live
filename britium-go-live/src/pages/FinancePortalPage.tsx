@@ -4,6 +4,7 @@
 
 import {FinancePortalLivePage} from './EnterpriseLiveCenterPages';
 import BranchFinanceOversight from '@/components/finance/BranchFinanceOversight';
+import {CorporateFinanceReviewPanel} from '@/components/tariff/CorporateTariffPanel';
 export default function FinancePortalPage(){
- return <><BranchFinanceOversight/><FinancePortalLivePage/></>;
+ return <><BranchFinanceOversight/><CorporateFinanceReviewPanel/><FinancePortalLivePage/></>;
 }
