@@ -3,7 +3,7 @@ const GOOGLE_MATRIX_URL = "https://routes.googleapis.com/distanceMatrix/v2:compu
 const MAPBOX_MATRIX_BASE = "https://api.mapbox.com/directions-matrix/v1/mapbox/driving";
 const GOOGLE_BATCH = 10;
 const MAPBOX_BATCH = 12;
-const DEFAULT_PROVIDER_MODE = "MAPBOX_PREFERRED_BILLING_HOLD";
+const DEFAULT_PROVIDER_MODE = "GOOGLE_ONLY";
 
 function env(...names){for(const name of names){const value=String(process.env[name]||"").trim();if(value)return value;}return "";}
 function json(body,status=200,headers={}){return Response.json(body,{status,headers:{"Cache-Control":"no-store",...headers}});}
@@ -15,6 +15,40 @@ function optimizeMatrix(durations,distances){const count=durations.length,remain
 function parseGoogleMatrix(text){try{const parsed=JSON.parse(text);return Array.isArray(parsed)?parsed:[parsed];}catch{return text.split(/\r?\n/).map(line=>line.trim()).filter(Boolean).map(line=>JSON.parse(line));}}
 function googleWaypoint(p){return{waypoint:{location:{latLng:{latitude:p.latitude,longitude:p.longitude}}}};}
 async function googleMatrix(points,apiKey){const n=points.length,durations=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY)),distances=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));for(let i=0;i<n;i+=1){durations[i][i]=0;distances[i][i]=0;}let requestCount=0;for(let oi=0;oi<n;oi+=GOOGLE_BATCH){const origins=points.slice(oi,oi+GOOGLE_BATCH);for(let di=0;di<n;di+=GOOGLE_BATCH){const destinations=points.slice(di,di+GOOGLE_BATCH);requestCount+=1;const response=await fetch(GOOGLE_MATRIX_URL,{method:"POST",headers:{"Content-Type":"application/json","X-Goog-Api-Key":apiKey,"X-Goog-FieldMask":"originIndex,destinationIndex,status,condition,distanceMeters,duration"},body:JSON.stringify({origins:origins.map(googleWaypoint),destinations:destinations.map(googleWaypoint),travelMode:"DRIVE",routingPreference:"TRAFFIC_AWARE",units:"METRIC"})});const body=await response.text();if(!response.ok)throw new Error(`Google Routes matrix failed (${response.status}): ${body.slice(0,220)}`);for(const element of parseGoogleMatrix(body)){const originIndex=oi+Number(element.originIndex),destinationIndex=di+Number(element.destinationIndex);if(!Number.isInteger(originIndex)||!Number.isInteger(destinationIndex))continue;const statusCode=Number(element?.status?.code||0);if(statusCode!==0||String(element?.condition||"ROUTE_EXISTS")==="ROUTE_NOT_FOUND")continue;const duration=seconds(element.duration),distance=Number(element.distanceMeters);if(Number.isFinite(duration)&&Number.isFinite(distance)){durations[originIndex][destinationIndex]=duration;distances[originIndex][destinationIndex]=distance;}}}}return{durations,distances,requestCount};}
+async function googleOriginMatrix(points, apiKey) {
+  const origin = googleWaypoint(points[0]);
+  const durations = [];
+  const distances = [];
+  let requestCount = 0;
+  for (let di=1;di<points.length;di+=GOOGLE_BATCH) {
+    const destinations=points.slice(di,di+GOOGLE_BATCH);
+    requestCount+=1;
+    const response=await fetch(GOOGLE_MATRIX_URL,{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Goog-Api-Key":apiKey,
+        "X-Goog-FieldMask":"originIndex,destinationIndex,status,condition,distanceMeters,duration"},
+      body:JSON.stringify({origins:[origin],destinations:destinations.map(googleWaypoint),
+        travelMode:"DRIVE",routingPreference:"TRAFFIC_AWARE",units:"METRIC"})
+    });
+    const body=await response.text();
+    if (!response.ok)throw new Error(`Google origin matrix failed (${response.status}): ${body.slice(0,220)}`);
+    const chunkDurations=Array(destinations.length).fill(Number.POSITIVE_INFINITY);
+    const chunkDistances=Array(destinations.length).fill(Number.POSITIVE_INFINITY);
+    for (const element of parseGoogleMatrix(body)) {
+      const j=Number(element.destinationIndex);
+      if (Number(element.originIndex)!==0 || !Number.isInteger(j) || j<0 || j>=destinations.length)continue;
+      if (Number(element?.status?.code||0)!==0 || element.condition==="ROUTE_NOT_FOUND")continue;
+      const duration=seconds(element.duration),distance=Number(element.distanceMeters);
+      if (Number.isFinite(duration) && Number.isFinite(distance)) {
+        chunkDurations[j]=duration;
+        chunkDistances[j]=distance;
+      }
+    }
+    durations.push(...chunkDurations);
+    distances.push(...chunkDistances);
+  }
+  return {durations,distances,requestCount};
+}
 async function mapboxMatrix(points,token,oneToMany=false,onReservation=()=>{}){
   const n=points.length;
   const durations=Array.from({length:n},()=>Array(n).fill(Number.POSITIVE_INFINITY));
@@ -201,7 +235,24 @@ export default {
         }
       }
 
-      if (oneToMany) return (await useMapbox()) || localFallback();
+      if (oneToMany) {
+        if (googleAllowed) {
+          try {
+            const matrix = await googleOriginMatrix(points, googleKey);
+            const durations = matrix.durations;
+            const distances = matrix.distances;
+            if (durations.some((v,i) => !Number.isFinite(v) || !Number.isFinite(distances[i]))) {
+              throw new Error("Google Routes could not reach every destination from the office.");
+            }
+            return json({ok:true,source:"GOOGLE_ROUTES",estimated:false,
+              durations:[durations],distances:[distances],request_count:matrix.requestCount});
+          } catch (error) {
+            diagnostics.push(`Google Routes origin matrix: ${String(error?.message || error).slice(0,300)}`);
+          }
+        }
+        if (mapboxAllowed) return (await useMapbox()) || localFallback();
+        return localFallback();
+      }
       if (mapboxPreferred) {
         const mapboxResult = await useMapbox();
         if (mapboxResult) return mapboxResult;
