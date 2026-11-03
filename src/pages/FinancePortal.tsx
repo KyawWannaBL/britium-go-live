@@ -15,7 +15,7 @@ import {
 } from "../hooks/useApi";
 import { useAuth } from "../contexts/AuthContext";
 
-type Tab = "overview" | "field-delivery" | "weight-reviews" | "cod" | "settlements" | "wallets" | "payouts" | "vouchers";
+type Tab = "overview" | "field-delivery" | "weight-reviews" | "cod-exceptions" | "cod" | "settlements" | "wallets" | "payouts" | "vouchers";
 
 export default function FinancePortal() {
   const { user, logout } = useAuth();
@@ -26,6 +26,13 @@ export default function FinancePortal() {
   const [weightReviewReasons,setWeightReviewReasons]=useState<Record<string,string>>({});
   const [weightReviewDeciding,setWeightReviewDeciding]=useState("");
   const [weightReviewSuccess,setWeightReviewSuccess]=useState("");
+  const [codExceptions,setCodExceptions]=useState<any[]>([]);
+  const [codExceptionsError,setCodExceptionsError]=useState("");
+  const [codExceptionsLoading,setCodExceptionsLoading]=useState(false);
+  const [codReviewNotes,setCodReviewNotes]=useState<Record<string,string>>({});
+  const [codEvidenceRefs,setCodEvidenceRefs]=useState<Record<string,string>>({});
+  const [codReviewBusy,setCodReviewBusy]=useState("");
+  const [codReviewSuccess,setCodReviewSuccess]=useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [fieldDate, setFieldDate] = useState(() => new Date().toISOString().slice(0,10));
@@ -62,6 +69,7 @@ export default function FinancePortal() {
     { id: "overview", label: "💰 Overview" },
     { id: "field-delivery", label: "🚚 Field Delivery Daily" },
     { id: "weight-reviews", label: "⚖️ Parcel Weight Reviews" },
+    { id: "cod-exceptions", label: "🧾 COD Exceptions" },
     { id: "cod", label: "🔄 COD Reconciliation" },
     { id: "settlements", label: "📦 Settlements" },
     { id: "wallets", label: "👛 Settlement Wallets" },
@@ -182,6 +190,31 @@ export default function FinancePortal() {
     }catch(e:any){setWeightReviewError(e?.message||"Unable to save weight review decision.");}
     finally{setWeightReviewDeciding("");}
   }
+  async function loadCodExceptions(){
+    setCodExceptionsLoading(true);setCodExceptionsError("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_finance_cod_collection_exceptions_v1");
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Cannot load COD exceptions.");
+      setCodExceptions(Array.isArray(data.rows)?data.rows:[]);
+    }catch(e:any){setCodExceptionsError(e?.message||"COD exceptions unavailable.");}
+    finally{setCodExceptionsLoading(false);}
+  }
+  async function reviewCodException(id:string,action:"IN_REVIEW"|"REJECTED"|"RESOLVED"){
+    const note=(codReviewNotes[id]||"").trim();
+    const evidence=(codEvidenceRefs[id]||"").trim();
+    if(note.length<8){setCodExceptionsError("Provide a review note of at least eight characters.");return;}
+    if(!window.confirm(`Record ${action.replace(/_/g," ")}? No cash or COD will be changed.`))return;
+    setCodReviewBusy(id);setCodExceptionsError("");setCodReviewSuccess("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_finance_review_cod_exception_v1",{
+        p_id:id,p_action:action,p_note:note,p_evidence_reference:evidence||null
+      });
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"COD review failed.");
+      setCodReviewSuccess(`Case marked ${data.status}. No cash or COD changed.`);
+      await loadCodExceptions();
+    }catch(e:any){setCodExceptionsError(e?.message||"Unable to save COD exception review.");}
+    finally{setCodReviewBusy("");}
+  }
   async function loadWeightReviews(){
     setWeightReviewLoading(true);setWeightReviewError("");
     try{
@@ -192,6 +225,7 @@ export default function FinancePortal() {
   }
   useEffect(() => {
     if (tab === "weight-reviews") void loadWeightReviews();
+    if (tab === "cod-exceptions") void loadCodExceptions();
     if (tab === "field-delivery") void loadFieldDaily();
     if (tab === "wallets") void loadPartyWallets();
     if (tab === "payouts") void loadPayoutQueue();
@@ -238,6 +272,37 @@ export default function FinancePortal() {
           </div>
           </td></tr>)}
           {!weightReviewLoading&&weightReviewRows.length===0&&<tr><td style={S.empty} colSpan={7}>No pending weight correction requests.</td></tr>}</tbody></table></div>
+        </section>}
+        {tab === "cod-exceptions" && <section style={{padding:20,background:"#fff",borderRadius:12}}>
+          <h2 style={S.h2}>COD Collection Exceptions — Finance Review</h2>
+          <p>Reported cash is unverified until matched against payment evidence and the authoritative delivery record. Reviewing this case never changes COD, posted cash, or settlement.</p>
+          <button type="button" disabled={codExceptionsLoading} onClick={()=>void loadCodExceptions()} style={S.approveBtn}>{codExceptionsLoading?"Loading…":"Refresh exceptions"}</button>
+          {codExceptionsError&&<p role="alert" style={{color:"#b91c1c"}}>{codExceptionsError}</p>}
+          {codReviewSuccess&&<p role="status" style={{color:"#166534",fontWeight:700}}>{codReviewSuccess}</p>}
+          <div style={S.tableWrap}><table style={S.table}><thead><tr>
+            <th style={S.th}>Way ID / Status</th><th style={S.th}>Expected COD</th>
+            <th style={S.th}>Reported cash (unverified)</th><th style={S.th}>Saved cash</th><th style={S.th}>Weight / Surcharge</th><th style={S.th}>Review decision</th>
+          </tr></thead><tbody>
+          {codExceptions.map(row=><tr key={row.id}>
+            <td style={S.td}><b>{row.delivery_way_id}</b><div>{row.status}</div><div style={{fontSize:11}}>{row.wayplan_id}</div></td>
+            <td style={S.td}>{Number(row.registered_cod_snapshot||0).toLocaleString()} MMK</td>
+            <td style={S.td}>{Number(row.reported_collected_amount||0).toLocaleString()} MMK</td>
+            <td style={S.td}>{Number(row.saved_field_collection||0).toLocaleString()} MMK</td>
+            <td style={S.td}>{row.registered_weight_kg||"—"} kg / {Number(row.existing_system_weight_surcharge||0).toLocaleString()} MMK</td>
+            <td style={S.td}>
+              <div style={{fontSize:12}}>{row.reason}</div>
+              <input aria-label={`Evidence reference for ${row.delivery_way_id}`} placeholder="Payment receipt/reference URL or ID" value={codEvidenceRefs[row.id]??row.evidence_reference??""} onChange={e=>setCodEvidenceRefs(old=>({...old,[row.id]:e.target.value}))} style={{width:"100%",padding:8,marginTop:6,border:"1px solid #cbd5e1",borderRadius:8}} />
+              <textarea aria-label={`Finance review note for ${row.delivery_way_id}`} placeholder="Review reason (required)" value={codReviewNotes[row.id]||""} onChange={e=>setCodReviewNotes(old=>({...old,[row.id]:e.target.value}))} style={{width:"100%",padding:8,marginTop:6,border:"1px solid #cbd5e1",borderRadius:8}} />
+              {row.status!=="REJECTED"&&row.status!=="RESOLVED"&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                <button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"IN_REVIEW")} style={S.approveBtn}>Start / Update Review</button>
+                <button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"REJECTED")} style={{...S.approveBtn,background:"#b91c1c"}}>Reject</button>
+                {row.status==="IN_REVIEW"&&<button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"RESOLVED")} style={S.approveBtn}>Verify &amp; Close</button>}
+              </div>}
+              <small>Close requires matching recorded collection and evidence; never creates a payment.</small>
+            </td>
+          </tr>)}
+          {!codExceptionsLoading&&codExceptions.length===0&&<tr><td colSpan={6} style={S.empty}>No COD exceptions recorded.</td></tr>}
+          </tbody></table></div>
         </section>}
         {/* FIELD DELIVERY DAILY */}
         {tab === "field-delivery" && (
