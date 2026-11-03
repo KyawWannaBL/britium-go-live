@@ -73,6 +73,10 @@ export default function TariffPage(){
   const [royalEdit,setRoyalEdit]=useState<any>(null);
   const [newRoyalName,setNewRoyalName]=useState("");
   const [newRoyalRate,setNewRoyalRate]=useState("5000");
+  const [newOperational,setNewOperational]=useState({
+    township:"", zone:"Yangon", zoneCode:"YGN", tier:"STANDARD",
+    baseFee:"4500", includedKg:"3", extraPerKg:"500", note:""
+  });
   const [rows,setRows]=useState<TariffRow[]>([]);
   const [tiers,setTiers]=useState<any[]>([]);
   const [edit,setEdit]=useState<any>(null);
@@ -116,6 +120,32 @@ export default function TariffPage(){
       setRows([]);setSource("No live township tariff source");setMessage(townResult.reason?.message||"Unable to load township tariffs.");
     }
     setLastSynced(new Date().toLocaleString());setLoading(false);
+  }
+
+  async function createOperationalTariff(){
+    if(!canEdit){setMessage("Tariff edit permission required.");return;}
+    const fields=[newOperational.baseFee,newOperational.includedKg,newOperational.extraPerKg];
+    if(!newOperational.township.trim()||!newOperational.zone.trim()||fields.some(x=>x.trim()===""||!Number.isFinite(Number(x))||Number(x)<0)){
+      setMessage("Enter a township, region, and valid non-negative rate and weight fields.");return;
+    }
+    setSaving(true);setMessage("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_delivery_tariff_create_v1",{
+        p_township:newOperational.township.trim(),
+        p_zone:newOperational.zone.trim(),
+        p_zone_code:newOperational.zoneCode,
+        p_tier:newOperational.tier,
+        p_base_fee:Number(newOperational.baseFee),
+        p_included_kg:Number(newOperational.includedKg),
+        p_extra_per_kg:Number(newOperational.extraPerKg),
+        p_note:newOperational.note.trim()||null,
+      });
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.message||data?.error||"The tariff was not saved.");
+      setNewOperational(v=>({...v,township:"",note:""}));
+      await load();
+      setMessage("New township tariff saved to the live tariff master. Verify its calculation in Data Entry before using it.");
+    }catch(e:any){setMessage(e?.message||"Unable to add a township tariff.");}
+    finally{setSaving(false);}
   }
 
   async function saveOperationalTariff(){
@@ -177,9 +207,9 @@ export default function TariffPage(){
     if(!canEdit){setMessage("Tariff edit permission required.");return;}
     const name=String(row.destination_name||"").trim();
     const rate=String(row.standard_rate_mmk??"").trim();
-    if(action!=="REMOVE"&&(!name||!/^\\d+$/.test(rate))){setMessage("Enter a destination and a non-negative whole-number MMK rate.");return;}
+    if(action!=="REMOVE"&&(!name||!/^\d+$/.test(rate))){setMessage("Enter a destination and a non-negative whole-number MMK rate.");return;}
     if(action==="REMOVE"&&!window.confirm("Deactivate Royal Express tariff for "+name+"?"))return;
-    const key=action==="ADD"?name.toLowerCase().replace(/\\s+/g,"-")+"-royal":row.destination_key;
+    const key=action==="ADD"?name.toLowerCase().replace(/\s+/g,"-")+"-royal":row.destination_key;
     setSaving(true);setMessage("");
     try{
       const {data,error}=await (supabase as any).rpc("be_tariff_catalog_manage_v1",{
@@ -291,6 +321,19 @@ export default function TariffPage(){
 
       <section className="overflow-hidden rounded-3xl border border-[#1a3a5c] bg-[#0b2236]">
         <div className="flex flex-col gap-3 border-b border-[#1a3a5c] p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-black text-white">Operational Township / Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{rows.length} live rows · Canonical delivery rows are editable by authorized tariff managers</p></div><div className="relative w-full lg:w-[420px]"><Search size={16} className="absolute left-3 top-3 text-[#64748b]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search township, zone, tier, status..." className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-sm font-bold text-[#061524] outline-none"/></div></div>
+        {canEdit&&<div className="border-b border-[#1a3a5c] bg-[#061524] p-4 text-[#c8dff0]">
+          <h3 className="text-lg font-black text-[#f6b84b]">Add New Operational Tariff</h3>
+          <p className="mb-3 text-xs text-[#9cc2d9]">Creates an audited township/destination rate in the live Britium tariff master. Existing active township/tier rates cannot be duplicated.</p>
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="text-xs font-bold">Township / Destination<input aria-label="New tariff township" value={newOperational.township} onChange={e=>setNewOperational(v=>({...v,township:e.target.value}))} placeholder="Township name" className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]"/></label>
+            <label className="text-xs font-bold">Region<input aria-label="Tariff region" value={newOperational.zone} onChange={e=>setNewOperational(v=>({...v,zone:e.target.value}))} className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]"/></label>
+            <label className="text-xs font-bold">Branch / Region Code<select aria-label="Tariff branch code" value={newOperational.zoneCode} onChange={e=>setNewOperational(v=>({...v,zoneCode:e.target.value,zone:e.target.value==="YGN"?"Yangon":e.target.value==="MDY"?"Mandalay":e.target.value==="NPT"?"Naypyitaw":v.zone}))} className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]">{[["YGN","Yangon"],["MDY","Mandalay"],["NPT","Naypyitaw"],["OTHER","Other"]].map(([k,v])=><option key={k} value={k}>{v}</option>)}</select></label>
+            <label className="text-xs font-bold">Customer Tier<select aria-label="New tariff customer tier" value={newOperational.tier} onChange={e=>setNewOperational(v=>({...v,tier:e.target.value}))} className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]">{["STANDARD","ROYAL","COMMITMENT"].map(t=><option key={t} value={t}>{t}</option>)}</select></label>
+            {([["baseFee","Base Charge (MMK)"],["includedKg","Included KG"],["extraPerKg","Extra / KG (MMK)"]] as const).map(([field,label])=><label key={field} className="text-xs font-bold">{label}<input aria-label={label} type="number" min="0" step={field==="includedKg"?"0.01":"1"} value={newOperational[field]} onChange={e=>setNewOperational(v=>({...v,[field]:e.target.value}))} className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]"/></label>)}
+            <label className="text-xs font-bold">Notes<input aria-label="New tariff notes" value={newOperational.note} onChange={e=>setNewOperational(v=>({...v,note:e.target.value}))} className="mt-1 h-10 w-full rounded-lg bg-white px-3 text-[#061524]"/></label>
+          </div>
+          <button type="button" disabled={saving||!newOperational.township.trim()} onClick={()=>void createOperationalTariff()} className="mt-3 rounded-xl bg-[#f6b84b] px-5 py-3 text-sm font-black text-[#061524] disabled:opacity-50">{saving?"Saving...":"Add New Tariff"}</button>
+        </div>}
         {editOperational&&canEdit&&<div className="border-b border-[#1a3a5c] bg-[#061524] p-4 text-[#c8dff0]">
           <div className="flex items-center justify-between"><div><div className="text-xs font-black uppercase tracking-widest text-[#f6b84b]">Edit Operational Tariff</div><h3 className="mt-1 font-black text-white">{editOperational.township} · {editOperational.tier}</h3></div><button onClick={()=>setEditOperational(null)}><X size={18}/></button></div>
           <div className="mt-3 grid gap-3 md:grid-cols-5">
