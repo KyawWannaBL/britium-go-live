@@ -134,6 +134,16 @@ export function CorporateDataEntryBinding({merchantCode}:{merchantCode:string}){
 export function CorporateFinanceReviewPanel(){
  const [rows,setRows]=useState<any[]>([]),[message,setMessage]=useState(""),[search,setSearch]=useState("");
  const refresh=async()=>{try{const d=await rpc("be_corporate_way_finance_v1",{p_search:search||null,p_limit:300});setRows(d.rows||[]);setMessage("")}catch(e:any){setMessage(e.message)}};
+ const [reviewWay,setReviewWay]=useState("");
+ const [reviewAction,setReviewAction]=useState("APPROVE_FOR_INVOICING");
+ const [reviewNote,setReviewNote]=useState("");
+ const [reviewBusy,setReviewBusy]=useState(false);
+ const review=async()=>{setReviewBusy(true);setMessage("");
+  try{const r=await rpc("be_corporate_finance_review_action_v1",{p_delivery_way_id:reviewWay,p_action:reviewAction,p_note:reviewNote});
+   setMessage("Review saved for "+r.delivery_way_id+". "+r.finance_review_status+". No invoice or payment posted.");
+   setReviewWay("");setReviewNote("");await refresh();
+  }catch(e:any){setMessage(e.message)}finally{setReviewBusy(false)}
+ };
  useEffect(()=>{void refresh()},[]);
  return <section className="my-5 rounded-xl border border-amber-400/30 bg-[#0b2236] p-4 text-white">
   <h2 className="text-lg font-black">Corporate Contracts — Finance Review</h2>
@@ -141,6 +151,17 @@ export function CorporateFinanceReviewPanel(){
   <input aria-label="Corporate finance search" placeholder="Way ID or contracting company" className={control} value={search} onChange={e=>setSearch(e.target.value)}/>
   <button type="button" className="ml-2 rounded-lg bg-amber-400 px-3 py-2 text-slate-900" onClick={()=>void refresh()}>Refresh</button>
   {message&&<p role="status" className="my-2 text-amber-200">{message}</p>}
+  <div className="my-3 flex flex-wrap items-end gap-2">
+   <label className="text-xs">Corporate Way ID<select aria-label="Select corporate review Way ID" value={reviewWay} onChange={e=>setReviewWay(e.target.value)} className={control+" block"}>
+    <option value="">Select saved contract Way</option>{rows.map(row=><option key={row.delivery_way_id} value={row.delivery_way_id}>{row.delivery_way_id} — {row.finance_review_status}</option>)}
+   </select></label>
+   <label className="text-xs">Review action<select className={control+" block"} value={reviewAction} onChange={e=>setReviewAction(e.target.value)}>
+    <option value="APPROVE_FOR_INVOICING">Approve for invoicing (no posting)</option>
+    <option value="REQUIRES_CORRECTION">Requires correction</option><option value="REOPEN">Reopen review</option>
+   </select></label>
+   <label className="text-xs">Finance review note<input aria-label="Finance review note" className={control+" block min-w-[260px]"} value={reviewNote} onChange={e=>setReviewNote(e.target.value)} placeholder="Explain review decision (12+ chars)"/></label>
+   <button type="button" className="rounded-lg bg-amber-400 px-3 py-2 text-slate-950 disabled:opacity-50" disabled={!reviewWay||reviewBusy||reviewNote.trim().length<12} onClick={()=>void review()}>Save Finance review</button>
+  </div>
   <div className="mt-3 max-h-[420px] overflow-auto"><table className="min-w-[900px] w-full text-sm"><thead><tr>{["Way ID","Company / Project","Area","Total contract fee","Corporate receivable","Recipient fee","Finance state"].map(x=><th className="p-2 text-left" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr className="border-t border-slate-500" key={r.delivery_way_id}><td className="p-2">{r.delivery_way_id}</td><td>{r.company_name}<div>{r.project_name}</div></td><td>{r.area}</td><td>{fmt(r.agreed_fee_mmk)}</td><td>{fmt(r.corporate_receivable_mmk)}</td><td>{fmt(r.recipient_fee_mmk)}</td><td>{r.finance_review_status}</td></tr>)}</tbody></table></div>
  </section>;
 }
