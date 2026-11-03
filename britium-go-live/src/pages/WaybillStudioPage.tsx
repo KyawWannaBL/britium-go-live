@@ -806,6 +806,13 @@ export default function BritiumUnifiedPrintStudioV33() {
       });
       if(error) throw error;
       const releases=Array.isArray(data?.releases)?data.releases:[];
+      const blockedRows=Array.isArray(data?.blocked)?data.blocked:[];
+      if(releases.length===0){
+        const reasons=blockedRows.map((entry:any)=>[entry?.waybill_no,entry?.message].filter(Boolean).join(": ")).filter(Boolean);
+        throw new Error(reasons.length
+          ? "No waybill was released. "+reasons.slice(0,5).join(" | ")+(reasons.length>5?" | See reprint history for remaining blocked waybills.":"")
+          : "No waybill was released. Confirm the waybill was generated with validated saved financial details, then refresh live rows.");
+      }
       const releasedRows=uniqueRows.filter(row=>releases.some((r:any)=>r.waybill_no===docNo(row,"WAYBILL")));
       if(releasedRows.length!==releases.length) throw new Error("Print release response mismatch. Check print history before retrying.");
       if(releasedRows.length) {
@@ -830,6 +837,31 @@ export default function BritiumUnifiedPrintStudioV33() {
     }
     if (!preparedWindow) win.stop();
     await renderAuthorizedPrint(win, html, targetRows.length);
+  }
+
+  function printNipponTestLabel() {
+    // Browser-only test: never calls the audited waybill-release endpoint,
+    // never prints a real Way ID, and cannot be mistaken for a shipment.
+    const win=window.open("", "_blank", "width=600,height=760");
+    if(!win){
+      setMessage("The browser blocked the printer test. Allow pop-ups for Britium Express and try again.");
+      return;
+    }
+    const html=`<!doctype html><html><head><title>BRITIUM TEST LABEL — NOT A WAYBILL</title>
+      <style>@page{size:4in 6in;margin:0}html,body{margin:0;padding:0;background:#fff}
+      .test{width:4in;height:6in;box-sizing:border-box;border:4px dashed #000;
+        font:18px Arial,sans-serif;display:flex;flex-direction:column;align-items:center;
+        justify-content:center;text-align:center;padding:16px;gap:20px}
+      .test strong{font-size:32px}.test p{margin:0}
+      @media screen{.test{margin:16px auto}button{margin:12px;padding:12px}}
+      @media print{button{display:none}}</style></head><body>
+      <div class="test"><strong>NIPPON POS</strong><strong>PRINT TEST ONLY</strong>
+      <p>4 × 6 inch (100 × 150 mm)</p><p>NO WAYBILL / NO PARCEL / NO COD</p>
+      <p>Select the installed Nippon POS printer, 4×6 media, 100% scale and zero margins.</p></div>
+      <button onclick="window.print()">PRINT TEST LABEL</button>
+      </body></html>`;
+    win.document.open();win.document.write(html);win.document.close();win.focus();
+    setMessage("Printer test opened. It does not generate a waybill or consume an audited print release. Select Nippon POS in the browser print dialog.");
   }
 
   function buildPrintHtml(targetRows: PrintRow[]) {
@@ -874,7 +906,7 @@ export default function BritiumUnifiedPrintStudioV33() {
           <h1 className="mt-3 text-2xl font-black md:text-3xl">Exact multi-size Waybill printing</h1>
           {branchMode&&<p className="mt-2 text-amber-200">{branchCode} branch: saved, financially valid waybills in branch custody only. First release is audited; a cancelled or failed print requires native Superadmin reprint approval. Showing up to 500 rows.</p>}
           <p className="mt-1 max-w-4xl text-sm leading-6 text-sky-200">
-            Select the document paper and label layout. The 4 × 6 thermal combinations follow the four supplied reference designs, while A5 and A4 arrange the same labels at their physical print dimensions.
+            Select the document paper and label layout. The 4 × 6 thermal combinations follow the four supplied reference designs, while A5 and A4 arrange the same labels at their physical print dimensions. The Nippon POS profile sets the layout only; the actual installed printer must be selected in your browser print dialog.
           </p>
 
           <div className="mt-4 grid gap-3 xl:grid-cols-[180px_240px_270px_300px_1fr]">
@@ -941,6 +973,7 @@ export default function BritiumUnifiedPrintStudioV33() {
               <Button tone="blue" disabled={loading} onClick={() => void loadRows()}>{loading ? "Loading…" : "Refresh live rows"}</Button>
               <Button tone="green" disabled={!visibleRows.length} onClick={() => setSelected(visibleRows.map((row) => docNo(row, docType)))}>Select all</Button>
               <Button tone="dark" onClick={() => setSelected([])}>Clear</Button>
+              <Button tone="blue" disabled={pdfBusy} onClick={printNipponTestLabel}>Test Nippon POS (no waybill)</Button>
               {printAudit.can_approve && <Button tone="green" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={()=>void approveSelectedReprints()}>Approve selected reprints</Button>}
               <Button tone="gold" disabled={pdfBusy || docType!=="WAYBILL" || !selectedRows.length} onClick={() => void savePdf(selectedRows)}>{pdfBusy?"Preparing PDF…":"Print / Save PDF"}</Button>
               <Button tone="gold" disabled={pdfBusy || !selectedRows.length} onClick={() => void guardedPrint(selectedRows)}>Print selected</Button>
