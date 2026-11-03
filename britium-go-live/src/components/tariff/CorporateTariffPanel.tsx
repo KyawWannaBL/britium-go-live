@@ -134,6 +134,7 @@ export function CorporateDataEntryBinding({merchantCode}:{merchantCode:string}){
 export function CorporateFinanceReviewPanel(){
  const [rows,setRows]=useState<any[]>([]),[message,setMessage]=useState(""),[search,setSearch]=useState("");
  const refresh=async()=>{try{const d=await rpc("be_corporate_way_finance_v1",{p_search:search||null,p_limit:300});setRows(d.rows||[]);setMessage("")}catch(e:any){setMessage(e.message)}};
+ const [compare,setCompare]=useState<any>(null);
  const [reviewWay,setReviewWay]=useState("");
  const [reviewAction,setReviewAction]=useState("APPROVE_FOR_INVOICING");
  const [reviewNote,setReviewNote]=useState("");
@@ -150,6 +151,7 @@ export function CorporateFinanceReviewPanel(){
   <p className="mb-3 text-sm text-amber-200">These approved-rate snapshots are pending reconciliation. This screen does not post receipts, alter COD or settle invoices automatically.</p>
   <input aria-label="Corporate finance search" placeholder="Way ID or contracting company" className={control} value={search} onChange={e=>setSearch(e.target.value)}/>
   <button type="button" className="ml-2 rounded-lg bg-amber-400 px-3 py-2 text-slate-900" onClick={()=>void refresh()}>Refresh</button>
+  {reviewWay&&<button type="button" className="ml-2 rounded-lg border border-cyan-400 px-3 py-2 text-cyan-100" onClick={()=>void rpc("be_corporate_finance_compare_v1",{p_delivery_way_id:reviewWay}).then(setCompare).catch((e:any)=>setMessage(e.message))}>Compare with Parcel &amp; Third-Party Finance</button>}
   {message&&<p role="status" className="my-2 text-amber-200">{message}</p>}
   <div className="my-3 flex flex-wrap items-end gap-2">
    <label className="text-xs">Corporate Way ID<select aria-label="Select corporate review Way ID" value={reviewWay} onChange={e=>setReviewWay(e.target.value)} className={control+" block"}>
@@ -162,7 +164,14 @@ export function CorporateFinanceReviewPanel(){
    <label className="text-xs">Finance review note<input aria-label="Finance review note" className={control+" block min-w-[260px]"} value={reviewNote} onChange={e=>setReviewNote(e.target.value)} placeholder="Explain review decision (12+ chars)"/></label>
    <button type="button" className="rounded-lg bg-amber-400 px-3 py-2 text-slate-950 disabled:opacity-50" disabled={!reviewWay||reviewBusy||reviewNote.trim().length<12} onClick={()=>void review()}>Save Finance review</button>
   </div>
-  <div className="mt-3 max-h-[420px] overflow-auto"><table className="min-w-[900px] w-full text-sm"><thead><tr>{["Way ID","Company / Project","Area","Total contract fee","Corporate receivable","Recipient fee","Finance state"].map(x=><th className="p-2 text-left" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr className="border-t border-slate-500" key={r.delivery_way_id}><td className="p-2">{r.delivery_way_id}</td><td>{r.company_name}<div>{r.project_name}</div></td><td>{r.area}</td><td>{fmt(r.agreed_fee_mmk)}</td><td>{fmt(r.corporate_receivable_mmk)}</td><td>{fmt(r.recipient_fee_mmk)}</td><td>{r.finance_review_status}</td></tr>)}</tbody></table></div>
+  {compare&&<div role="status" className="my-3 rounded-xl border border-cyan-400/40 p-3 text-xs">
+    <strong>Reconciliation: {compare.delivery_way_id}</strong>
+    <div>Contract service fee: {fmt(compare.contract_fee_mmk)} | Company receivable: {fmt(compare.corporate_receivable_mmk)} | Contract recipient component: {fmt(compare.contract_recipient_fee_mmk)}</div>
+    <div>Existing parcel COD: {fmt(compare.original_data_entry_cod_mmk)} | Already collected: {fmt(compare.actual_collect_mmk)} | Existing merchant settlement: {fmt(compare.original_merchant_final_settlement_mmk)}</div>
+    <div>Third-party CS: {compare.cs_thirdparty_outcome||"No confirmation"} | Third-party Finance: {compare.thirdparty_finance_review_status||"Not requested"} | Corporate review: {compare.corporate_finance_review_status}</div>
+    <div className="font-bold text-amber-200">{compare.double_count_guard}</div>
+   </div>}
+    <div className="mt-3 max-h-[420px] overflow-auto"><table className="min-w-[900px] w-full text-sm"><thead><tr>{["Way ID","Company / Project","Area","Total contract fee","Corporate receivable","Recipient fee","Finance state"].map(x=><th className="p-2 text-left" key={x}>{x}</th>)}</tr></thead><tbody>{rows.map(r=><tr className="border-t border-slate-500" key={r.delivery_way_id}><td className="p-2">{r.delivery_way_id}</td><td>{r.company_name}<div>{r.project_name}</div></td><td>{r.area}</td><td>{fmt(r.agreed_fee_mmk)}</td><td>{fmt(r.corporate_receivable_mmk)}</td><td>{fmt(r.recipient_fee_mmk)}</td><td>{r.finance_review_status}</td></tr>)}</tbody></table></div>
  </section>;
 }
 
