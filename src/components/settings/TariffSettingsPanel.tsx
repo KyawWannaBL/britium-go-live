@@ -187,6 +187,7 @@ export function TariffSettingsPanel({
 
       setRows(normalizeRows(data));
       const rights=await supabase.rpc("be_tariff_rights_list_v1");
+      if (rights.error) throw rights.error;
       setCanManage(Boolean((rights.data as any)?.can_manage));
     } catch (error) {
       setRows([]);
@@ -247,7 +248,8 @@ export function TariffSettingsPanel({
     setSavingTier(row.tier_name);
 
     try {
-      const { error } = await supabase.rpc(
+      if (!canManage) throw new Error("TARIFF_WRITE_NOT_AUTHORIZED");
+      const { data, error } = await supabase.rpc(
         "be_tariff_update",
         {
           p_tier: row.tier_name,
@@ -263,6 +265,7 @@ export function TariffSettingsPanel({
       );
 
       if (error) throw error;
+      if ((data as any)?.ok !== true) throw new Error("Tariff save was not accepted.");
 
       await loadTariffs();
 
@@ -284,7 +287,7 @@ export function TariffSettingsPanel({
     <div className="mt-6">
       <div className="mb-4 flex gap-2 rounded-2xl border bg-white p-2">{(["BRITIUM","ROYAL EXPRESS"] as const).map(provider=><button key={provider} type="button" onClick={()=>setActiveTab(provider)} className={`rounded-xl px-5 py-3 font-bold ${activeTab===provider?"bg-blue-900 text-white":"bg-slate-100 text-slate-700"}`}>{provider==="BRITIUM"?"Britium Tariff":"Royal Express Tariff"}</button>)}</div>
       {activeTab==="ROYAL EXPRESS" ? <ProviderTariffManager provider="ROYAL EXPRESS" language={language}/> : <>
-      {canManage&&<div className="flex gap-2 p-3"><input aria-label="New tier" value={newTier} onChange={e=>setNewTier(e.target.value)} placeholder="New Britium tier" className="rounded-lg border p-2"/><button type="button" onClick={async()=>{const {error}=await supabase.rpc("be_tariff_tier_manage_v1",{p_action:"ADD",p_tier:newTier,p_base_fee:4000,p_extra_per_kg:500,p_free_kg:3,p_highway_fee:0});if(error)setErrorMessage(error.message);else{setNewTier("");await loadTariffs();}}}>Add tier</button></div>}
+      {canManage&&<div className="flex gap-2 p-3"><input aria-label="New tier" value={newTier} onChange={e=>setNewTier(e.target.value)} placeholder="New Britium tier" className="rounded-lg border p-2"/><button type="button" onClick={async()=>{const {data,error}=await supabase.rpc("be_tariff_tier_manage_v1",{p_action:"ADD",p_tier:newTier.trim(),p_base_fee:4000,p_extra_per_kg:500,p_free_kg:3,p_highway_fee:0});if(error||((data as any)?.ok!==true))setErrorMessage(error?.message||"Unable to add tariff tier.");else{setNewTier("");await loadTariffs();}}}>Add tier</button></div>}
       <div className="rounded-[32px] border border-black/10 bg-white/55 p-6 shadow-sm backdrop-blur-md">
         <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
@@ -456,7 +459,7 @@ export function TariffSettingsPanel({
                         type="button"
                         onClick={() => void saveTariff(row)}
                         disabled={
-                          savingTier !== null || loading
+                          !canManage || savingTier !== null || loading
                         }
                         className="inline-flex items-center gap-2 rounded-xl bg-[#0d2c54] px-4 py-2 text-xs font-black text-white disabled:opacity-50"
                       >
@@ -533,7 +536,7 @@ function ProviderTariffManager({provider,language}:{provider:"ROYAL EXPRESS";lan
  useEffect(()=>{void refresh().catch(e=>setMessage(e.message));},[refresh]);
  async function mutate(action:"ADD"|"EDIT"|"REMOVE"|"SAVE",key:string,displayName:string,amount:string){
    if(!rights?.can_manage){setMessage("Tariff edit permission required.");return;}
-   if(action!=="REMOVE"&&(!/^\\d+$/.test(amount)||!displayName.trim())){setMessage("Enter a valid destination and whole-number price.");return;}
+   if(action!=="REMOVE"&&(!/^\d+$/.test(amount.trim())||!displayName.trim())){setMessage("Enter a valid destination and whole-number price.");return;}
    if(action==="REMOVE"&&!window.confirm("Deactivate this tariff? Existing historical records will be preserved."))return;
    setWorking(true);setMessage("");try{
      const {data,error}=await supabase.rpc("be_tariff_catalog_manage_v1",{p_provider:provider,p_action:action,p_key:key,p_name:displayName,p_rate:action==="REMOVE"?null:Number(amount)});
