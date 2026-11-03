@@ -270,7 +270,7 @@ export default function TariffPage(){
             </tr>;
           })}</tbody>
         </table></div>
-      </section> : <>}
+      </section> : <>
       <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <div><h2 className="text-lg font-black text-white">Core Customer Tier Master</h2><p className="mt-1 text-xs text-[#9cc2d9]">Edits call <b>be_tariff_update</b>. Backend authorization uses revocable role permissions. Only Super Admin can grant or revoke editing rights.</p></div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
