@@ -732,7 +732,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
   const photoReady = Boolean(row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
   const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
-  const saveBlocked = row.waybillPublished || busy || row.checking || row.skipped || !photoReady || !routeReady(row,tariffOptions);
+  const saveBlocked = row.waybillPublished || busy || row.checking || row.skipped || row.calculating || row.calculationFailed || row.calculation?.validation_status === "ERROR" || !photoReady || !routeReady(row,tariffOptions);
   const statusText = row.saved ? "REGISTERED" : row.skipped ? "PENDING" : row.calculating ? "CALCULATING" : "DRAFT";
   const statusClass = row.saved
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
@@ -1154,6 +1154,13 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         </div>
       </fieldset>
 
+      {(row.calculationFailed || row.calculation?.validation_status==="ERROR") && /No active tariff exists/i.test(text(row.calculation?.validation_message)||row.message||"") ? (
+        <div role="alert" className="mx-4 mb-3 rounded-lg border border-amber-400/50 bg-amber-950/40 p-3 text-[11px] font-semibold text-amber-100">
+          <b>Missing active Finance tariff — Save is blocked.</b>
+          <div className="mt-1">Township: {text(row.township)||"Not selected"} · Customer tier: {text(row.customer_tier)||"Backend-resolved merchant tier"}.</div>
+          <div className="mt-1">The displayed customer delivery charge is not an approved tariff. Ask the tariff administrator to verify this destination in the Royal Express catalog and Finance tariff master. Use Pending / Skip to preserve entry without an incorrect settlement.</div>
+        </div>
+      ):null}
       {row.message ? <div className="mx-4 mb-3 rounded-lg border border-[#3aa7de]/30 bg-[#061524] p-3 text-[11px] text-[#9fd7f6]">{row.message}</div>:null}
 
       <div className={`sticky bottom-0 z-10 border-t p-3 backdrop-blur ${fullMode?"border-[#9c8d6c] bg-[#bfb6a2]/95":"border-[#31506a] bg-[#0b2236]/95"}`}>
