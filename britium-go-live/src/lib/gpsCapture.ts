@@ -294,41 +294,40 @@ export function normalizeSupervisorLiveMapPoint(row: Record<string, any>): Super
   };
 }
 
-export async function loadSupervisorLiveMapSnapshot() {
-  const rpcNames = [
-    "be_supervisor_live_map_snapshot",
-    "be_live_map_snapshot",
-    "be_rider_live_map_snapshot",
-  ];
-
-  for (const name of rpcNames) {
-    try {
-      const rows = await rpcRows(name);
-      if (rows.length) return rows.map(normalizeSupervisorLiveMapPoint);
-    } catch {
-      // Try next source.
-    }
+/**
+ * Read only the branch-authorized, time-limited live fleet endpoint.
+ * Never fall back to arbitrary GPS tables or legacy unscoped snapshots.
+ * The backend function must be installed and access-tested before this
+ * frontend change is merged to production.
+ */
+export async function loadSupervisorLiveMapSnapshot(): Promise<SupervisorLiveMapPoint[]> {
+  const { data, error } = await (supabase as any).rpc("be_ops_live_fleet_positions_v1");
+  if (error) throw new Error(error.message || "Authorized live-fleet access is unavailable.");
+  if (data?.ok !== true || !Array.isArray(data.positions)) {
+    throw new Error("Authorized live-fleet data is unavailable.");
   }
 
-  const tableNames = [
-    "be_rider_live_locations",
-    "be_live_rider_locations",
-    "be_mobile_gps_locations",
-    "be_mobile_location_events",
-    "be_rider_location_events",
-  ];
-
-  const rows: Record<string, any>[] = [];
-
-  for (const tableName of tableNames) {
-    try {
-      rows.push(...(await tableRows(tableName, 500)));
-    } catch {
-      // Try next table.
-    }
-  }
-
-  return rows.map(normalizeSupervisorLiveMapPoint);
+  const now = Date.now();
+  const fresh = data.positions.filter((item: any) => {
+    const lat = Number(item?.latitude), lng = Number(item?.longitude);
+    const seen = Date.parse(String(item?.last_seen_at || ""));
+    const expiry = Date.parse(String(item?.expires_at || ""));
+    return Number.isFinite(lat) && Number.isFinite(lng) &&
+      Math.abs(lat) <= 90 && Math.abs(lng) <= 180 &&
+      !(lat === 0 && lng === 0) &&
+      Number.isFinite(seen) && Number.isFinite(expiry) &&
+      expiry > now && seen <= now && now - seen < 120000;
+  });
+  return fresh.map((point: any) => normalizeSupervisorLiveMapPoint({
+    ...point,
+    rider_code: point.worker_code,
+    rider_name: point.worker_code,
+    lat: point.latitude,
+    lng: point.longitude,
+    status: "LIVE",
+    updated_at: point.last_seen_at,
+    gps_status: "LIVE",
+  }));
 }
 
 export function gpsAgeMinutes(updatedAt?: string) {
