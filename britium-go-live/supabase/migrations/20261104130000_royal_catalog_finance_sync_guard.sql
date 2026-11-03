@@ -33,12 +33,13 @@ begin
   -- Do not silently orphan the old finance tariff when a catalog destination
   -- is renamed to a different approved township. A rename requires a reviewed
   -- migration of both tariff records and any associated parcel references.
-  if tg_op='UPDATE'
-     and upper(coalesce(old.provider_code,''))='ROYAL EXPRESS'
-     and public.be_approved_tariff_lookup_key(old.destination_name)
-         is distinct from v_lookup then
-    raise exception 'ROYAL_DESTINATION_RENAME_REQUIRES_REVIEW'
-      using errcode='22023';
+  if tg_op='UPDATE' then
+    if upper(coalesce(old.provider_code,''))='ROYAL EXPRESS'
+       and public.be_approved_tariff_lookup_key(old.destination_name)
+           is distinct from v_lookup then
+      raise exception 'ROYAL_DESTINATION_RENAME_REQUIRES_REVIEW'
+        using errcode='22023';
+    end if;
   end if;
 
   -- Serializes concurrent writes against the same canonical destination.
