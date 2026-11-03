@@ -152,6 +152,10 @@ begin
 end;
 $sync$;
 
+-- SECURITY DEFINER trigger must not be directly callable via PostgREST.
+-- Invoked by the table trigger under the definer's privileges.
+revoke execute on function public.be_royal_tariff_finance_sync_v1() from public, anon, authenticated;
+
 drop trigger if exists be_royal_tariff_finance_sync_trigger_v1
   on public.be_data_entry_tariff_catalog;
 create trigger be_royal_tariff_finance_sync_trigger_v1
