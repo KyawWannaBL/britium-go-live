@@ -296,9 +296,16 @@ export default function FinancePortal() {
               {row.status!=="REJECTED"&&row.status!=="RESOLVED"&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                 <button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"IN_REVIEW")} style={S.approveBtn}>Start / Update Review</button>
                 <button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"REJECTED")} style={{...S.approveBtn,background:"#b91c1c"}}>Reject</button>
-                {row.status==="IN_REVIEW"&&<button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8} onClick={()=>void reviewCodException(row.id,"RESOLVED")} style={S.approveBtn}>Verify &amp; Close</button>}
+                {row.status==="IN_REVIEW"&&<button type="button" disabled={!!codReviewBusy||(codReviewNotes[row.id]||"").trim().length<8||!row.collection_reconciled||!row.delivery_confirmed||!row.delivery_proof_present||!(codEvidenceRefs[row.id]??row.evidence_reference??"").trim()} onClick={()=>void reviewCodException(row.id,"RESOLVED")} style={S.approveBtn}>Verify &amp; Close</button>}
               </div>}
-              <small>Close requires matching recorded collection and evidence; never creates a payment.</small>
+              <div style={{marginTop:8,padding:8,background:"#fef3c7",borderRadius:8,fontSize:12,fontWeight:700}}>
+                <div>Closure readiness:</div>
+                <div>{row.collection_reconciled?"✓":"✗"} Recorded cash matched and timestamped</div>
+                <div>{row.delivery_confirmed?"✓":"✗"} Driver delivery confirmed</div>
+                <div>{row.delivery_proof_present?"✓":"✗"} Delivery proof saved</div>
+                <div>{(codEvidenceRefs[row.id]??row.evidence_reference??"").trim()?"✓":"✗"} Payment reference supplied</div>
+              </div>
+              <small>Closure requires all four checks and an existing Finance review. It never creates a payment or changes COD.</small>
             </td>
           </tr>)}
           {!codExceptionsLoading&&codExceptions.length===0&&<tr><td colSpan={6} style={S.empty}>No COD exceptions recorded.</td></tr>}
