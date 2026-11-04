@@ -18,6 +18,9 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
  const inFlight=useRef(false),generation=useRef(0),request=useRef<{fingerprint:string;payload:any}|null>(null);
  useEffect(()=>{generation.current++;setCurrent(row);setExpanded(false);setActual(reportedPaymentDraft(row).actual);setReference('');setAllocations(reportedPaymentDraft(row).allocations);setReason('');setAdjustment('');setMessage('');setBusy(false);inFlight.current=false;request.current=null;},[row.id,row.updated_at]);
  const locked=current?.settlement_status==='SETTLED'||!!current?.settled_at;
+ const balanced=actual!==''&&validatePaymentAllocations(allocations,actual)===null;
+ const reviewPermissionMessage=!canReview?'Finance review requires an authorized Finance, Accountant, or Super Admin account.':locked?'This settlement is already closed.':'';
+
  async function act(action:string){
   if(!canReview||locked||inFlight.current)return;
   if(!expanded||mode!==action){setExpanded(true);setMode(action);setMessage('');return;}
@@ -52,13 +55,13 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
     <label>Actual amount received (MMK)<input name="actual_collected" type="number" min="0" step="0.01" value={actual} disabled={!canReview||busy||locked} onChange={e=>setActual(e.target.value)} style={field}/></label>
     <div style={{fontSize:12,color:'#d3e7f6'}}>Specify how the verified amount was actually received. A collection amount alone is not payment evidence.</div>
     <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-      <button type="button" disabled={!canReview||busy||locked||!/^\\d+(?:\\.\\d{1,2})?$/.test(actual)||Number(actual)<=0}
+      <button type="button" disabled={!canReview||busy||locked||!/^\d+(?:\.\d{1,2})?$/.test(actual)||Number(actual)<=0}
         onClick={()=>{
           if(allocations.length>0&&!window.confirm('Replace the existing payment breakdown with one cash payment?'))return;
           setAllocations([{method:'CASH',amount:actual,reference:''}]);
           setMessage('Cash breakdown recorded in this draft. Confirm only after checking actual cash received.');
         }}
-        style={{padding:'8px 12px',borderRadius:6,border:'1px solid #34d399',background:'#12392e',color:'#d1fae5'}}>
+        style={{padding:'8px 12px',borderRadius:6,border:'1px solid #34d399',background:'#12392e',color:'#d1fae5',opacity:!canReview||busy||locked||Number(actual)<=0?0.45:1}}>
         Use verified amount as Cash
       </button>
       <button type="button" disabled={!canReview||busy||locked||allocations.length===0}
@@ -68,6 +71,9 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
       </button>
     </div>
     <PaymentAllocationEditor value={allocations} onChange={setAllocations} disabled={!canReview||busy||locked}/>
+    <div role="status" style={{borderRadius:6,padding:'8px 10px',fontSize:12,border:balanced?'1px solid #34d399':'1px solid #f6b84b',background:balanced?'#12392e':'#422f18',color:balanced?'#a7f3d0':'#fde68a'}}>
+      {balanced?'Payment breakdown balanced. Confirm the money was physically received, then enter a Collection reference.':'Payment breakdown is not yet balanced. '+(validatePaymentAllocations(allocations,actual)||'')}
+    </div>
     {mode==='CONFIRM'&&actual!==''&&Number(actual)>0&&allocations.length===0
       ? <small style={{color:'#f6b84b'}}>No payment method recorded. Add an actual Cash, bank or wallet payment totaling {Number(actual).toLocaleString()} MMK.</small>
       : null}
@@ -75,7 +81,14 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
       ? <small style={{color:'#f6b84b'}}>Expected {Number(current.cod_expected).toLocaleString()} MMK but entered zero. Do not confirm unless a justified adjustment has been approved.</small>
       : null}
     <label>Collection reference<input name="reference" value={reference} disabled={!canReview||busy||locked} onChange={e=>setReference(e.target.value)} style={field}/></label>
-    <small>Review the received amount and reference, then click Confirm again. If the amount differs, record an explained adjustment first.</small>
+    <small>Verify the received amount and Collection reference. If the amount differs, record an explained adjustment first.</small>
+    <button type="button" disabled={!canReview||busy||locked||!balanced||!reference.trim()||Number(actual)!==Number(current.cod_expected??0)}
+      onClick={()=>void act('CONFIRM')}
+      style={{padding:'10px 14px',borderRadius:7,border:'1px solid #34d399',background:balanced&&reference.trim()&&Number(actual)===Number(current.cod_expected??0)?'#065f46':'#1f3540',color:'#ffffff',fontWeight:700,opacity:!canReview||busy||locked||!balanced||!reference.trim()||Number(actual)!==Number(current.cod_expected??0)?0.55:1}}>
+      {busy?'Confirming…':'Confirm verified collection'}
+    </button>
+    {!reference.trim()?<small style={{color:'#f6b84b'}}>Collection reference is required before confirming.</small>:null}
+    {reviewPermissionMessage?<small style={{color:'#f87171'}}>{reviewPermissionMessage}</small>:null}
    </>:<>
     {mode==='ADJUST'&&<label>Adjustment (MMK)<input name="adjustment_mmk" type="number" step="0.01" value={adjustment} disabled={!canReview||busy||locked} onChange={e=>setAdjustment(e.target.value)} style={field}/></label>}
     <label>Reason<textarea name="reason" value={reason} disabled={!canReview||busy||locked} onChange={e=>setReason(e.target.value)} style={field}/></label>
