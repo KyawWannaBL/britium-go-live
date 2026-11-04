@@ -274,10 +274,7 @@ export default function SupervisorPickupAssignmentGoLivePage() {
 
   async function loadCountRequests() {
     const { data, error } = await (supabase as any)
-      .from("be_pickup_count_change_requests_v1")
-      .select("id,pickup_id,original_count,requested_count,reason,status,requested_by")
-      .eq("status", "PENDING_REVIEW")
-      .limit(100);
+      .rpc("be_superadmin_pending_pickup_count_reviews_v1");
     if (error) {
       // RLS may prohibit non-superadmins. Do not relax database access.
       console.warn("Pickup-count reviews are unavailable to this account", error.message);
