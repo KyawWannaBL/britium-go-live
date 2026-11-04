@@ -50,7 +50,30 @@ export default function CodSettlementReview({row,canReview,onChanged}:Props){
    <div>Original: {Number(current.metadata?.original_expected_collection??current.cod_expected??0).toLocaleString()} MMK · Adjustment: {Number(current.metadata?.collection_adjustment_mmk??0).toLocaleString()} MMK<br/><strong>Revised: {Number(current.cod_expected??0).toLocaleString()} MMK</strong></div>
    {mode==='CONFIRM'?<>
     <label>Actual amount received (MMK)<input name="actual_collected" type="number" min="0" step="0.01" value={actual} disabled={!canReview||busy||locked} onChange={e=>setActual(e.target.value)} style={field}/></label>
+    <div style={{fontSize:12,color:'#d3e7f6'}}>Specify how the verified amount was actually received. A collection amount alone is not payment evidence.</div>
+    <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+      <button type="button" disabled={!canReview||busy||locked||!/^\\d+(?:\\.\\d{1,2})?$/.test(actual)||Number(actual)<=0}
+        onClick={()=>{
+          if(allocations.length>0&&!window.confirm('Replace the existing payment breakdown with one cash payment?'))return;
+          setAllocations([{method:'CASH',amount:actual,reference:''}]);
+          setMessage('Cash breakdown recorded in this draft. Confirm only after checking actual cash received.');
+        }}
+        style={{padding:'8px 12px',borderRadius:6,border:'1px solid #34d399',background:'#12392e',color:'#d1fae5'}}>
+        Use verified amount as Cash
+      </button>
+      <button type="button" disabled={!canReview||busy||locked||allocations.length===0}
+        onClick={()=>setAllocations([])}
+        style={{padding:'8px 12px',borderRadius:6,border:'1px solid #64748b',background:'#102b45',color:'#e2e8f0'}}>
+        Clear payment breakdown
+      </button>
+    </div>
     <PaymentAllocationEditor value={allocations} onChange={setAllocations} disabled={!canReview||busy||locked}/>
+    {mode==='CONFIRM'&&actual!==''&&Number(actual)>0&&allocations.length===0
+      ? <small style={{color:'#f6b84b'}}>No payment method recorded. Add an actual Cash, bank or wallet payment totaling {Number(actual).toLocaleString()} MMK.</small>
+      : null}
+    {mode==='CONFIRM'&&actual!==''&&Number(actual)===0&&Number(current.cod_expected??0)>0
+      ? <small style={{color:'#f6b84b'}}>Expected {Number(current.cod_expected).toLocaleString()} MMK but entered zero. Do not confirm unless a justified adjustment has been approved.</small>
+      : null}
     <label>Collection reference<input name="reference" value={reference} disabled={!canReview||busy||locked} onChange={e=>setReference(e.target.value)} style={field}/></label>
     <small>Review the received amount and reference, then click Confirm again. If the amount differs, record an explained adjustment first.</small>
    </>:<>
