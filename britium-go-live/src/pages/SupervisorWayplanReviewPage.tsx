@@ -148,7 +148,11 @@ export default function SupervisorWayplanReviewPage() {
 
   const saveCrew = async () => {
     if(!selected) return;
-    if(!crewDraft.driver_code){setError("Choose a Driver before saving crew.");return;}
+    if(!crewDraft.driver_code){
+      setError(/^(BICYCLE|BIKE|MOTORBIKE|MOTOR_BIKE|MOTORCYCLE)$/i.test(String(selected?.vehicle_code||selected?.vehicle_name||""))
+        ? "Rider-only bicycle assignments are managed by the Wayplan planner. Do not add a Driver. For changes, revise the Wayplan before dispatch release."
+        : "Choose a Driver before saving a vehicle crew.");return;
+    }
     setBusy(true); setError(""); setMessage("");
     try{
       const {data:res,error:rpcError}=await (supabase as any).rpc("be_wayplan_supervisor_assign_crew_v68",{
@@ -230,6 +234,10 @@ export default function SupervisorWayplanReviewPage() {
   const selectedStatus = String(selected?.review_status || "DRAFT").toUpperCase();
   const stops = Array.isArray(detail?.wayplan?.stops) ? detail.wayplan.stops : [];
   const crewEditable=Boolean(selected) && !["DISPATCH_READY","DISPATCHED"].includes(selectedStatus);
+  const riderOnlyMode=/^(BICYCLE|BIKE|MOTORBIKE|MOTOR_BIKE|MOTORCYCLE)$/i.test(String(selected?.vehicle_code || selected?.vehicle_name || "").trim())
+    || /^(BICYCLE|BIKE|MOTORBIKE|MOTOR_BIKE|MOTORCYCLE)$/i.test(String(selected?.vehicle_name || "").trim());
+  const releasedToWarehouse=selectedStatus==="DISPATCH_READY";
+
   const branch=String(selected?.branch_code || selected?.metadata?.branch_code || "YGN");
   const drivers=(roster?.drivers||[]).filter((x:any)=>!x.branch_code || x.branch_code===branch);
   const riders=(roster?.riders||[]).filter((x:any)=>!x.branch_code || x.branch_code===branch);
@@ -309,18 +317,21 @@ export default function SupervisorWayplanReviewPage() {
                 <Info label="Helper" value={selected.helper_name || selected.helper_code || "No helper"} />
               </div>
 
+              {releasedToWarehouse && <div className="rounded-xl border border-blue-400/40 bg-blue-500/10 p-3 text-[12px] text-blue-100">
+                <b>Supervisor confirmation already completed.</b> This route remains CREATED until all current-wayplan dispatch scans are finished and an authorized dispatcher publishes it. The disabled Confirm Wayplan and Save Crew buttons are expected. {riderOnlyMode ? "A bicycle Rider-only route does not require a Driver." : ""}
+              </div>}
               <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-[11px] font-black text-[#eef8ff]">Delivery crew roster</div>
-                    <div className="text-[10px] text-[#4d7a9b]">Driver required · Rider optional · Helper optional · sourced from approved master spreadsheets.</div>
+                    <div className="text-[10px] text-[#4d7a9b]">{riderOnlyMode ? "Bicycle / Motorbike: Rider required · Driver not required · Helper optional." : "Delivery van: Driver required · Rider optional · Helper optional."} Crew editing is locked after dispatch release.</div>
                   </div>
-                  <button disabled={!crewEditable || busy || !crewDraft.driver_code} onClick={saveCrew} className="rounded-lg border border-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#f6b84b] disabled:opacity-40">
+                  <button disabled={!crewEditable || busy || !crewDraft.driver_code || riderOnlyMode} onClick={saveCrew} className="rounded-lg border border-[#f6b84b] px-3 py-2 text-[11px] font-black text-[#f6b84b] disabled:opacity-40">
                     Save Crew
                   </button>
                 </div>
                 <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
-                  <label className="text-[10px] text-[#4d7a9b]">Driver *
+                  <label className="text-[10px] text-[#4d7a9b]">{riderOnlyMode ? "Driver (not required for bicycle)" : "Driver *"}
                     <select disabled={!crewEditable || busy} value={crewDraft.driver_code} onChange={e=>setCrewDraft(v=>({...v,driver_code:e.target.value}))} className="mt-1 w-full rounded-lg border border-[#1a3a5c] bg-[#061524] p-2 text-[11px] text-[#eef8ff]">
                       <option value="">Choose Driver</option>
                       {drivers.map((x:any)=><option key={x.id} value={x.id}>{x.name}{x.mobile_auth_ready===false ? " · no mobile login" : ""}</option>)}
@@ -339,14 +350,14 @@ export default function SupervisorWayplanReviewPage() {
                     </select>
                   </label>
                 </div>
-                {!crewEditable ? <div className="mt-2 text-[10px] text-amber-300">Crew editing is locked after the Wayplan is released to Dispatch.</div> : null}
+                {!crewEditable ? <div className="mt-2 text-[10px] text-amber-300">Crew editing is locked after the Wayplan is released to Dispatch. {riderOnlyMode ? "Rider-only assignment is valid without a Driver; do not select one." : ""}</div> : null}
               </div>
 
               {detailLoading ? <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-4 text-[12px] text-[#4d7a9b]">Loading selected Wayplan details…</div> : null}
 
               <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Supervisor notes (optional)" className="w-full min-h-[72px] rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-3 text-[12px] text-[#eef8ff] outline-none focus:border-[#f6b84b]" />
 
-              {selected.blocked_count ? <div className="rounded-xl border border-red-400/40 bg-red-500/10 p-3 text-[11px] text-red-200">{selected.blocked_count} parcel(s) are blocked by warehouse/discrepancy/RTO validation.</div> : null}
+              {selected.blocked_count ? <div className="rounded-xl border border-red-400/40 bg-red-500/10 p-3 text-[11px] text-red-200">{selected.blocked_count} parcel(s) require warehouse/dispatch validation. For DISPATCH_READY routes, complete the mandatory scans in Warehouse → Dispatch Scan, then publish via Dispatch Command. Do not add a Driver to a bicycle route.</div> : null}
 
               <div className="border border-[#1a3a5c] rounded-xl overflow-hidden">
                 <div className="grid grid-cols-[52px_1fr_160px_120px_110px] gap-2 bg-[#0b2236] px-3 py-2 text-[10px] uppercase tracking-wider text-[#4d7a9b]">
@@ -367,7 +378,7 @@ export default function SupervisorWayplanReviewPage() {
 
               {selectedStatus === "DISPATCH_READY" ? (
                 <div className="rounded-xl border border-emerald-400/40 bg-emerald-500/10 p-3 text-[12px] text-emerald-200 flex items-center gap-2">
-                  <Truck size={16}/> Supervisor review complete. Next: Dispatch Command → mandatory parcel scan → Dispatch.
+                  <Truck size={16}/> Supervisor review complete. Next: Warehouse → Dispatch Scan (complete every outstanding Way ID), then Dispatch Command → Publish. Confirm Wayplan is intentionally disabled after DISPATCH_READY.
                 </div>
               ) : null}
             </div>
