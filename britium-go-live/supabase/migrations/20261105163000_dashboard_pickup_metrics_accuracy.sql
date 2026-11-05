@@ -167,5 +167,5 @@ begin
     'operations',v_operations,'finance',v_finance,'warehouse',v_warehouse,'hr',v_hr,'growth',v_growth,'branches',v_branches,
     'permissions',jsonb_build_object('operations',v_ops,'finance',v_fin,'hr',v_hr_ok,'growth',v_growth_ok,'branches',v_branch_ok,'bird_eye',v_super)
   );
-end
+end;
 $function$;
