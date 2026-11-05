@@ -173,6 +173,33 @@ export default function SupervisorWayplanReviewPage() {
     }
   };
 
+  // Final dispatch publication is separate from Supervisor approval.
+  // The RPC is authoritative: it checks the current membership, scanned parcels,
+  // finance state, crew, trip sequence and actor/branch permissions atomically.
+  const publishWayplan = async () => {
+    if (!selected || busy || String(selected.review_status || "").toUpperCase() !== "DISPATCH_READY") return;
+    const code = selected.wayplan_id;
+    setBusy(true); setError(""); setMessage("");
+    try {
+      const { data: result, error: publishError } = await (supabase as any).rpc("be_dispatch_start_wayplan", {
+        p_payload: { wayplan_id: code },
+      });
+      if (publishError) throw publishError;
+      if (!result?.ok) {
+        const issues = Array.isArray(result?.integrity?.issues) ? result.integrity.issues.join(", ") : "";
+        const missing = result?.integrity?.missing_dispatch_way_ids || result?.dispatch_scan_validation?.missing_dispatch_scan || [];
+        throw new Error([result?.next_step, result?.error, issues, Array.isArray(missing) && missing.length ? "Missing dispatch scans: " + missing.join(", ") : ""].filter(Boolean).join(" — ") || "Publication blocked by Dispatch validation.");
+      }
+      setMessage(`${code} published to Dispatch successfully (${result?.published_rows ?? "all eligible"} parcels). Refresh the Rider/Driver Delivery screen.`);
+      await loadData();
+      await loadDetail(code);
+    } catch (err: any) {
+      setError(`Dispatch Publish failed for ${code}: ${err?.message || "Unknown error"}. Existing Warehouse, return and COD records were not changed by this unsuccessful request.`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const confirmWayplan = async () => {
     if (!selected) return;
     setBusy(true); setError(""); setMessage("");
@@ -302,6 +329,11 @@ export default function SupervisorWayplanReviewPage() {
               <button disabled={!selected || busy || ["PENDING_REVIEW","APPROVED","DISPATCH_READY","DISPATCHED"].includes(selectedStatus)} onClick={submitForReview} className="bg-[#0b2236] text-[#eef8ff] px-4 py-2 rounded-xl border border-[#1a3a5c] hover:border-[#f6b84b] flex items-center gap-2 text-[12px] disabled:opacity-40">
                 <ShieldCheck size={14}/> Submit for Review
               </button>
+              {selectedStatus === "DISPATCH_READY" && (
+                <button disabled={!selected || busy} onClick={publishWayplan} className="bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-500 flex items-center gap-2 text-[12px] font-black disabled:opacity-40">
+                  <Send size={14}/> {busy ? "Processing…" : "Publish to Rider / Driver"}
+                </button>
+              )}
               <button disabled={!selected || busy || selectedStatus === "DISPATCH_READY" || selectedStatus === "DISPATCHED"} onClick={confirmWayplan} className="bg-[#f6b84b] text-[#061524] px-4 py-2 rounded-xl hover:bg-[#e5a93a] flex items-center gap-2 text-[12px] font-black disabled:opacity-40">
                 <Send size={14}/> {busy ? "Processing…" : selectedStatus === "APPROVED" ? "Release to Dispatch" : "Confirm Wayplan"}
               </button>
@@ -318,7 +350,7 @@ export default function SupervisorWayplanReviewPage() {
               </div>
 
               {releasedToWarehouse && <div className="rounded-xl border border-blue-400/40 bg-blue-500/10 p-3 text-[12px] text-blue-100">
-                <b>Supervisor confirmation already completed.</b> This route remains CREATED until all current-wayplan dispatch scans are finished and an authorized dispatcher publishes it. The disabled Confirm Wayplan and Save Crew buttons are expected. {riderOnlyMode ? "A bicycle Rider-only route does not require a Driver." : ""}
+                <b>Supervisor confirmation already completed.</b> This route remains CREATED until an authorized Dispatch operator publishes it. Use Publish to Rider / Driver above after Warehouse scanning. The server will report missing scans, returned parcels or permission errors. The disabled Confirm Wayplan and Save Crew buttons are expected. {riderOnlyMode ? "A bicycle Rider-only route does not require a Driver." : ""}
               </div>}
               <div className="rounded-xl border border-[#1a3a5c] bg-[#081b2e] p-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
