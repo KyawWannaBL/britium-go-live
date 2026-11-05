@@ -287,9 +287,10 @@ export default function DispatchCommandCenterPage() {
     const code = wayplanCode || selectedWayplan;
     if (!code) return setMessage("Select a Wayplan first.");
     const current = wayplans.find((w: any) => (w.wayplan_id || w.wayplan_code) === code);
-    if (!current?.publish_ready) {
-      return setMessage(current?.next_step || "This Wayplan is not ready to publish yet.");
-    }
+    // Snapshot readiness may lag behind the authoritative database after scanning.
+    // The authenticated publish RPC performs Supervisor, Warehouse, Finance,
+    // workforce and branch validations transactionally. Never block it on a stale
+    // client-side publish_ready flag.
     setLoading(true);
     try {
       const email = await actor();
@@ -303,8 +304,8 @@ export default function DispatchCommandCenterPage() {
     } catch (e: any) {
       const detail = String(e?.message || "Publish failed.");
       setMessage(detail.includes("WAYPLAN_BRANCH_DENIED")
-        ? "Publication denied by branch access control. Sign in with the authorized branch Dispatch or Super Admin account; no parcels were published."
-        : detail);
+        ? "Publication denied by branch access control. Sign in with the authorized YGN Dispatch or Super Admin account; no parcels were published."
+        : `Publish failed for ${code}: ${detail}`);
     } finally {
       setLoading(false);
     }
@@ -481,7 +482,7 @@ export default function DispatchCommandCenterPage() {
               return <option key={code} value={code}>{code} · {w.parcel_count} parcels · {w.review_status}</option>;
             })}
           </select>
-          <button disabled={!selectedPlan?.publish_ready || loading} onClick={() => publish()} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"><Send className="mr-1 inline h-4 w-4" />Publish</button>
+          <button disabled={!selectedWayplan || loading} onClick={() => publish()} className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-40"><Send className="mr-1 inline h-4 w-4" />Publish</button>
           <button disabled={!publishReadyCount || loading} onClick={publishAll} className="rounded-lg bg-[#C09B30] px-3 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-40">Publish All ({publishReadyCount})</button>
           <button onClick={() => printManifest(selectedJobs, assets, "Manifest")} className="rounded-lg border border-slate-700 px-3 py-2 text-sm"><Printer className="mr-1 inline h-4 w-4" />Manifest</button>
           <button onClick={closeDayDropoff} className="rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-300">Close Day Drop Off</button>
