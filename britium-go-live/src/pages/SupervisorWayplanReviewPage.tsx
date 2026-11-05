@@ -39,6 +39,7 @@ export default function SupervisorWayplanReviewPage() {
   const [notes, setNotes] = useState("");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [publishDiagnostic, setPublishDiagnostic] = useState("");
   const [roster,setRoster]=useState<any>({drivers:[],riders:[],helpers:[]});
   const [crewDraft,setCrewDraft]=useState({driver_code:"",rider_code:"",helper_code:""});
 
@@ -179,7 +180,7 @@ export default function SupervisorWayplanReviewPage() {
   const publishWayplan = async () => {
     if (!selected || busy || String(selected.review_status || "").toUpperCase() !== "DISPATCH_READY") return;
     const code = selected.wayplan_id;
-    setBusy(true); setError(""); setMessage("");
+    setBusy(true); setError(""); setMessage(""); setPublishDiagnostic("");
     try {
       const { data: result, error: publishError } = await (supabase as any).rpc("be_dispatch_start_wayplan", {
         p_payload: { wayplan_id: code },
@@ -190,11 +191,14 @@ export default function SupervisorWayplanReviewPage() {
         const missing = result?.integrity?.missing_dispatch_way_ids || result?.dispatch_scan_validation?.missing_dispatch_scan || [];
         throw new Error([result?.next_step, result?.error, issues, Array.isArray(missing) && missing.length ? "Missing dispatch scans: " + missing.join(", ") : ""].filter(Boolean).join(" — ") || "Publication blocked by Dispatch validation.");
       }
+      setPublishDiagnostic(`SUCCESS: ${code}; published=${result?.published_rows ?? "eligible"}; review=${result?.review_status ?? "DISPATCHED"}`);
       setMessage(`${code} published to Dispatch successfully (${result?.published_rows ?? "all eligible"} parcels). Refresh the Rider/Driver Delivery screen.`);
       await loadData();
       await loadDetail(code);
     } catch (err: any) {
-      setError(`Dispatch Publish failed for ${code}: ${err?.message || "Unknown error"}. Existing Warehouse, return and COD records were not changed by this unsuccessful request.`);
+      const detail = String(err?.message || "Unknown error");
+      setPublishDiagnostic(`FAILED: ${code}; ${detail}`);
+      setError(`Dispatch Publish failed for ${code}: ${detail}. Existing Warehouse, return and COD records were not changed by this unsuccessful request.`);
     } finally {
       setBusy(false);
     }
@@ -333,6 +337,13 @@ export default function SupervisorWayplanReviewPage() {
                 <button disabled={!selected || busy} onClick={publishWayplan} className="bg-emerald-600 text-white px-4 py-2 rounded-xl hover:bg-emerald-500 flex items-center gap-2 text-[12px] font-black disabled:opacity-40">
                   <Send size={14}/> {busy ? "Processing…" : "Publish to Rider / Driver"}
                 </button>
+              )}
+              {publishDiagnostic && publishDiagnostic.includes(selected?.wayplan_id || "no-selected-wayplan") && (
+                <div role="status" data-publish-diagnostic-v1="true" className="w-full rounded-xl border border-amber-400/40 bg-amber-500/10 p-3 text-[12px] text-amber-100 break-all">
+                  <div className="font-bold">Publication result for selected Wayplan</div>
+                  <p className="mt-1">{publishDiagnostic}</p>
+                  <button type="button" className="mt-2 rounded-lg border border-amber-300/40 px-3 py-1" onClick={() => void navigator.clipboard?.writeText(publishDiagnostic)}>Copy diagnostic</button>
+                </div>
               )}
               <button disabled={!selected || busy || selectedStatus === "DISPATCH_READY" || selectedStatus === "DISPATCHED"} onClick={confirmWayplan} className="bg-[#f6b84b] text-[#061524] px-4 py-2 rounded-xl hover:bg-[#e5a93a] flex items-center gap-2 text-[12px] font-black disabled:opacity-40">
                 <Send size={14}/> {busy ? "Processing…" : selectedStatus === "APPROVED" ? "Release to Dispatch" : "Confirm Wayplan"}
