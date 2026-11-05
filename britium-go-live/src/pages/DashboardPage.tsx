@@ -28,7 +28,16 @@ export default function DashboardPage(){
     if(error||data?.ok===false){setError(error?.message||data?.code||"Dashboard unavailable.");setLoading(false);return;}
     setData(data);setLoading(false);
   }
-  useEffect(()=>{void load();},[]);
+  useEffect(()=>{
+    void load();
+    // Refresh active dashboards every 60 seconds; avoid hidden-tab queries.
+    const timer=window.setInterval(()=>{
+      if(document.visibilityState==="visible") void load();
+    },60_000);
+    const onVisibility=()=>{if(document.visibilityState==="visible") void load();};
+    document.addEventListener("visibilitychange",onVisibility);
+    return ()=>{window.clearInterval(timer);document.removeEventListener("visibilitychange",onVisibility);};
+  },[]);
 
   const role=String(data?.role||profile?.role||"").replaceAll("-","_").toLowerCase();
   const superView=["superadmin","super_admin","admin","management","director"].includes(role);
@@ -81,9 +90,11 @@ export default function DashboardPage(){
       <div className="mb-3 flex items-center gap-2"><Warehouse size={19} color={C.gold}/><h2 className="font-black">Warehouse Live Status</h2></div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Card title="Warehouse Rows" value={num(w.rows)} icon={Warehouse}/>
-        <Card title="Inbound" value={num(w.inbound)} icon={Warehouse} accent={C.blue}/>
-        <Card title="Dispatch" value={num(w.dispatch)} icon={Truck} accent={C.green}/>
-        <Card title="Returns" value={num(w.returns)} icon={Warehouse} accent={C.red}/>
+        <Card title="Awaiting Return Scan" value={num(w.awaiting_return_scan)} icon={Warehouse} accent={C.red}/>
+        <Card title="Ready for Wayplan" value={num(w.ready_for_wayplan)} icon={Truck} accent={C.blue}/>
+        <Card title="Received (Cumulative)" value={num(w.inbound)} icon={Warehouse} accent={C.blue}/>
+        <Card title="Dispatch Scanned" value={num(w.dispatch)} icon={Truck} accent={C.green}/>
+        <Card title="Return Scans" value={num(w.returns)} icon={Warehouse} accent={C.red}/>
       </div>
     </section>}
 
@@ -94,9 +105,9 @@ export default function DashboardPage(){
         <Card title="Active" value={num(h.active_employees)} icon={Users} accent={C.green}/>
         <Card title="Departments" value={num(h.departments)} icon={Users}/>
         <Card title="Branches" value={num(h.branches)} icon={Building2}/>
-        <Card title="Riders" value={num(h.riders)} icon={Users}/>
-        <Card title="Drivers" value={num(h.drivers)} icon={Users}/>
-        <Card title="Helpers" value={num(h.helpers)} icon={Users}/>
+        <Card title="Rider App Accounts" value={num(h.riders)} icon={Users}/>
+        <Card title="Driver App Accounts" value={num(h.drivers)} icon={Users}/>
+        <Card title="Helper App Accounts" value={num(h.helpers)} icon={Users}/>
       </div>
     </section>}
 
@@ -121,6 +132,6 @@ export default function DashboardPage(){
       </div>
     </section>}
 
-    <p className="mt-6 text-xs" style={{color:C.sub}}>Live backend snapshot · {data?.as_of?new Date(data.as_of).toLocaleString():"not synchronized"}</p>
+    <p className="mt-6 text-xs" style={{color:C.sub}}>Live backend snapshot · {data?.as_of?new Date(data.as_of).toLocaleString("en-GB",{timeZone:"Asia/Yangon",dateStyle:"medium",timeStyle:"medium"})+" Myanmar Time":"not synchronized"} · Auto-refresh every 60 seconds while active</p>
   </div>;
 }
