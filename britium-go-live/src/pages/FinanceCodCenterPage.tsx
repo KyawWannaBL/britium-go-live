@@ -169,14 +169,11 @@ export default function FinanceCodCenterPage() {
     setMessage("");
 
     try {
-      const syncResult = await (supabase as any).rpc("be_finance_cod_sync_v48", {
-        p_wayplan_id: null,
-      });
-      if (syncResult.error) throw syncResult.error;
-      if (syncResult.data?.ok === false) {
-        throw new Error(syncResult.data?.message || syncResult.data?.error || "COD synchronization failed.");
-      }
-
+      // Viewing or refreshing Finance must be read-only. The previous
+      // unscoped be_finance_cod_sync_v48(null) call rewrote all COD rows,
+      // triggered ledger/accounting reconciliation and timed out before
+      // the queue could be displayed. Delivery events sync their own COD
+      // records; Finance actions remain explicit and audited.
       const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center_v92", {
         p_limit: 500,
       });
@@ -517,7 +514,7 @@ export default function FinanceCodCenterPage() {
                 }) : (
                   <tr>
                     <td colSpan={10} style={{ padding: 28, color: C.sub, textAlign: "center" }}>
-                      No Finance COD records yet. Delivered COD stops will appear here automatically.
+                      {error ? "Finance COD records could not be loaded. Refresh after resolving the database error; no records were deleted." : loading ? "Loading COD settlement records..." : "No Finance COD records visible for this session. This does not prove settlement or deletion."}
                     </td>
                   </tr>
                 )}
