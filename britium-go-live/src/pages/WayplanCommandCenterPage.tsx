@@ -604,7 +604,7 @@ export default function WayplanCommandCenterPage() {
                 <div style={{ color: C.gold, fontWeight: 900 }}>CREATED Wayplan Membership Editor</div>
                 <div style={{ color: C.sub, fontSize: 12, marginTop: 4 }}>Editing {revisionSource.wayplan_id}. Add selected filtered READY ways below, or check current ways here and remove them. No change reaches Production data until the replacement saves transactionally.</div>
               </div>
-              <button data-wayplan-cancel-edit-v87="true" style={btn("plain")} onClick={cancelRevision}>Cancel Edit / Back</button>
+              <button data-wayplan-cancel-edit-v87="true" style={btn("plain")} onClick={cancelRevision}>Cancel Edit (Discard Unpublished Changes)</button>
             </div>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
               <button style={btn("gold")} disabled={!filteredSelectedRows.length} onClick={addSelectedToRevision}>Add Selected ({filteredSelectedRows.length})</button>
@@ -700,10 +700,11 @@ export default function WayplanCommandCenterPage() {
 
           <div style={{ display: "grid", gap: 16 }}>
             <Card id="generated-wayplans">
-              <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
+              <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Wayplans — Review & Edit Before Dispatch</h2>
+              <div data-wayplan-pre-dispatch-guide="true" style={{ border: `1px solid ${C.blue}`, borderRadius: 12, padding: 12, marginBottom: 12, background: "rgba(78,168,222,0.08)", color: C.sub, fontSize: 12, lineHeight: 1.6 }}><strong style={{ color: C.blue }}>Before publishing a route to the delivery team</strong><div>1. Choose a Wayplan marked CREATED. 2. Select Edit to add/remove parcels, adjust vehicle and crew, and review the road route. 3. Save the revised Wayplan. 4. Review the manifest and complete Supervisor approval and Dispatch scanning. Only then Dispatch.</div><div style={{ marginTop: 4 }}>Changes are not published while you edit. Dispatched or completed Wayplans cannot be edited here.</div></div>
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
                 <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
-                <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || branchManager || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
+                <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || branchManager || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit Before Dispatch (CREATED)</button>
                 {revisionSource ? <div data-wayplan-revision-actions-v47="true" style={{ display: "grid", gap: 8, border: `1px solid ${C.gold}`, borderRadius: 12, padding: 10, background: "rgba(246,184,75,0.08)" }}>
                   <div style={{ color: C.gold, fontWeight: 900, fontSize: 12 }}>Editing {revisionSource.wayplan_id} · {revisionRows.length} current/revised ways</div>
                   <button style={btn("gold")} disabled={!filteredSelectedRows.length} onClick={addSelectedToRevision}>Add Selected ({filteredSelectedRows.length})</button>
@@ -717,7 +718,7 @@ export default function WayplanCommandCenterPage() {
                     onClick={() => updateWayplanStatus("DISPATCHED")}
                     disabled={loading || !activeWayplan || !["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) || Boolean(revisionSource)}
                     style={{ ...btn("green"), opacity: activeWayplan && ["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) ? 1 : 0.45 }}
-                  >Dispatch</button>
+                  >Dispatch — Release Route</button>
                   <button
                     onClick={() => updateWayplanStatus("COMPLETED")}
                     disabled={loading || !activeWayplan || String(activeWayplan.wayplan_status || "").toUpperCase() !== "DISPATCHED" || Boolean(revisionSource)}
