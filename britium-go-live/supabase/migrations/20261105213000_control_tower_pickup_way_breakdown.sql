@@ -112,7 +112,6 @@ begin
       where (p.created_at at time zone 'Asia/Yangon')::date=v_today
         and (v_scope='ENTERPRISE' or coalesce(p.branch_code,'YGN')=v_branch)
       order by p.created_at desc
-      limit 250
     ) q;
     v_operations:=v_operations||jsonb_build_object(
       'pickup_way_breakdown',v_pickup_breakdown,
