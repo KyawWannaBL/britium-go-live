@@ -134,6 +134,8 @@ export default function WayplanCommandCenterPage() {
   const [selectedRegion, setSelectedRegion] = useState<WayplanRegionCode>(ownRegion);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [dispatchPreflight, setDispatchPreflight] = useState<any>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
 
   const [townshipFilters, setTownshipFilters] = useState<string[]>([]);
   const [merchantFilters, setMerchantFilters] = useState<string[]>([]);
@@ -498,8 +500,28 @@ export default function WayplanCommandCenterPage() {
     }
   }
 
+  async function checkDispatchReadiness(wayplanId: string) {
+    setPreflightLoading(true);
+    setDispatchPreflight(null);
+    try {
+      const { data, error: checkError } = await (supabase as any).rpc("be_dispatch_wayplan_integrity_v12_11", {
+        p_wayplan_id: wayplanId,
+        p_rider_code: null,
+        p_driver_code: null,
+        p_helper_code: null,
+      });
+      if (checkError) throw checkError;
+      setDispatchPreflight({ wayplanId, ...data });
+    } catch (err: any) {
+      setDispatchPreflight({ wayplanId, ok: false, issues: [err?.message || "Readiness check unavailable"] });
+    } finally {
+      setPreflightLoading(false);
+    }
+  }
+
   async function dispatchWayplan() {
-    if (!activeWayplan?.wayplan_id) {
+    const wayplanId = text(activeWayplan?.wayplan_id);
+    if (!wayplanId) {
       setError("Select a wayplan first.");
       return;
     }
@@ -507,16 +529,23 @@ export default function WayplanCommandCenterPage() {
     setError("");
     setMessage("");
     try {
-      const { data, error } = await supabase.rpc("be_dispatch_start_wayplan", {
-        p_payload: { wayplan_id: activeWayplan.wayplan_id, actor: "wayplan_command_center" },
+      // Never set DISPATCHED by a generic status update. Publication must
+      // atomically validate scans, supervisor sign-off, membership, finance,
+      // branch access and workforce authorization.
+      const { data, error: publishError } = await supabase.rpc("be_dispatch_start_wayplan", {
+        p_payload: { wayplan_id: wayplanId },
       });
-      if (error) throw error;
-      if (data?.ok === false) throw new Error([data?.error || "Could not dispatch wayplan.", data?.next_step].filter(Boolean).join(" Next: "));
-      setMessage(`${activeWayplan.wayplan_id} dispatched.`);
-      await loadAll();
+      if (publishError) throw publishError;
+      if (!data?.ok) {
+        const reasons = Array.isArray(data?.integrity?.issues) ? data.integrity.issues.join("; ") : "";
+        throw new Error([data?.error, data?.message, data?.next_step, reasons].filter(Boolean).join(" — ") || "Publication blocked. Run Check readiness for details.");
+      }
+      setDispatchPreflight(null);
+      setMessage(`${wayplanId} published successfully. ${data?.published_rows ?? "Assigned"} deliveries are now available to the Rider/Driver. No second publish is required.`);
+      await loadAll(wayplanId);
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Could not dispatch wayplan.");
+      setError(`Dispatch not completed for ${wayplanId}: ${err?.message || "Unknown error"}. Check readiness for the exact missing or returned parcel. Do not re-scan returned parcels.`);
+      await checkDispatchReadiness(wayplanId);
     } finally {
       setLoading(false);
     }
@@ -702,7 +731,23 @@ export default function WayplanCommandCenterPage() {
             <Card id="generated-wayplans">
               <h2 style={{ margin: "0 0 12px", fontSize: 16 }}>Generated Wayplans</h2>
               <div style={{ display: "grid", gap: 10, marginBottom: 12 }}>
-                <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
+                <label style={{ color: C.sub, fontSize: 12, fontWeight: 800 }}>Select Wayplan<select value={activeWayplan?.wayplan_id || ""} onChange={(e) => { cancelRevision(); setDispatchPreflight(null); setActiveWayplan(wayplans.find((x) => x.wayplan_id === e.target.value) || null); }} style={input()}><option value="">Choose wayplan...</option>{wayplans.map((wp) => <option key={wp.wayplan_id} value={wp.wayplan_id}>{wp.wayplan_id} / {wp.wayplan_status} / {wp.total_stops || 0} stops</option>)}</select></label>
+                <div data-wayplan-guided-workflow-v1="true" style={{ border: `1px solid ${C.blue}`, borderRadius: 12, padding: 12, color: C.text, background: "rgba(78,168,222,0.08)", display: "grid", gap: 8 }}>
+                  <strong style={{ color: C.gold }}>Guided Wayplan workflow · လမ်းကြောင်း လုပ်ငန်းစဉ်</strong>
+                  <div style={{ fontSize: 12, lineHeight: 1.7 }}>1. Select warehouse-ready parcels → 2. Review Google route and assign Rider or Driver → 3. Create Wayplan → 4. Supervisor approves → 5. Warehouse dispatch scans → 6. Publish to Rider / Driver → 7. Deliver and settle.</div>
+                  {activeWayplan && <>
+                    <div style={{ fontSize: 12, color: C.sub }}>Current status: <b style={{ color: C.text }}>{activeWayplan.wayplan_status || "CREATED"}</b>. {String(activeWayplan.wayplan_status || "").toUpperCase() === "DISPATCHED" ? "Published: open the assigned Rider/Driver Delivery screen." : "CREATED does not mean published; release requires Supervisor approval and dispatch scans."}</div>
+                    <button type="button" onClick={() => void checkDispatchReadiness(activeWayplan.wayplan_id)} disabled={loading || preflightLoading} style={btn("blue")}>
+                      {preflightLoading ? "Checking readiness…" : "Check publish readiness · ထုတ်ပြန်ရန် စစ်ဆေးရန်"}
+                    </button>
+                    {dispatchPreflight?.wayplanId === activeWayplan.wayplan_id && <div role="status" style={{ border: `1px solid ${dispatchPreflight.ok ? C.green : C.gold}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
+                      <strong>{dispatchPreflight.ok ? "Checks passed. Publish after Supervisor and Warehouse release." : "Publication blocked. Fix these items:"}</strong>
+                      <div>Membership: {dispatchPreflight.membership_ready_rows ?? "-"}/{dispatchPreflight.total_stops ?? "-"} · Scanned: {dispatchPreflight.dispatch_scanned_stops ?? "-"}/{dispatchPreflight.total_stops ?? "-"}</div>
+                      {Array.isArray(dispatchPreflight.issues) && dispatchPreflight.issues.map((issue: string) => <div key={issue} style={{ color: C.gold }}>{issue}</div>)}
+                      {!dispatchPreflight.ok && <div style={{ color: C.sub }}>If any parcel has already been returned, keep its return record. Ask Operations to reconcile or replace the wayplan; never recreate a dispatch scan to bypass a return.</div>}
+                    </div>}
+                  </>}
+                </div>
                 <button onClick={beginRevision} disabled={loading || !canEditCreatedWayplan || branchManager || Boolean(revisionSource)} style={{ ...btn("blue"), opacity: canEditCreatedWayplan ? 1 : 0.45 }}>Edit CREATED Wayplan</button>
                 {revisionSource ? <div data-wayplan-revision-actions-v47="true" style={{ display: "grid", gap: 8, border: `1px solid ${C.gold}`, borderRadius: 12, padding: 10, background: "rgba(246,184,75,0.08)" }}>
                   <div style={{ color: C.gold, fontWeight: 900, fontSize: 12 }}>Editing {revisionSource.wayplan_id} · {revisionRows.length} current/revised ways</div>
@@ -714,10 +759,10 @@ export default function WayplanCommandCenterPage() {
                 {!canEditCreatedWayplan && activeWayplan && <div style={{ color: C.sub, fontSize: 11 }}>Add/remove editing and cancellation are locked after the Wayplan leaves CREATED status.</div>}
                 <div data-wayplan-lifecycle-controls-v61="true" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
                   <button
-                    onClick={() => updateWayplanStatus("DISPATCHED")}
+                    onClick={() => void dispatchWayplan()}
                     disabled={loading || !activeWayplan || !["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) || Boolean(revisionSource)}
                     style={{ ...btn("green"), opacity: activeWayplan && ["CREATED","ON_HOLD"].includes(String(activeWayplan.wayplan_status || "").toUpperCase()) ? 1 : 0.45 }}
-                  >Dispatch</button>
+                  >Publish to Rider / Driver</button>
                   <button
                     onClick={() => updateWayplanStatus("COMPLETED")}
                     disabled={loading || !activeWayplan || String(activeWayplan.wayplan_status || "").toUpperCase() !== "DISPATCHED" || Boolean(revisionSource)}
