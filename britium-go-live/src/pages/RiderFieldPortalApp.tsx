@@ -572,6 +572,7 @@ function pickupActionStage(job: RiderJob): PickupActionStage {
 
 function isPickupJob(job: RiderJob) {
   return (
+    !isExplicitDeliveryJob(job) &&
     !isWarehouseAccepted(job) &&
     !isDeliveredToWarehouse(job) &&
     !isDelivered(job) &&
@@ -689,9 +690,13 @@ function parcelReviewLabel(row: ParcelVerificationRow) {
   return value.replaceAll("_", " ");
 }
 
+function isExplicitDeliveryJob(job: RiderJob) {
+  return upper(job.job_kind) === "DELIVERY" || job.is_delivery_job === true || Boolean(job.wayplan_id && (job.delivery_way_id || job.tracking_no));
+}
+
 function isDeliveryJob(job: RiderJob) {
   return (
-    hasJobStatus(
+    (isExplicitDeliveryJob(job) || hasJobStatus(
       job,
       "DISPATCHED",
       "READY_FOR_DELIVERY",
@@ -703,7 +708,7 @@ function isDeliveryJob(job: RiderJob) {
       "OUT_FOR_DELIVERY",
       "DELIVERY_STARTED",
       "ARRIVED_AT_CUSTOMER"
-    ) &&
+    )) &&
     !isDelivered(job) &&
     !isException(job)
   );

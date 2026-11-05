@@ -298,10 +298,13 @@ export default function DispatchCommandCenterPage() {
       });
       if (error) throw error;
       if (data?.ok === false) throw new Error(data?.next_step || data?.error || "Dispatch publish blocked.");
-      setMessage(`Published ${code} to field operation.`);
+      setMessage(`Published ${code} to ${current?.driver_code ? `driver ${current.driver_code}` : current?.rider_code ? `rider ${current.rider_code}` : "field operation"}.`);
       await loadAll();
     } catch (e: any) {
-      setMessage(e.message || "Publish failed.");
+      const detail = String(e?.message || "Publish failed.");
+      setMessage(detail.includes("WAYPLAN_BRANCH_DENIED")
+        ? "Publication denied by branch access control. Sign in with the authorized branch Dispatch or Super Admin account; no parcels were published."
+        : detail);
     } finally {
       setLoading(false);
     }
