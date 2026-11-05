@@ -64,8 +64,12 @@ export default function DashboardPage(){
     {opsView&&<section className="mt-5">
       <div className="mb-3 flex items-center gap-2"><Activity size={19} color={C.blue}/><h2 className="font-black">Operations Today</h2></div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
-        <Card title="Pickups Today" value={num(o.pickups_today)} icon={Truck} accent={C.blue}/>
-        <Card title="Pending Pickups" value={num(o.pending_pickups)} icon={Activity} accent={C.gold}/>
+        <Card title="Pickup Requests Today" value={num(o.pickup_requests_today ?? o.pickups_today)} icon={Truck} accent={C.blue} sub="Pickup request headers created today"/>
+        <Card title="Parcels Registered Today" value={num(o.parcels_registered_today)} icon={Truck} accent={C.green} sub="Individual parcel records"/>
+        <Card title="Pickup Batches Registered" value={num(o.pickup_batches_registered_today)} icon={Truck} accent={C.blue} sub="Distinct pickup IDs in today's parcel registrations"/>
+        <Card title="Awaiting Pickup Assignment" value={num(o.pending_pickups)} icon={Activity} accent={C.gold}/>
+        <Card title="Pickups In Progress" value={num(o.pickups_in_progress)} icon={Activity} accent={C.blue}/>
+        <Card title="Pickups Completed" value={num(o.pickups_completed)} icon={Truck} accent={C.green}/>
         <Card title="Active Shipments" value={num(o.active_shipments)} icon={Truck} accent={C.blue}/>
         <Card title="Delivered Today" value={num(o.delivered_today)} icon={Truck} accent={C.green}/>
         <Card title="Failed Today" value={num(o.failed_today)} icon={Activity} accent={C.red}/>
