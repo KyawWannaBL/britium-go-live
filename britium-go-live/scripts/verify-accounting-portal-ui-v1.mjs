@@ -74,7 +74,7 @@ assertIncludes(pickup, 'option value="BANK_TRANSFER"', "Pickup Bank Transfer pay
 assertIncludes(pickup, "200,000 MMK", "Pickup COD threshold guidance");
 
 assertIncludes(codSettlement, "FinanceCodCenterPage", "COD Settlement live finance center route");
-assert.ok(!financeCodCenter.includes('rpc("be_finance_cod_sync_v48"'), "Finance COD page loading must not run global reconciliation");
+if (financeCodCenter.includes('rpc("be_finance_cod_sync_v48"')) throw new Error("Finance COD page loading must not run global reconciliation");
 assertIncludes(financeCodCenter, "be_finance_wayplan_cod_center_v92", "COD Wayplan settlement center");
 assertIncludes(workforce, "be_workforce_commission_sync_range_v202", "Workforce bounded delivered-stop commission synchronization");
 assertIncludes(workforce, "be_v_commission_settlement", "Workforce read-only earnings ledger");
