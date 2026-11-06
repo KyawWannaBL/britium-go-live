@@ -7,7 +7,11 @@ const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(
 const Page=module.exports.default,text=n=>typeof n==='string'||typeof n==='number'?String(n):(n.children||[]).map(text).join(' ');let view;
 await act(async()=>{view=Renderer.create(React.createElement(Page,{branch:'MDY'}));});
 assert.equal(calls[0].args.p_branch,'MDY');assert.match(text(view.root),/Paing Zay Htut/);assert.match(text(view.root),/Busy/);assert.match(text(view.root),/NOT REVIEWED/);assert.match(text(view.root),/not payment/i);
-defer=true;await act(async()=>view.root.findByType('input').props.onChange({target:{value:'2026-11-07'}}));await act(async()=>view.root.findByType('input').props.onChange({target:{value:'2026-11-08'}}));
+defer=true;
+const yangonToday = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yangon',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const nextDate = n=>new Date(Date.parse(yangonToday+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+await act(async()=>view.root.findByType('input').props.onChange({target:{value:nextDate(1)}}));
+await act(async()=>view.root.findByType('input').props.onChange({target:{value:nextDate(2)}}));
 await act(async()=>pending[1].resolve({data:{...report,roster:[{...report.roster[0],name:'CurrentWorker'}]}}));await act(async()=>pending[0].resolve({data:{...report,roster:[{...report.roster[0],name:'Stale'}]}}));assert.match(text(view.root),/CurrentWorker/);assert.doesNotMatch(text(view.root),/Stale/);
 defer=false;fail=true;await act(async()=>view.root.findByType('button').props.onClick());assert.match(text(view.root),/Unavailable/);assert.doesNotMatch(text(view.root),/CurrentWorker/);await act(async()=>view.unmount());
 console.log('PASS branch workforce UI: scope, crew readiness, review vs payment, stale date responses and failed refresh');
