@@ -12,7 +12,11 @@ assert.equal(text(dataRows[0].findAllByType('td')[2]),'0 MMK');assert.match(text
 assert.match(text(view.root),/not verified bank\/COD receipts/);assert.match(text(view.root),/not payments/);
 await act(async()=>dataRows[0].findByType('button').props.onClick());assert.match(text(view.root),/MDY\/Administration & Finance/);
 defer=true;const date=view.root.findByType('input');
-await act(async()=>date.props.onChange({target:{value:'2026-11-07'}}));await act(async()=>date.props.onChange({target:{value:'2026-11-08'}}));
+// Use future Myanmar business dates, not a hard-coded date which may already
+// equal today's selected value and therefore produce no request.
+const yangonToday = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Yangon',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+const nextDate = n=>new Date(Date.parse(yangonToday+'T00:00:00Z')+n*86400000).toISOString().slice(0,10);
+await act(async()=>date.props.onChange({target:{value:nextDate(1)}}));await act(async()=>date.props.onChange({target:{value:nextDate(2)}}));
 await act(async()=>pending[1].resolve({data:{ok:true,branches:[{...rows[0],branch_name:'Current date'}]},error:null}));
 await act(async()=>pending[0].resolve({data:{ok:true,branches:[{...rows[0],branch_name:'Stale date'}]},error:null}));
 assert.match(text(view.root),/Current date/);assert.doesNotMatch(text(view.root),/Stale date/);
