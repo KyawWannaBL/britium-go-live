@@ -367,9 +367,17 @@ export function FinancePortalLivePage() {
           p_status: null,
         }),
       ]);
-      const center = centerResult.status === "fulfilled" && !centerResult.value.error ? centerResult.value.data : null;
-      const live = liveResult.status === "fulfilled" && !liveResult.value.error ? liveResult.value.data : null;
-      if (!center && !live) {
+      const center = centerResult.status === "fulfilled" && !centerResult.value.error && centerResult.value.data?.ok !== false ? centerResult.value.data : null;
+      const live = liveResult.status === "fulfilled" && !liveResult.value.error && liveResult.value.data?.ok !== false ? liveResult.value.data : null;
+      // Keep COD rows available if a dashboard summary RPC times out.
+      let codFallback: any = null;
+      if (!center) {
+        try {
+          const { data, error } = await supabase.rpc("be_finance_wayplan_cod_center", { p_limit: 300 });
+          if (!error && data?.ok !== false && Array.isArray(data?.rows)) codFallback = data;
+        } catch (_) { /* Keep the original error if every source fails. */ }
+      }
+      if (!center && !live && !codFallback) {
         throw new Error(
           (centerResult.status === "fulfilled" ? centerResult.value.error?.message : centerResult.reason?.message)
           || (liveResult.status === "fulfilled" ? liveResult.value.error?.message : liveResult.reason?.message)
@@ -379,10 +387,12 @@ export function FinancePortalLivePage() {
       return {
         ...(center || {}),
         ok: true,
-        cod_rows: Array.isArray(center?.cod_rows) ? center.cod_rows : [],
+        cod_rows: Array.isArray(center?.cod_rows) ? center.cod_rows : (codFallback?.rows || []),
+        finance_summary: center?.finance_summary || codFallback?.summary || {},
+        settlement_queue: center?.settlement_queue ?? codFallback?.count ?? 0,
         live_wayplans: Array.isArray(live?.rows) ? live.rows : [],
         live_work_date: live?.work_date,
-        partial_error: !center ? "COD summary temporarily unavailable." : !live ? "Live wayplan totals temporarily unavailable." : "",
+        partial_error: !center ? (codFallback ? "Finance overview temporarily unavailable; COD queue loaded independently." : "COD queue unavailable; please refresh.") : !live ? "Live wayplan totals temporarily unavailable." : "",
       };
     },
     (d) => Array.isArray(d?.cod_rows) ? d.cod_rows : []
