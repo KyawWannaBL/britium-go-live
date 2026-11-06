@@ -168,7 +168,8 @@ export default function FinancePortal() {
   async function loadPartyWallets() {
     setPartyWalletLoading(true);
     setPartyWalletError("");
-    await (supabase as any).rpc("be_refresh_party_wallets_v1");
+    // Read-only wallet loading: never rebuild the entire wallet ledger when opening this tab.
+    // Reconciliation is run by the existing controlled finance/commission workflows.
     const { data, error } = await (supabase as any).rpc("be_finance_party_wallet_center_v1", {
       p_party_type: partyType || null,
       p_search: partySearch.trim() || null,
@@ -431,7 +432,7 @@ export default function FinancePortal() {
                 <input style={S.filterInput} value={partySearch} onChange={(e) => setPartySearch(e.target.value)} placeholder="Name / code / email" />
               </label>
               <button onClick={() => void loadPartyWallets()} style={S.approveBtn} disabled={partyWalletLoading}>
-                {partyWalletLoading ? "Refreshing..." : "Refresh Wallets"}
+                {partyWalletLoading ? "Loading..." : "Reload Wallets"}
               </button>
             </div>
             {partyWalletError && <ErrBanner msg={partyWalletError} />}
