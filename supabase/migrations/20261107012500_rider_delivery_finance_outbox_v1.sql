@@ -55,16 +55,15 @@ create or replace function public.be_finance_cod_stop_sync_trigger_v48()
 returns trigger language plpgsql security definer
 set search_path to 'public','pg_temp' as $stop$
 begin
-  if upper(coalesce(new.stop_status,''))='DELIVERED'
-     and (
-       tg_op='INSERT'
-       or old.stop_status is distinct from new.stop_status
-       or old.result_payload is distinct from new.result_payload
-     )
-  then
-    perform public.be_delivery_finance_outbox_enqueue_v1(
-      new.delivery_way_id,new.wayplan_id,coalesce(new.result_at,new.updated_at,now())
-    );
+  if upper(coalesce(new.stop_status,''))='DELIVERED' then
+    if tg_op='INSERT' then
+      perform public.be_delivery_finance_outbox_enqueue_v1(
+        new.delivery_way_id,new.wayplan_id,coalesce(new.result_at,new.updated_at,now()));
+    elsif old.stop_status is distinct from new.stop_status
+       or old.result_payload is distinct from new.result_payload then
+      perform public.be_delivery_finance_outbox_enqueue_v1(
+        new.delivery_way_id,new.wayplan_id,coalesce(new.result_at,new.updated_at,now()));
+    end if;
   end if;
   return new;
 end;
@@ -82,14 +81,15 @@ declare
     then upper(coalesce(old.stop_status,old.rider_status,old.dispatch_status,'')) else '' end;
 begin
   if v_status not in ('DELIVERED','COMPLETED') then return new; end if;
-  if tg_op='INSERT' or v_old_status not in ('DELIVERED','COMPLETED')
+  if tg_op='INSERT' then
+    perform public.be_delivery_finance_outbox_enqueue_v1(
+      new.delivery_way_id,new.wayplan_id,coalesce(new.delivered_at,new.updated_at,now()));
+  elsif v_old_status not in ('DELIVERED','COMPLETED')
      or old.cod_collected is distinct from new.cod_collected
      or old.proof_url is distinct from new.proof_url
-     or old.rider_proof_url is distinct from new.rider_proof_url
-  then
+     or old.rider_proof_url is distinct from new.rider_proof_url then
     perform public.be_delivery_finance_outbox_enqueue_v1(
-      new.delivery_way_id,new.wayplan_id,coalesce(new.delivered_at,new.updated_at,now())
-    );
+      new.delivery_way_id,new.wayplan_id,coalesce(new.delivered_at,new.updated_at,now()));
   end if;
   return new;
 end;
