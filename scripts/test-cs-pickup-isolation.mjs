@@ -59,4 +59,4 @@ assert.equal((await db.query('select count(*)::int n from private.be_thirdparty_
 assert.equal((await db.query('select count(*)::int n from be_thirdparty_finance_review_v1')).rows[0].n,0,'old confirmation posts no finance review');
 assert.equal((sql.match(/create or replace view private\./gi)||[]).length,7,'all discovered historical dependent views are filtered in place');
 console.log('PASS CS: registered-branch capability, correct pickup branch, cross-branch denial; historical/orphan/late-import/retired schedule exclusion; direct old confirmation denied; sources and current preparation preserved');
-}catch(e){console.error(e.message);process.exitCode=1}finally{await db.close()}
+}catch(e){console.error(e.stack || e.message);process.exitCode=1}finally{await db.close()}
