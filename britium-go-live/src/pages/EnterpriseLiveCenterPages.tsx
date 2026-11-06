@@ -357,7 +357,8 @@ export function FinancePortalLivePage() {
   const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
-      const [{ data: center, error: centerError }, { data: live, error: liveError }, {data:cod,error:codError}] = await Promise.all([
+      // These sections must fail independently: a heavy COD request should never hide today's drops.
+      const [centerResult, liveResult] = await Promise.allSettled([
         supabase.rpc("be_finance_portal_center"),
         supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
           p_work_date: null,
@@ -365,12 +366,24 @@ export function FinancePortalLivePage() {
           p_worker: null,
           p_status: null,
         }),
-        supabase.rpc("be_finance_wayplan_cod_center",{p_limit:5000}),
       ]);
-      if (centerError) throw centerError;
-      if (liveError) throw liveError;
-      if(codError)throw codError;
-      return { ...(center || {}), cod_rows:cod?.rows||[], live_wayplans: live?.rows || [], live_work_date: live?.work_date };
+      const center = centerResult.status === "fulfilled" && !centerResult.value.error ? centerResult.value.data : null;
+      const live = liveResult.status === "fulfilled" && !liveResult.value.error ? liveResult.value.data : null;
+      if (!center && !live) {
+        throw new Error(
+          (centerResult.status === "fulfilled" ? centerResult.value.error?.message : centerResult.reason?.message)
+          || (liveResult.status === "fulfilled" ? liveResult.value.error?.message : liveResult.reason?.message)
+          || "Finance services are unavailable."
+        );
+      }
+      return {
+        ...(center || {}),
+        ok: true,
+        cod_rows: Array.isArray(center?.cod_rows) ? center.cod_rows : [],
+        live_wayplans: Array.isArray(live?.rows) ? live.rows : [],
+        live_work_date: live?.work_date,
+        partial_error: !center ? "COD summary temporarily unavailable." : !live ? "Live wayplan totals temporarily unavailable." : "",
+      };
     },
     (d) => Array.isArray(d?.cod_rows) ? d.cod_rows : []
   );
@@ -452,6 +465,7 @@ export function FinancePortalLivePage() {
       <div style={{ display: "grid", gap: 16 }}>
         <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
+        {state.data?.partial_error && <div role="alert" style={{ color: C.gold, padding: 12 }}>{state.data.partial_error}</div>}
         <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
