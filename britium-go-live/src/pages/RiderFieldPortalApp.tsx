@@ -2066,6 +2066,36 @@ function FieldPortal() {
   }
   const [remark, setRemark] = useState("");
   const [exceptionReason, setExceptionReason] = useState("CUSTOMER_NOT_AVAILABLE");
+  const [serverDeliveryExceptionRules, setServerDeliveryExceptionRules] = useState<RiderExceptionRule[]>([]);
+  const deliveryExceptionRules = serverDeliveryExceptionRules.length ? serverDeliveryExceptionRules : DELIVERY_EXCEPTION_RULES;
+  const fieldRulesForJob = (job: RiderJob): RiderExceptionRule[] =>
+    isDeliveryJob(job) || isOutForDelivery(job) ? deliveryExceptionRules : PICKUP_EXCEPTION_RULES;
+  const fieldRuleForJob = (job: RiderJob, code: string): RiderExceptionRule => {
+    const list = fieldRulesForJob(job);
+    return list.find((rule) => rule.code === code) || list[list.length - 1];
+  };
+  useEffect(() => {
+    if (!session) return;
+    const client = getRiderSupabase();
+    if (!client) return;
+    let active = true;
+    void client.rpc("be_field_delivery_failure_reasons_v92").then(({ data, error }: any) => {
+      if (!active || error || !Array.isArray(data?.reasons) || !data.reasons.length) return;
+      const rules = data.reasons.map((r: any): RiderExceptionRule => ({
+        processType: "DELIVERY",
+        code: String(r.code || "").toUpperCase(),
+        nameEn: String(r.name_en || r.code || ""),
+        nameMm: String(r.name_mm || r.name_en || r.code || ""),
+        mappedStatus: String(r.mapped_status || "DELIVERY_ATTEMPTED"),
+        nextAction: String(r.next_action || "CUSTOMER_SERVICE_REVIEW"),
+        requirePhoto: String(r.require_photo).toLowerCase() === "true",
+        requireRemark: String(r.require_remark).toLowerCase() === "true",
+      })).filter((r: RiderExceptionRule) => !!r.code);
+      if (rules.length) setServerDeliveryExceptionRules(rules);
+    }).catch(() => { /* Keep local safe fallback during connectivity loss. */ });
+    return () => { active = false; };
+  }, [session?.login]);
+
   const [rescheduleDate,setRescheduleDate]=useState("");
   const [pickupSearch, setPickupSearch] = useState("");
   const [parcelRows, setParcelRows] = useState<ParcelVerificationRow[]>([]);
@@ -3068,7 +3098,7 @@ function FieldPortal() {
     }
 
     if (modal === "exception") {
-      const rule = riderExceptionRule(selectedJob, exceptionReason);
+      const rule = fieldRuleForJob(selectedJob, exceptionReason);
 
       if (!rule) {
         setError("Select a valid exception reason.");
@@ -3803,7 +3833,7 @@ function FieldPortal() {
                   <div>
                     <label>Failed reason</label>
                     <select value={exceptionReason} onChange={(e)=>setExceptionReason(e.target.value)} disabled={busy || deliveryConfirmChoice==="yes" || isDelivered(selectedJob)} style={inputStyle()}>
-                      {DELIVERY_EXCEPTION_RULES.map((rule)=><option key={rule.code} value={rule.code}>{rule.nameEn} / {rule.nameMm}</option>)}
+                      {deliveryExceptionRules.map((rule)=><option key={rule.code} value={rule.code}>{rule.nameEn} / {rule.nameMm}</option>)}
                     </select>
                   </div>
 
@@ -3826,7 +3856,7 @@ function FieldPortal() {
                       onChange={(e) => setExceptionReason(e.target.value)}
                       style={inputStyle()}
                     >
-                      {exceptionRulesForJob(selectedJob).map((rule) => (
+                      {fieldRulesForJob(selectedJob).map((rule) => (
                         <option key={`${rule.processType}-${rule.code}`} value={rule.code}>
                           {rule.nameEn} / {rule.nameMm}
                         </option>
@@ -3856,20 +3886,20 @@ function FieldPortal() {
                         padding: 12,
                       }}
                     >
-                      <strong>{riderExceptionRule(selectedJob, exceptionReason).nameEn}</strong>
+                      <strong>{fieldRuleForJob(selectedJob, exceptionReason).nameEn}</strong>
                       <div style={{ color: C.gold, marginTop: 4 }}>
-                        {riderExceptionRule(selectedJob, exceptionReason).nameMm}
+                        {fieldRuleForJob(selectedJob, exceptionReason).nameMm}
                       </div>
                       <div style={{ color: C.sub, fontSize: 12, marginTop: 6 }}>
-                        Status: {riderExceptionRule(selectedJob, exceptionReason).mappedStatus}
+                        Status: {fieldRuleForJob(selectedJob, exceptionReason).mappedStatus}
                         {" · "}
-                        Next: {riderExceptionRule(selectedJob, exceptionReason).nextAction}
+                        Next: {fieldRuleForJob(selectedJob, exceptionReason).nextAction}
                       </div>
                     </div>
                 </div>
                 <div>
                   <label>
-                    {riderExceptionRule(selectedJob, exceptionReason).requirePhoto
+                    {fieldRuleForJob(selectedJob, exceptionReason).requirePhoto
                       ? "Required exception proof photo"
                       : "Exception proof photo (optional)"}
                   </label>
