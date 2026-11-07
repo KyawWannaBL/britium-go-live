@@ -84,6 +84,19 @@ export default function WarehousePage() {
     () => (snapshot.reasons || []).filter((r: any) => ["DELIVERY", "WAREHOUSE"].includes(r.process_type)),
     [snapshot.reasons]
   );
+  // Warehouse receives the exact field-submitted reason from the server snapshot.
+  const fieldReturnForScan = useCallback((rawCode: string) => {
+    const needle = String(rawCode || "").trim().toUpperCase();
+    if (!needle) return null;
+    return rows.find((r: any) => {
+      if (!r.field_exception_pending) return false;
+      return [r.canonical_delivery_way_id, r.delivery_way_id, r.display_way_id, r.waybill_no, r.tracking_no]
+        .some((id) => String(id || "").trim().toUpperCase() === needle);
+    }) || null;
+  }, [rows]);
+  const scannedFieldReturn = useMemo(() => fieldReturnForScan(scanCode), [fieldReturnForScan, scanCode]);
+  const scannedFieldReason = String(scannedFieldReturn?.pending_return_reason_code || "").trim().toUpperCase();
+
 
   const loadAll = useCallback(async (quiet=false) => {
     if(!quiet) setLoading(true);
@@ -97,7 +110,6 @@ export default function WarehousePage() {
       if (snapshotResult.error) throw snapshotResult.error;
       const data=snapshotResult.data;
       setSnapshot(data || { stats: {}, rows: [], reasons: [] });
-      setReason((prev) => prev || data?.reasons?.find((r: any) => r.process_type === "DELIVERY")?.exception_code || "");
       if(!archiveResult.error) setHandoffArchive(archiveResult.data || {rows:[],count:0});
     } catch (e: any) {
       setMessage(e.message || "Failed to load warehouse scan data.");
@@ -262,15 +274,17 @@ export default function WarehousePage() {
       }
 
       if (kind === "return") {
-        if (!reason) throw new Error("Please select return reason first.");
-        if (reason === "CUSTOMER_REQUESTED_RESCHEDULE" && !rescheduleDate) {
-          throw new Error("Choose the customer-dedicated delivery date before saving the return scan.");
-        }
+        // Source of truth: recorded field failure. Never require a second reason.
+        // The server also derives the final code from the delivery attempt state.
+        const filed = fieldReturnForScan(tracking) || fieldReturnForScan(displayId);
+        const submittedReason = String(filed?.pending_return_reason_code || "").trim().toUpperCase();
+        const resolvedReason = submittedReason || String(reason || "").trim().toUpperCase();
         res = await (supabase as any).rpc("be_warehouse_return_scan_v71", {
           p_tracking_no: tracking,
-          p_reason_code: reason,
-          p_delivery_date: reason === "CUSTOMER_REQUESTED_RESCHEDULE" ? rescheduleDate : null,
+          p_reason_code: resolvedReason || null,
+          p_delivery_date: resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" && rescheduleDate ? rescheduleDate : null,
           p_actor_email: email,
+          // This field is only a warehouse-specific observation, not a replacement.
           p_remark: remark || null,
           p_warehouse_code: warehouseCode,
         });
@@ -849,12 +863,12 @@ export default function WarehousePage() {
           />
 
           <select
-            value={reason}
+            value={scannedFieldReason || reason}
             onChange={(e) => setReason(e.target.value)}
-            disabled={scanMode!=="return"}
+            disabled={scanMode!=="return" || !!scannedFieldReason}
             className="rounded-lg border border-slate-700 bg-[#071827] p-3 outline-none focus:border-[#C09B30] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <option value="">Select return reason from exception rules...</option>
+            <option value="">Use saved rider/driver/helper reason automatically</option>
             {reasons.map((r: any) => (
               <option key={`${r.process_type}-${r.exception_code}`} value={r.exception_code}>
                 {r.exception_name_en || r.exception_code} / {r.exception_name_mm || r.exception_code}
@@ -862,7 +876,13 @@ export default function WarehousePage() {
             ))}
           </select>
 
-          {scanMode === "return" && reason === "CUSTOMER_REQUESTED_RESCHEDULE" ? (
+          {scanMode === "return" && scannedFieldReason ? (
+            <div className="rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-xs text-emerald-200">
+              Field-submitted reason: <strong>{scannedFieldReturn?.pending_return_reason_name || scannedFieldReason}</strong>.
+              This reason is inherited automatically; Warehouse does not need to enter it again.
+            </div>
+          ) : null}
+          {scanMode === "return" && (scannedFieldReason || reason) === "CUSTOMER_REQUESTED_RESCHEDULE" ? (
             <label className="rounded-lg border border-amber-600/60 bg-amber-950/20 p-2 text-xs text-amber-200">
               Customer dedicated delivery date *
               <input
