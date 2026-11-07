@@ -336,17 +336,7 @@ export default function BritiumLoginPage({ initialMode = "login" }: BritiumLogin
           {mode !== "signup" && <button type="button" onClick={() => setMode("signup")}>Request new account</button>}
         </div>
 
-        <div className="be-apk-panel">
-          <div>
-            <Smartphone size={18} />
-            <strong>Mobile APK downloads</strong>
-          </div>
-          <div className="be-apk-buttons">
-            <button type="button" onClick={() => handleApkDownload("rider")}><Download size={15} /> Rider APK</button>
-            <button type="button" onClick={() => handleApkDownload("driver")}><Download size={15} /> Driver APK</button>
-            <button type="button" onClick={() => handleApkDownload("helper")}><Download size={15} /> Helper APK</button>
-          </div>
-        </div>
+        <p className="be-login-update-note">Google Play users receive Android app updates through Google Play only.</p>
       </section>
     </main>
   );
