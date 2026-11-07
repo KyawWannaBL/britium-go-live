@@ -772,27 +772,7 @@ export default function Login() {
                 {t("Request new account", "အကောင့်အသစ် တောင်းဆိုမည်")}
               </button>
 
-              <div className="mt-6 rounded-[20px] border border-[#17486b] bg-[#061b2d] p-4">
-                <div className="mb-3 flex items-center gap-2 text-[13px] font-black text-[#ffb82e]">
-                  <Download className="h-4 w-4" />
-                  {t("Britium Enterprise Portal Android App", "Britium Enterprise Portal Android App")}
-                </div>
-
-                <p className="mb-3 text-[11px] leading-5 text-[#8eb3ca]">
-                  {t(
-                    "Install the official Enterprise Portal App for secure access to Operations, Customer Service, Warehouse, Branch, Admin, Finance, Accounting, Marketing and management workspaces.",
-                    "Operations၊ Customer Service၊ Warehouse၊ Branch၊ Admin၊ Finance၊ Accounting၊ Marketing နှင့် Management Workspace များကို လုံခြုံစွာ အသုံးပြုရန် Official Enterprise Portal App ကို ထည့်သွင်းနိုင်ပါသည်။"
-                  )}
-                </p>
-
-                <a
-                  href="https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk"
-                                    className="flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#2f84b7] bg-[#0c2b45] px-4 text-center text-[13px] font-black text-[#d6ebf8] hover:border-[#f6b84b] hover:text-[#f6b84b]"
-                >
-                  <Download className="h-4 w-4 shrink-0" />
-                  {t("Download Enterprise Portal App APK", "Enterprise Portal App APK ဒေါင်းလုဒ်")}
-                </a>
-              </div>
+              <p className="mt-6 text-center text-xs text-[#8eb3ca]">Android updates for Google Play users are delivered only through Google Play. You can continue using the secure Enterprise Portal here.</p>
 
               <a href="https://www.britiumexpress.com/account-deletion.html" className="mt-4 block min-h-12 rounded-xl border border-[#2f84b7] px-4 py-3 text-center text-[13px] font-bold text-[#d6ebf8] underline hover:text-[#f6b84b]">{t("Request account and data deletion", "အကောင့်နှင့် အချက်အလက် ဖျက်ရန် တောင်းဆိုမည်")}</a>
 
