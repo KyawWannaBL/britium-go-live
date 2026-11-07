@@ -3,15 +3,13 @@ import {
   ArrowRight,
   Building2,
   CheckCircle2,
-  Download,
-  Eye,
+    Eye,
   EyeOff,
   KeyRound,
   Mail,
   PackageCheck,
   ShieldCheck,
-  Smartphone,
-  Sparkles,
+    Sparkles,
   UserPlus,
   WalletCards,
 } from "lucide-react";
@@ -86,16 +84,6 @@ function setLocalPortalSession(role: LoginRole, identifier: string, remember: bo
   store.setItem("be_enterprise_role", role);
   store.setItem("be_enterprise_identifier", identifier || role);
   localStorage.setItem("be_enterprise_last_role", role);
-}
-
-function apkUrl(kind: "rider" | "driver" | "helper" | "enterprise") {
-  const urls: Record<string, string | undefined> = {
-    rider: import.meta.env.VITE_RIDER_APK_URL,
-    driver: import.meta.env.VITE_DRIVER_APK_URL,
-    helper: import.meta.env.VITE_HELPER_APK_URL,
-    enterprise: import.meta.env.VITE_ENTERPRISE_APK_URL,
-  };
-  return urls[kind] || "";
 }
 
 export default function BritiumLoginPage({ initialMode = "login" }: BritiumLoginPageProps) {
@@ -193,15 +181,6 @@ export default function BritiumLoginPage({ initialMode = "login" }: BritiumLogin
     } finally {
       setBusy(false);
     }
-  }
-
-  function handleApkDownload(kind: "rider" | "driver" | "helper" | "enterprise") {
-    const url = apkUrl(kind);
-    if (!url) {
-      setMessage(`APK URL for ${kind} app is not configured yet. Set VITE_${kind.toUpperCase()}_APK_URL in Vercel environment variables.`);
-      return;
-    }
-    window.open(url, "_blank", "noopener,noreferrer");
   }
 
   return (
