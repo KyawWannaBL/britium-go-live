@@ -90,16 +90,7 @@ export default function ForgotPasswordPage() {
             Send reset link
           </button>
 
-          {mode === "rider" ? (
-            <a
-              href={apkHref}
-              download
-              className="mt-4 inline-flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] text-[12px] font-black uppercase tracking-wider text-[#c8dff0] hover:border-[#f6b84b]"
-            >
-              <Download className="h-4 w-4 text-[#f6b84b]" />
-              Download Rider APK
-            </a>
-          ) : null}
+
         </form>
       </section>
     </main>
