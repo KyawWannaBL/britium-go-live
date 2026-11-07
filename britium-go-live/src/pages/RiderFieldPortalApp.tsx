@@ -2088,8 +2088,12 @@ function FieldPortal() {
         nameMm: String(r.name_mm || r.name_en || r.code || ""),
         mappedStatus: String(r.mapped_status || "DELIVERY_ATTEMPTED"),
         nextAction: String(r.next_action || "CUSTOMER_SERVICE_REVIEW"),
-        requirePhoto: String(r.require_photo).toLowerCase() === "true",
-        requireRemark: String(r.require_remark).toLowerCase() === "true",
+        // Database rules use YES/NO/COND strings. Treat conditional proof
+        // conservatively as required until the condition can be evaluated.
+        requirePhoto: ["YES", "TRUE", "COND", "CONDITIONAL"].includes(String(r.require_photo || "").toUpperCase()),
+        requireRemark: r.require_remark == null
+          ? (DELIVERY_EXCEPTION_RULES.find((local) => local.code === String(r.code || "").toUpperCase())?.requireRemark ?? true)
+          : ["YES", "TRUE", "REQUIRED"].includes(String(r.require_remark).toUpperCase()),
       })).filter((r: RiderExceptionRule) => !!r.code);
       if (rules.length) setServerDeliveryExceptionRules(rules);
     }).catch(() => { /* Keep local safe fallback during connectivity loss. */ });
