@@ -11,12 +11,25 @@ const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3Mi
 
 const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
 const isNativeApp = Capacitor.isNativePlatform();
+// The native WebView's origin is capacitor://localhost, so it cannot use a
+// relative /supabase URL. Route native API calls through the public Britium
+// HTTPS domain rather than contacting supabase.co directly. This keeps Auth,
+// REST, Realtime and Storage on the same network path as the working web app.
+// The canonical origin is not a secret; VITE_NATIVE_SUPABASE_PROXY_URL allows
+// a controlled future migration without rewriting app code.
+const nativeProxyUrl = String(
+  import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
+).trim().replace(/\\/+$/, "");
 const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
-const supabaseUrl = shouldUseWebProxy ? `${window.location.origin}/supabase` : directSupabaseUrl;
+const supabaseUrl = isNativeApp
+  ? nativeProxyUrl
+  : shouldUseWebProxy
+    ? `${window.location.origin}/supabase`
+    : directSupabaseUrl;
 const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
 
 if (isNativeApp) {
-  console.info("[Britium Supabase] Native app detected; using direct Supabase HTTPS endpoint.");
+  console.info("[Britium Supabase] Native app using Britium HTTPS API gateway.");
 }
 
 const authStorageKey = (() => {
