@@ -223,14 +223,7 @@ export default function PortalLoginPage() {
               <Smartphone className="h-4 w-4 text-[#4ea8de]" />
               Rider Login
             </Link>
-            <a
-              href={apkHref}
-              download
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] text-[12px] font-black uppercase tracking-wider text-[#c8dff0] hover:border-[#f6b84b]"
-            >
-              <Download className="h-4 w-4 text-[#f6b84b]" />
-              Rider APK
-            </a>
+
           </div>
         </form>
       </section>
