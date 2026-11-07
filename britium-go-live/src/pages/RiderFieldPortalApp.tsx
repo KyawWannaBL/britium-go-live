@@ -3134,8 +3134,15 @@ function FieldPortal() {
         );
       }
 
+      const deliveryWayId = text((selectedJob as any).delivery_way_id || (selectedJob as any).tracking_no || (selectedJob as any).waybill_no || (modal === "delivery" ? id : ""));
+      if (modal === "delivery" && !deliveryWayId) {
+        throw new Error("Delivery Way ID is missing. Refresh this assignment and try again.");
+      }
       const actionPayload = {
         pickup_id: id,
+        delivery_way_id: modal !== "pickup" ? deliveryWayId : null,
+        tracking_no: modal !== "pickup" ? deliveryWayId : null,
+        wayplan_id: modal !== "pickup" ? text((selectedJob as any).wayplan_id) || null : null,
         pickup_way_id: id,
         rider_code: session.normalizedLogin || session.worker_code || session.login,
         rider_id: session.normalizedLogin || session.worker_code || session.login,
@@ -3158,7 +3165,13 @@ function FieldPortal() {
         rpcError = partialResult.error;
       }
 
-      if (modal !== "pickup" || rpcError) {
+      if (modal === "delivery") {
+        // The delivery confirmation RPC verifies the authoritative dispatch-stop state.
+        // A successful pickup-style action alone does not prove that drop-off persisted.
+        const deliveryResult = await supabase.rpc("be_field_team_confirm_delivery_v146", { p_payload: actionPayload });
+        data = deliveryResult.data;
+        rpcError = deliveryResult.error;
+      } else if (modal !== "pickup" || rpcError) {
         if (rpcError) console.warn("Partial pickup RPC unavailable; falling back to be_rider_pickup_action", rpcError);
         const fallbackResult = await supabase.rpc("be_rider_pickup_action", { p_payload: actionPayload });
         data = fallbackResult.data;
