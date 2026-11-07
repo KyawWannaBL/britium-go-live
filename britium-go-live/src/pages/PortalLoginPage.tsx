@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Download, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 type LoginMode = "portal" | "rider";
@@ -79,8 +79,6 @@ export default function PortalLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-
-  const apkHref = useMemo(() => "https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk", []);
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
