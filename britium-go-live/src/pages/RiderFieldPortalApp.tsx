@@ -2079,7 +2079,12 @@ function FieldPortal() {
     const client = getRiderSupabase();
     if (!client) return;
     let active = true;
-    void client.rpc("be_field_delivery_failure_reasons_v92").then(({ data, error }: any) => {
+    void client.rpc("be_field_delivery_failure_reasons_v214").then(async ({ data, error }: any) => {
+      if (error) {
+        const fallback = await client.rpc("be_field_delivery_failure_reasons_v92");
+        data = fallback.data;
+        error = fallback.error;
+      }
       if (!active || error || !Array.isArray(data?.reasons) || !data.reasons.length) return;
       const rules = data.reasons.map((r: any): RiderExceptionRule => ({
         processType: "DELIVERY",
