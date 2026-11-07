@@ -279,10 +279,26 @@ export default function WarehousePage() {
         const filed = fieldReturnForScan(tracking) || fieldReturnForScan(displayId);
         const submittedReason = String(filed?.pending_return_reason_code || "").trim().toUpperCase();
         const resolvedReason = submittedReason || String(reason || "").trim().toUpperCase();
+        let effectiveRescheduleDate = rescheduleDate || String(filed?.requested_delivery_date || filed?.next_attempt_date || "").slice(0, 10);
+        // Reuse the date already submitted by the rider where possible.
+        if (resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" && !effectiveRescheduleDate) {
+          const prior = await supabase.from("be_delivery_reschedules_v71")
+            .select("requested_delivery_date")
+            .eq("delivery_way_id", tracking)
+            .order("requested_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (!prior.error && prior.data?.requested_delivery_date) {
+            effectiveRescheduleDate = String(prior.data.requested_delivery_date).slice(0, 10);
+          }
+          if (!effectiveRescheduleDate) {
+            throw new Error("The rider's dedicated delivery date could not be retrieved. Please confirm it before this return scan.");
+          }
+        }
         res = await (supabase as any).rpc("be_warehouse_return_scan_v71", {
           p_tracking_no: tracking,
           p_reason_code: resolvedReason || null,
-          p_delivery_date: resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" && rescheduleDate ? rescheduleDate : null,
+          p_delivery_date: resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" ? effectiveRescheduleDate : null,
           p_actor_email: email,
           // This field is only a warehouse-specific observation, not a replacement.
           p_remark: remark || null,
