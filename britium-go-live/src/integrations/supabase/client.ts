@@ -19,7 +19,7 @@ const isNativeApp = Capacitor.isNativePlatform();
 // a controlled future migration without rewriting app code.
 const nativeProxyUrl = String(
   import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
-).trim().replace(/\\/+$/, "");
+).trim().replace(/\/+$/, "");
 const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
