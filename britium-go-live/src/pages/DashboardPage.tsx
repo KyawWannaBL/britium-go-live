@@ -77,6 +77,55 @@ export default function DashboardPage(){
       </div>
     </section>}
 
+    {opsView&&<section className="mt-5">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="font-black">Today’s Pickup Requests — Parcel & Way Breakdown</h2>
+        <span className="text-xs" style={{color:C.sub}}>
+          {num(o.pickup_requests_today??o.pickups_today)} requests · {num(o.parcels_in_today_pickups)} linked delivery ways
+        </span>
+      </div>
+      <div className="overflow-x-auto rounded-2xl border" style={{borderColor:C.border,background:C.panel}}>
+        <table className="w-full min-w-[800px] text-left text-xs">
+          <thead style={{background:"#102b45",color:C.sub}}><tr>
+            <th className="p-3">Pickup ID / Merchant</th>
+            <th className="p-3">Pickup status</th>
+            <th className="p-3 text-right">Parcels / Ways</th>
+            <th className="p-3">Way ID and parcel status</th>
+          </tr></thead>
+          <tbody>
+            {Array.isArray(o.pickup_way_breakdown)&&o.pickup_way_breakdown.length?
+              o.pickup_way_breakdown.map((p:any)=><tr key={p.pickup_id} className="border-t" style={{borderColor:C.border}}>
+                <td className="p-3 align-top">
+                  <div className="font-bold" style={{color:C.gold}}>{p.pickup_id}</div>
+                  <div className="mt-1" style={{color:C.sub}}>{p.merchant_name||"Unknown merchant"}</div>
+                </td>
+                <td className="p-3 align-top">{p.pickup_status||"UNKNOWN"}</td>
+                <td className="p-3 text-right align-top font-bold">{num(p.total_parcels)}</td>
+                <td className="p-3 align-top">
+                  {Array.isArray(p.ways)&&p.ways.length?
+                    <details><summary className="cursor-pointer font-bold" style={{color:C.blue}}>
+                      View {p.ways.length} delivery way{p.ways.length===1?"":"s"}
+                    </summary><div className="mt-2 grid gap-1">
+                      {p.ways.map((way:any)=><div key={way.delivery_way_id} className="flex flex-wrap justify-between gap-2 rounded-lg px-3 py-2" style={{background:"#061524"}}>
+                        <span className="font-mono">{way.delivery_way_id}</span>
+                        <span style={{color:C.sub}}>{way.parcel_status||"UNKNOWN"}</span>
+                      </div>)}
+                    </div></details>
+                    :<span style={{color:C.gold}}>No registered Way IDs linked to this pickup</span>}
+                </td>
+              </tr>)
+              :<tr><td className="p-4" colSpan={4} style={{color:C.sub}}>
+                {o.pickup_way_breakdown===undefined?"Pickup breakdown requires the dashboard database update.":"No pickup requests for this work date."}
+              </td></tr>}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs" style={{color:C.sub}}>
+        Parcels / Ways counts all delivery ways linked to each pickup created today, regardless of parcel registration date.
+        “Parcels Registered Today” counts parcels registered today, including older pickup batches.
+      </p>
+    </section>}
+
     {financeView&&<section className="mt-5">
       <div className="mb-3 flex items-center gap-2"><DollarSign size={19} color={C.green}/><h2 className="font-black">Finance & Settlement</h2></div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
