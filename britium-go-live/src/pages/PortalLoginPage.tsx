@@ -1,6 +1,6 @@
-import { FormEvent, useCallback, useMemo, useState } from "react";
+import { FormEvent, useCallback, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { Download, Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Mail, ShieldCheck, Smartphone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 type LoginMode = "portal" | "rider";
@@ -80,7 +80,6 @@ export default function PortalLoginPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
 
-  const apkHref = useMemo(() => "https://github.com/KyawWannaBL/britium-go-live/releases/download/enterprise-portal-latest/Britium-Enterprise-Portal.apk", []);
 
   const submit = useCallback(
     async (event: FormEvent<HTMLFormElement>) => {
@@ -215,7 +214,7 @@ export default function PortalLoginPage() {
             Sign In
           </button>
 
-          <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="mt-5 grid grid-cols-1 gap-3">
             <Link
               to="/rider-login"
               className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] text-[12px] font-black uppercase tracking-wider text-[#c8dff0] hover:border-[#4ea8de]"
@@ -223,14 +222,6 @@ export default function PortalLoginPage() {
               <Smartphone className="h-4 w-4 text-[#4ea8de]" />
               Rider Login
             </Link>
-            <a
-              href={apkHref}
-              download
-              className="inline-flex h-12 items-center justify-center gap-2 rounded-2xl border border-[#1a3a5c] bg-[#061524] text-[12px] font-black uppercase tracking-wider text-[#c8dff0] hover:border-[#f6b84b]"
-            >
-              <Download className="h-4 w-4 text-[#f6b84b]" />
-              Rider APK
-            </a>
           </div>
         </form>
       </section>
