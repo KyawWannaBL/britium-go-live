@@ -53,6 +53,9 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/rider', rule('rider', 'driver', 'helper', 'supervisor', 'operations', 'operations-admin')],
   ['/driver', rule('driver', 'supervisor', 'operations', 'operations-admin')],
 
+  // HQ branch amendment approvals are not branch-manager authority.
+  ['/branch-admin', rule('superadmin','super-admin','app-owner','sys','admin')],
+  ['/branch-team/', rule('branch-manager', 'branch-admin')],
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
   ['/cs-command', rule('branch-manager','customer-service','cs','support')],
   ['/cs-portal', rule('branch-manager','customer-service','cs','support')],

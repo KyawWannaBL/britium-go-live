@@ -117,6 +117,7 @@ const AuditLogsPage = safeLazy(() => import("@/pages/AuditLogsPage"));
 const BizDevPage = safeLazy(() => import("@/pages/BizDevPage"));
 const BranchAdminPage = safeLazy(() => import("@/pages/BranchAdminPage"));
 const BranchOfficePage = safeLazy(() => import("@/pages/BranchOfficePage"));
+const BranchTeamPage = safeLazy(() => import("@/pages/BranchTeamPage"));
 const CODSettlementPage = safeLazy(() => import("@/pages/CODSettlementPage"));
 const CustomerPortalPage = safeLazy(() => import("@/pages/CustomerPortalPage"));
 const CustomerServiceCommandCenterPage = safeLazy(() => import("@/pages/CustomerServiceCommandCenterPage"));
@@ -256,6 +257,11 @@ function AppRoutes() {
           <Route element={<AuthLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/branch-office" element={<BranchOfficePage />} />
+            <Route path="/branch-team/riders" element={<BranchTeamPage />} />
+            <Route path="/branch-team/drivers" element={<BranchTeamPage />} />
+            <Route path="/branch-team/helpers" element={<BranchTeamPage />} />
+            <Route path="/branch-team/accounts" element={<BranchTeamPage />} />
+            <Route path="/branch-team/finance" element={<BranchTeamPage />} />
             <Route path="/cs-command" element={<BranchDepartmentRoute module="cs"><CustomerServiceCommandCenterPage /></BranchDepartmentRoute>} />
             <Route path="/cs-portal" element={<BranchDepartmentRoute module="cs"><CustomerServicePortalPage /></BranchDepartmentRoute>} />
             <Route path="/cs-third-party" element={<ThirdPartyDeliveryConfirmationPage />} />
