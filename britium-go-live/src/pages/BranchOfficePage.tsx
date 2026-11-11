@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { useEffect, useMemo, useState } from "react";
-import { Building2, RefreshCw, Search, FileEdit, Package, Users, WalletCards } from "lucide-react";
+import {Link} from 'react-router-dom';
+import { Building2, RefreshCw, Search, FileEdit, Package, Users, WalletCards, Bike, Car, UserCheck, Banknote } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import BranchControlWorkbench from '@/components/BranchControlWorkbench';
@@ -59,6 +60,21 @@ export default function BranchOfficePage(){
       {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
     </section>
 
+    {['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role))&&
+      <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+        <h2 className="mb-3 text-lg font-bold text-[#f6b84b]">Branch team & account workspaces</h2>
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+          {[
+            {name:'Riders',path:'/branch-team/riders',icon:Bike},
+            {name:'Drivers',path:'/branch-team/drivers',icon:Car},
+            {name:'Helpers',path:'/branch-team/helpers',icon:Users},
+            {name:'Accounts',path:'/branch-team/accounts',icon:UserCheck},
+            {name:'Branch Finance',path:'/branch-team/finance',icon:Banknote}
+          ].map(item=><Link key={item.path} to={item.path} className="flex items-center gap-2 rounded-xl border border-[#365674] bg-[#061524] p-4 text-sm font-bold hover:border-[#f6b84b]">
+            <item.icon size={18} className="text-[#f6b84b]"/>{item.name}
+          </Link>)}
+        </div>
+      </section>}
     <BranchControlWorkbench branch={fixedBranch||branch}/>
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {[
