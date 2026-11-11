@@ -75,6 +75,8 @@ export function isElevatedRole(rawRole: string | null | undefined): boolean {
 
 export function canRoleOpenPath(rawRole: string | null | undefined, path: string): boolean {
   const role = normalizeRole(rawRole);
+  // Regional team screens require server-approved branch identities, even for HQ admins.
+  if (path.startsWith('/branch-team/')) return ['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(role);
   if (ELEVATED_ROLES.has(role)) return true;
   if (path === '/profile') return role !== 'guest';
   if (role === 'branch-manager' && ['/warehouse','/warehouse-operations','/warehouse-pending','/warehouse-dispatch-command','/wayplan-view','/rto-report','/ops-workflow','/dispatch-command'].includes(path.replace(/\/$/,''))) return true;
