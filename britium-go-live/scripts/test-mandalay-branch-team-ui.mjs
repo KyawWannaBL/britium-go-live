@@ -53,4 +53,6 @@ assert.equal(canRoleOpenPath('branch-manager','/finance/merchant-settlement'),fa
 assert.equal(canRoleOpenPath('branch-manager','/settings'),false,'MDY manager must not access global settings.');
 assert.equal(canRoleOpenPath('branch-manager','/branch-admin'),false,'MDY manager must not access HQ branch approvals.');
 assert.equal(canRoleOpenPath('branch-admin','/branch-admin'),false,'MDY branch admin must not access HQ approvals.');
+assert.equal(canRoleOpenPath('admin','/branch-team/accounts'),false,'Generic HQ admin cannot open a branch-only team panel.');
+assert.equal(canRoleOpenPath('superadmin','/branch-team/accounts'),true,'Superadmin must retain cross-branch oversight.');
 console.log('PASS: Mandalay branch teams, five routes, guards, and account request controls.');
