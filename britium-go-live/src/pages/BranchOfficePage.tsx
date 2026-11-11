@@ -75,7 +75,7 @@ export default function BranchOfficePage(){
           </Link>)}
         </div>
       </section>}
-    <BranchControlWorkbench branch={fixedBranch||branch}/>
+    {['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role))&&<BranchControlWorkbench branch={fixedBranch||branch}/>}
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {[
         ["Branch",fixedBranch||branch||"ALL",Building2],
