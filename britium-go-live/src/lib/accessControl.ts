@@ -25,7 +25,8 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/rider-settlement', rule('finance', 'finance-user', 'accountant', 'rider', 'driver', 'helper')],
   ['/workforce-commission', rule('finance', 'finance-user', 'accountant')],
 
-  ['/data-entry', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
+  // MDY branch manager can operate Data Entry V2; pickup and mutations are backend branch-scoped.
+  ['/data-entry', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
   ['/waybill-studio', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
   ['/waybill-invoice', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse', 'finance')],
   ['/doc-print', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
