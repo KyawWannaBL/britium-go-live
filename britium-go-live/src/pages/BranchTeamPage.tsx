@@ -121,9 +121,11 @@ export default function BranchTeamPage(){
       </div>
       <div className="mt-4 flex flex-wrap gap-2 text-sm">
         <Link to="/branch-office" className="rounded-lg border border-[#365674] px-3 py-2">Branch Office</Link>
-        <Link to="/wayplan-command" className="rounded-lg border border-[#365674] px-3 py-2">Wayplan Command</Link>
-        <Link to="/supervisor-wayplan" className="rounded-lg border border-[#365674] px-3 py-2">Supervisor Review</Link>
-        <Link to="/warehouse" className="rounded-lg border border-[#365674] px-3 py-2">Warehouse</Link>
+        {(normalized==='branch-manager'||elevated)&&<>
+          <Link to="/wayplan-command" className="rounded-lg border border-[#365674] px-3 py-2">Wayplan Command</Link>
+          <Link to="/supervisor-wayplan" className="rounded-lg border border-[#365674] px-3 py-2">Supervisor Review</Link>
+          <Link to="/warehouse" className="rounded-lg border border-[#365674] px-3 py-2">Warehouse</Link>
+        </>}
       </div>
     </header>
     {error&&<div role="alert" className="rounded-xl border border-rose-400/50 bg-rose-950/40 p-3 text-sm">{error}</div>}
