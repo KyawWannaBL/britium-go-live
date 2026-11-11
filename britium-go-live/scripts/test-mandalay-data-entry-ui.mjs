@@ -39,6 +39,6 @@ for(const name of [
 ]) assert.ok(migration.includes('CREATE OR REPLACE FUNCTION public.'+name),'Migration missing scoped function '+name);
 assert.ok(migration.includes("BRANCH_DATA_ENTRY_SCOPE_DENIED"),'Cross-branch denial missing');
 assert.ok(migration.includes("be_employee_can_access_territory"),'Territory guard missing');
-assert.ok(migration.includes("('data_entry','encoder','supervisor')"),'Scoped MDY employee roles missing');
+assert.ok(migration.includes("('branch_manager','data_entry','encoder','supervisor')"),'Scoped MDY employee roles missing');
 assert.ok(migration.includes("role_id='branch_manager'"),'Branch manager authority missing');
 console.log('PASS Mandalay Data Entry V2: manager screen, routes, backend scope, YGN isolation and HQ separation');
