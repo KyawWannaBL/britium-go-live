@@ -4,7 +4,7 @@ import fs from "node:fs";
 const service=fs.readFileSync("src/lib/deliveryLocationService.ts","utf8");
 const page=fs.readFileSync("src/pages/DataEntryFinancialV2Page.tsx","utf8");
 const editor=fs.readFileSync("src/components/workflow/DataEntryLocationEditor.tsx","utf8");
-const migration=fs.readFileSync("supabase/migrations/20260906193000_location_alias_learning_v28.sql","utf8");
+const migration=fs.readFileSync("supabase/migration_history_archive/local_only_not_in_production_20261114/20260906193000_location_alias_learning_v28.sql","utf8");
 const remediation=fs.readFileSync("supabase/migrations/20260906213642_location_review_permission_identity_v29.sql","utf8");
 
 assert.match(migration,/create table if not exists public\.be_location_aliases/);
