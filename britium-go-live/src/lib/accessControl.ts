@@ -45,6 +45,8 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
 
   ['/wayplan-command', rule('branch-manager', 'dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/supervisor-wayplan', rule('branch-manager', 'supervisor', 'operations', 'operations-admin')],
+  // Exact pickup route must precede generic /supervisor prefix; branch scope is enforced by backend.
+  ['/supervisor-pickup', rule('branch-manager', 'supervisor', 'operations', 'operations-admin')],
   ['/ops-workflow', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/wayplan', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
   ['/dispatch-command', rule('dispatch', 'wayplan-manager', 'supervisor', 'operations', 'operations-admin', 'management', 'director')],
