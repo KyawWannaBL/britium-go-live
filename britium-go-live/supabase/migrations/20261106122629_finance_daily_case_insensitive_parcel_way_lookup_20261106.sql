@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS be_finance_daily_parcel_way_upper_idx ON public.be_data_entry_parcel_details (upper(delivery_way_id));
