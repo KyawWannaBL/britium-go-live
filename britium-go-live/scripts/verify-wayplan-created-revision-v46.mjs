@@ -7,7 +7,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, "..");
 const page = fs.readFileSync(path.join(root, "src", "pages", "WayplanCommandCenterPage.tsx"), "utf8");
 const revisionPlannerPath = path.join(root, "src", "components", "CreatedWayplanRevisionPlanner.tsx");
-const migrationPath = path.join(root, "supabase", "migrations", "20260917193000_wayplan_created_revision_v46.sql");
+const migrationPath = path.join(root, "supabase", "migration_history_archive", "local_only_not_in_production_20261114", "20260917193000_wayplan_created_revision_v46.sql");
 
 assert.ok(page.includes("Edit CREATED Wayplan"), "V46 must expose a CREATED-only Wayplan edit action");
 assert.ok(page.includes("Add Selected"), "V46 must allow filtered READY ways to be added to the revision");
