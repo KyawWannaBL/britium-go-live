@@ -7,8 +7,8 @@ const root=resolve(dirname(fileURLToPath(import.meta.url)),"..");
 const service=readFileSync(resolve(root,"src/lib/deliveryLocationService.ts"),"utf8");
 const editor=readFileSync(resolve(root,"src/components/workflow/DataEntryLocationEditor.tsx"),"utf8");
 const page=readFileSync(resolve(root,"src/pages/DataEntryFinancialV2Page.tsx"),"utf8");
-const migration=readFileSync(resolve(root,"supabase/migrations/20260903130606_data_entry_google_location_contract_v18.sql"),"utf8");
-const routingMigration=readFileSync(resolve(root,"supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
+const migration=readFileSync(resolve(root,"supabase/migrations/20260903133253_data_entry_google_location_contract_v18.sql"),"utf8");
+const routingMigration=readFileSync(resolve(root,"supabase/migrations/20260903164558_data_entry_delivery_routing_wayplan_regions_v19.sql"),"utf8");
 
 const checks=[
   ["exact township lineage is explicit",/TOWNSHIP_EXACT_VALIDATED/.test(service)&&/exactGoogleMatch/.test(service)],

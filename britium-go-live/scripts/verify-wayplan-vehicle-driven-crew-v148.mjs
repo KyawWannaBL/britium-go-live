@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const planner = fs.readFileSync(path.join(root, "src/components/MultiVanPlanner.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260927220000_wayplan_vehicle_driven_crew_v148.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260927153333_wayplan_vehicle_driven_crew_v148.sql"), "utf8");
 
 assert.match(planner, /RIDER_ONLY_VEHICLE_CODES = new Set\(\["MOTORBIKE", "BICYCLE"\]\)/);
 assert.match(planner, /name: "Motor Bike"/);

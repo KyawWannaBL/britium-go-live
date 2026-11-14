@@ -15,7 +15,7 @@ try {
  const old=fs.readFileSync('supabase/migration_history_archive/local_only_not_in_production_20261114/20260917193000_wayplan_created_revision_v46.sql','utf8');
  const start=old.indexOf('create or replace function public.be_replace_created_wayplan_v46(');
  await db.exec(old.slice(start,old.indexOf('\nrevoke all',start)));
- if (!process.argv.includes('--baseline')) await db.exec(readMigrationFixture('20261012144059_wayplan_revision_policy_v201.sql'));
+ if (!process.argv.includes('--baseline')) await db.exec(readMigrationFixture('20261012173216_wayplan_revision_policy_v201.sql'));
  const payload = (overrides={}) => ({source_wayplan_id:'SOURCE',request_id:'00000000-0000-4000-8000-000000000002',region_code:'YANGON',plan:{vehicle_code:'MOTORBIKE',rider_code:'R1',delivery_way_ids:['TEST-1'],route:{source:'MAPBOX_FALLBACK'}},...overrides});
  const error = async(p) => {try {await db.query('select public.be_replace_created_wayplan_v46($1::jsonb)',[p]);return '';}catch(e){return e.message;}};
  assert.match(await error(payload()),/Source Wayplan not found/,'Yangon Mapbox Rider routes below 50 must reach source validation');
