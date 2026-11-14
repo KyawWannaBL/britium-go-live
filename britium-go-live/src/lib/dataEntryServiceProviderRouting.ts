@@ -5,6 +5,7 @@ import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
 export type DataEntryProviderCode =
   | "BRITIUM"
   | "DK DELIVERY"
+  | "MDY BRANCH"
   | "NPT BRANCH"
   | "ROYAL EXPRESS"
   | "H.TERMINAL DROP-OFF"
@@ -54,6 +55,7 @@ export type DataEntryProviderRouting = {
   reason:
     | "NAYPYITAW_EXCEPTION_OUTSIDE_CORE"
     | "MANDALAY_DK_SERVICE_AREA"
+    | "MANDALAY_BRANCH_SERVICE_AREA"
     | "NAYPYITAW_BRANCH_SERVICE_AREA"
     | "EXACT_BRITIUM_ROUTE"
     | "OUTSIDE_CORE_ROYAL_DEFAULT"
@@ -64,7 +66,7 @@ export type DataEntryProviderRouting = {
   postal: PostalMatch;
 };
 
-const PROVIDER_PRIORITY = ["BRITIUM", "NPT BRANCH", "DK DELIVERY", "ROYAL EXPRESS", "H.TERMINAL DROP-OFF", "GRS"];
+const PROVIDER_PRIORITY = ["BRITIUM", "NPT BRANCH", "MDY BRANCH", "DK DELIVERY", "ROYAL EXPRESS", "H.TERMINAL DROP-OFF", "GRS"];
 
 function compactLocationKey(value: unknown): string {
   return convertMyanmarTownshipToEnglish(stripServiceProviderDecoration(value))
@@ -84,9 +86,9 @@ const NAYPYITAW_ROYAL_EXCEPTIONS = keySet([
   "Lewe", "Le Way", "လယ်ဝေး",
 ]);
 
-// DK's approved Mandalay service area is the seven city townships in the
+// Britium Mandalay Branch Office serves the seven city townships in the
 // tariff master. Other townships in Mandalay Region continue to Royal.
-const MANDALAY_DK_SERVICE_AREA = keySet([
+const MANDALAY_BRANCH_SERVICE_AREA = keySet([
   "Mandalay", "မန္တလေး",
   "Aungmyaythazan", "Aung Myay Thar Zan", "အောင်မြေသာစံ",
   "Chanayethazan", "Chan Aye Thar Zan", "ချမ်းအေးသာစံ",
@@ -132,7 +134,8 @@ export function dataEntryProviderHint(value: unknown): DataEntryProviderCode {
   const source = String(value ?? "").normalize("NFC").toLowerCase();
   if (/h\.?\s*terminal|terminal\s+drop|highway\s+(?:bus\s+)?station|အဝေးပြေး\s*ဂိတ်ချ/.test(source)) return "H.TERMINAL DROP-OFF";
   if (/royal|ရွိုင်ရယ်/.test(source)) return "ROYAL EXPRESS";
-  if (/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ|mandalay\\s+branch(?:\\s+office)?|မန္တလေး\\s*ရုံးခွဲ/.test(source)) return "DK DELIVERY";
+  if (/mandalay\s+branch(?:\s+office)?|မန္တလေး\s*ရုံးခွဲ/i.test(source)) return "MDY BRANCH";
+  if (/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ/.test(source)) return "DK DELIVERY";
   if (/(?:^|[^a-z])npt(?:\s+branch)?(?:[^a-z]|$)|နေပြည်တော်\s*ရုံးခွဲ/.test(source)) return "NPT BRANCH";
   if (/(?:^|[^a-z])grs(?:[^a-z]|$)|ဂျီအာရ်အက်စ်/.test(source)) return "GRS";
   if (/britium/.test(source)) return "BRITIUM";
@@ -198,7 +201,7 @@ function computeDataEntryServiceProvider(
   const isAyeyarwadyRegion=/^(ဧရာဝတီတိုင်း(?:ဒေသကြီး)?|(?:Ayeyarwady|Ayeyarwaddy|Irrawaddy) Region)$/i.test(cleanTownship);
   const inputKey=compactLocationKey(cleanTownship);
   const directMatches=tariffOptions.filter(option=>[compactLocationKey(option.destination_name),compactLocationKey(option.destination_key)].includes(inputKey)&&Boolean(inputKey));
-  const explicitTownship=Boolean(dagonTownship)||directMatches.length>0||[NAYPYITAW_ROYAL_EXCEPTIONS,MANDALAY_DK_SERVICE_AREA,NAYPYITAW_BRANCH_SERVICE_AREA,YANGON_BRITIUM_OUTREACH_SERVICE_AREA].some(set=>set.has(inputKey));
+  const explicitTownship=Boolean(dagonTownship)||directMatches.length>0||[NAYPYITAW_ROYAL_EXCEPTIONS,MANDALAY_BRANCH_SERVICE_AREA,NAYPYITAW_BRANCH_SERVICE_AREA,YANGON_BRITIUM_OUTREACH_SERVICE_AREA].some(set=>set.has(inputKey));
   const candidateKeys = new Set((explicitTownship
     ? [inputKey]
     : [inputKey,compactLocationKey(postal.township),compactLocationKey(postal.townshipMm)]).filter(Boolean));
@@ -216,9 +219,9 @@ function computeDataEntryServiceProvider(
   if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
     routeRegion = "OUTSIDE_CORE";
     reason = "NAYPYITAW_EXCEPTION_OUTSIDE_CORE";
-  } else if ([...candidateKeys].some((candidate) => MANDALAY_DK_SERVICE_AREA.has(candidate))) {
-    providerCode = "DK DELIVERY";
-    reason = "MANDALAY_DK_SERVICE_AREA";
+  } else if ([...candidateKeys].some((candidate) => MANDALAY_BRANCH_SERVICE_AREA.has(candidate))) {
+    providerCode = "MDY BRANCH";
+    reason = "MANDALAY_BRANCH_SERVICE_AREA";
     routeRegion = "MANDALAY";
     deliveryMode = "DOORSTEP_MAP";
     mapRequired = true;
@@ -244,10 +247,10 @@ function computeDataEntryServiceProvider(
       routeRegion = "YANGON";
       deliveryMode = "DOORSTEP_MAP";
       mapRequired = true;
-    } else if (exactProvider === "DK DELIVERY" && /^MDY-[LMRZ]\d{2}-A\d+$/i.test(String(exact?.destination_key || ""))) {
+    } else if (exactProvider === "MDY BRANCH" && /^MDY-[LMRZ]\d{2}-A\d+$/i.test(String(exact?.destination_key || ""))) {
       // A labelled rate is an explicit operator choice, not a geographic alias.
-      providerCode = "DK DELIVERY";
-      reason = "MANDALAY_DK_SERVICE_AREA";
+      providerCode = "MDY BRANCH";
+      reason = "MANDALAY_BRANCH_SERVICE_AREA";
       routeRegion = "MANDALAY";
       deliveryMode = "DOORSTEP_MAP";
       mapRequired = true;
@@ -309,10 +312,10 @@ export function resolveDataEntryServiceProvider(
   return result;
 }
 
-/** Public branch label; keep DK DELIVERY as the internal execution/settlement code. */
+/** Distinguish the branch operating provider from independent outsourced DK Delivery. */
 export function serviceProviderOfficeLabel(providerCode: unknown, fallback?: unknown): string {
   const code = String(providerCode ?? "").trim().toUpperCase().replace(/_/g, " ");
-  if (code === "DK DELIVERY" || code === "BRITIUM MDY BRANCH" || code === "MANDALAY BRANCH") {
+  if (code === "MDY BRANCH" || code === "BRITIUM MDY BRANCH" || code === "MANDALAY BRANCH") {
     return "Mandalay Branch Office";
   }
   return String(fallback ?? providerCode ?? "").trim();
@@ -320,7 +323,7 @@ export function serviceProviderOfficeLabel(providerCode: unknown, fallback?: unk
 
 export function providerRoutingMessage(route: DataEntryProviderRouting): string {
   switch (route.reason) {
-    case "MANDALAY_DK_SERVICE_AREA": return "Mandalay service area · Mandalay Branch Office selected automatically.";
+    case "MANDALAY_BRANCH_SERVICE_AREA": return "Mandalay service area · Britium Mandalay Branch Office selected automatically.";
     case "NAYPYITAW_BRANCH_SERVICE_AREA": return "Naypyitaw service area · NPT Branch selected automatically.";
     case "NAYPYITAW_EXCEPTION_OUTSIDE_CORE": return "Tatkon / Lewe are outside the NPT Branch area; the item-price routing rule applies.";
     case "EXACT_BRITIUM_ROUTE": return "Britium service area · Britium Express selected automatically.";
