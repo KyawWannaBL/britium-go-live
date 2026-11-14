@@ -309,9 +309,18 @@ export function resolveDataEntryServiceProvider(
   return result;
 }
 
+/** Public branch label; keep DK DELIVERY as the internal execution/settlement code. */
+export function serviceProviderOfficeLabel(providerCode: unknown, fallback?: unknown): string {
+  const code = String(providerCode ?? "").trim().toUpperCase().replace(/_/g, " ");
+  if (code === "DK DELIVERY" || code === "BRITIUM MDY BRANCH" || code === "MANDALAY BRANCH") {
+    return "Mandalay Branch Office";
+  }
+  return String(fallback ?? providerCode ?? "").trim();
+}
+
 export function providerRoutingMessage(route: DataEntryProviderRouting): string {
   switch (route.reason) {
-    case "MANDALAY_DK_SERVICE_AREA": return "Mandalay service area · DK Delivery selected automatically.";
+    case "MANDALAY_DK_SERVICE_AREA": return "Mandalay service area · Mandalay Branch Office selected automatically.";
     case "NAYPYITAW_BRANCH_SERVICE_AREA": return "Naypyitaw service area · NPT Branch selected automatically.";
     case "NAYPYITAW_EXCEPTION_OUTSIDE_CORE": return "Tatkon / Lewe are outside the NPT Branch area; the item-price routing rule applies.";
     case "EXACT_BRITIUM_ROUTE": return "Britium service area · Britium Express selected automatically.";
