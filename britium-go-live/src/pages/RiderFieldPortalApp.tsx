@@ -319,6 +319,16 @@ const DELIVERY_EXCEPTION_RULES: RiderExceptionRule[] = [
     requirePhoto: false,
     requireRemark: true,
   },
+  {
+    processType: "DELIVERY",
+    code: "OTHER_REASON",
+    nameEn: "Other reason — specify details",
+    nameMm: "အခြားအကြောင်းရင်း (အသေးစိတ်ရေးရန်)",
+    mappedStatus: "DELIVERY_ATTEMPTED",
+    nextAction: "CUSTOMER_SERVICE_REVIEW",
+    requirePhoto: false,
+    requireRemark: true,
+  },
 ];
 
 function exceptionRulesForJob(job: RiderJob) {
@@ -2091,6 +2101,7 @@ function FieldPortal() {
         nameMm: String(r.name_mm || r.name_en || r.code || ""),
         mappedStatus: String(r.mapped_status || "DELIVERY_ATTEMPTED"),
         nextAction: String(r.next_action || "CUSTOMER_SERVICE_REVIEW"),
+        failureCategory: String(r.failure_category || "INVALID_REASON"),
         // Database rules use YES/NO/COND strings. Treat conditional proof
         // conservatively as required until the condition can be evaluated.
         requirePhoto: ["YES", "TRUE", "COND", "CONDITIONAL"].includes(String(r.require_photo || "").toUpperCase()),
@@ -3864,7 +3875,7 @@ function FieldPortal() {
                     >
                       {fieldRulesForJob(selectedJob).map((rule) => (
                         <option key={`${rule.processType}-${rule.code}`} value={rule.code}>
-                          {rule.nameEn} / {rule.nameMm}
+                          {rule.code === "OTHER_REASON" ? "Other Reason / အခြားအကြောင်းရင်း (အသေးစိတ်ရေးရန်)" : `${rule.nameEn} / ${rule.nameMm}`}
                         </option>
                       ))}
                     </select>
