@@ -154,17 +154,20 @@ export default function CustomerServicePortalPage() {
   useEffect(() => { void load(""); }, []);
 
   async function openParcel(row: CustomerServiceParcelRow) {
+    // Open immediately; the appointment lookup must never block parcel support.
+    setSelectedParcel(row);
     setExistingAppointment("");
     setRebookDate("");
     setRebookConfirmation("");
-    const {data:appointment,error:appointmentError}=await supabase.from("be_delivery_reschedules_v71")
+    void supabase.from("be_delivery_reschedules_v71")
       .select("requested_delivery_date").eq("delivery_way_id",row.delivery_way_id)
-      .eq("status","ACTIVE").maybeSingle();
-    if(!appointmentError && appointment?.requested_delivery_date) {
-      setExistingAppointment(String(appointment.requested_delivery_date));
-      setRebookDate(String(appointment.requested_delivery_date));
-    }
-    setSelectedParcel(row);
+      .eq("status","ACTIVE").maybeSingle()
+      .then(({data:appointment,error:appointmentError})=>{
+        if(!appointmentError && appointment?.requested_delivery_date) {
+          setExistingAppointment(String(appointment.requested_delivery_date));
+          setRebookDate(String(appointment.requested_delivery_date));
+        }
+      });
     setNotice("");
     setActionNote("");
     setEscalationReason("");
