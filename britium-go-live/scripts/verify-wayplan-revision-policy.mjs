@@ -12,7 +12,7 @@ try {
  CREATE TABLE public.be_wayplan_dispatches(wayplan_id text PRIMARY KEY, wayplan_status text, dispatched_at timestamptz, loaded_to_vehicle_at timestamptz, handed_over_to_rider_at timestamptz, branch_code text);
  CREATE TABLE public.be_audit_events(action text,resource_id text,details jsonb);
  SELECT set_config('test.uid','00000000-0000-4000-8000-000000000001',false),set_config('test.role','dispatch',false);`);
- const old=fs.readFileSync('supabase/migrations/20260917193000_wayplan_created_revision_v46.sql','utf8');
+ const old=fs.readFileSync('supabase/migration_history_archive/local_only_not_in_production_20261114/20260917193000_wayplan_created_revision_v46.sql','utf8');
  const start=old.indexOf('create or replace function public.be_replace_created_wayplan_v46(');
  await db.exec(old.slice(start,old.indexOf('\nrevoke all',start)));
  if (!process.argv.includes('--baseline')) await db.exec(readMigrationFixture('20261012144059_wayplan_revision_policy_v201.sql'));
