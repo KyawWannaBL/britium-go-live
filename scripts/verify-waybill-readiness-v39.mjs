@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const migrationPath = new URL('../supabase/migrations/20260915050000_relax_selected_waybill_readiness_v39.sql', import.meta.url);
+const migrationPath = new URL('../supabase/migrations/20260915043015_relax_selected_waybill_readiness_v39.sql', import.meta.url);
 const sql = fs.readFileSync(migrationPath, 'utf8');
 
 const oldBlockStart = sql.indexOf('v_old text := $old$');
