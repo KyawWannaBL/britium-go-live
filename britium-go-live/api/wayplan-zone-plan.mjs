@@ -314,6 +314,20 @@ export default {
       if (request.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
       if (!(await verifySupabaseUser(request))) return json({ ok: false, error: "authenticated_wayplan_session_required" }, 401);
       const payload = await request.json().catch(() => ({}));
+      // Explicit opt-in preview only. Normal Yangon route creation remains untouched.
+      // A preview is NOT a transfer, rider assignment, or dispatch authorization.
+      if (payload?.planning_mode === "INSEIN_HUB_PREVIEW") {
+        const { planInseinHub } = await import("../src/lib/inseinHubPlanner.mjs");
+        const hubPlan = planInseinHub({
+          deliveries: payload.deliveries,
+          pickups: payload.pickups,
+          returns: payload.returns,
+          riderCount: payload.riderCount,
+          shuttleWindow: payload.shuttleWindow,
+          originBranch: "YGN",
+        });
+        return json({ ok: true, ...hubPlan, ready_for_dispatch: false });
+      }
       const origin = point(payload?.origin);
       const stops = normalizeStops(payload?.stops);
       const assigned = assignPlan(stops);
