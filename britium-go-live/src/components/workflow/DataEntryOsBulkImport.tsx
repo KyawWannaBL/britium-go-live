@@ -356,7 +356,8 @@ function normalizedHlaingtharyaTownship(township: string, townshipMm: string) {
 
 function providerDisplayName(providerCode: string) {
   if (providerCode === "BRITIUM") return "Britium Express";
-  if (providerCode === "DK DELIVERY") return "Mandalay Branch Office";
+  if (providerCode === "MDY BRANCH") return "Mandalay Branch Office";
+  if (providerCode === "DK DELIVERY") return "DK Delivery";
   if (providerCode === "NPT BRANCH") return "NPT Branch";
   if (providerCode === "ROYAL EXPRESS") return "Royal Express";
   if (providerCode === "H.TERMINAL DROP-OFF") return "Highway Terminal Drop-off";
