@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const riderPath = path.join(root, "src/pages/RiderFieldPortalApp.tsx");
-const migrationPath = path.join(root, "supabase/migrations/20260925020000_rider_waybill_release_v139.sql");
+const migrationPath = path.join(root, "supabase/migrations/20260924193855_rider_waybill_release_v139.sql");
 
 const rider = fs.readFileSync(riderPath, "utf8");
 assert.ok(fs.existsSync(migrationPath), "V139 rider waybill release migration must exist");

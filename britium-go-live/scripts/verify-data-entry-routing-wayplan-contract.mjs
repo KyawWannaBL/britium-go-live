@@ -65,8 +65,8 @@ try {
     readFile(new URL("../src/pages/DataEntryFinancialV2Page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/workflow/DataEntryLocationEditor.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/pages/WayplanCommandCenterPage.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url), "utf8"),
-    readFile(new URL("../supabase/migrations/20260905015944_initial_service_provider_geography_v26.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/20260903164558_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url), "utf8"),
+    readFile(new URL("../supabase/migrations/20260905025023_initial_service_provider_geography_v26.sql", import.meta.url), "utf8"),
   ]);
 
   assert.match(page, /data-highway-station-selection-v19/);

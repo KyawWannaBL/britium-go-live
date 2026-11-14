@@ -6,7 +6,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..")
 const pagePath = path.join(root, "src/pages/DataEntryFinancialV2Page.tsx");
 const editorPath = path.join(root, "src/components/workflow/DataEntryLocationEditor.tsx");
 const cssPath = path.join(root, "src/index.css");
-const migrationPath = path.join(root, "supabase/migrations/20260924050500_data_entry_waybill_readiness_v137.sql");
+const migrationPath = path.join(root, "supabase/migrations/20260924052019_data_entry_waybill_readiness_v137.sql");
 
 const page = fs.readFileSync(pagePath, "utf8");
 const editor = fs.readFileSync(editorPath, "utf8");
