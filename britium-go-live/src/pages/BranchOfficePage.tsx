@@ -59,7 +59,7 @@ export default function BranchOfficePage(){
     {name:"Pickup Supervisor",path:"/supervisor-pickup",icon:Package},
     {name:"Wayplan Command",path:"/wayplan-command",icon:Car},
     {name:"Warehouse",path:"/warehouse",icon:Package},
-    {name:"Customer Service",path:"/customer-service",icon:Users},
+    {name:"Customer Service",path:"/cs-command",icon:Users},
   ];
 
   return <div className="space-y-5 text-[#eef8ff]">
