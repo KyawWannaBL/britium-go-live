@@ -19,6 +19,7 @@ import { isConsolidatedBulkPickup } from "@/lib/consolidatedBulkV115";
 import {
   DATA_ENTRY_HANDOFF_STATIONS,
   providerRoutingMessage,
+  serviceProviderOfficeLabel,
   resolveDataEntryServiceProvider,
   type DataEntryDeliveryMode,
   type DataEntryProviderRouting,
@@ -651,7 +652,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
           <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
           {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
-              {provider.display_name} · {provider.active_tariff_count}
+              {serviceProviderOfficeLabel(provider.provider_code, provider.display_name)} · {provider.active_tariff_count}
             </button>
           ))}
         </div>
@@ -695,10 +696,10 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
             No active tariff is configured for this provider and destination. Add its approved rate card before saving a provider-specific route.
           </div>
         ) : null}
-        {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {selected.provider_name} · Rack {selected.rack_code || "—"} · {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
+        {selected ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)} Tariff: {serviceProviderOfficeLabel(selected.provider_code, selected.provider_name)} · Rack {selected.rack_code || "—"} · {money(tariffRate(selected, row.customer_tier))}</div> : route.providerCode ? <div className="mt-1 text-[9px] font-semibold text-[#68e8bd]">{providerRoutingMessage(route)}</div> : <div className="mt-1 text-[9px] text-[#f6b84b]">Enter a recognized township. Yangon, Mandalay, and eligible Naypyitaw routes use Maps; outside-core routes use the item-price rule.</div>}
         {selected && /^MDY-[LMRZ]\d{2}-A\d+/.test(selected.destination_key) && <div className="mt-2 text-[11px] text-amber-200">Mandalay area rate selected explicitly. Confirm the recipient's delivery area against the approved rate card. This selection does not infer a street boundary.</div>}
         <div className="mt-2 grid grid-cols-2 gap-2 text-[9px]">
-          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Provider: <b>{route.providerCode||"UNRESOLVED"}</b></div>
+          <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Branch Office: <b>{route.providerCode ? serviceProviderOfficeLabel(route.providerCode) : "UNRESOLVED"}</b></div>
           <div className="rounded-lg border border-cyan-300/20 bg-[#061524] px-2 py-1.5 text-cyan-100">Region: <b>{route.routeRegion.replaceAll("_"," ")}</b></div>
         </div>
       </div>
