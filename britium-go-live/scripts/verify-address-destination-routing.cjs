@@ -9,7 +9,7 @@ try {
  }
  const {resolveDataEntryServiceProvider:route}=require(path.join(temp,'dataEntryServiceProviderRouting.js'));
  const cases=[
-  ['', '[Sender: Shop] 82 Street၊ မန္တလေး','DK DELIVERY'],
+  ['', '[Sender: Shop] 82 Street၊ မန္တလေး','MDY BRANCH'],
   ['', 'အမှတ် (၉၀)၊ မင်္ဂလာဒုံမြို့နယ်','BRITIUM'],
   ['', 'ကျေးရွာ၊ ဧရာဝတီတိုင်း','ROYAL EXPRESS'],
   ['', 'No 90, Mingaladon Township','BRITIUM'],
