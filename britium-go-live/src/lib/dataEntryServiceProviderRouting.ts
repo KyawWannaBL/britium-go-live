@@ -132,7 +132,7 @@ export function dataEntryProviderHint(value: unknown): DataEntryProviderCode {
   const source = String(value ?? "").normalize("NFC").toLowerCase();
   if (/h\.?\s*terminal|terminal\s+drop|highway\s+(?:bus\s+)?station|အဝေးပြေး\s*ဂိတ်ချ/.test(source)) return "H.TERMINAL DROP-OFF";
   if (/royal|ရွိုင်ရယ်/.test(source)) return "ROYAL EXPRESS";
-  if (/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ/.test(source)) return "DK DELIVERY";
+  if (/(?:^|[^a-z])dk(?:[^a-z]|$)|ဒီကေ|mandalay\\s+branch(?:\\s+office)?|မန္တလေး\\s*ရုံးခွဲ/.test(source)) return "DK DELIVERY";
   if (/(?:^|[^a-z])npt(?:\s+branch)?(?:[^a-z]|$)|နေပြည်တော်\s*ရုံးခွဲ/.test(source)) return "NPT BRANCH";
   if (/(?:^|[^a-z])grs(?:[^a-z]|$)|ဂျီအာရ်အက်စ်/.test(source)) return "GRS";
   if (/britium/.test(source)) return "BRITIUM";
