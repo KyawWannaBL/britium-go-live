@@ -21,7 +21,7 @@ try {
   const tariffOptions = [
     { destination_key: "မြောက်ဒဂုံ", destination_name: "မြောက်ဒဂုံ", provider_code: "BRITIUM" },
     { destination_key: "မြောက်ဒဂုံ (royal)", destination_name: "မြောက်ဒဂုံ (Royal)", provider_code: "ROYAL EXPRESS" },
-    { destination_key: "ချမ်းအေးသာစံ", destination_name: "ချမ်းအေးသာစံ", provider_code: "DK DELIVERY" },
+    { destination_key: "ချမ်းအေးသာစံ", destination_name: "ချမ်းအေးသာစံ", provider_code: "MDY BRANCH" },
     { destination_key: "ဇမ္ဗူသီရိ", destination_name: "ဇမ္ဗူသီရိ", provider_code: "NPT BRANCH" },
     { destination_key: "တပ်ကုန်း", destination_name: "တပ်ကုန်း", provider_code: "ROYAL EXPRESS" },
     { destination_key: "တောင်ကြီး (royal)", destination_name: "တောင်ကြီး (Royal)", provider_code: "ROYAL EXPRESS" },
@@ -39,7 +39,7 @@ try {
     "ပြည်ကြီးတံခွန်", "Pyigyitagon Township",
     "အမရပူရ", "Amarapura Township",
     "ပုသိမ်ကြီး", "Patheingyi Township",
-  ]) assert.equal(providerFor(township), "DK DELIVERY", township);
+  ]) assert.equal(providerFor(township), "MDY BRANCH", township);
 
   for (const township of [
     "နေပြည်တော်", "Nay Pyi Taw", "Naypyidaw",
@@ -93,7 +93,7 @@ try {
     "utf8",
   );
   assert.match(page, /DATA_ENTRY_DELIVERY_ROUTING_WAYPLAN_REGIONS_V19_20260903/);
-  assert.match(page, /\["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H\.TERMINAL DROP-OFF","GRS"\]/);
+  assert.match(page, /\["ROYAL EXPRESS","MDY BRANCH","DK DELIVERY","NPT BRANCH","H\.TERMINAL DROP-OFF","GRS"\]/);
   assert.match(page, /fallbackUnknownToRoyal:true/);
   assert.match(page, /resolvedProvider=text\(e\.data\?\.service_provider_code/);
   assert.match(migration, /OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE/);
