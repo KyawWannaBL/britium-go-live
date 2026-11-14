@@ -101,15 +101,29 @@ export default function WarehousePage() {
   const loadAll = useCallback(async (quiet=false) => {
     if(!quiet) setLoading(true);
     try {
-      const [snapshotResult,archiveResult] = await Promise.all([
+      const [snapshotResult,archiveResult,catalogResult] = await Promise.all([
         (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211"),
         isFinanceReadOnly
           ? Promise.resolve({ data: { rows: [], count: 0 }, error: null })
           : (supabase as any).rpc("be_warehouse_wayplan_handoff_archive_v150"),
+        (supabase as any).rpc("be_field_delivery_failure_reasons_v214"),
       ]);
       if (snapshotResult.error) throw snapshotResult.error;
       const data=snapshotResult.data;
-      setSnapshot(data || { stats: {}, rows: [], reasons: [] });
+      // Rider/Driver/Helper, Warehouse and Customer Service use the canonical
+      // DELIVERY exception catalog. Do not maintain a separate Warehouse reason list.
+      const fieldCatalog=(!catalogResult?.error && catalogResult?.data?.ok!==false
+        && Array.isArray(catalogResult?.data?.reasons))
+        ? catalogResult.data.reasons.map((rule:any)=>({
+            process_type:"DELIVERY",
+            exception_code:rule.code,
+            exception_name_en:rule.name_en,
+            exception_name_mm:rule.name_mm,
+            next_action:rule.next_action,
+            failure_category:rule.failure_category,
+          }))
+        : null;
+      setSnapshot({ ...(data || {stats:{},rows:[]}), reasons:fieldCatalog || data?.reasons || [] });
       if(!archiveResult.error) setHandoffArchive(archiveResult.data || {rows:[],count:0});
     } catch (e: any) {
       setMessage(e.message || "Failed to load warehouse scan data.");
@@ -284,7 +298,7 @@ export default function WarehousePage() {
         if (resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" && !effectiveRescheduleDate) {
           const prior = await supabase.from("be_delivery_reschedules_v71")
             .select("requested_delivery_date")
-            .eq("delivery_way_id", tracking)
+            .eq("delivery_way_id", String(filed?.canonical_delivery_way_id || filed?.delivery_way_id || tracking))
             .order("requested_at", { ascending: false })
             .limit(1)
             .maybeSingle();
@@ -317,7 +331,7 @@ export default function WarehousePage() {
       );
 
       setScanCode("");
-      if (kind === "return" && reason === "CUSTOMER_REQUESTED_RESCHEDULE") setRescheduleDate("");
+      if (kind === "return") setRescheduleDate("");
       await loadAll();
     } catch (e: any) {
       setMessage(e.message || "Scan confirmation unavailable. Check the parcel status before retrying.");
