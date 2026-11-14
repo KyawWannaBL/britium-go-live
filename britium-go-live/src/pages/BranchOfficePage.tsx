@@ -50,6 +50,17 @@ export default function BranchOfficePage(){
   const q=search.trim().toLowerCase();
   const filtered=useMemo(()=>!q?shipments:shipments.filter((r:any)=>JSON.stringify(r).toLowerCase().includes(q)),[shipments,q]);
   const s=data?.summary||{};
+  const selectedBranch=String(fixedBranch||branch||"").toUpperCase();
+  const isInsein=selectedBranch==="YGN-INS";
+  const isMandalay=selectedBranch==="MDY";
+  // Branch Office is shared by township and regional branches; staff permissions
+  // continue to be enforced by the existing backend and registered role scope.
+  const branchWorkspaceLinks=[
+    {name:"Pickup Supervisor",path:"/supervisor-pickup",icon:Package},
+    {name:"Wayplan Command",path:"/wayplan-command",icon:Car},
+    {name:"Warehouse",path:"/warehouse",icon:Package},
+    {name:"Customer Service",path:"/customer-service",icon:Users},
+  ];
 
   return <div className="space-y-5 text-[#eef8ff]">
     <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-6">
@@ -60,6 +71,20 @@ export default function BranchOfficePage(){
       {message&&<div className="mt-4 rounded-xl border border-[#1a3a5c] bg-[#061524] p-3 text-sm font-bold text-[#f6b84b]">{message}</div>}
     </section>
 
+    {(isInsein||isMandalay)&&
+      <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5" data-branch-operations-parity="true">
+        <h2 className="text-lg font-black text-[#f6b84b]">{isInsein?"Insein Township Hub":"Mandalay Branch Office"} · Operations Coordination</h2>
+        <p className="mt-2 text-sm text-[#8fb2c9]">{isInsein
+          ?"YGN-INS coordinates Insein, Hlaingthaya, Shwepyitha and Mayangone. Morning/evening HQ shuttle manifests and local rider routes remain preview-only until custody-scan and dispatch acceptance tests pass."
+          :"MDY uses the established branch-scoped workflow with the same departmental and Head Office supervision controls."}</p>
+        {isInsein&&<div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+          <strong>Operational safeguard:</strong> Branch master records are ACTIVE, but INSEIN_HUB_PREVIEW does not create live shuttle transfers, assign riders, or authorize dispatch. Do not treat its draft manifest as proof of custody.
+        </div>}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {branchWorkspaceLinks.map(item=><Link key={item.path} to={item.path} className="flex items-center gap-2 rounded-xl border border-[#365674] bg-[#061524] p-4 text-sm font-bold hover:border-[#f6b84b]"><item.icon size={18} className="text-[#f6b84b]"/>{item.name}</Link>)}
+        </div>
+        {isInsein&&<p className="mt-3 text-xs text-[#8fb2c9]">Insein route origin: 16.8914722, 96.1114444 · No. 285, Damayone Street, Lan Thit Road, Taung Thu Kone Quarter, Insein Township.</p>}
+      </section>}
     {['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role))&&
       <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <h2 className="mb-3 text-lg font-bold text-[#f6b84b]">Branch team & account workspaces</h2>
