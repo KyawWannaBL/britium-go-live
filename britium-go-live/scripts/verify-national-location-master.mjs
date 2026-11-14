@@ -38,7 +38,7 @@ try {
   assert.equal(resolve('', '', {ward: 'No (1) Quarter'}).matchLevel, 'UNRESOLVED');
   assert.equal(resolve('', 'Insein', {postalCode: '0501001'}).township, 'Insein Township');
   assert.equal(resolve('', 'Unknown', {postalCode: '0501001'}).matchLevel, 'UNRESOLVED');
-  assert.equal(route('', '', [], {postalCode:'0501001'}).providerCode, 'DK DELIVERY');
+  assert.equal(route('', '', [], {postalCode:'0501001'}).providerCode, 'MDY BRANCH');
   assert.equal(route('Unknown', '', [], {postalCode:'0501001'}).township, 'Unknown');
   assert.equal(route('unmatched input', '', [], {fallbackUnknownToRoyal:true}).providerCode, '');
   assert.equal(route('unmatched input', '', [], {fallbackUnknownToRoyal:true}).township, 'unmatched input');
