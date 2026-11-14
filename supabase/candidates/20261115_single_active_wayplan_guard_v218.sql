@@ -3,7 +3,7 @@
 -- Historical COMPLETED and ON_HOLD memberships are preserved.
 BEGIN;
 CREATE OR REPLACE FUNCTION public.be_unique_active_wayplan_membership_guard_v218()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path TO 'public','pg_temp'
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','pg_temp'
 AS $fn$
 BEGIN
  IF upper(coalesce(new.membership_status,'')) IN
