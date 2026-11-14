@@ -34,7 +34,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
    const book=XLSX.read(await file.arrayBuffer(),{type:'array'});const found=new Map<string,LocalInventory>();let parsed=0;
    for(const sheetName of book.SheetNames){const sheet=book.Sheets[sheetName];if(!sheet)continue;
     const table=XLSX.utils.sheet_to_json<(string|number|null)[]>(sheet,{header:1,defval:null,blankrows:false});
-    const headerAt=table.findIndex(row=>Array.isArray(row)&&row.some(v=>/^(way\\s*id|delivery\\s*way\\s*id)$/i.test(String(v||'').trim())));
+    const headerAt=table.findIndex(row=>Array.isArray(row)&&row.some(v=>/^(way\s*id|delivery\s*way\s*id)$/i.test(String(v||'').trim())));
     if(headerAt<0)continue;const headers=table[headerAt].map(v=>String(v||'').trim().toLowerCase().replace(/[^a-z0-9]/g,''));
     const wayCol=headers.findIndex(v=>v==='wayid'||v==='deliverywayid');const amountCol=headers.findIndex(v=>['finalcod','codamount','cod','amount'].includes(v));const townCol=headers.findIndex(v=>['destination','recipienttown','township'].includes(v));
     if(wayCol<0)continue;
