@@ -114,7 +114,7 @@ function providerFor(match: PostalMatch, originalTown: unknown, address: unknown
   if (hlaingTharyarAlias(originalTown) || hlaingTharyarAlias(address) || match.region === "Yangon Region") return "Britium Express";
   if (match.region === "Mandalay Region") {
     const dk = new Set(["Aungmyaythazan", "Chanayethazan", "Mahaaungmyay", "Chanmyathazi", "Pyigyitagon", "Amarapura", "Patheingyi"]);
-    return [...dk].some((name) => key(match.township).includes(key(name))) ? "DK Delivery" : "Royal Express";
+    return [...dk].some((name) => key(match.township).includes(key(name))) ? "Mandalay Branch Office" : "Royal Express";
   }
   if (match.region === "Naypyitaw Union Territory") {
     return /tatkon|lewe|တပ်ကုန်း|လယ်ဝေး/.test(key(match.township)) ? "Royal Express" : "NPT Branch";
