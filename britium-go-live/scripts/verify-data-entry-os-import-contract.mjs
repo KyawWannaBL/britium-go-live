@@ -11,7 +11,7 @@ const migration=readFileSync(resolve(root,"supabase/migrations/20260903155405_da
 const runtimeMigration=readFileSync(resolve(root,"supabase/migrations/20260903102052_data_entry_runtime_state_v16.sql"),"utf8");
 const continuousBatchMigration=readFileSync(resolve(root,"supabase/migrations/20260904043000_continuous_data_entry_bulk_batches_v22.sql"),"utf8");
 const locationReviewMigration=readFileSync(resolve(root,"supabase/migrations/20260904053000_location_review_roundtrip_v23.sql"),"utf8");
-const locationAliasMigration=readFileSync(resolve(root,"supabase/migrations/20260906193000_location_alias_learning_v28.sql"),"utf8");
+const locationAliasMigration=readFileSync(resolve(root,"supabase/migration_history_archive/local_only_not_in_production_20261114/20260906193000_location_alias_learning_v28.sql"),"utf8");
 const osImportSource=readFileSync(resolve(root,"src/components/workflow/DataEntryOsBulkImport.tsx"),"utf8");
 const postalResolverSource=readFileSync(resolve(root,"src/lib/postalCodeResolver.ts"),"utf8");
 

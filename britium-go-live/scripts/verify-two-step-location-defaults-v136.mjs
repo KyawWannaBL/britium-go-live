@@ -10,7 +10,7 @@ const defaults = read("src/lib/locationDefaultCoordinates.ts");
 const editor = read("src/components/workflow/DataEntryLocationEditor.tsx");
 const recovery = read("src/lib/wayplanLocationRecovery.ts");
 const migration = read("supabase/migrations/20260924072000_two_step_location_defaults_v136.sql");
-const backendContract = read("supabase/migrations/20260927145500_location_default_backend_contract_v146.sql");
+const backendContract = read("supabase/migration_history_archive/local_only_not_in_production_20261114/20260927145500_location_default_backend_contract_v146.sql");
 
 assert.match(resolver, /resolvePostalCode\(addressWithPostalEvidence, input\.township, \{[\s\S]*ward: input\.ward,[\s\S]*postalCode: input\.postalCode/);
 assert.match(resolver, /postal\.matchLevel === "EXACT_QUARTER"[\s\S]*postalWardDefaultCoordinate\(postal\)/);
