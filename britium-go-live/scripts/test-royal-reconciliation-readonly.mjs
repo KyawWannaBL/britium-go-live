@@ -6,7 +6,7 @@ import { PGlite } from '@electric-sql/pglite';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'../..');
 const fixture=fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)),'fixtures/royal-reconciliation-rpc.sql'),'utf8');
-const original=path.join(root,'supabase/migrations/20261115043000_royal_reconciliation_readonly_preview.sql');
+const original=path.join(root,'supabase/migrations/20261114205835_royal_reconciliation_readonly_preview.sql');
 if(fs.existsSync(original))assert.equal(fixture,fs.readFileSync(original,'utf8'),'SQL fixture diverged from migration');
 const sql=fixture;
 const db=new PGlite();
