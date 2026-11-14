@@ -4,7 +4,7 @@ import path from "node:path";
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
 const wh=fs.readFileSync(path.join(root,"src/pages/WarehousePage.tsx"),"utf8");
 const rider=fs.readFileSync(path.join(root,"src/pages/RiderFieldPortalApp.tsx"),"utf8");
-const sql=fs.readFileSync(path.join(root,"supabase/migrations/20260928004500_warehouse_rider_delivery_v158.sql"),"utf8");
+const sql=fs.readFileSync(path.join(root,"supabase/migrations/20260927174300_warehouse_rider_delivery_v158.sql"),"utf8");
 
 assert.match(wh,/be_warehouse_scan_lifecycle_snapshot_v158/);
 assert.match(sql,/review_status='DISPATCH_READY' and membership_status='READY_FOR_DISPATCH'/);

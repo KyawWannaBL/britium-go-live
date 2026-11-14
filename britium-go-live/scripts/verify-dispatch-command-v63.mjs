@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const page = fs.readFileSync(path.join(root, "src/pages/DispatchCommandCenterPage.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919113000_dispatch_command_v63.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919163523_dispatch_command_v63.sql"), "utf8");
 
 const checks = [
   ["V63 snapshot RPC used", page.includes("be_dispatch_command_snapshot_v63")],

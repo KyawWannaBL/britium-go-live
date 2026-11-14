@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const page = fs.readFileSync(path.join(root, "src/pages/DataEntryFinancialV2Page.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919005500_data_entry_temporary_photo_waiver_v54.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260922180832_data_entry_temporary_photo_waiver_v54.sql"), "utf8");
 
 const checks = [
   ["temporary waiver field exists", page.includes("photoTemporaryWaiver: boolean")],

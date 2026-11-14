@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const planner = fs.readFileSync(path.join(root, "src/components/MultiVanPlanner.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919014500_wayplan_multi_van_generation_v57.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260918193057_wayplan_multi_van_generation_v57.sql"), "utf8");
 
 const checks = [
   ["crew is selected explicitly", planner.includes("Crew is intentionally not auto-assigned")],

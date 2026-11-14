@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const page = fs.readFileSync(path.join(root, "src/pages/SupervisorWayplanReviewPage.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919105500_supervisor_wayplan_fast_v62.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919152131_supervisor_wayplan_fast_v62.sql"), "utf8");
 
 const checks = [
   ["fast list RPC used", page.includes("be_wayplan_supervisor_list_v62")],

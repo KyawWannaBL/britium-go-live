@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const page = fs.readFileSync(path.join(root, "src/pages/WayplanCommandCenterPage.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919023000_wayplan_lifecycle_v61.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919081431_wayplan_lifecycle_v61.sql"), "utf8");
 
 const checks = [
   ["lifecycle controls marker exists", page.includes('data-wayplan-lifecycle-controls-v61="true"')],
