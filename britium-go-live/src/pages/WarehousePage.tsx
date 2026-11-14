@@ -334,7 +334,14 @@ export default function WarehousePage() {
 
   const readyWays = Array.from(new Set(
     rows
-      .filter((r:any) => r.warehouse_scan_status === "RECEIVED")
+      .filter((r:any) => {
+        if(r.warehouse_scan_status !== "RECEIVED") return false;
+        const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
+        if(["SCHEDULED_HOLD","AWAITING_RETURN_SCAN","RTO_AWAITING_RETURN_SCAN","RTO"].includes(stage)) return false;
+        if(r.return_scan_required===true || r.field_exception_pending===true) return false;
+        // All final decisions remain guarded by the server-side Wayplan eligibility RPC.
+        return true;
+      })
       .map((r:any) => canonicalDeliveryWayId(r))
       .filter((id:string) => id && !handedOffWayIds.has(id.toUpperCase()))
   )) as string[];
@@ -484,6 +491,15 @@ export default function WarehousePage() {
         "DISPATCHED","READY_FOR_DELIVERY","RIDER_ACCEPTED","DELIVERY_ACCEPTED",
         "ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"
       ]);
+      // The server's current physical Warehouse custody and schedule stage wins over
+      // a historical rider failure. Do not synthesize AWAITING_RETURN_SCAN again
+      // after the physical return scan was accepted.
+      const authoritativeStage=String(row.dispatch_workflow_stage||"").toUpperCase();
+      if(new Set([
+        "SCHEDULED_HOLD","RETURNED_WAITING_REPLAN","RTO",
+        "DISPATCH_SCAN_REQUIRED","IN_WAYPLAN_AWAITING_SUPERVISOR",
+        "SUPERVISOR_APPROVED_AWAITING_RELEASE"
+      ]).has(authoritativeStage)) return row;
 
       if(activeFieldStates.has(delivery)){
         row.rto_at=null;
@@ -533,12 +549,14 @@ export default function WarehousePage() {
     const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
     const whStatus=String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase();
     if(warehouseQueueStatus(r)==="DELIVERED") return "DELIVERED";
-    if(["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return "DISPATCH_SCANNED";
-    if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)) return "AWAITING_RETURN_SCAN";
-    if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
+    // Custody and dedicated customer date are authoritative. The field attempt
+    // remains in history without forcing a physically returned parcel back to FAILED.
     if(stage==="RTO") return "RTO";
     if(stage==="SCHEDULED_HOLD") return "SCHEDULED_HOLD";
     if(stage==="RETURNED_WAITING_REPLAN") return "RETURNED_WAITING_REPLAN";
+    if(stage==="RTO_AWAITING_RETURN_SCAN" || stage==="AWAITING_RETURN_SCAN") return "AWAITING_RETURN_SCAN";
+    if(["RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","OUT_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return "DISPATCH_SCANNED";
+    if(["ATTEMPTED_FAILED","DELIVERY_FAILED","RETURN_TO_WAREHOUSE"].includes(delivery)) return "AWAITING_RETURN_SCAN";
     if(stage==="DISPATCH_SCAN_REQUIRED") return "DISPATCH_SCAN_REQUIRED";
     if(stage==="DISPATCH_SCANNED") return "DISPATCH_SCANNED";
     if(stage==="IN_WAYPLAN_AWAITING_SUPERVISOR" || stage==="SUPERVISOR_APPROVED_AWAITING_RELEASE") return "WAITING_SUPERVISOR";
