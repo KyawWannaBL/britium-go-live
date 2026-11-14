@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const migrationPath = path.join(root, "supabase/migrations/20260925031500_rider_proof_sync_orphan_guard_v141.sql");
+const migrationPath = path.join(root, "supabase/migrations/20260924200148_rider_proof_sync_orphan_guard_v141.sql");
 
 assert.ok(fs.existsSync(migrationPath), "V141 orphan-proof guard migration must exist");
 const sql = fs.readFileSync(migrationPath, "utf8");

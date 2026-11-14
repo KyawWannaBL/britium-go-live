@@ -1,0 +1,2 @@
+set lock_timeout = '5s';
+alter table public.be_data_entry_financial_v2_requests_v58 drop constraint be_data_entry_financial_v2_requests_v58_operation_check, add constraint be_data_entry_financial_v2_requests_v58_operation_check check (operation = any(array['SAVE'::text,'IMPORT'::text,'CREATE_WAYBILL'::text,'ADD_REGISTRATIONS'::text,'SAVE_ALL'::text,'SAVE_BATCH_V22'::text]));

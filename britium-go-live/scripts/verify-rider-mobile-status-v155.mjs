@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
-const sql=fs.readFileSync(path.join(root,"supabase/migrations/20260928001000_rider_mobile_status_projection_v155.sql"),"utf8");
+const sql=fs.readFileSync(path.join(root,"supabase/migrations/20260927170645_rider_mobile_status_projection_v155.sql"),"utf8");
 
 assert.match(sql,/RIDER_ACCEPTED/);
 assert.match(sql,/ARRIVED_AT_CUSTOMER/);

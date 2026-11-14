@@ -1,0 +1,4 @@
+insert into private.be_oct20_22_hybrid_assumptions_v1(delivery_way_id,ground_business_date,scan_evidence_kind,recorded_delivery_evidence,source_final_cod_mmk,source_cash_mmk,source_kpay_mmk)
+select m.delivery_way_id,m.sheet_date,w.scan_review,w.delivery_review,m.final_cod_mmk,m.cash_mmk,m.kpay_mmk from private.be_oct2026_external_settlement_manifest m join private.be_oct20_22_dispatch_evidence_worklist_v1 w using(delivery_way_id) on conflict(delivery_way_id) do nothing;
+insert into private.be_oct20_22_hybrid_workitem_snapshot_v1(work_item_id,original_record)
+select id,to_jsonb(t) from public.be_cross_role_work_items_v27 t where process_area='OCT2026_GROUND_RECONCILIATION' on conflict(work_item_id) do nothing;

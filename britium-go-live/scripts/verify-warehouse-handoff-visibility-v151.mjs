@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
 const wh=fs.readFileSync(path.join(root,"src/pages/WarehousePage.tsx"),"utf8");
-const migration=fs.readFileSync(path.join(root,"supabase/migrations/20260927234000_warehouse_handoff_visibility_v151.sql"),"utf8");
+const migration=fs.readFileSync(path.join(root,"supabase/migrations/20260927161156_warehouse_handoff_visibility_v151.sql"),"utf8");
 assert.match(wh,/handedOffWayIds/);
 assert.match(wh,/!handedOffWayIds\.has/);
 assert.match(wh,/No parcel is released for Dispatch Scan/);

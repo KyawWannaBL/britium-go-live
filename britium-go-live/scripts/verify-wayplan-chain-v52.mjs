@@ -7,7 +7,7 @@ const filter = fs.readFileSync(path.join(root, "src/components/MultiSelectQueueF
 const planner = fs.readFileSync(path.join(root, "src/components/MultiVanPlanner.tsx"), "utf8");
 const revision = fs.readFileSync(path.join(root, "src/components/CreatedWayplanRevisionPlanner.tsx"), "utf8");
 const allocation = fs.readFileSync(path.join(root, "src/lib/multiVanPlanner.ts"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260918174500_wayplan_whole_chain_v52.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260918174737_wayplan_whole_chain_v52.sql"), "utf8");
 
 const checks = [
   ["prominent Select All Filtered exists", page.includes('data-wayplan-select-all-filtered-v52="true"')],

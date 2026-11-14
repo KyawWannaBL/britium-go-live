@@ -1,0 +1,1 @@
+create policy be_oct2026_skf_pending_ops_read_v1 on public.be_cross_role_work_items_v27 for select to authenticated using (process_area='OCT2026_SKF_PENDING_GROUND' and lower(public.be_current_role()) in ('superadmin','admin','supervisor','operation_manager','warehouse','dispatch'));

@@ -1,0 +1,1 @@
+CREATE INDEX IF NOT EXISTS be_finance_cod_v48_upper_waybill_idx ON public.be_finance_cod_settlements_v48 (upper(delivery_way_id));

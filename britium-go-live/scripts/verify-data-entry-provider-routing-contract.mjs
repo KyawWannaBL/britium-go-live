@@ -77,15 +77,15 @@ try {
   assert.equal(dataEntryHandoffStationCharge("OTHER"), 4000);
 
   const migration = await readFile(
-    new URL("../supabase/migrations/20260903155405_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url),
+    new URL("../supabase/migrations/20260903164558_data_entry_delivery_routing_wayplan_regions_v19.sql", import.meta.url),
     "utf8",
   );
   const geographyMigration = await readFile(
-    new URL("../supabase/migrations/20260905015944_initial_service_provider_geography_v26.sql", import.meta.url),
+    new URL("../supabase/migrations/20260905025023_initial_service_provider_geography_v26.sql", import.meta.url),
     "utf8",
   );
   const royalCommissionMigration = await readFile(
-    new URL("../supabase/migrations/20260905050000_royal_partner_commission_v27.sql", import.meta.url),
+    new URL("../supabase/migrations/20260905044910_royal_partner_commission_v27.sql", import.meta.url),
     "utf8",
   );
   const page = await readFile(

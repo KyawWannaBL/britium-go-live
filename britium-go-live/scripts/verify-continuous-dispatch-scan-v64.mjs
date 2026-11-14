@@ -3,7 +3,7 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const page = fs.readFileSync(path.join(root, "src/pages/WarehousePage.tsx"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919121000_continuous_dispatch_scan_v64.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919171017_continuous_dispatch_scan_v64.sql"), "utf8");
 
 const checks = [
   ["fast dispatch RPC used", page.includes("be_warehouse_dispatch_scan_fast_v64")],

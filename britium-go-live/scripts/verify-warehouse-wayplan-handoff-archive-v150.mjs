@@ -5,7 +5,7 @@ import path from "node:path";
 const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),"..");
 const warehouse=fs.readFileSync(path.join(root,"src/pages/WarehousePage.tsx"),"utf8");
 const wayplan=fs.readFileSync(path.join(root,"src/pages/WayplanCommandCenterPage.tsx"),"utf8");
-const migration=fs.readFileSync(path.join(root,"supabase/migrations/20260927230000_warehouse_wayplan_handoff_archive_v150.sql"),"utf8");
+const migration=fs.readFileSync(path.join(root,"supabase/migrations/20260927155512_warehouse_wayplan_handoff_archive_v150.sql"),"utf8");
 
 assert.match(warehouse,/be_warehouse_mark_delivery_ready_v150/);
 assert.match(warehouse,/be_wayplan_handoff_ids_v150/);

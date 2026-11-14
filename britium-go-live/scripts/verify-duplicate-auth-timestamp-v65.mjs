@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919133100_duplicate_way_timestamp_v65a.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919172736_duplicate_way_timestamp_v65a.sql"), "utf8");
 
 const checks = [
   ["duplicate archive table exists", migration.includes("be_duplicate_way_archive_v65")],

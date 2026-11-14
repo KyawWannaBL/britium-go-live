@@ -4,7 +4,7 @@ import path from "node:path";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const route = fs.readFileSync(path.join(root, "api/wayplan-route.mjs"), "utf8");
 const deletePatch = fs.readFileSync(path.join(root, "scripts/apply-wayplan-revision-delete-v47.mjs"), "utf8");
-const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260919013000_wayplan_delete_route_v55.sql"), "utf8");
+const migration = fs.readFileSync(path.join(root, "supabase/migrations/20260918185139_wayplan_delete_route_v55.sql"), "utf8");
 
 const checks = [
   ["Mapbox diagonal singleton batches are skipped", route.includes("one-element matrices") && route.includes("originIndices[0]===destinationIndices[0]")],

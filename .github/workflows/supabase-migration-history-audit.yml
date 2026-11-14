@@ -1,0 +1,19 @@
+name: Supabase Migration History Audit
+on:
+  pull_request:
+    paths:
+      - 'britium-go-live/supabase/migrations/**'
+      - 'britium-go-live/supabase/migration_history_archive/**'
+      - 'britium-go-live/scripts/verify-supabase-migration-ledger.mjs'
+      - '.github/workflows/supabase-migration-history-audit.yml'
+  workflow_dispatch:
+jobs:
+  validate-version-history:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify applied migration version set
+        run: node britium-go-live/scripts/verify-supabase-migration-ledger.mjs
