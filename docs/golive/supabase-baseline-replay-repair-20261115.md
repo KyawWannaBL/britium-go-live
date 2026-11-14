@@ -32,3 +32,26 @@
 - No direct `UPDATE/DELETE` to `supabase_migrations.schema_migrations` without verified full baseline, backup, audit and specific release approval.
 - Do not mutate parcel/Finance records.
 - The Royal reconciliation UI is already in Production under PR #298; this repair is solely the **future fresh-branch reproducibility** blocker.
+
+## July enum semantic classification — verified read-only on Production
+
+Audit: `supabase/tests/audit_july_enum_semantic_delta_20261115.sql`.
+The July snapshot has 22 `CREATE TYPE` statements: **19 existing public enum definitions with exactly identical labels in the same order**, **two append-only role changes**, and **one separately defined `_time_trial_type`** (not an enum label list).
+
+The two append-only changes, **not suitable for a blanket skip**, are:
+
+- `public.app_role`: append lowercase `rider`, `driver`, `helper` after the existing 34 ordered labels (37 labels in July snapshot).
+- `public.employee_role`: append `SYS` after the existing 15 labels (16 labels in July snapshot).
+
+The read-only audit generates these **candidate statements for a disposable branch only**:
+
+```sql
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'rider';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'driver';
+ALTER TYPE public.app_role ADD VALUE IF NOT EXISTS 'helper';
+ALTER TYPE public.employee_role ADD VALUE IF NOT EXISTS 'SYS';
+```
+
+These changes may need their own committed transaction before downstream references because PostgreSQL forbids using newly added enum labels until commit. **Do not execute the candidate on Production; its current labels already contain all four.** The July snapshot's duplicate `CREATE TYPE` statements must be replaced only after the full migration delta and replay have been reviewed. A name-level table/function match is not proof of an equivalent definition or safe omission.
+
+Additional audit: `supabase/tests/audit_july_function_signatures_20261115.sql` shows 694 July `CREATE FUNCTION` statements; 165 have a function name in earlier migrations, 529 do not. This is *not* an overload/signature-level comparison. July also has 868 `CREATE TABLE` statements with 192 name overlaps and 676 absent from earlier CREATE TABLE text.
