@@ -20,7 +20,7 @@ await db.exec(core.slice(0,core.indexOf('create table if not exists public.be_br
 const extract=(source,name)=>{const re=new RegExp('create or replace function public\\.'+name+'\\([\\s\\S]*?\\$function\\$;','i');const match=source.match(re);assert.ok(match,name);return match[0];};
 const nativePrint=fs.readFileSync('supabase/migrations/20260919224306_native_superadmin_reprint_only_v76.sql','utf8');
 await db.exec(extract(nativePrint,'be_waybill_print_release_v2'));
-const commission=fs.readFileSync('supabase/migrations/20261003045500_pickup_commission_cap_7500_v188.sql','utf8');
+const commission=fs.readFileSync('supabase/migration_history_archive/local_only_not_in_production_20261114/20261003045500_pickup_commission_cap_7500_v188.sql','utf8');
 await db.exec(extract(commission,'be_commission_calculate_v2'));
 const parcelStart=core.indexOf('create or replace function public.be_branch_parcel_at_v1');
 await db.exec(core.slice(parcelStart,core.indexOf('revoke all on function public.be_branch_parcel_at_v1',parcelStart)));
