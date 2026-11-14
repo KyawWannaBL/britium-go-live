@@ -1,0 +1,16 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+const page=readFileSync(new URL("../src/pages/WarehousePage.tsx",import.meta.url),"utf8");
+const operation=readFileSync(new URL("../src/pages/WarehouseOperationPage.tsx",import.meta.url),"utf8");
+assert.match(operation,/export \{ default \} from "\.\/WarehousePage"/);
+assert.match(page,/authoritativeStage/);
+assert.match(page,/"SCHEDULED_HOLD","RETURNED_WAITING_REPLAN","RTO"/);
+assert.match(page,/if\(stage==="SCHEDULED_HOLD"\) return "SCHEDULED_HOLD";/);
+assert.match(page,/if\(stage==="RETURNED_WAITING_REPLAN"\) return "RETURNED_WAITING_REPLAN";/);
+const progressSection=page.slice(page.indexOf("const progressOf="));
+assert.ok(progressSection.indexOf('if(stage==="SCHEDULED_HOLD")')<progressSection.indexOf('if(["ATTEMPTED_FAILED"'),"Server custody stage precedes field failure");
+assert.match(page,/be_field_delivery_failure_reasons_v214/);
+assert.match(page,/Use saved rider\/driver\/helper reason automatically/);
+assert.match(page,/String\(filed\?\.canonical_delivery_way_id \|\| filed\?\.delivery_way_id \|\| tracking\)/);
+assert.match(page,/if\(r.return_scan_required===true \|\| r.field_exception_pending===true\) return false/);
+console.log("PASS: Warehouse return precedence, shared reason catalogue and scheduling hold");
