@@ -3,9 +3,9 @@ import fs from 'node:fs';
 const {PGlite}=await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 const db=new PGlite();
 await db.exec(`create function public.be_data_entry_service_provider_route_v17(t text) returns jsonb language sql as $$select jsonb_build_object('destination_key',t,'reason','EXACT_BRITIUM_ROUTE','provider_code','BRITIUM','matched_destination',t)$$;`);
-const baseline=fs.readFileSync('supabase/migrations/20260915213000_yangon_dynamic_zoning_v37_royal_outscope.sql','utf8');
+const baseline=fs.readFileSync('supabase/migration_history_archive/local_only_not_in_production_20261114/20260915213000_yangon_dynamic_zoning_v37_royal_outscope.sql','utf8');
 await db.exec(baseline.slice(baseline.indexOf('create or replace function'),baseline.indexOf('revoke all')));
-await db.exec(fs.readFileSync('supabase/migrations/20260923014000_explicit_highway_station_routing_v120.sql','utf8'));
+await db.exec(fs.readFileSync('supabase/migration_history_archive/local_only_not_in_production_20261114/20260923014000_explicit_highway_station_routing_v120.sql','utf8'));
 const patch=fs.readdirSync('supabase/migrations').find(f=>f.endsWith('_explicit_highway_handoff_route.sql'));
 if(patch) {const sql=fs.readFileSync('supabase/migrations/'+patch,'utf8');await db.exec(sql);await db.exec(sql);}
 for (const t of ['ဂိတ်ချ','H.TERMINAL DROP-OFF','highway terminal drop-off']) {
