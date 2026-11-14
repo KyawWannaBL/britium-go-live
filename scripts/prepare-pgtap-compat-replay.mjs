@@ -10,10 +10,10 @@ if(!input||!fs.existsSync(input)){
  process.exit(2);
 }
 const original=fs.readFileSync(input,'utf8');
-const declared=new Set([...original.matchAll(/CREATE\\s+(?:OR\\s+REPLACE\\s+)?FUNCTION\\s+"public"\\."([^"]+)"/gi)].map(m=>m[1]));
+const declared=new Set([...original.matchAll(/CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+"public"\."([^"]+)"/gi)].map(m=>m[1]));
 const names=new Set();
 let wrapped=0;
-const grantRe=/GRANT\\s+ALL\\s+ON\\s+FUNCTION\\s+"public"\\."([^"]+)"\\([^;]*?\\)\\s+TO\\s+(?:"[^"]+"|[a-z_]+)\\s*;/gi;
+const grantRe=/GRANT\s+ALL\s+ON\s+FUNCTION\s+"public"\."([^"]+)"\([^;]*?\)\s+TO\s+(?:"[^"]+"|[a-z_]+)\s*;/gi;
 const candidate=original.replace(grantRe,(statement,name)=>{
  if(declared.has(name))return statement;
  names.add(name);wrapped++;
@@ -29,7 +29,7 @@ if(!process.argv.includes('--write')){
  console.log('DRY RUN ONLY. Re-run with --write to generate a separate review file.');
  process.exit(0);
 }
-const out=input.replace(/\\.sql$/i,'')+'.pgtap-compat-CANDIDATE.sql';
+const out=input.replace(/\.sql$/i,'')+'.pgtap-compat-CANDIDATE.sql';
 if(out===input)throw new Error('Refusing to overwrite source');
 fs.writeFileSync(out,candidate);
 console.log('Candidate saved:',out);
