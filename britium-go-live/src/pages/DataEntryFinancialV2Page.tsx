@@ -650,7 +650,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
             updateRow(index,{township:"ဂိတ်ချ",service_provider_code:"H.TERMINAL DROP-OFF",deliveryRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",locationStatus:"NOT_REQUIRED",handoffStationCode:"OTHER",handoffStationName:"",delivery_charges:"",calculation:{},message:"Enter the highway terminal name and delivery charge."});setOpen(false);
           }}>Highway terminal drop-off / အဝေးပြေးဂိတ်ချ</button>
           <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
-          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
+          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","MDY BRANCH","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
               {serviceProviderOfficeLabel(provider.provider_code, provider.display_name)} · {provider.active_tariff_count}
             </button>
