@@ -1,0 +1,4 @@
+insert into public.be_parcel_tariffs_v2(township,customer_tier,base_tariff,included_kg,extra_per_kg,commitment_min_ways,commitment_refund_per_way,tariff_zone,tariff_zone_code,status,effective_from,note)
+select c.destination_name,'STANDARD',c.standard_rate_mmk,3,500,0,0,'ROYAL','ROYAL','ACTIVE',current_date,'Reconcile existing active Royal catalog rate for Lewe; no invented rate'
+from public.be_data_entry_tariff_catalog c where c.is_active and c.destination_name='လယ်ဝေး' and c.standard_rate_mmk=6000
+and not exists(select 1 from public.be_parcel_tariffs_v2 t where t.status='ACTIVE' and t.customer_tier='STANDARD' and public.be_approved_tariff_lookup_key(t.township)=public.be_approved_tariff_lookup_key(c.destination_name) and t.effective_from<=current_date and (t.effective_to is null or t.effective_to>=current_date));
