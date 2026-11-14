@@ -55,3 +55,15 @@ ALTER TYPE public.employee_role ADD VALUE IF NOT EXISTS 'SYS';
 These changes may need their own committed transaction before downstream references because PostgreSQL forbids using newly added enum labels until commit. **Do not execute the candidate on Production; its current labels already contain all four.** The July snapshot's duplicate `CREATE TYPE` statements must be replaced only after the full migration delta and replay have been reviewed. A name-level table/function match is not proof of an equivalent definition or safe omission.
 
 Additional audit: `supabase/tests/audit_july_function_signatures_20261115.sql` shows 694 July `CREATE FUNCTION` statements; 165 have a function name in earlier migrations, 529 do not. This is *not* an overload/signature-level comparison. July also has 868 `CREATE TABLE` statements with 192 name overlaps and 676 absent from earlier CREATE TABLE text.
+
+## Production access-control parity checkpoint — 15 November 2026
+
+Read-only audit: `supabase/tests/audit_july_zero_policy_acl_20261115.sql`, executed against the committed SQL.
+
+Of the 29 historically flagged table-name overlaps, **12** current Production tables have RLS enabled but **no explicit RLS policies**. All 12 exist, all 12 grant SQL table-level SELECT/INSERT/UPDATE/DELETE to role `authenticated`, and none grant direct SELECT to `anon`. These facts are compatible with a default-deny RLS policy for ordinary authenticated requests. They **do not establish application access**: owner/service roles, SECURITY DEFINER routines, views, schema exposure, and policy roles elsewhere can alter effective access. They are **not a reason** to create blanket policies, grant anonymous access, or disable RLS.
+
+Affected tables: `assignment_queue_2026_02_19_17_00`, `branches`, `cod_collections`, `fleet_assets`, `fleet_telemetry`, `routes`, `routes_2026_02_28_20_06`, `shipment_assignment_rules_2026_02_19_17_00`, `support_tickets`, `tariffs`, `user_branch_assignments`, and `warehouses`.
+
+**Fresh-replay acceptance gate:** for each of these 12 tables, compare actual owner, RLS flags, policies, effective role privileges, functions/views exposing the table, and trigger/constraint dependencies with Production. Do not change current Production ACLs to make a replay succeed. Complete all 502 migrations on an isolated database and compare the resulting schema (including the remaining 17 overlapping tables) prior to merging PR #300.
+
+**Current status:** this is a verified read-only checkpoint only, **not** proof of successful migration repair or a Production deployment.
