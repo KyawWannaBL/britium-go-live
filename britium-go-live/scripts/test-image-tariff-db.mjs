@@ -15,7 +15,7 @@ try {
  (6,'Royal destination','STANDARD','ACTIVE','2026-10-01',null,now(),15000,3,500,0,0,'ROYAL','ROYAL'),
  (7,'Inner','ROYAL','ACTIVE','2026-10-01',null,now(),3500,5,500,0,0,'Yangon','YGN');`);
  await db.exec(fs.readFileSync('scripts/fixtures/parcel-financial-before-image-tariff.sql','utf8'));
- const migration='supabase/migrations/20261023070000_image_tariff_weight_bands.sql';
+ const migration='supabase/migrations/20261023052437_image_tariff_weight_bands.sql';
  if(fs.existsSync(migration)) {const sql=fs.readFileSync(migration,'utf8');await db.exec(sql);await db.exec(sql);}
  async function quote(town,weight,tier='STANDARD') {
   return (await db.query(`select be_calculate_parcel_financial_v2_v61_8_2_legacy($1,$2,'EXACT_COLLECTION_AMOUNT',null,null,0,0,0,0,0,0,$3,0) q`,[town,tier,weight])).rows[0].q;
