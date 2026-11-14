@@ -27,7 +27,7 @@ try{
   insert into merchant_master(merchant_code,merchant_name,business_name,sender_name,default_pickup_address) values('HMS','Hla Mynttar Shin','လှမေတ္တာရှင်','လှမေတ္တာရှင်','Current address'),('NEW','Newly Created Merchant',null,null,'New address');
   insert into be_master_merchants(merchant_code,merchant_name,status) values('HMS','Old projected name','ACTIVE');
   insert into merchant_master(merchant_code,merchant_name,is_active,active,is_deleted,status) values('OFF','Inactive',false,true,false,'active'),('DEL','Deleted',true,true,true,'active'),('DIS','Disabled',true,true,false,'disabled'),('PAD','Disabled padded status',true,true,false,' inactive '),('DFT','Draft merchant',true,true,false,'draft'),('LEG','Active older record',null,true,false,'ACTIVE'),('ACT','Inactive flag',true,false,false,'active');`);
-  const migration=process.env.PICKUP_OPTIONS_SQL?fs.readFileSync(process.env.PICKUP_OPTIONS_SQL,'utf8'):fs.readFileSync(new URL('supabase/migrations/20261031104500_canonical_pickup_merchant_options.sql',base),'utf8');
+  const migration=process.env.PICKUP_OPTIONS_SQL?fs.readFileSync(process.env.PICKUP_OPTIONS_SQL,'utf8'):fs.readFileSync(new URL('supabase/migration_history_archive/local_only_not_in_production_20261114/20261031104500_canonical_pickup_merchant_options.sql',base),'utf8');
   await db.exec(migration);
   let result=(await db.query('select public.be_get_merchants_dropdown() result')).rows[0].result;
   assert.deepEqual(result.options.map(o=>o.value).sort(),['HMS','LEG','NEW'],'new canonical merchants appear without copying a projection');

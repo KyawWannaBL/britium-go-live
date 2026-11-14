@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - 'britium-go-live/supabase/migrations/**'
+      - 'supabase/migrations/**'
+      - 'supabase/migration_history_archive/**'
+      - 'scripts/verify-root-supabase-migrations.mjs'
       - 'britium-go-live/supabase/migration_history_archive/**'
       - 'britium-go-live/scripts/verify-supabase-migration-ledger.mjs'
       - '.github/workflows/supabase-migration-history-audit.yml'
@@ -17,3 +20,5 @@ jobs:
           node-version: '22'
       - name: Verify applied migration version set
         run: node britium-go-live/scripts/verify-supabase-migration-ledger.mjs
+      - name: Verify repository-root Supabase Preview version set
+        run: node scripts/verify-root-supabase-migrations.mjs

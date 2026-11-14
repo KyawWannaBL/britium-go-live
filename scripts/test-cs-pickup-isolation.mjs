@@ -23,7 +23,7 @@ select set_config('request.jwt.claim.sub','10000000-0000-4000-8000-000000000001'
 const ui=fs.readFileSync(new URL('../britium-go-live/src/pages/PickupFormPage.tsx',import.meta.url),'utf8');
 for(const field of ['contact_person: formData.contactPerson','phone: formData.phone','pickup_date: formData.pickupDate'])assert.ok(ui.includes(field));
 assert.ok(ui.indexOf('if (data?.ok !== true)') < ui.indexOf('Pickup request submitted successfully'));
-let sql=fs.readFileSync(new URL('../supabase/migrations/20261031093324_cs_pickup_and_private_source_isolation.sql',import.meta.url),'utf8');
+let sql=fs.readFileSync(new URL('../supabase/migrations/20261031095042_cs_pickup_and_private_source_isolation.sql',import.meta.url),'utf8');
 const submit=sql.slice(sql.indexOf('CREATE OR REPLACE FUNCTION public.be_submit_pickup_request'));const cols=submit.match(/insert into public.be_portal_pickup_requests\s*\(([\s\S]*?)\)\s*values/i)[1].split(',').map(x=>x.trim());
 await db.exec(`create table public.be_portal_pickup_requests(${cols.map(c=>`${c} ${c==='metadata'?'jsonb':c==='created_by'?'uuid':c==='pickup_date'?'date':['created_at','updated_at'].includes(c)?'timestamptz':['expected_parcels','parcel_count','expected_parcel_count'].includes(c)?'int':'text'} ${c==='pickup_id'?'primary key':''}`).join(',')})`);
 await db.exec(sql.split('-- Bound historical reconciliation/worklists')[0]);

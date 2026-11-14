@@ -1,0 +1,3 @@
+-- HISTORY-ONLY PLACEHOLDER
+-- Version 20260816054416 was already applied remotely before 2026-08-23.
+-- Original local SQL was unavailable; do not add executable SQL here.;
