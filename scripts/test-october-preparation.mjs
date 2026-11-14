@@ -26,8 +26,8 @@ create table public.be_party_wallet_accounts(id int primary key,britium_owes num
 insert into private.be_cutover_batches_v3 values('10000000-0000-4000-8000-000000000001','ACTIVE','{}','{}',now(),now()+interval '1 hour');
 insert into private.be_cutover_rows_v3 values('10000000-0000-4000-8000-000000000001','be_data_entry_financial_v2_runtime_v58','{"singleton":true,"mutation_mode":"ACTIVE","updated_at":"2026-10-20T00:00:00+00:00"}');
 update private.be_oct2026_epoch set report='{"archive_batch_id":"10000000-0000-4000-8000-000000000001","rows_removed":11}';`);
-const sql=fs.readFileSync(new URL('../supabase/migrations/20261031090106_october_preparation_window.sql',import.meta.url),'utf8');assert.ok(sql.includes('be_preparation_row_allowed_v1'),'preparation migration must define policy');await db.exec(sql);
-await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261031101000_registration_request_preparation_completion.sql',import.meta.url),'utf8'));
+const sql=fs.readFileSync(new URL('../supabase/migrations/20261031091649_october_preparation_window.sql',import.meta.url),'utf8');assert.ok(sql.includes('be_preparation_row_allowed_v1'),'preparation migration must define policy');await db.exec(sql);
+await db.exec(fs.readFileSync(new URL('../supabase/migrations/20261031101019_registration_request_preparation_completion.sql',import.meta.url),'utf8'));
 for(const t of['be_data_entry_parcel_details','be_wayplan_dispatches','be_party_wallet_accounts','be_data_entry_financial_v2_requests_v58'])await db.exec(`create trigger aaa_prep before insert or update or delete on ${t} for each row execute function private.be_oct2026_write_guard()`);
 // The actual save completes its idempotency request after registering the parcel.
 await db.exec("insert into be_data_entry_financial_v2_requests_v58(request_id,operation,status)values('SAVE-31-OCT','SAVE','IN_PROGRESS');update be_data_entry_financial_v2_requests_v58 set status='COMPLETE',response='{\"persisted\":true}',completed_at=now()where request_id='SAVE-31-OCT'");
