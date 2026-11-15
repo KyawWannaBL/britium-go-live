@@ -14,10 +14,17 @@ const files = readdirSync(root).filter(f => /^\d{14}_.+\.sql$/.test(f));
 if (files.length < 450) throw new Error('Unexpectedly short migration list: ' + files.length);
 const snapshot = files.find(f => f.startsWith('20260721093501_'));
 if (!snapshot) throw new Error('Historical snapshot missing');
-const sql = readFileSync(resolve(root,snapshot),'utf8');
+let sql = readFileSync(resolve(root,snapshot),'utf8');
 if (sql.length < 3000000 || !sql.includes('create type "public"."app_role"')) {
   throw new Error('Historical baseline content unexpected');
 }
+// pgtap creates _time_trial_type; historical schema-dump duplicates the extension-owned type.
+const duplicatePgtapType = 'create type "public"."_time_trial_type" as ("a_time" numeric);';
+if (sql.split(duplicatePgtapType).length !== 2) {
+  throw new Error('Expected exactly one pgtap extension-owned _time_trial_type duplicate');
+}
+sql = sql.replace(duplicatePgtapType, '-- CI-only omission: pgtap extension already owns _time_trial_type');
+writeFileSync(resolve(root,snapshot), sql);
 let replaced=0;
 for (const file of files) {
   if (file.slice(0,14) < '20260721093501') {
