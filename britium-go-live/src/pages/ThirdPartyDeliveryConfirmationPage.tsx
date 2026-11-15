@@ -66,9 +66,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const needsOperationalSync=(r:Row)=>['DELIVERED','RTO'].includes(r.cs_outcome)&&!['DELIVERED','RETURNED','RTO'].includes(String(r.system_parcel_status||'').toUpperCase());
  function downloadExcelComparison(){
   const head=['Way ID','Excel COD MMK','System COD MMK','Difference MMK','Comparison','Excel rows','Excel internal COD conflict','CS status','Finance review','Merchant'];
-  const safe=(v:unknown)=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@\-\t\r]/,'\u0027 const queueIds=new Set(rows.map(r=>r.delivery_way_id));
- const unmatchedExcelIds=excelIds.filter(id=>!queueIds.has(id));
- const hasLocalComparison=excelIds.length>0;')+'"';
+  const safe=(v:unknown)=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@\-\t\r]/,m=>String.fromCharCode(39)+m)+'"';
   const content=[head,...excelIds.map(id=>{
    const item=uploadedInventory[id],way=comparedById.get(id);
    const compare=way?'MATCHED_CURRENT_QUEUE':completeComparison?'NOT_IN_CURRENT_THIRDPARTY_QUEUE':'NOT_IN_FIRST_300_VERIFY_SEPARATELY';
