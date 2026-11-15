@@ -152,3 +152,16 @@ The script exits non-zero on missing credentials, preexisting output files, miss
 - GitHub Actions syntax-checks the Bash file with `bash -n` and runs verifier unit tests. **This is not an end-to-end database export test.** The operator still needs to execute it from a private environment with approved credentials and confirm that the export fingerprints match.
 
 Do not execute this utility in a public runner with Production database credentials, and do not store the resulting JSON in repository, CI artifacts, issue comments or logs. The repair remains blocked until a secure source export, content security review, and complete isolated replay succeeds.
+
+## Recovery exporter negative-path tests — 15 Nov 2026
+
+`scripts/export-private-migration-snapshots.test.mjs` uses a **mocked `psql` command**, never Production credentials or real SQL statements. It tests that the exporter:
+- rejects missing credentials;
+- rejects group/other-readable directories;
+- rejects symlink directories and pre-existing outputs;
+- removes temporary files after a database-command error;
+- refuses an incorrect private historical fingerprint without publishing SQL files or printing the fake sensitive SQL body.
+
+CI workflow `Supabase historical baseline source gate` run `43687737065` passed **exporter shell syntax**, **mocked private export negative-path tests**, **source-gate unit tests**, and **fingerprint verifier unit tests**. The final historical-source completeness gate **failed intentionally**, because April/July committed historical migration sources remain incomplete. These are negative-path simulator tests; **no successful end-to-end historical SQL export, security review, or isolated 502-migration replay was performed**. Nothing was executed against the Production schema for this test.
+
+The recovery exporter is Linux/GNU-only and still requires a security-approved local environment and authorized read-only database connection. No recovered SQL, DB credentials, or database records have been committed.
