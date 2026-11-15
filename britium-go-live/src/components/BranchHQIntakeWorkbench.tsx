@@ -3,6 +3,7 @@
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {supabase} from "@/integrations/supabase/client";
 import {PackageCheck,Truck,RefreshCw,ScanLine,ArrowRight,ShieldAlert} from "lucide-react";
+import {QRCodeSVG} from "qrcode.react";
 
 type Intake={id:string;branch_code:string;intake_type:"EXISTING_WAY"|"TEMP_QR";parcel_reference:string;status:string;manifest_id:string|null;permanent_way_id:string|null;received_at:string};
 type Manifest={id:string;branch_code:string;bag_code:string;seal_code:string;vehicle_ref:string;status:string;created_at:string;};
@@ -13,6 +14,9 @@ export default function BranchHQIntakeWorkbench({branch,isHeadOffice=false}:{bra
   const [kind,setKind]=useState<"EXISTING_WAY"|"TEMP_QR">("EXISTING_WAY");
   const [reference,setReference]=useState("");
   const [note,setNote]=useState("");
+  const [qrPickup,setQrPickup]=useState("");
+  const [generatedQr,setGeneratedQr]=useState("");
+
   const [selected,setSelected]=useState<string[]>([]);
   const [bag,setBag]=useState("");
   const [seal,setSeal]=useState("");
@@ -77,7 +81,27 @@ export default function BranchHQIntakeWorkbench({branch,isHeadOffice=false}:{bra
         <input className={input} value={reference} onChange={e=>setReference(e.target.value)}
           placeholder={kind==="EXISTING_WAY"?"Scan existing Way ID":"Scan Pickup temporary QR reference"}/>
         <input className={input} value={note} onChange={e=>setNote(e.target.value)} placeholder="Merchant / bag / condition note (optional)"/>
-        {kind==="TEMP_QR"&&<p className="text-xs text-[#9bb7ce]">Generate the temporary QR through the existing Pickup process first. This action receives that identifier; it does not generate a permanent Way ID.</p>}
+        {kind==="TEMP_QR"&&<div className="space-y-2 rounded-lg border border-[#365674] p-3">
+          <p className="text-xs text-[#9bb7ce]">Generate a Pickup-compatible temporary QR for a new branch drop-off, or scan one already created in the Pickup workflow. Neither action creates a permanent Way ID.</p>
+          <input className={input} value={qrPickup} onChange={e=>setQrPickup(e.target.value)}
+            placeholder="Pickup request reference (optional for walk-in drop-off)"/>
+          <button type="button" className={btn} disabled={loading||isLocked}
+            onClick={()=>void(async()=>{
+              const result=await work("Pickup temporary QR",()=> (supabase as any).rpc("be_branch_generate_temp_qr_v1",{
+                p_branch:b,p_pickup_id:qrPickup.trim()||null,p_note:note.trim()
+              }));
+              if(result?.temp_reference){setGeneratedQr(result.temp_reference);setQrPickup("");}
+            })()}>
+            Generate temporary QR and receive parcel
+          </button>
+          {generatedQr&&<div className="rounded-lg bg-white p-4 text-center text-black">
+            <div className="font-bold">BRITIUM EXPRESS — TEMPORARY PARCEL QR</div>
+            <div className="my-3 inline-block"><QRCodeSVG value={generatedQr} size={148} level="M"/></div>
+            <div className="break-all font-mono font-bold">{generatedQr}</div>
+            <p className="text-xs">Not a permanent Way ID. Full registration at HQ only.</p>
+            <button type="button" onClick={()=>window.print()} className="mt-3 rounded border border-slate-600 px-3 py-1 text-sm">Print label</button>
+          </div>}
+        </div>}
         <button type="button" className={btn} disabled={loading||isLocked||reference.trim().length<3}
           onClick={()=>void work("Branch receipt",()=> (supabase as any).rpc("be_branch_intake_register_v1",{
             p_branch:b,p_type:kind,p_reference:reference.trim(),p_note:note.trim()
