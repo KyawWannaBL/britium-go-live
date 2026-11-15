@@ -6,7 +6,7 @@ on:
       - 'supabase/migrations/**'
       - 'scripts/verify-baseline-replay-source*'
       - 'scripts/verify-private-migration-export*'
-      - 'scripts/export-private-migration-snapshots.sh'
+      - 'scripts/export-private-migration-snapshots*'
       - '.github/workflows/verify-supabase-baseline-source.yml'
   workflow_dispatch:
 
@@ -24,6 +24,8 @@ jobs:
           node-version: '22'
       - name: Syntax-check private export utility
         run: bash -n scripts/export-private-migration-snapshots.sh
+      - name: Test private export isolation and cleanup with mocked psql
+        run: node --test scripts/export-private-migration-snapshots.test.mjs
       - name: Unit-test source completeness gate
         run: node --test scripts/verify-baseline-replay-source.test.mjs
       - name: Unit-test offline historical statement fingerprints
