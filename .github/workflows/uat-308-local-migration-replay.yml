@@ -1,12 +1,5 @@
 name: UAT 308 Local Migration Replay (No Remote DB)
 on:
-  push:
-    branches:
-      - fix/uat-migration-replay-audit-308
-    paths:
-      - '.github/workflows/uat-308-local-migration-replay.yml'
-      - 'scripts/uat-audit/**'
-      - 'supabase/migrations/**'
   workflow_dispatch:
 concurrency:
   group: uat-308-local-replay
