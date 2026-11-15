@@ -15,11 +15,12 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [outcome,setOutcome]=useState('DELIVERED'),[provider,setProvider]=useState('Royal Express'),[reason,setReason]=useState(''),[note,setNote]=useState(''),[evidence,setEvidence]=useState('');
  const [uploadedInventory,setUploadedInventory]=useState<Record<string,LocalInventory>>({}),[uploadNotice,setUploadNotice]=useState('');
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
- const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0);
+ const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0),[unfilteredTotal,setUnfilteredTotal]=useState<number|null>(null);
  async function refresh(){setBusy(true);try{
   const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:search||null,p_outcome:filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
   setRows(data.rows||[]);setTotal(data.total||0);
+  if(search.trim()){const {data:all,error:allError}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:null,p_outcome:'ALL',p_limit:1});setUnfilteredTotal(!allError&&all?.ok?Number(all.total):null);}else setUnfilteredTotal(null);
   const ids=(data.rows||[]).map((r:Row)=>r.delivery_way_id);
   setReconciliation({});setReconcileError('');
   if(ids.length){
@@ -48,6 +49,10 @@ export default function ThirdPartyDeliveryConfirmationPage(){
   }catch(error:any){setUploadedInventory({});setUploadNotice('Inventory import failed: '+(error?.message||String(error)));}
  }
  const inventoryAmount=(id:string)=>uploadedInventory[id]?.amount??reconciliation[id]?.inventory_cod_min??null;
+ const excelIds=Object.keys(uploadedInventory);
+ const queueIds=new Set(rows.map(r=>r.delivery_way_id));
+ const unmatchedExcelIds=excelIds.filter(id=>!queueIds.has(id));
+ const hasLocalComparison=excelIds.length>0;
  const hasDuplicate=(id:string)=>Boolean(uploadedInventory[id]?.rows>1||reconciliation[id]?.duplicate_inventory_way);
  const hasConflict=(r:Row)=>Boolean(reconciliation[r.delivery_way_id]?.inventory_amount_conflict||uploadedInventory[r.delivery_way_id]?.amountConflict||(uploadedInventory[r.delivery_way_id]?.amount!=null&&r.system_cod_amount!=null&&uploadedInventory[r.delivery_way_id].amount!==Number(r.system_cod_amount)));
  const visibleRows=useMemo(()=>reviewOnly?rows.filter(r=>{const d=reconciliation[r.delivery_way_id];return !d||hasConflict(r)||hasDuplicate(r.delivery_way_id)||d.route_review_required||(Object.keys(uploadedInventory).length>0?!uploadedInventory[r.delivery_way_id]:d.inventory_row_count===0);}):rows,[rows,reconciliation,reviewOnly,uploadedInventory]);
@@ -78,12 +83,14 @@ export default function ThirdPartyDeliveryConfirmationPage(){
    <label style={{display:'flex',alignItems:'center',gap:6}}><input type="checkbox" checked={reviewOnly} onChange={e=>setReviewOnly(e.target.checked)}/> Needs review only</label>
    <button type="button" disabled={!rows.length} onClick={downloadReview} style={{padding:'9px 13px',background:'#1f4b67',color:'#fff',border:'1px solid #88a4b9',borderRadius:6}}>Export review CSV</button>
   </div>
-  <p>{total} current third-party Ways matching this filter. Royal Express parcels are included even when no partner schedule has been recorded; an unscheduled parcel is not proof of dispatch, handover, or delivery.</p>
+  <p>{total} third-party Ways matching the current search and outcome filter. Royal Express parcels are included even without a partner schedule; registration does not prove dispatch, handover, or delivery.</p>
+  {total===0&&search.trim()&&<p role="status" style={{padding:12,border:'1px solid #6388a5',borderRadius:7}}>No Ways match <strong>{search.trim()}</strong>. {unfilteredTotal!=null?`${unfilteredTotal} Ways exist in the unfiltered current queue. `:''}<button type="button" onClick={()=>{setSearch('');setFilter('ALL');}} style={{color:'#0e2438',background:'#f5b942',borderRadius:5,padding:'6px 10px'}}>Clear search</button> and click Search / Refresh.</p>
+  {hasLocalComparison&&<p role="status" style={{color:'#fcd58c'}}>Excel reference: {excelIds.length} unique Way IDs. {excelIds.length-unmatchedExcelIds.length} are among the {rows.length} currently loaded queue rows; {unmatchedExcelIds.length} are not in this loaded result. This is not evidence they are missing from the parcel master; clear search and review all pages before escalation. Excel is not uploaded or imported into operational records.</p>
   {uploadNotice&&<p role="status" style={{color:'#fcd58c'}}>{uploadNotice}</p>}
   {reconcileError&&<p role="alert" style={{color:'#fbbf24'}}>{reconcileError}. COD and routing comparison is unavailable; do not finalize disputed Ways.</p>}
   <p style={{color:'#fcd58c'}}>Inventory comparison is read-only and uses existing warehouse reference rows. A blank inventory value is NOT proof that a package is missing; verify the dated Excel source. CS confirmation never posts settlement.</p>
   {message&&<p role="status" style={{padding:12,background:'#17324b',borderRadius:6}}>{message}</p>}
-  {total===0&&<p role="status" style={{padding:12,border:'1px solid #486a88',borderRadius:7,margin:'8px 0',color:'#fbbf24'}}>No current third-party Ways qualify under the live go-live cutoff. Royal Express Ways should appear once registered in the current Data Entry parcel master, even without an old schedule. Historical schedules remain excluded.</p>}
+  {total===0&&!search.trim()&&filter==='ALL'&&<p role="status" style={{padding:12,border:'1px solid #486a88',borderRadius:7,margin:'8px 0',color:'#fbbf24'}}>No current third-party Ways qualify under the live go-live cutoff. Royal Express Ways should appear once registered in the current Data Entry parcel master, even without an old schedule. Historical schedules remain excluded.</p>}
   <div style={{overflowX:'auto'}}><table style={{width:'100%',borderCollapse:'collapse',minWidth:940}}>
    <thead><tr>{['Way ID','Latest schedule','Township / branch review','Merchant account','Recipient','System status','CS status','System COD','Inventory COD (reference)','Variance / flags','Finance review','Action'].map(x=><th key={x} style={{textAlign:'left',padding:10,background:'#193a55'}}>{x}</th>)}</tr></thead>
    <tbody>{visibleRows.map(r=><tr key={r.delivery_way_id} style={{borderBottom:'1px solid #36506a'}}>
