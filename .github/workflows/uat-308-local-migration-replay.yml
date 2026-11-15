@@ -8,6 +8,9 @@ on:
       - 'scripts/uat-audit/**'
       - 'supabase/migrations/**'
   workflow_dispatch:
+concurrency:
+  group: uat-308-local-replay
+  cancel-in-progress: true
 jobs:
   local-only-migration-replay:
     runs-on: ubuntu-latest
@@ -36,6 +39,13 @@ jobs:
           else
             echo "::warning::Historical migration placeholder is incomplete. Local replay is diagnostic, not a production deployment."
           fi
+      - name: Record exact historical migration file bytes
+        run: |
+          ls -l supabase/migrations/20260721093501_remote_schema.sql
+          ls -l britium-go-live/supabase/migrations/20260721093501_remote_schema.sql
+          wc -c supabase/migrations/20260721093501_remote_schema.sql
+          sha256sum supabase/migrations/20260721093501_remote_schema.sql
+          grep -n -m 3 'create type.*delivery_status' supabase/migrations/20260721093501_remote_schema.sql || true
       - name: Start disposable local Supabase database
         run: supabase start --debug
       - name: Replay all repository migrations locally
