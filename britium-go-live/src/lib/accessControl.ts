@@ -59,6 +59,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   // HQ branch amendment approvals are not branch-manager authority.
   ['/branch-admin', rule('superadmin','super-admin','app-owner','sys','admin')],
   ['/branch-team/', rule('branch-manager', 'branch-admin')],
+  ['/township-branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin', 'supervisor', 'dispatch', 'wayplan-manager', 'warehouse', 'warehouse-staff', 'sorter', 'data-entry', 'encoder', 'customer-service', 'cs', 'support', 'finance', 'finance-user', 'accountant', 'rider', 'driver', 'helper', 'management', 'director', 'operation-manager', 'operations', 'operations-admin')],
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
   ['/cs-command', rule('branch-manager','customer-service','cs','support')],
   ['/cs-portal', rule('branch-manager','customer-service','cs','support')],
