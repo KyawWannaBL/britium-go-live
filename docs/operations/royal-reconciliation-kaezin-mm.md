@@ -20,7 +20,8 @@
 3. Import notice ထဲတွင် **Unique Way IDs / Total rows** ကိုစစ်ပါ။ ရက်စွဲအလိုက် sheet များအားလုံးကို ဖတ်နိုင်သော်လည်း Screen သည် Excel ၏ရက်စွဲကို System တိုက်ရိုက် Filter မလုပ်ပေးပါ။
 4. **System COD**, **Inventory COD (reference)**, **Variance / flags** ကိုနှိုင်းယှဉ်ပါ။ ငွေကွာဟမှုရှိရင် အလိုအလျောက်မပြင်ပါ။
 5. **Needs review only** ကိုရွေးပြီး ပြဿနာရှိသော Ways များကိုစုကြည့်ပါ။
-6. **Export review CSV** ကိုနှိပ်၍ စစ်ဆေးရန်စာရင်း ထုတ်ပါ။ Export သည် လက်ရှိ Screen Filter/Loaded Ways အတွက်သာ ဖြစ်ပြီး မတင်ရသေးသော Inventory Rows အားလုံးကို မပါဝင်နိုင်ပါ။
+6. **Export review CSV** သည် လက်ရှိ Screen Filter/Loaded Ways အတွက်သာ ဖြစ်သည်။ **Export all Excel Way ID cross-check** ကို သုံးလျှင် Excel ထဲမှ Way ID များအားလုံး၊ လက်ရှိ Third-party queue တွင်ကိုက်ညီမှု၊ COD variance နှင့် CS/Finance Review အခြေအနေကို CSV ထုတ်နိုင်သည်။
+7. **Recheck all current ways** သည် Search Box အခြေအနေနှင့် မသက်ဆိုင်ဘဲ Current Queue အား ပြန်ဖတ်သည်။ Current Queue 300 ခုထက်များလျှင် မတွေ့သော Excel ID များကို System တွင် မရှိဟု မဆုံးဖြတ်ပါနှင့်။
 
 ## အဆင့် (၃) — Warning များကို ကိုင်တွယ်ရန်
 | Warning/အခြေအနေ | လုပ်ဆောင်ရမည့်အချက် |
@@ -45,6 +46,11 @@
 - Delivered မဟုတ်သော outcome အတွက် **Failure / RTO / postponement reason** ကို ရွေးရမည်။ Verification notes အနည်းဆုံး 8 characters ဖြည့်ပါ။
 - နေ့ရက်ချိန်းပြန်ပေးသည့် Way အတွက် `POSTPONED` + reason `CUSTOMER_REQUESTED_POSTPONEMENT` ကို အတည်ပြုရက်သတ်မှတ်ချက်ဖြင့် မှတ်တမ်းတင်ပါ။ ယင်းသည် Wayplan မတင်မီ Date Guard အပြည့်အဝအလုပ်လုပ်ကြောင်း အာမခံခြင်းမဟုတ်ပါ။
 - ဂိတ်ချအတွက် Final Customer POD မရှိလျှင် `DELIVERED` ကို မရွေးပါနှင့်။
+
+## CS / Operations Status မတူညီခြင်း
+- CS ၏ `DELIVERED`/`RTO` Confirmation သည် Finance Review ကို ဖန်တီးသော်လည်း Parcel Master မှာ `registered` ဆက်ပြနိုင်သည်။ စနစ်က **Operations status review required** အဖြစ် ပြထားလျှင် Warehouse/Dispatch/Provider POD သက်သေဖြင့် Operations တာဝန်ခံထံ ပို့ပါ။
+- Parcel Master ကို CS Confirmation တစ်ခုတည်းအပေါ် မူတည်ပြီး `DELIVERED`/`RTO` သို့ အလိုအလျောက်မပြောင်းပါနှင့်။ Custody၊ physical return နှင့် status transition သက်သေတို့ကို စစ်ဆေးရပါမည်။
+- Finance Review status နှင့် ငွေအမှန်တကယ်လက်ခံရရှိမှု သီးခြားဖြစ်ပြီး COD/Settlement ကို အလိုအလျောက် မထိခိုက်စေရ။
 
 ## နေ့စဉ် Reporting
 - Excel Date/Sheet name, Import count, Matched count, COD mismatches, Duplicate candidates, Routing review, Missing Ways, Confirmed Delivered, Pending Finance ကို သီးခြားရေးထားပါ။
