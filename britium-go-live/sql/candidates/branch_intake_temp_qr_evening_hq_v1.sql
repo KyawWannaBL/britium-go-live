@@ -86,11 +86,10 @@ BEGIN
  ) THEN RAISE EXCEPTION 'EXISTING_WAY_NOT_FOUND'; END IF;
  IF v_type='TEMP_QR' AND NOT EXISTS (
    SELECT 1 FROM public.pickup_temp_qr_tokens t
-   WHERE (t.temp_parcel_id=v_ref OR t.pickup_id=v_ref)
-     AND t.status='active'
+   WHERE t.temp_parcel_id=v_ref AND t.status='active'
    UNION ALL
    SELECT 1 FROM public.pickup_parcel_qr_labels q
-   WHERE (q.qr_text=v_ref OR q.delivery_id=v_ref) AND q.is_temporary
+   WHERE q.qr_text=v_ref AND q.is_temporary
  ) THEN RAISE EXCEPTION 'PICKUP_TEMP_QR_NOT_FOUND'; END IF;
  INSERT INTO public.be_branch_intake_parcels_v1
    (branch_code,intake_type,parcel_reference,merchant_note,received_by)
@@ -197,6 +196,14 @@ BEGIN
  IF EXISTS(SELECT 1 FROM public.be_branch_intake_parcels_v1
    WHERE permanent_way_id=trim(p_way_id) AND id<>p_intake_id)
  THEN RAISE EXCEPTION 'PERMANENT_WAY_ALREADY_LINKED'; END IF;
+ -- Supersede temporary pickup identifiers only after permanent HQ registration.
+ -- Keep the original identifier and physical custody events for audit lineage.
+ UPDATE public.pickup_temp_qr_tokens
+   SET waybill_id=trim(p_way_id),status='superseded',superseded_at=now()
+   WHERE temp_parcel_id=v_intake.parcel_reference AND status='active';
+ UPDATE public.pickup_parcel_qr_labels
+   SET way_id=trim(p_way_id),is_temporary=false,updated_at=now()
+   WHERE qr_text=v_intake.parcel_reference AND is_temporary;
  UPDATE public.be_branch_intake_parcels_v1
  SET permanent_way_id=trim(p_way_id),status='HQ_REGISTERED',linked_by=auth.uid(),linked_at=now()
  WHERE id=p_intake_id;
