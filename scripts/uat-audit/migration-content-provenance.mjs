@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Issue #308: offline, read-only migration-content provenance audit.
 // Never connects to Supabase and never modifies a database.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
