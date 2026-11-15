@@ -46,6 +46,10 @@ jobs:
           wc -c supabase/migrations/20260721093501_remote_schema.sql
           sha256sum supabase/migrations/20260721093501_remote_schema.sql
           grep -n -m 3 'create type.*delivery_status' supabase/migrations/20260721093501_remote_schema.sql || true
+      - name: Use July snapshot as disposable CI baseline
+        env:
+          UAT_308_DISPOSABLE_ONLY: '1'
+        run: node scripts/uat-audit/ci-snapshot-first-replay.mjs
       - name: Start disposable local Supabase database
         run: supabase start --debug
       - name: Replay all repository migrations locally
