@@ -1,4 +1,12 @@
 begin;
+-- Ensure parent tab exists in fresh, empty UAT schemas before inserting fleet rows.
+insert into public.be_master_data_tabs
+  (dataset_key, sheet_name, display_name_en, display_name_mm,
+   category, primary_key, sort_order, active)
+values
+  ('fleet_master', 'Fleet_Master (EN)', 'Fleet Master', 'Fleet Master',
+   'Fleet', 'fleet_id', 6, true)
+on conflict (dataset_key) do nothing;
 create schema if not exists private;
 create table if not exists private.be_fleet_master_reconciliation_backup_v1 (
   backup_id uuid primary key default gen_random_uuid(),
