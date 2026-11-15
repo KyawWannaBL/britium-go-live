@@ -54,10 +54,6 @@
       "destination": "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/:z/:y/:x"
     },
     {
-      "source": "/supabase/:path*",
-      "destination": "https://dltavabvjwocknkyvwgz.supabase.co/:path*"
-    },
-    {
       "source": "/login",
       "destination": "/index.html"
     },
