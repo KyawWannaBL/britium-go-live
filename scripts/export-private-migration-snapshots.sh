@@ -28,10 +28,10 @@ for version in 20260412000000 20260721093501; do
   fi
   tmp="$(mktemp "${out_dir%/}/.${version}.XXXXXXXX")"
   trap 'rm -f -- "${tmp:-}"' EXIT
-  # COPY returns one JSON array, with exact SQL statement strings in recorded order.
+  # A single SELECT returns JSON (unlike COPY text mode, which escapes backslashes).
   # Never print SQL contents in logs. URL is passed as environment, not process argument.
   if ! PGDATABASE="$SUPABASE_DB_URL" psql -X -q -w -v ON_ERROR_STOP=1 \
-    -c "COPY (SELECT array_to_json(statements) FROM supabase_migrations.schema_migrations WHERE version = '${version}') TO STDOUT" \
+    -t -A -P pager=off -c "SELECT array_to_json(statements) FROM supabase_migrations.schema_migrations WHERE version = '${version}'" \
     > "$tmp"; then
     echo "Private export failed for ${version}" >&2
     exit 1
