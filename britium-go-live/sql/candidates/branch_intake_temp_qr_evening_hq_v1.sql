@@ -101,6 +101,8 @@ BEGIN
  IF v_type NOT IN ('EXISTING_WAY','TEMP_QR') OR length(v_ref)<3 OR length(v_ref)>220
  THEN RAISE EXCEPTION 'INVALID_INTAKE_IDENTIFIER'; END IF;
  IF v_type='EXISTING_WAY' AND NOT EXISTS (
+   SELECT 1 FROM public.be_data_entry_parcel_details d WHERE upper(d.delivery_way_id)=upper(v_ref)
+   UNION ALL
    SELECT 1 FROM public.be_waybill_ledger w WHERE upper(w.delivery_way_id)=upper(v_ref)
      OR upper(w.waybill_no)=upper(v_ref)
  ) THEN RAISE EXCEPTION 'EXISTING_WAY_NOT_FOUND'; END IF;
@@ -211,8 +213,11 @@ BEGIN
  PERFORM public.be_branch_intake_actor_v1(v_intake.branch_code,true);
  IF v_intake.intake_type<>'TEMP_QR' OR v_intake.status<>'HQ_RECEIVED'
  THEN RAISE EXCEPTION 'ONLY_HQ_RECEIVED_TEMP_QR_MAY_LINK'; END IF;
- IF NOT EXISTS(SELECT 1 FROM public.be_waybill_ledger
-   WHERE upper(delivery_way_id)=upper(trim(p_way_id))) THEN RAISE EXCEPTION 'PERMANENT_WAY_NOT_FOUND'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.be_data_entry_parcel_details
+   WHERE upper(delivery_way_id)=upper(trim(p_way_id)))
+   AND NOT EXISTS(SELECT 1 FROM public.be_waybill_ledger
+   WHERE upper(delivery_way_id)=upper(trim(p_way_id)) OR upper(waybill_no)=upper(trim(p_way_id)))
+ THEN RAISE EXCEPTION 'PERMANENT_WAY_NOT_FOUND'; END IF;
  IF EXISTS(SELECT 1 FROM public.be_branch_intake_parcels_v1
    WHERE permanent_way_id=trim(p_way_id) AND id<>p_intake_id)
  THEN RAISE EXCEPTION 'PERMANENT_WAY_ALREADY_LINKED'; END IF;
