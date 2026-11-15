@@ -1,0 +1,45 @@
+name: UAT 308 Local Migration Replay (No Remote DB)
+on:
+  push:
+    branches:
+      - fix/uat-migration-replay-audit-308
+    paths:
+      - '.github/workflows/uat-308-local-migration-replay.yml'
+      - 'scripts/uat-audit/**'
+      - 'supabase/migrations/**'
+  workflow_dispatch:
+jobs:
+  local-only-migration-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    env:
+      SUPABASE_ACCESS_TOKEN: ''
+      SUPABASE_DB_PASSWORD: ''
+      SUPABASE_PROJECT_REF: ''
+    steps:
+      - name: Checkout recovery branch
+        uses: actions/checkout@v4
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Show environment
+        run: |
+          supabase --version
+          docker --version
+      - name: Check historical migration placeholder
+        run: |
+          if node scripts/uat-audit/migration-content-provenance.mjs; then
+            echo "Historical SQL provenance matches local checks"
+          else
+            echo "::warning::Historical migration placeholder is incomplete. Local replay is diagnostic, not a production deployment."
+          fi
+      - name: Start disposable local Supabase database
+        run: supabase start --debug
+      - name: Replay all repository migrations locally
+        run: supabase db reset --debug
+      - name: Stop local database
+        if: always()
+        run: supabase stop --no-backup || true
