@@ -94,12 +94,20 @@ export default function BranchHQIntakeWorkbench({branch,isHeadOffice=false}:{bra
             })()}>
             Generate temporary QR and receive parcel
           </button>
-          {generatedQr&&<div className="rounded-lg bg-white p-4 text-center text-black">
+          {generatedQr&&<div className="space-y-2">
+            <style>{`@media print {
+              body * { visibility: hidden !important; }
+              [data-branch-temp-label], [data-branch-temp-label] * { visibility: visible !important; }
+              [data-branch-temp-label] { position: absolute; top: 0; left: 0; width: 95mm; padding: 8mm; border: 0; }
+              [data-branch-temp-print] { display: none !important; }
+            }`}</style>
+            <div data-branch-temp-label className="rounded-lg bg-white p-4 text-center text-black">
             <div className="font-bold">BRITIUM EXPRESS — TEMPORARY PARCEL QR</div>
             <div className="my-3 inline-block"><QRCodeSVG value={generatedQr} size={148} level="M"/></div>
             <div className="break-all font-mono font-bold">{generatedQr}</div>
             <p className="text-xs">Not a permanent Way ID. Full registration at HQ only.</p>
-            <button type="button" onClick={()=>window.print()} className="mt-3 rounded border border-slate-600 px-3 py-1 text-sm">Print label</button>
+            </div>
+            <button data-branch-temp-print type="button" onClick={()=>window.print()} className="rounded border border-[#365674] px-3 py-1 text-sm">Print QR label only</button>
           </div>}
         </div>}
         <button type="button" className={btn} disabled={loading||isLocked||reference.trim().length<3}
