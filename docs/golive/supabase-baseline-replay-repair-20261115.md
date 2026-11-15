@@ -103,3 +103,22 @@ Verified read-only query `supabase/tests/audit_historical_migration_source_risk_
 6. Only then merge/deploy with explicit release authorization. Current Production migration history is not to be edited.
 
 **No Production schema/history changes were made during this inventory.**
+
+## Private historical export integrity — 15 November 2026
+
+The **read-only** `supabase/tests/audit_historical_statement_fingerprint_20261115.sql` was executed against Production and returned ordered SHA-256 fingerprints without exposing SQL source:
+
+- April `20260412000000`: **7,480** statements; fingerprint `aca28438bba353287aa1f61c95b7cbcf31540070120b15aadf6da12ef50c2493`.
+- July `20260721093501`: **26,003** statements; fingerprint `dc6725b13122b0526b59a8801f46090bc22d91e2007aac7f565f41705a04ea03`.
+
+The matching offline verifier is `scripts/verify-private-migration-export.mjs`; its three local Node tests passed. It accepts a **private, ordered JSON array of statement strings** or `{"statements":[...]}` and reports only counts/hashes; it never prints SQL bodies, touches the database, or uploads the file. The matching source verification is:
+
+```bash
+node --test scripts/verify-private-migration-export.test.mjs
+node scripts/verify-private-migration-export.mjs 20260412000000 /secure/path/april-statements.json
+node scripts/verify-private-migration-export.mjs 20260721093501 /secure/path/july-statements.json
+```
+
+**Private export requirement:** preserve each original entry of `supabase_migrations.schema_migrations.statements` as a JSON array element in recorded order; do NOT normalize whitespace, concatenate statements, append semicolons, or save JSON into the public repository. Run export only through an approved private secured connection or isolated workspace with secret controls. The verifier rejects a mismatched count or SHA-256. Fingerprint equality proves source-text integrity only; it does not make historical SQL safe to publish or replay.
+
+CI now executes the offline verifier unit tests alongside the existing fail-closed historical source gate. The source gate must remain failing until independently reviewed source files are reconstructed. **No Production SQL history or schema is modified** by this process.
