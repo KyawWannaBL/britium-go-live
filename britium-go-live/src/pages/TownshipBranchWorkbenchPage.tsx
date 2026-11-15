@@ -39,7 +39,7 @@ export default function TownshipBranchWorkbenchPage(){
   return()=>{active=false};
  },[branch,role]);
  if(!allowed.includes(role))return <section role="alert" className={card}>This workspace is unavailable for your assigned role.</section>;
- const visible=WORKSPACES.map(w=>({...w,paths:w.paths.filter(p=>canRoleOpenPath(profile?.role,p.path))})).filter(w=>w.paths.length>0);
+ const visible=(!branch&&!privileged?[]:WORKSPACES).map(w=>({...w,paths:w.paths.filter(p=>canRoleOpenPath(profile?.role,p.path))})).filter(w=>w.paths.length>0);
  return <main className="space-y-5 text-[#eef8ff]">
   <header className={card}>
    <div className="flex flex-wrap justify-between gap-3">
