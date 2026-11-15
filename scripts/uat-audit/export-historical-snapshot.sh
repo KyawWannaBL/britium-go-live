@@ -16,14 +16,12 @@ if [ -e "$out" ]; then
   exit 2
 fi
 umask 077
-# COPY TO STDOUT writes to client output, not any server-side path.
+# psql unaligned/tuples-only output preserves raw embedded SQL newlines.
 # No INSERT/UPDATE/DELETE or migration history modifications.
-if ! psql "$PROD_READONLY_DATABASE_URL" -X -q -v ON_ERROR_STOP=1 \
-  -c "COPY (
-    SELECT array_to_string(statements, E';\\n\\n') || E';\\n'
+if ! psql "$PROD_READONLY_DATABASE_URL" -X -q -A -t -v ON_ERROR_STOP=1 \
+  -c "SELECT array_to_string(statements, E';\\n\\n') || E';\\n'
     FROM supabase_migrations.schema_migrations
-    WHERE version = '20260721093501'
-  ) TO STDOUT" > "$out"; then
+    WHERE version = '20260721093501'" > "$out"; then
   rm -f "$out"
   echo "Export failed; no output file retained" >&2
   exit 1
