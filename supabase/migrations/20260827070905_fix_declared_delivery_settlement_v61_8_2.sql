@@ -23,6 +23,11 @@ begin
   v_definition := pg_get_functiondef(v_oid);
 
   if strpos(v_definition, v_old) = 0 then
+    -- A restored post-patch legacy function already contains this settlement correction.
+    -- Do not mutate an existing unrelated implementation.
+    if strpos(v_definition, 'v_customer_delivery_surcharges := 0;') > 0 then
+      return;
+    end if;
     raise exception 'Expected surcharge-calculation block was not found; migration stopped safely';
   end if;
 
