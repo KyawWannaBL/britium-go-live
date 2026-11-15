@@ -16,16 +16,17 @@ for(const [name,source] of [['BranchOfficePage.tsx',office],['BranchControlWorkb
 }
 assert.ok(app.includes('<Route path="/data-entry" element={<DataEntryFinancialV2Page />} />'),'Data Entry V2 route missing');
 assert.ok(sidebar.includes('name: "Data Entry", path: "/data-entry"'),'Data Entry sidebar missing');
-assert.ok(office.includes("name:'Data Entry V2',path:'/data-entry'"),'Branch Office entry missing');
-assert.ok(control.includes('to="/data-entry"'),'Branch control shortcut missing');
-assert.ok(access.includes("['/data-entry', rule('branch-manager'"),'MDY manager role missing from Data Entry permission');
+assert.ok(office.includes('BranchHQIntakeWorkbench'),'Branch intake and shuttle workbench must be present');
+assert.ok(!office.includes("name:'Data Entry V2',path:'/data-entry'"),'Branch Office must not offer full Data Entry');
+assert.ok(control.includes('to="/branch-office"'),'Branch intake shortcut missing');
+assert.ok(!access.includes("['/data-entry', rule('branch-manager'"),'Branch Manager must not create full registrations');
 assert.ok(!access.includes("['/finance/merchant-settlement', rule('branch-manager'"),'MDY manager must not access settlement');
 
 const registry=read('src/lib/portalRegistry.ts');
 const guards=access.replace(/^import .*?;\s*$/gm,'');
 const module=ts.transpileModule(registry+'\n'+guards,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
 const {canRoleOpenPath}=await import('data:text/javascript;base64,'+Buffer.from(module).toString('base64'));
-assert.equal(canRoleOpenPath('branch-manager','/data-entry'),true);
+assert.equal(canRoleOpenPath('branch-manager','/data-entry'),false);
 assert.equal(canRoleOpenPath('branch-admin','/data-entry'),false);
 assert.equal(canRoleOpenPath('data-entry','/data-entry'),true);
 assert.equal(canRoleOpenPath('branch-manager','/accounts'),false);
@@ -41,4 +42,4 @@ assert.ok(migration.includes("BRANCH_DATA_ENTRY_SCOPE_DENIED"),'Cross-branch den
 assert.ok(migration.includes("be_employee_can_access_territory"),'Territory guard missing');
 assert.ok(migration.includes("('branch_manager','data_entry','encoder','supervisor')"),'Scoped MDY employee roles missing');
 assert.ok(migration.includes("role_id='branch_manager'"),'Branch manager authority missing');
-console.log('PASS Mandalay Data Entry V2: manager screen, routes, backend scope, YGN isolation and HQ separation');
+console.log('PASS new branch intake policy: branch manager full Data Entry blocked, historical SQL retained and HQ Data Entry available');
