@@ -1,0 +1,26 @@
+name: Supabase historical baseline source gate
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/**'
+      - 'scripts/verify-baseline-replay-source*'
+      - '.github/workflows/verify-supabase-baseline-source.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-migration-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Unit-test source completeness gate
+        run: node --test scripts/verify-baseline-replay-source.test.mjs
+      - name: Fail closed when April / July sources are missing
+        run: node scripts/verify-baseline-replay-source.mjs
