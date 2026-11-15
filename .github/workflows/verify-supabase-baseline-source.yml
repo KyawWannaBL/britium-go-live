@@ -5,6 +5,7 @@ on:
     paths:
       - 'supabase/migrations/**'
       - 'scripts/verify-baseline-replay-source*'
+      - 'scripts/verify-private-migration-export*'
       - '.github/workflows/verify-supabase-baseline-source.yml'
   workflow_dispatch:
 
@@ -22,5 +23,7 @@ jobs:
           node-version: '22'
       - name: Unit-test source completeness gate
         run: node --test scripts/verify-baseline-replay-source.test.mjs
+      - name: Unit-test offline historical statement fingerprints
+        run: node --test scripts/verify-private-migration-export.test.mjs
       - name: Fail closed when April / July sources are missing
         run: node scripts/verify-baseline-replay-source.mjs
