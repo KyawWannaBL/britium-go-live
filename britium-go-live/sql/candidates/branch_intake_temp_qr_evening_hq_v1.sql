@@ -220,12 +220,20 @@ GRANT EXECUTE ON FUNCTION public.be_branch_temp_qr_link_way_v1(uuid,text) TO aut
 CREATE OR REPLACE FUNCTION public.be_branch_full_registration_guard_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
 SET search_path TO 'public','auth','pg_temp' AS $fn$
-DECLARE v_role text;
+DECLARE v_role text; v_branch text;
 BEGIN
   IF auth.uid() IS NULL THEN RETURN NEW; END IF;
   v_role:=replace(lower(coalesce(public.be_current_role(),'')),'-','_');
+  SELECT upper(branch_code) INTO v_branch
+  FROM public.be_user_account_registry
+  WHERE auth_user_id=auth.uid() AND coalesce(active,true) AND coalesce(is_active,true)
+    AND lower(status) IN ('active','enabled') LIMIT 1;
+  -- Both branch-specific roles and any staff physically assigned to a non-HQ
+  -- branch (including legacy data_entry/encoder users) must not register parcels.
   IF v_role IN ('branch_manager','branch_office_manager','branch_office',
-                'branch_staff','branch_admin') THEN
+                'branch_staff','branch_admin')
+     OR (v_branch IS NOT NULL AND v_branch<>'YGN'
+         AND v_role NOT IN ('superadmin','super_admin','app_owner','sys')) THEN
     RAISE EXCEPTION 'BRANCH_FULL_REGISTRATION_DISABLED_USE_INBOUND_OR_PICKUP_TEMP_QR'
       USING errcode='42501';
   END IF;
