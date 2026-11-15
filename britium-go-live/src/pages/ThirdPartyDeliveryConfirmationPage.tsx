@@ -16,11 +16,11 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [uploadedInventory,setUploadedInventory]=useState<Record<string,LocalInventory>>({}),[uploadNotice,setUploadNotice]=useState('');
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0),[unfilteredTotal,setUnfilteredTotal]=useState<number|null>(null);
- async function refresh(){setBusy(true);try{
-  const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:search||null,p_outcome:filter,p_limit:300});
+ async function refresh(searchOverride?:string){setBusy(true);try{
+  const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:(searchOverride??search)||null,p_outcome:searchOverride===''?'ALL':filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
   setRows(data.rows||[]);setTotal(data.total||0);
-  if(search.trim()){const {data:all,error:allError}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:null,p_outcome:'ALL',p_limit:1});setUnfilteredTotal(!allError&&all?.ok?Number(all.total):null);}else setUnfilteredTotal(null);
+  if((searchOverride??search).trim()){const {data:all,error:allError}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:null,p_outcome:'ALL',p_limit:1});setUnfilteredTotal(!allError&&all?.ok?Number(all.total):null);}else setUnfilteredTotal(null);
   const ids=(data.rows||[]).map((r:Row)=>r.delivery_way_id);
   setReconciliation({});setReconcileError('');
   if(ids.length){
@@ -84,7 +84,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
    <button type="button" disabled={!rows.length} onClick={downloadReview} style={{padding:'9px 13px',background:'#1f4b67',color:'#fff',border:'1px solid #88a4b9',borderRadius:6}}>Export review CSV</button>
   </div>
   <p>{total} third-party Ways matching the current search and outcome filter. Royal Express parcels are included even without a partner schedule; registration does not prove dispatch, handover, or delivery.</p>
-  {total===0&&search.trim()&&<p role="status" style={{padding:12,border:'1px solid #6388a5',borderRadius:7}}>No Ways match <strong>{search.trim()}</strong>. {unfilteredTotal!=null?`${unfilteredTotal} Ways exist in the unfiltered current queue. `:''}<button type="button" onClick={()=>{setSearch('');setFilter('ALL');}} style={{color:'#0e2438',background:'#f5b942',borderRadius:5,padding:'6px 10px'}}>Clear search</button> and click Search / Refresh.</p>
+  {total===0&&search.trim()&&<p role="status" style={{padding:12,border:'1px solid #6388a5',borderRadius:7}}>No Ways match <strong>{search.trim()}</strong>. {unfilteredTotal!=null?`${unfilteredTotal} Ways exist in the unfiltered current queue. `:''}<button type="button" onClick={()=>{setSearch('');setFilter('ALL');void refresh('');}} style={{color:'#0e2438',background:'#f5b942',borderRadius:5,padding:'6px 10px'}}>Clear search</button> and click Search / Refresh.</p>
   {hasLocalComparison&&<p role="status" style={{color:'#fcd58c'}}>Excel reference: {excelIds.length} unique Way IDs. {excelIds.length-unmatchedExcelIds.length} are among the {rows.length} currently loaded queue rows; {unmatchedExcelIds.length} are not in this loaded result. This is not evidence they are missing from the parcel master; clear search and review all pages before escalation. Excel is not uploaded or imported into operational records.</p>
   {uploadNotice&&<p role="status" style={{color:'#fcd58c'}}>{uploadNotice}</p>}
   {reconcileError&&<p role="alert" style={{color:'#fbbf24'}}>{reconcileError}. COD and routing comparison is unavailable; do not finalize disputed Ways.</p>}
