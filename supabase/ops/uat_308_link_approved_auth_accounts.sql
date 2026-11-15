@@ -27,7 +27,7 @@ BEGIN
     AND (
       a.email IS NULL
       OR COALESCE(a.raw_app_meta_data ->> 'uat_role','') NOT IN
-         ('branch-office','supervisor','data-entry','warehouse-staff','rider','driver','helper')
+         ('branch-office','supervisor','data-entry','warehouse-staff','finance','rider','driver','helper')
       OR (
         (a.raw_app_meta_data ->> 'uat_role') IN ('rider','driver','helper')
         AND COALESCE(NULLIF(BTRIM(a.raw_app_meta_data ->> 'worker_code'),''),'') = ''
@@ -51,7 +51,7 @@ WITH eligible AS (
   WHERE b.code IN ('MDY_UAT','INSEIN_UAT')
     AND (a.raw_app_meta_data ->> 'uat_approved') = 'true'
     AND (a.raw_app_meta_data ->> 'uat_role') IN
-      ('branch-office','supervisor','data-entry','warehouse-staff','rider','driver','helper')
+      ('branch-office','supervisor','data-entry','warehouse-staff','finance','rider','driver','helper')
 )
 INSERT INTO public.user_profiles(id,email,full_name,role,branch_id,is_active)
 SELECT id,email,display_name,employee_role,branch_id,true FROM eligible
