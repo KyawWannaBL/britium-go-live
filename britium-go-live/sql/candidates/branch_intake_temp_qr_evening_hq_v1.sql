@@ -151,9 +151,13 @@ END $fn$;
 CREATE OR REPLACE FUNCTION public.be_branch_intake_snapshot_v1(p_branch text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','auth','pg_temp'
 AS $fn$
-DECLARE v_branch text;
+DECLARE v_branch text;v_hq boolean;
 BEGIN
- v_branch:=public.be_branch_intake_actor_v1(p_branch,false);
+ v_hq:=EXISTS(SELECT 1 FROM public.be_user_account_registry r
+ WHERE r.auth_user_id=auth.uid() AND upper(r.branch_code)='YGN'
+ AND coalesce(r.active,true) AND coalesce(r.is_active,true)
+ AND lower(r.status) IN ('active','enabled'));
+ v_branch:=public.be_branch_intake_actor_v1(p_branch,v_hq);
  RETURN jsonb_build_object('ok',true,'branch_code',v_branch,
  'intakes',coalesce((SELECT jsonb_agg(to_jsonb(i) ORDER BY i.received_at DESC)
      FROM (SELECT * FROM public.be_branch_intake_parcels_v1
