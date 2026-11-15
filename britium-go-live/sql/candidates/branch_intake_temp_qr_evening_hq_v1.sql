@@ -133,10 +133,10 @@ BEGIN
  v_branch:=public.be_branch_intake_actor_v1(p_branch,false);
  v_reference:='TMP-'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,20));
  v_pickup:=coalesce(nullif(btrim(p_pickup_id),''),'BRANCH-'||v_branch||'-'||v_reference);
- v_token:=encode(gen_random_bytes(24),'hex');
+ v_token:=encode(extensions.gen_random_bytes(24),'hex');
  INSERT INTO public.pickup_temp_qr_tokens
  (pickup_id,temp_parcel_id,token,token_hash,payload,status,created_by)
- VALUES(v_pickup,v_reference,v_token,encode(digest(v_token,'sha256'),'hex'),
+ VALUES(v_pickup,v_reference,v_token,encode(extensions.digest(v_token,'sha256'),'hex'),
    jsonb_build_object('source','BRANCH_PICKUP_TEMP_QR','branch_code',v_branch,
    'note',left(coalesce(p_note,''),500)),'active',auth.uid());
  INSERT INTO public.be_branch_intake_parcels_v1
