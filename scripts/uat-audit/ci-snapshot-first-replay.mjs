@@ -40,6 +40,11 @@ const fixtureText = readFileSync(financeFixture,'utf8');
 if (fixtureText.length < 11000 || !fixtureText.includes('be_calculate_parcel_financial_v2(')) {
   throw new Error('Missing or invalid CI-only finance historical fixture');
 }
+const tariffFixture = resolve('scripts/uat-audit/fixtures/finance_tariff_v2_ci_bootstrap.sql');
+if (!readFileSync(tariffFixture, 'utf8').includes('create table if not exists public.be_parcel_tariffs_v2')) {
+  throw new Error('Missing CI-only tariff table fixture');
+}
+copyFileSync(tariffFixture, resolve(root,'20260827070903_uat308_tariff_structure_reconstruction.sql'));
 copyFileSync(financeFixture, resolve(root,'20260827070904_uat308_finance_legacy_reconstruction.sql'));
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
