@@ -215,6 +215,36 @@ GRANT EXECUTE ON FUNCTION public.be_branch_evening_manifest_prepare_v1(text,uuid
 GRANT EXECUTE ON FUNCTION public.be_branch_intake_scan_v1(uuid,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.be_branch_temp_qr_link_way_v1(uuid,text) TO authenticated;
 
+-- Reject full registration from branch-scoped roles even through legacy screens/RPCs.
+-- These triggers act only on INSERT; existing parcels and physical scan updates remain intact.
+CREATE OR REPLACE FUNCTION public.be_branch_full_registration_guard_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER
+SET search_path TO 'public','auth','pg_temp' AS $fn$
+DECLARE v_role text;
+BEGIN
+  IF auth.uid() IS NULL THEN RETURN NEW; END IF;
+  v_role:=replace(lower(coalesce(public.be_current_role(),'')),'-','_');
+  IF v_role IN ('branch_manager','branch_office_manager','branch_office',
+                'branch_staff','branch_admin') THEN
+    RAISE EXCEPTION 'BRANCH_FULL_REGISTRATION_DISABLED_USE_INBOUND_OR_PICKUP_TEMP_QR'
+      USING errcode='42501';
+  END IF;
+  RETURN NEW;
+END $fn$;
+DROP TRIGGER IF EXISTS be_branch_registration_guard_ledger_v1 ON public.be_waybill_ledger;
+CREATE TRIGGER be_branch_registration_guard_ledger_v1 BEFORE INSERT
+ ON public.be_waybill_ledger FOR EACH ROW
+ EXECUTE FUNCTION public.be_branch_full_registration_guard_v1();
+DROP TRIGGER IF EXISTS be_branch_registration_guard_parcels_v1 ON public.be_data_entry_parcels;
+CREATE TRIGGER be_branch_registration_guard_parcels_v1 BEFORE INSERT
+ ON public.be_data_entry_parcels FOR EACH ROW
+ EXECUTE FUNCTION public.be_branch_full_registration_guard_v1();
+DROP TRIGGER IF EXISTS be_branch_registration_guard_details_v1 ON public.be_data_entry_parcel_details;
+CREATE TRIGGER be_branch_registration_guard_details_v1 BEFORE INSERT
+ ON public.be_data_entry_parcel_details FOR EACH ROW
+ EXECUTE FUNCTION public.be_branch_full_registration_guard_v1();
+REVOKE ALL ON FUNCTION public.be_branch_full_registration_guard_v1() FROM PUBLIC,anon,authenticated;
+
 -- Branch manager is an intake/transfer supervisor, not a Data Entry creator.
 UPDATE public.be_role_authority_matrix
 SET rights=jsonb_set(
