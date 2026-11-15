@@ -74,3 +74,13 @@ Run separate QA for both the Enterprise portal and the Rider app; if the Rider a
 ## November 16 provisioning outcome
 
 Billing approval obtained for US$0.01344/hour and branch created. Branch creation itself succeeded. Current migration result is **FAILED** and `public.be_branch_offices` is missing. Existing preview Git build was READY at `dpl_1NZZHjeyKLiZdAoiJWZq16rKCu5B`, but app is deliberately fail-closed for backend access. The UAT branch is not a usable operational environment yet. The log stream reports missing function `public._quote_ident_like(text,text)` during initialization, although the full migration root cause requires further review. Neither the Production Supabase project nor production Vercel deployment was changed by this provisioning.
+
+## Migration recovery attempt / verified blocker (2026-11-16)
+
+- The isolated UAT branch was confirmed to contain **0 Auth users and 0 public rows** before recovery.
+- UAT-only `reset_branch` returned success and temporarily showed `MIGRATIONS_PASSED`, but **schema verification failed**: still only 7/503 migration records, 6 public tables; `be_branch_offices` and `be_user_account_registry` did not exist.
+- UAT-only `rebase_branch` returned success for the initiation but ended `MIGRATIONS_FAILED`; no complete schema was restored.
+- Read-only inspection of Production migration `20260412000000_emergency_restore`: 7,480 stored SQL statements (~966,925 chars) vs. short GitHub file. The stored SQL contains four `GRANT ALL ON FUNCTION public._quote_ident_like(text,text)` statements (ordinal 2708-2711) but no creation statement for that function. Production currently contains the function; UAT branch lacks it. The new branch postgres log shows `function public._quote_ident_like(text,text) does not exist` during restore. This identifies a concrete migration-history inconsistency, though more errors could follow if that specific one were repaired.
+- **Never edit Production migration metadata or create placeholder privileged functions to bypass the error.** Review an independently generated schema-only baseline, migration history alignment and authorization under engineering change control. Run a disposable dry-run on UAT and validate the complete branch schema and RLS before attaching any UAT Vercel environment variables.
+- Blocker tracked in https://github.com/KyawWannaBL/britium-go-live/issues/307.
+- The user-approved UAT Supabase branch remains present and billable hourly until explicitly deleted; it is not suitable for transactional branch-office UAT yet.
