@@ -6,10 +6,16 @@ import { Capacitor } from "@capacitor/core";
 // the defaults keep Git-triggered builds operational if that environment scope
 // is accidentally omitted. Production traffic still uses the same-origin
 // /supabase rewrite from vercel.json.
-const DEFAULT_SUPABASE_URL = "https://dltavabvjwocknkyvwgz.supabase.co";
-const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExMTMxOTQsImV4cCI6MjA4NjY4OTE5NH0.7-9BK6L9dpCYIB-pp1WOeQxCI1DVxnSykoTRXNUHYIo";
+const DEFAULT_SUPABASE_URL = "https://uat-not-configured.invalid";
+const DEFAULT_SUPABASE_ANON_KEY = "";
 
+// UAT-only release branch: never contact the Production Supabase backend.
 const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const expectedUatUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(directSupabaseUrl);
+const forbiddenProduction = directSupabaseUrl.includes("dltavabvjwocknkyvwgz") || directSupabaseUrl.includes("www.britiumexpress.com");
+if (!expectedUatUrl || forbiddenProduction) {
+  throw new Error("UAT backend not configured or Production backend detected. Refusing to start application.");
+}
 const isNativeApp = Capacitor.isNativePlatform();
 // The native WebView's origin is capacitor://localhost, so it cannot use a
 // relative /supabase URL. Route native API calls through the public Britium
@@ -18,9 +24,9 @@ const isNativeApp = Capacitor.isNativePlatform();
 // The canonical origin is not a secret; VITE_NATIVE_SUPABASE_PROXY_URL allows
 // a controlled future migration without rewriting app code.
 const nativeProxyUrl = String(
-  import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
+  import.meta.env.VITE_SUPABASE_URL || "https://uat-not-configured.invalid"
 ).trim().replace(/\/+$/, "");
-const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
+const shouldUseWebProxy = false; // UAT must use its dedicated Supabase URL, never /supabase proxy.
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
   : shouldUseWebProxy
