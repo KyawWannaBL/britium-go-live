@@ -18,9 +18,9 @@ function setup() {
   writeFileSync(path.join(bin, 'psql'), `#!/usr/bin/env bash
 set -euo pipefail
 # Test double: do not connect to any database.
-[[ "${PGOPTIONS:-}" == *"default_transaction_read_only=on"* ]] || exit 93
-[[ "${PGDATABASE:-}" == "postgresql://fake-local-test-only/" ]] || exit 94
-if [[ "${MOCK_PSQL_MODE:-}" == fail ]]; then exit 23; fi
+[[ "\${PGOPTIONS:-}" == *"default_transaction_read_only=on"* ]] || exit 93
+[[ "\${PGDATABASE:-}" == "postgresql://fake-local-test-only/" ]] || exit 94
+if [[ "\${MOCK_PSQL_MODE:-}" == fail ]]; then exit 23; fi
 printf '%s\\n' '["FAKE SQL TEST FIXTURE \\"sensitive-looking\\\" \\\\n"]'
 `);
   chmodSync(path.join(bin, 'psql'), 0o700);
