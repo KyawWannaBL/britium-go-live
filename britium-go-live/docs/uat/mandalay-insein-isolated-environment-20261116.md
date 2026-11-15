@@ -1,12 +1,12 @@
 # Mandalay + Insein Branch UAT Environment (2026-11-16)
 
-**Status: PREPARED / NOT AUTHORIZED FOR TRANSACTIONAL UAT UNTIL ISOLATED BACKEND EXISTS**
+**Status: UAT SUPABASE BRANCH CREATED; MIGRATIONS_FAILED. TRANSACTIONAL UAT BLOCKED UNTIL SCHEMA REPAIR AND UAT-ONLY FRONTEND CONFIGURATION.**
 
 - Git branch: `uat/mandalay-insein-isolated-20261116`
 - Production: `www.britiumexpress.com` (never promote this branch without a release review)
 - Branch identities: `MDY` (Mandalay Branch Office), `YGN-INS` (Insein Branch Office)
 - Production Supabase ref **MUST NEVER be used for this branch**: `dltavabvjwocknkyvwgz`
-- UAT backend: pending creation and migration verification; Supabase cost-confirmation approval is required.
+- UAT backend created with confirmed hourly cost: `hgijdyfwmvskchsruknp` (`https://hgijdyfwmvskchsruknp.supabase.co`), Supabase branch `branch-uat-mdy-insein-20261116`, ID `ec647a03-4f60-4e75-a403-cbaaf919af68`, no Production data copied. On initial verification Supabase status was `MIGRATIONS_FAILED`: only 7 migration records and 6 public tables, no `be_branch_offices`. Do not configure preview environment or issue UAT logins until this is repaired and a full migration/RLS test passes.
 - No production parcel, COD, settlement or Auth data are to be imported. Do not seed actual customer PII, COD, live waybills or employee login passwords.
 
 ## Isolation rules already implemented on this Git branch
@@ -70,3 +70,7 @@ Run separate QA for both the Enterprise portal and the Rider app; if the Rider a
 - Mark an integration BLOCKED rather than manually overriding audit or custody statuses.
 - Do not certify full UAT until all critical flows pass via authenticated real screens.
 - No production deployment, data copy, live payments, external notifications or production service activity is authorized by this UAT document.
+
+## November 16 provisioning outcome
+
+Billing approval obtained for US$0.01344/hour and branch created. Branch creation itself succeeded. Current migration result is **FAILED** and `public.be_branch_offices` is missing. Existing preview Git build was READY at `dpl_1NZZHjeyKLiZdAoiJWZq16rKCu5B`, but app is deliberately fail-closed for backend access. The UAT branch is not a usable operational environment yet. The log stream reports missing function `public._quote_ident_like(text,text)` during initialization, although the full migration root cause requires further review. Neither the Production Supabase project nor production Vercel deployment was changed by this provisioning.
