@@ -67,3 +67,18 @@ Affected tables: `assignment_queue_2026_02_19_17_00`, `branches`, `cod_collectio
 **Fresh-replay acceptance gate:** for each of these 12 tables, compare actual owner, RLS flags, policies, effective role privileges, functions/views exposing the table, and trigger/constraint dependencies with Production. Do not change current Production ACLs to make a replay succeed. Complete all 502 migrations on an isolated database and compare the resulting schema (including the remaining 17 overlapping tables) prior to merging PR #300.
 
 **Current status:** this is a verified read-only checkpoint only, **not** proof of successful migration repair or a Production deployment.
+
+## Fail-closed baseline source gate — added 15 Nov 2026
+
+The checked-in `supabase/migrations/20260412000000_emergency_restore.sql` is **442 bytes** (a small `delivery_status` creation guard), while Production's recorded migration contains **7,480 statements**. The checked-in `supabase/migrations/20260721093501_remote_schema.sql` is **empty**, while its recorded Production migration contains **26,003 statements**. Both historical source mismatches prevent reconstructing the original migration sequence by simply replaying the repository.
+
+Committed:
+- `scripts/verify-baseline-replay-source.mjs` — read-only, fail-closed heuristic source guard for both migration files.
+- `scripts/verify-baseline-replay-source.test.mjs` — three Node built-in tests (missing, truncated, and synthetic full-size cases), locally tested with Node 22.
+- `.github/workflows/verify-supabase-baseline-source.yml` — PR/workflow_dispatch GitHub Actions check. **Expected status: failure until files have been properly reconstructed**. Intentional failure is an accurate release indicator; it is not a new Production outage.
+
+The script validates file existence, conservative size thresholds, and essential SQL markers. **It cannot establish logical SQL equivalence or ensure safe replay**: a large incorrect file could pass. A separately verified fresh Supabase migration replay, catalog comparison, RLS/ACL parity review, and application acceptance tests remain mandatory.
+
+**Important:** Do not copy all Production SQL statements to a public GitHub repository without a security/secret scan, and do not overwrite Production migration history to make the source gate green. The historical SQL may include privileged routines or embedded secrets. The snapshot is a historical input requiring review, not a safe-to-run replacement.
+
+No active Production objects, records, or historical migration entries were modified by this branch work.
