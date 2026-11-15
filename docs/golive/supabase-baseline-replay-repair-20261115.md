@@ -138,3 +138,17 @@ bash scripts/export-private-migration-snapshots.sh /secure/private/britium-migra
 ```
 
 The script exits non-zero on missing credentials, preexisting output files, missing tools or a fingerprint mismatch. It creates two local JSON files with permission 600 and never prints raw SQL. The script itself was syntax checked; **the live export was not executed**, since the secure Production database URL/authorized private workstation were not provided. After successful recovery, conduct secret scanning and historical DDL review, then replay all 502 migrations in a disposable database. Do not publish raw statements without review or rewrite Production history.
+
+## Private export hardening — 15 November 2026
+
+`scripts/export-private-migration-snapshots.sh` now enforces the following controls for **operator-run, Linux/GNU environments only**:
+
+- Requires an authorized `SUPABASE_DB_URL` supplied through a secure local environment; it never prints this value or passes it as a command-line argument.
+- Uses `psql -X -w` and sets `default_transaction_read_only=on` through `PGOPTIONS`. This is defense-in-depth, not a substitute for a read-only database role.
+- Refuses an export directory that is a symlink, not owned by the running user, or has group/other permissions; local files are created with restrictive permissions.
+- Refuses to overwrite any existing recovery JSON file, including dangling symlinks.
+- Exports April and July into temporary files and validates **both** ordered fingerprints before publishing either final file; removes temporary files on failure and rolls back already-published links if the second publication fails.
+- Uses PostgreSQL `SELECT array_to_json(statements)` in unaligned tuples-only mode rather than PostgreSQL text `COPY` escaping, preserving the underlying SQL strings for fingerprint verification.
+- GitHub Actions syntax-checks the Bash file with `bash -n` and runs verifier unit tests. **This is not an end-to-end database export test.** The operator still needs to execute it from a private environment with approved credentials and confirm that the export fingerprints match.
+
+Do not execute this utility in a public runner with Production database credentials, and do not store the resulting JSON in repository, CI artifacts, issue comments or logs. The repair remains blocked until a secure source export, content security review, and complete isolated replay succeeds.
