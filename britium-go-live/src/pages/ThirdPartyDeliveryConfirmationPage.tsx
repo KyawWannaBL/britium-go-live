@@ -16,6 +16,12 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [uploadedInventory,setUploadedInventory]=useState<Record<string,LocalInventory>>({}),[uploadNotice,setUploadNotice]=useState('');
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0),[unfilteredTotal,setUnfilteredTotal]=useState<number|null>(null);
+ const [comparisonRows,setComparisonRows]=useState<Row[]>([]),[comparisonTotal,setComparisonTotal]=useState<number|null>(null),[comparisonError,setComparisonError]=useState('');
+ async function refreshComparison(){
+  const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:null,p_outcome:'ALL',p_limit:300});
+  if(error||!data?.ok){setComparisonRows([]);setComparisonTotal(null);setComparisonError(error?.message||data?.error||'Current queue lookup unavailable');return;}
+  setComparisonRows(data.rows||[]);setComparisonTotal(Number(data.total||0));setComparisonError('');
+ }
  async function refresh(searchOverride?:string){setBusy(true);try{
   const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:(searchOverride??search)||null,p_outcome:searchOverride===''?'ALL':filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
@@ -28,6 +34,7 @@ export default function ThirdPartyDeliveryConfirmationPage(){
    if(previewError||!preview?.ok){setReconcileError('Reconciliation detail unavailable: '+(previewError?.message||preview?.error||'RPC unavailable'));}
    else setReconciliation(Object.fromEntries((preview.rows||[]).map((r:Reconcile)=>[r.delivery_way_id,r])));
   }
+  if(Object.keys(uploadedInventory).length)await refreshComparison();
  }catch(e:any){setRows([]);setTotal(0);setMessage(e.message);}finally{setBusy(false);}}
  useEffect(()=>{void refresh();},[filter]);
  async function importInventory(file:File|undefined){if(!file)return;
@@ -46,13 +53,30 @@ export default function ThirdPartyDeliveryConfirmationPage(){
    }
    if(!found.size)throw new Error('No recognized Way ID rows. Required: Way ID; optional: Final COD, Destination.');
    setUploadedInventory(Object.fromEntries(found));setUploadNotice('Local Excel comparison: '+found.size+' unique Way IDs, '+parsed+' rows. No data uploaded.');
-  }catch(error:any){setUploadedInventory({});setUploadNotice('Inventory import failed: '+(error?.message||String(error)));}
+   await refreshComparison();
+  }catch(error:any){setUploadedInventory({});setComparisonRows([]);setComparisonTotal(null);setUploadNotice('Inventory import failed: '+(error?.message||String(error)));}
  }
  const inventoryAmount=(id:string)=>uploadedInventory[id]?.amount??reconciliation[id]?.inventory_cod_min??null;
  const excelIds=Object.keys(uploadedInventory);
- const queueIds=new Set(rows.map(r=>r.delivery_way_id));
- const unmatchedExcelIds=excelIds.filter(id=>!queueIds.has(id));
+ const comparedById=new Map(comparisonRows.map(r=>[r.delivery_way_id,r]));
+ const matchedExcelIds=excelIds.filter(id=>comparedById.has(id));
+ const unmatchedExcelIds=excelIds.filter(id=>!comparedById.has(id));
+ const completeComparison=comparisonTotal!==null&&comparisonRows.length>=comparisonTotal;
  const hasLocalComparison=excelIds.length>0;
+ function downloadExcelComparison(){
+  const head=['Way ID','Excel COD MMK','System COD MMK','Difference MMK','Comparison','Excel rows','Excel internal COD conflict','CS status','Finance review','Merchant'];
+  const safe=(v:unknown)=>'"'+String(v??'').replace(/"/g,'""').replace(/^[=+@\-\t\r]/,'\u0027 const queueIds=new Set(rows.map(r=>r.delivery_way_id));
+ const unmatchedExcelIds=excelIds.filter(id=>!queueIds.has(id));
+ const hasLocalComparison=excelIds.length>0;')+'"';
+  const content=[head,...excelIds.map(id=>{
+   const item=uploadedInventory[id],way=comparedById.get(id);
+   const compare=way?'MATCHED_CURRENT_QUEUE':completeComparison?'NOT_IN_CURRENT_THIRDPARTY_QUEUE':'NOT_IN_FIRST_300_VERIFY_SEPARATELY';
+   const diff=way&&item.amount!=null&&way.system_cod_amount!=null?Number(way.system_cod_amount)-item.amount:'';
+   return [id,item.amount,way?.system_cod_amount,diff,compare,item.rows,item.amountConflict?'YES':'NO',way?.cs_outcome,way?.finance_review_status,way?.merchant_name];
+  })].map(row=>row.map(safe).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob(['\uFEFF',content],{type:'text/csv;charset=utf-8'}));
+  const anchor=document.createElement('a');anchor.href=url;anchor.download='thirdparty-excel-crosscheck.csv';anchor.click();URL.revokeObjectURL(url);
+ }
  const hasDuplicate=(id:string)=>Boolean(uploadedInventory[id]?.rows>1||reconciliation[id]?.duplicate_inventory_way);
  const hasConflict=(r:Row)=>Boolean(reconciliation[r.delivery_way_id]?.inventory_amount_conflict||uploadedInventory[r.delivery_way_id]?.amountConflict||(uploadedInventory[r.delivery_way_id]?.amount!=null&&r.system_cod_amount!=null&&uploadedInventory[r.delivery_way_id].amount!==Number(r.system_cod_amount)));
  const visibleRows=useMemo(()=>reviewOnly?rows.filter(r=>{const d=reconciliation[r.delivery_way_id];return !d||hasConflict(r)||hasDuplicate(r.delivery_way_id)||d.route_review_required||(Object.keys(uploadedInventory).length>0?!uploadedInventory[r.delivery_way_id]:d.inventory_row_count===0);}):rows,[rows,reconciliation,reviewOnly,uploadedInventory]);
@@ -85,7 +109,16 @@ export default function ThirdPartyDeliveryConfirmationPage(){
   </div>
   <p>{total} third-party Ways matching the current search and outcome filter. Royal Express parcels are included even without a partner schedule; registration does not prove dispatch, handover, or delivery.</p>
   {total===0&&search.trim()&&<p role="status" style={{padding:12,border:'1px solid #6388a5',borderRadius:7}}>No Ways match <strong>{search.trim()}</strong>. {unfilteredTotal!=null?`${unfilteredTotal} Ways exist in the unfiltered current queue. `:''}<button type="button" onClick={()=>{setSearch('');setFilter('ALL');void refresh('');}} style={{color:'#0e2438',background:'#f5b942',borderRadius:5,padding:'6px 10px'}}>Clear search</button> and click Search / Refresh.</p>}
-  {hasLocalComparison&&<p role="status" style={{color:'#fcd58c'}}>Excel reference: {excelIds.length} unique Way IDs. {excelIds.length-unmatchedExcelIds.length} are among the {rows.length} currently loaded queue rows; {unmatchedExcelIds.length} are not in this loaded result. This is not evidence they are missing from the parcel master; clear search and review all pages before escalation. Excel is not uploaded or imported into operational records.</p>}
+  {hasLocalComparison&&<div role="status" style={{color:'#fcd58c',border:'1px solid #365674',padding:12,borderRadius:8}}>
+    <strong>Excel cross-check (independent of Way ID search):</strong> {excelIds.length} unique Way IDs; {comparisonTotal==null?'queue lookup unavailable':comparisonTotal+' current third-party queue entries'}.
+    {' '}{matchedExcelIds.length} match current queue; {unmatchedExcelIds.length} {completeComparison?'are not in the current third-party queue':'could not be matched among the first 300 results'}.
+    {' '}This does not prove a parcel is lost or absent from historical records. The Excel is local and is not uploaded or imported.
+    <div style={{marginTop:8,display:'flex',gap:10,flexWrap:'wrap'}}>
+     <button type="button" onClick={()=>void refreshComparison()} disabled={busy} style={{padding:'6px 12px',color:'#061524',background:'#f5b942',borderRadius:5}}>Recheck all current ways</button>
+     <button type="button" onClick={downloadExcelComparison} disabled={comparisonTotal==null} style={{padding:'6px 12px',color:'white',background:'#1f4b67',borderRadius:5}}>Export all Excel Way ID cross-check</button>
+    </div>
+    {comparisonError&&<div role="alert">Queue reconciliation unavailable: {comparisonError}</div>}
+   </div>}
   {uploadNotice&&<p role="status" style={{color:'#fcd58c'}}>{uploadNotice}</p>}
   {reconcileError&&<p role="alert" style={{color:'#fbbf24'}}>{reconcileError}. COD and routing comparison is unavailable; do not finalize disputed Ways.</p>}
   <p style={{color:'#fcd58c'}}>Inventory comparison is read-only and uses existing warehouse reference rows. A blank inventory value is NOT proof that a package is missing; verify the dated Excel source. CS confirmation never posts settlement.</p>
