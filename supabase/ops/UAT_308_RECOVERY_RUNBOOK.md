@@ -6,8 +6,8 @@
 - Preview branch `hgijdyfwmvskchsruknp` reports `MIGRATIONS_FAILED`.
 - Supabase workflow showed `42883` (`public._quote_ident_like(text,text)` missing), followed by `42710` (`public.app_role` already exists).
 - Production's `supabase_migrations.schema_migrations` retains 26,003 statements (~3.8MB) for version `20260721093501` (`remote_schema`): 22 CREATE TYPE, 868 CREATE TABLE, 635 CREATE POLICY statements.
-- The version-matched GitHub file is empty on `main`. Root and nested repositories need **content** reconciliation, not only filename/version comparison.
-- The snapshot begins with `drop extension if exists pg_net` and recreates several already-defined enums, so replaying it blindly is not safe.
+- The version-matched GitHub file contains the large full snapshot (confirmed via direct contents retrieval and local GitHub Actions); certain connector file-read responses inaccurately show it as empty due to its size. The actual blocker is duplicate schema definitions during replay.
+- The snapshot begins with `drop extension if exists pg_net` and recreates previously defined enums and tables. Replaying it after earlier historical migrations is not safe.
 
 ## Do not
 - Drop `public.app_role`, other enums or dependent tables.
@@ -20,7 +20,7 @@
 ```bash
 node scripts/uat-audit/migration-content-provenance.mjs
 ```
-This intentionally fails with the currently empty placeholder; it is an early warning, **not** a deployment fix.
+This inspects the real on-disk snapshot file size and consistency; it is **not** a migration replay or deployment fix.
 
 Run `supabase/ops/uat-308-readonly-audit.sql` **only in the UAT SQL editor** to validate the schema state. Keep actual SQL results and workflow timestamps in issue #308.
 
