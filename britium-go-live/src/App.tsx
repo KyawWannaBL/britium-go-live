@@ -117,6 +117,7 @@ const AuditLogsPage = safeLazy(() => import("@/pages/AuditLogsPage"));
 const BizDevPage = safeLazy(() => import("@/pages/BizDevPage"));
 const BranchAdminPage = safeLazy(() => import("@/pages/BranchAdminPage"));
 const BranchOfficePage = safeLazy(() => import("@/pages/BranchOfficePage"));
+const HQBranchIntakePage = safeLazy(() => import("@/pages/HQBranchIntakePage"));
 const BranchTeamPage = safeLazy(() => import("@/pages/BranchTeamPage"));
 const CODSettlementPage = safeLazy(() => import("@/pages/CODSettlementPage"));
 const CustomerPortalPage = safeLazy(() => import("@/pages/CustomerPortalPage"));
@@ -257,6 +258,7 @@ function AppRoutes() {
           <Route element={<AuthLayout />}>
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/branch-office" element={<BranchOfficePage />} />
+            <Route path="/branch-hq-intake" element={<HQBranchIntakePage />} />
             <Route path="/branch-team/riders" element={<BranchTeamPage />} />
             <Route path="/branch-team/drivers" element={<BranchTeamPage />} />
             <Route path="/branch-team/helpers" element={<BranchTeamPage />} />

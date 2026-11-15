@@ -104,6 +104,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { name: "Warehouse", path: "/warehouse", icon: Package },
       { name: "Warehouse Ops", path: "/warehouse-operations", icon: PackageSearch },
+      { name: "HQ Branch Shuttle Receipts", path: "/branch-hq-intake", icon: PackageSearch },
       { name: "Pending Parcels", path: "/warehouse-pending", icon: AlertTriangle },
       { name: "Dispatch Command (View)", path: "/warehouse-dispatch-command", icon: Truck },
       { name: "Wayplan View", path: "/wayplan-view", icon: MapIcon },

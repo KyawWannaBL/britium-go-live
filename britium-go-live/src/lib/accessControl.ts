@@ -25,8 +25,9 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/rider-settlement', rule('finance', 'finance-user', 'accountant', 'rider', 'driver', 'helper')],
   ['/workforce-commission', rule('finance', 'finance-user', 'accountant')],
 
-  // MDY branch manager can operate Data Entry V2; pickup and mutations are backend branch-scoped.
-  ['/data-entry', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
+  // Branch Managers may receive parcels or temporary Pickup QR identifiers only.
+  // The new backend registration guard additionally denies all non-HQ staff.
+  ['/data-entry', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
   ['/waybill-studio', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
   ['/waybill-invoice', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse', 'finance')],
   ['/doc-print', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
@@ -57,6 +58,10 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/driver', rule('driver', 'supervisor', 'operations', 'operations-admin')],
 
   // HQ branch amendment approvals are not branch-manager authority.
+  // HQ Warehouse and Data Entry see only the dedicated intake/receipt workbench.
+  ['/branch-hq-intake', rule('warehouse','data-entry','encoder','operations','operations-admin','operation-manager','operations-manager')],
+  // HQ Operations may supervise the existing Branch Office dashboard.
+  ['/branch-office', rule('branch-office','branch-manager','branch-staff','branch-admin','operations','operations-admin','operation-manager','operations-manager')],
   ['/branch-admin', rule('superadmin','super-admin','app-owner','sys','admin')],
   ['/branch-team/', rule('branch-manager', 'branch-admin')],
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],

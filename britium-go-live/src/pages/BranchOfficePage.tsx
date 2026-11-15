@@ -5,6 +5,7 @@ import { Building2, RefreshCw, Search, FileEdit, Package, Users, WalletCards, Bi
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import BranchControlWorkbench from '@/components/BranchControlWorkbench';
+import BranchHQIntakeWorkbench from '@/components/BranchHQIntakeWorkbench';
 import {normalizeRole} from '@/lib/portalRegistry';
 
 const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
@@ -12,7 +13,8 @@ const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 export default function BranchOfficePage(){
   const {profile}=useAuth();
   const enterprise=['superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role));
-  const fixedBranch=enterprise?'':String(profile?.branch_code||"").trim().toUpperCase();
+  const hqIntake=enterprise||['operation-manager','operations-manager'].includes(normalizeRole(profile?.role));
+  const fixedBranch=hqIntake?'':String(profile?.branch_code||"").trim().toUpperCase();
   const [branch,setBranch]=useState(fixedBranch);
   const [data,setData]=useState<any>({summary:{},branches:[],staff:[],shipments:[],amendments:[]});
   const [loading,setLoading]=useState(false);
@@ -65,7 +67,7 @@ export default function BranchOfficePage(){
         <h2 className="mb-3 text-lg font-bold text-[#f6b84b]">Branch team & account workspaces</h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           {[
-            ...(normalizeRole(profile?.role)==='branch-manager'||enterprise?[{name:'Data Entry V2',path:'/data-entry',icon:FileText}]:[]),
+            ...(enterprise?[{name:'HQ Data Entry V2',path:'/data-entry',icon:FileText}]:[]),
             {name:'Riders',path:'/branch-team/riders',icon:Bike},
             {name:'Drivers',path:'/branch-team/drivers',icon:Car},
             {name:'Helpers',path:'/branch-team/helpers',icon:Users},
@@ -76,6 +78,8 @@ export default function BranchOfficePage(){
           </Link>)}
         </div>
       </section>}
+    {(hqIntake || ['branch-manager','branch-admin','branch-office','branch-staff'].includes(normalizeRole(profile?.role)))&&
+      <BranchHQIntakeWorkbench branch={fixedBranch||branch} isHeadOffice={hqIntake}/>}
     {['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role))&&<BranchControlWorkbench branch={fixedBranch||branch}/>}
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {[
