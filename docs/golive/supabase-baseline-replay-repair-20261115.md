@@ -122,3 +122,19 @@ node scripts/verify-private-migration-export.mjs 20260721093501 /secure/path/jul
 **Private export requirement:** preserve each original entry of `supabase_migrations.schema_migrations.statements` as a JSON array element in recorded order; do NOT normalize whitespace, concatenate statements, append semicolons, or save JSON into the public repository. Run export only through an approved private secured connection or isolated workspace with secret controls. The verifier rejects a mismatched count or SHA-256. Fingerprint equality proves source-text integrity only; it does not make historical SQL safe to publish or replay.
 
 CI now executes the offline verifier unit tests alongside the existing fail-closed historical source gate. The source gate must remain failing until independently reviewed source files are reconstructed. **No Production SQL history or schema is modified** by this process.
+
+## Existing branch triage and private export workflow — 15 Nov 2026
+
+**Existing branch inspection, read only:** `enterprise-financial-ledger` is `MIGRATIONS_FAILED` and has only 33 recorded migrations, 36 public/private relations, 32 routines, 1 public enum, and no pgTAP installed. `fix/direct-rto-valid-attempt-enforcement-20261014` is `MIGRATIONS_FAILED`, with only 24 migrations through `20260422040000`, 61 relations, 13 routines, 9 enums and no pgTAP. **Neither is a faithful pre-July reconstruction**; do not reset or reuse either as authoritative for the baseline repair. Their branch data/schema were not altered.
+
+**GitHub Actions validation:** PR #300 workflow run 43687155635 verified that both independent unit-test steps passed and the final historical-source completeness check failed **as designed**. The failing check is a genuine source gap, not a failing Node unit test.
+
+**Private source recovery utility:** `scripts/export-private-migration-snapshots.sh` is an operator-run local shell tool that reads (never writes) the two historical statements arrays using PostgreSQL `psql`, saves files with restricted permissions and immediately verifies each result using the known ordered SHA-256 fingerprint tool. The repository **does not** contain the recovered SQL. Use a private machine, secrets manager and private directory with access limited to authorized engineers. Bash, Node.js and PostgreSQL `psql` required. Do not put credentials in shell command-line flags or commit generated JSON.
+
+```bash
+# Acquire SUPABASE_DB_URL from the approved secrets manager without exposing it in logs.
+# Secure directory should not be inside the public GitHub repository.
+bash scripts/export-private-migration-snapshots.sh /secure/private/britium-migration-recovery
+```
+
+The script exits non-zero on missing credentials, preexisting output files, missing tools or a fingerprint mismatch. It creates two local JSON files with permission 600 and never prints raw SQL. The script itself was syntax checked; **the live export was not executed**, since the secure Production database URL/authorized private workstation were not provided. After successful recovery, conduct secret scanning and historical DDL review, then replay all 502 migrations in a disposable database. Do not publish raw statements without review or rewrite Production history.
