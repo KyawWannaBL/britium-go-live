@@ -52,19 +52,39 @@ CREATE OR REPLACE FUNCTION public.be_branch_intake_actor_v1(p_branch text, p_hq_
 RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','auth','pg_temp'
 AS $fn$
 DECLARE
- v_role text := replace(lower(coalesce(public.be_current_role(),'')),'-','_');
- v_branch text;
+ v_role text:=replace(lower(coalesce(public.be_current_role(),'')),'-','_');
+ v_branch text:=nullif(upper(trim(coalesce(p_branch,''))),'');
+ v_actor_branch text;
+ v_super boolean;
 BEGIN
  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'AUTH_REQUIRED' USING errcode='42501'; END IF;
- IF v_role NOT IN ('superadmin','super_admin','app_owner','sys','branch_manager','branch_office_manager',
-                   'branch_office','branch_staff','branch_admin','operation_manager','operations_manager')
+ SELECT upper(branch_code) INTO v_actor_branch FROM public.be_user_account_registry
+ WHERE auth_user_id=auth.uid() AND coalesce(active,true) AND coalesce(is_active,true)
+ AND lower(status) IN ('active','enabled') LIMIT 1;
+ IF v_actor_branch IS NULL THEN RAISE EXCEPTION 'ACTOR_NOT_IN_ACTIVE_BRANCH_REGISTRY' USING errcode='42501'; END IF;
+ v_super:=v_role IN ('superadmin','super_admin','app_owner','sys');
+ IF v_role NOT IN ('superadmin','super_admin','app_owner','sys',
+   'branch_manager','branch_office_manager','branch_office','branch_staff','branch_admin',
+   'warehouse','data_entry','encoder','admin','operation_manager','operations_manager',
+   'operations','operations_admin')
  THEN RAISE EXCEPTION 'BRANCH_INTAKE_ROLE_DENIED' USING errcode='42501'; END IF;
- IF p_hq_only AND v_role NOT IN ('superadmin','super_admin','app_owner','sys','operation_manager','operations_manager')
- THEN RAISE EXCEPTION 'HQ_RECEIPT_AUTHORITY_REQUIRED' USING errcode='42501'; END IF;
- v_branch := public.be_branch_scope_v1(p_branch);
+ IF p_hq_only THEN
+   IF NOT v_super AND (v_actor_branch<>'YGN' OR v_role NOT IN
+     ('warehouse','data_entry','encoder','admin','operation_manager','operations_manager','operations','operations_admin'))
+   THEN RAISE EXCEPTION 'HQ_RECEIPT_AUTHORITY_REQUIRED' USING errcode='42501'; END IF;
+ ELSE
+   IF NOT v_super AND v_actor_branch<>v_branch THEN
+     RAISE EXCEPTION 'BRANCH_INTAKE_CROSS_BRANCH_DENIED' USING errcode='42501';
+   END IF;
+   -- The regional office itself, not the HQ, collects parcels in this workflow.
+   IF v_branch='YGN' THEN RAISE EXCEPTION 'HQ_COLLECTION_INTAKE_NOT_ALLOWED' USING errcode='23514'; END IF;
+ END IF;
  IF v_branch IS NULL OR NOT EXISTS (
     SELECT 1 FROM public.be_branch_offices b WHERE upper(b.branch_code)=v_branch AND b.active
  ) THEN RAISE EXCEPTION 'BRANCH_NOT_ACTIVE_OR_NOT_SCOPED' USING errcode='42501'; END IF;
+ -- For branch managers this also validates the canonical territory assignment.
+ IF v_role IN ('branch_manager','branch_office_manager','branch_office','branch_staff','branch_admin')
+ THEN PERFORM public.be_branch_scope_v1(v_branch); END IF;
  RETURN v_branch;
 END $fn$;
 REVOKE ALL ON FUNCTION public.be_branch_intake_actor_v1(text,boolean) FROM PUBLIC,anon;
