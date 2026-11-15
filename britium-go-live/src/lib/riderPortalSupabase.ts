@@ -14,7 +14,10 @@ export function getRiderSupabase(): SupabaseClient {
 
   const url = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
   const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
-  if (!url || !anon) throw new Error("Rider Sandbox Supabase configuration is missing.");
+  if (!url || !anon || !/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url) ||
+      url.includes("dltavabvjwocknkyvwgz") || url.includes("www.britiumexpress.com")) {
+    throw new Error("UAT Rider backend is missing, invalid, or points at Production. Rider connection refused.");
+  }
 
   riderClient = createClient(url, anon, {
     global: { headers: { "x-britium-data-epoch": "2026-11-01" } },
