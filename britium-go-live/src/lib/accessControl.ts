@@ -25,8 +25,9 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/rider-settlement', rule('finance', 'finance-user', 'accountant', 'rider', 'driver', 'helper')],
   ['/workforce-commission', rule('finance', 'finance-user', 'accountant')],
 
-  // MDY branch manager can operate Data Entry V2; pickup and mutations are backend branch-scoped.
-  ['/data-entry', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
+  // Branch Managers may receive parcels or temporary Pickup QR identifiers only.
+  // The new backend registration guard additionally denies all non-HQ staff.
+  ['/data-entry', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin')],
   ['/waybill-studio', rule('branch-manager', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
   ['/waybill-invoice', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse', 'finance')],
   ['/doc-print', rule('data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'warehouse')],
