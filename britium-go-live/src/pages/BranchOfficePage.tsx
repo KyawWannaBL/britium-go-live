@@ -13,7 +13,8 @@ const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
 export default function BranchOfficePage(){
   const {profile}=useAuth();
   const enterprise=['superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role));
-  const fixedBranch=enterprise?'':String(profile?.branch_code||"").trim().toUpperCase();
+  const hqIntake=enterprise||['operation-manager','operations-manager'].includes(normalizeRole(profile?.role));
+  const fixedBranch=hqIntake?'':String(profile?.branch_code||"").trim().toUpperCase();
   const [branch,setBranch]=useState(fixedBranch);
   const [data,setData]=useState<any>({summary:{},branches:[],staff:[],shipments:[],amendments:[]});
   const [loading,setLoading]=useState(false);
@@ -77,8 +78,8 @@ export default function BranchOfficePage(){
           </Link>)}
         </div>
       </section>}
-    {(enterprise || ['branch-manager','branch-admin','branch-office','branch-staff'].includes(normalizeRole(profile?.role)))&&
-      <BranchHQIntakeWorkbench branch={fixedBranch||branch} isHeadOffice={enterprise}/>}
+    {(hqIntake || ['branch-manager','branch-admin','branch-office','branch-staff'].includes(normalizeRole(profile?.role)))&&
+      <BranchHQIntakeWorkbench branch={fixedBranch||branch} isHeadOffice={hqIntake}/>}
     {['branch-manager','branch-admin','superadmin','super-admin','app-owner','sys'].includes(normalizeRole(profile?.role))&&<BranchControlWorkbench branch={fixedBranch||branch}/>}
     <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
       {[
