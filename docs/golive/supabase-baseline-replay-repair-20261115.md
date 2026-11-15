@@ -82,3 +82,24 @@ The script validates file existence, conservative size thresholds, and essential
 **Important:** Do not copy all Production SQL statements to a public GitHub repository without a security/secret scan, and do not overwrite Production migration history to make the source gate green. The historical SQL may include privileged routines or embedded secrets. The snapshot is a historical input requiring review, not a safe-to-run replacement.
 
 No active Production objects, records, or historical migration entries were modified by this branch work.
+
+## Historical SQL publication risk inventory — 15 November 2026
+
+Verified read-only query `supabase/tests/audit_historical_migration_source_risk_20261115.sql` aggregates SQL-text metadata **without returning statement bodies or literals**.
+
+| Version | Statements | SQL characters | Keyword review flags | Privileged-function candidates | Data/role operation candidates | Destructive keyword candidates | GRANT/REVOKE candidates |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `20260412000000` | 7,480 | 959,446 | 9 | 156 | 34 | 4 | 5,384 |
+| `20260721093501` | 26,003 | 3,814,814 | 13 | 694 | 243 | 2,605 | 18,225 |
+
+**These are heuristic flags, not confirmed secrets or dangerous operations**. Regex matches can occur in comments, SQL strings, function source and legitimate schema DDL. The large destructive candidate count should not be interpreted as 2,605 actual destructive SQL statements. The output is for triage only.
+
+**Required recovery path**:
+1. Recover full historical statements into an isolated, private work area; avoid copying raw privileged code into public GitHub.
+2. Scan source for embedded credentials/tokens, sensitive data and privileged routine bodies; review flagged content before public publication.
+3. Reconstruct the April pgTAP compatibility and July schema delta with strict errors (never blanket-ignore unrelated errors).
+4. Verify a complete fresh replay of all 502 migrations using a disposable matching Supabase environment.
+5. Compare schema definitions, constraints, triggers, role grants, RLS policies, views and function security, then complete operational UAT.
+6. Only then merge/deploy with explicit release authorization. Current Production migration history is not to be edited.
+
+**No Production schema/history changes were made during this inventory.**
