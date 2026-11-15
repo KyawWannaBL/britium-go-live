@@ -121,6 +121,33 @@ BEGIN
    'intake_type',v_type,'parcel_reference',v_ref,'status','RECEIVED');
 END $fn$;
 
+-- Authorized branch collection: generate a temporary Pickup-compatible QR and
+-- physical receipt together, without creating a permanent Way ID or Finance record.
+CREATE OR REPLACE FUNCTION public.be_branch_generate_temp_qr_v1(
+ p_branch text,p_pickup_id text DEFAULT NULL,p_note text DEFAULT NULL)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public','auth','pg_temp' AS $fn$
+DECLARE
+ v_branch text;v_reference text;v_pickup text;v_token text;v_id uuid;
+BEGIN
+ v_branch:=public.be_branch_intake_actor_v1(p_branch,false);
+ v_reference:='TMP-'||upper(substr(replace(gen_random_uuid()::text,'-',''),1,20));
+ v_pickup:=coalesce(nullif(btrim(p_pickup_id),''),'BRANCH-'||v_branch||'-'||v_reference);
+ v_token:=encode(gen_random_bytes(24),'hex');
+ INSERT INTO public.pickup_temp_qr_tokens
+ (pickup_id,temp_parcel_id,token,token_hash,payload,status,created_by)
+ VALUES(v_pickup,v_reference,v_token,encode(digest(v_token,'sha256'),'hex'),
+   jsonb_build_object('source','BRANCH_PICKUP_TEMP_QR','branch_code',v_branch,
+   'note',left(coalesce(p_note,''),500)),'active',auth.uid());
+ INSERT INTO public.be_branch_intake_parcels_v1
+ (branch_code,intake_type,parcel_reference,pickup_id,merchant_note,received_by)
+ VALUES(v_branch,'TEMP_QR',v_reference,v_pickup,left(coalesce(p_note,''),500),auth.uid())
+ RETURNING id INTO v_id;
+ RETURN jsonb_build_object('ok',true,'intake_id',v_id,'branch_code',v_branch,
+   'temp_reference',v_reference,'pickup_id',v_pickup,'status','RECEIVED',
+   'print_label',jsonb_build_object('qr_text',v_reference,'caption','Temporary QR — Not a Way ID'));
+END $fn$;
+
 CREATE OR REPLACE FUNCTION public.be_branch_intake_snapshot_v1(p_branch text)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path TO 'public','auth','pg_temp'
 AS $fn$
@@ -236,11 +263,13 @@ BEGIN
   'permanent_way_id',trim(p_way_id));
 END $fn$;
 
+REVOKE ALL ON FUNCTION public.be_branch_generate_temp_qr_v1(text,text,text) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.be_branch_intake_register_v1(text,text,text,text) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.be_branch_intake_snapshot_v1(text) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.be_branch_evening_manifest_prepare_v1(text,uuid[],text,text,text) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.be_branch_intake_scan_v1(uuid,text,text) FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.be_branch_temp_qr_link_way_v1(uuid,text) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.be_branch_generate_temp_qr_v1(text,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.be_branch_intake_register_v1(text,text,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.be_branch_intake_snapshot_v1(text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.be_branch_evening_manifest_prepare_v1(text,uuid[],text,text,text) TO authenticated;
