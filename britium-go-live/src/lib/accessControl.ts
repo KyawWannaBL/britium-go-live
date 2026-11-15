@@ -58,6 +58,10 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/driver', rule('driver', 'supervisor', 'operations', 'operations-admin')],
 
   // HQ branch amendment approvals are not branch-manager authority.
+  // HQ Warehouse and Data Entry see only the dedicated intake/receipt workbench.
+  ['/branch-hq-intake', rule('warehouse','data-entry','encoder','operations','operations-admin','operation-manager','operations-manager')],
+  // HQ Operations may supervise the existing Branch Office dashboard.
+  ['/branch-office', rule('branch-office','branch-manager','branch-staff','branch-admin','operations','operations-admin','operation-manager','operations-manager')],
   ['/branch-admin', rule('superadmin','super-admin','app-owner','sys','admin')],
   ['/branch-team/', rule('branch-manager', 'branch-admin')],
   ['/branch', rule('branch-office', 'branch-manager', 'branch-staff', 'branch-admin')],
