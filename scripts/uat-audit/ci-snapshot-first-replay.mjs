@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Issue #308: Local GitHub Actions ONLY. Rewrite historical files in disposable CI checkout.
 // DO NOT run in a production checkout. Never touches any remote database.
-import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, copyFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 const expectedBranch = 'refs/heads/fix/uat-migration-replay-audit-308';
 if (process.env.UAT_308_DISPOSABLE_ONLY !== '1' ||
@@ -35,4 +35,12 @@ for (const file of files) {
   }
 }
 if (replaced < 15 || replaced > 100) throw new Error('Unexpected historical migration count: '+replaced);
+const financeFixture = resolve('scripts/uat-audit/fixtures/finance_v61_8_2_ci_bootstrap.sql');
+const fixtureText = readFileSync(financeFixture,'utf8');
+if (fixtureText.length < 11000 || !fixtureText.includes('be_calculate_parcel_financial_v2(')) {
+  throw new Error('Missing or invalid CI-only finance historical fixture');
+}
+copyFileSync(financeFixture, resolve(root,'20260827070904_uat308_finance_legacy_reconstruction.sql'));
+console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
+
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
