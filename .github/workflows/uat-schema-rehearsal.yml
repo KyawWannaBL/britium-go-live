@@ -38,6 +38,7 @@ jobs:
           node scripts/test-uat-wayid-registry.mjs
           node scripts/test-uat-finance-bridge-columns.mjs
           node scripts/test-uat-field-finance-foundation.mjs
+          node scripts/test-uat-pickup-declared-value.mjs
 
   replay:
     runs-on: ubuntu-24.04
