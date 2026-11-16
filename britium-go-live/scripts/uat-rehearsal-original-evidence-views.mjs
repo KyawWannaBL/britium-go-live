@@ -12,6 +12,14 @@ const viewSql="create view private.be_oct2026_external_settlement_review_v1 with
 assert.equal((viewSql.match(/create view private\./g)||[]).length,2,'Both expected views required');
 assert.ok(viewSql.includes('be_oct2026_external_settlement_review_v1'),'Financial review view absent');
 assert.ok(viewSql.includes('be_oct20_22_dispatch_evidence_worklist_v1'),'Dispatch evidence view absent');
-fs.writeFileSync(pathToMigration,'-- CI_ONLY_SOURCE_EVIDENCE_VIEWS\n'+viewSql+'\n'+original);
-assert.ok(fs.readFileSync(pathToMigration,'utf8').endsWith(original),'Original historical migration unaltered');
+const predecessorEnd='revoke all on table private.be_oct2026_external_settlement_manifest from public, anon, authenticated;';
+assert.equal(original.split(predecessorEnd).length,2,'Settlement manifest predecessor missing or duplicated');
+assert.ok(original.includes('-- CI_ONLY_EMPTY_EXTERNAL_SETTLEMENT_MANIFEST'),'Verified manifest required before creating dependent views');
+const existingViewAnchor='-- CI_ONLY_SOURCE_EVIDENCE_VIEWS';
+assert.ok(!original.includes(existingViewAnchor),'Already staged');
+const staged=original.replace(predecessorEnd,predecessorEnd+'\n'+existingViewAnchor+'\n'+viewSql);
+assert.ok(staged.indexOf(predecessorEnd)<staged.indexOf('create view private.be_oct2026_external_settlement_review_v1'));
+assert.ok(staged.indexOf('create view private.be_oct2026_external_settlement_review_v1')<staged.indexOf('create view private.be_oct20_22_dispatch_evidence_worklist_v1'));
+fs.writeFileSync(pathToMigration,staged);
+assert.ok(fs.readFileSync(pathToMigration,'utf8').endsWith(original.slice(original.indexOf('insert into private.be_oct20_22_hybrid_assumptions_v1'))),'Original historical attestation retained');
 console.log('CI only: two verified private production evidence views staged without data, with grants revoked.');
