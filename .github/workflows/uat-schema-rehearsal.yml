@@ -41,10 +41,12 @@ jobs:
           set -o pipefail
           echo "Starting disposable local Supabase; NO linked project, credentials, or remote flags."
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
+          echo "Explicit clean LOCAL replay without seed data. No remote flags."
+          npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/uat-schema-rehearsal.log"
       - name: Report core table readiness if local replay succeeded
         if: success()
         run: |
-          echo "Local Supabase migration replay completed. This does not certify RLS or account readiness."
+          echo "Local Supabase migration replay completed twice: start and clean --local reset. This does not certify RLS or account readiness."
           echo "Run branch-scoped RPC and RLS tests before promoting any repair."
       - name: Publish sanitized first failure lines
         if: failure()
