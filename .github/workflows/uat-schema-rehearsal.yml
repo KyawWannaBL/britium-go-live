@@ -65,6 +65,7 @@ jobs:
           node scripts/uat-rehearsal-original-township-v61-4-1.mjs
           node scripts/uat-rehearsal-v40-membership.mjs
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
+          node scripts/uat-rehearsal-v122-diagnostic.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
           node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
@@ -151,6 +152,7 @@ jobs:
           node scripts/uat-rehearsal-original-township-v61-4-1.mjs
           node scripts/uat-rehearsal-v40-membership.mjs
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
+          node scripts/uat-rehearsal-v122-diagnostic.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
           node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
