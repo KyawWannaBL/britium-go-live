@@ -1,0 +1,14 @@
+{
+  "be_finance_cod_settlements_v48": "britium-current-ui-fixed/finance_cod_settlement_v48.sql",
+  "be_finance_cod_events_v48": "britium-current-ui-fixed/finance_cod_settlement_v48.sql",
+  "be_waybill_print_audit_v38": "britium-current-ui-fixed/waybill_studio_batch_print_fix_v38.sql",
+  "be_merchant_accounts": "britium-current-ui-fixed/sql/100_merchant_workspace_bulk_reporting_cs.sql",
+  "be_finance_settlement_access_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_batches_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_batch_items_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_payments_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_parcel_control_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_disputes_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_adjustments_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql",
+  "be_finance_settlement_audit_v3": "britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql"
+}

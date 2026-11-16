@@ -15,6 +15,24 @@ if(blocks.length!==1)throw Error('Missing/ambiguous original finance bridge colu
 const details=blocks[0][0];
 const runtime=fs.readFileSync(new URL('../sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql',import.meta.url),'utf8');
 const field=fs.readFileSync(new URL('../sql/candidates/uat_field_finance_foundation_rehearsal_only.sql',import.meta.url),'utf8');
+const pickup=fs.readFileSync(new URL('../sql/candidates/uat_pickup_declared_value_rehearsal_only.sql',import.meta.url),'utf8');
+const manifest=JSON.parse(fs.readFileSync(new URL('./uat-finance-prerequisite-sources.json',import.meta.url),'utf8'));
+if(Object.keys(manifest).length!==12)throw Error('Unexpected archived prerequisite manifest');
+const archived=['-- CI ONLY: archived missing table prerequisites.'];
+const indexes=new Set();
+for(const [name,relative] of Object.entries(manifest)){
+ const original=fs.readFileSync(new URL('../'+relative,import.meta.url),'utf8');
+ const needle='create table if not exists public.'+name+' (';
+ const begin=original.indexOf(needle),end=original.indexOf('\n);',begin);
+ if(begin<0||end<begin||end-begin>10000||original.indexOf(needle,begin+1)!==-1)throw Error('Missing/ambiguous original table '+name);
+ archived.push(original.slice(begin,end+3));
+ archived.push('ALTER TABLE public.'+name+' ENABLE ROW LEVEL SECURITY;');
+ archived.push('REVOKE ALL ON public.'+name+' FROM PUBLIC,anon,authenticated;');
+ for(const match of original.matchAll(/create\s+(?:unique\s+)?index\s+[\s\S]*?;/gi))
+  if(new RegExp('\\bon\\s+public\\.'+name+'\\s*\\(','i').test(match[0]))indexes.add(match[0]);
+}
+archived.push(...indexes);
+if(!pickup.includes('ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0;'))throw Error('Pickup declared value fixture mismatch');
 for(const marker of ['CREATE TABLE public.be_field_finance_settlements_v1','UNIQUE (work_date, wayplan_id)','ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
  if(!field.includes(marker))throw Error('Field finance foundation incomplete: '+marker);
 for(const marker of ['CREATE TABLE public.be_data_entry_financial_v2_runtime_v58','CHECK (singleton)',"CHECK (mutation_mode IN ('MUTATION_SHADOW','ACTIVE'))",'ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
@@ -64,6 +82,6 @@ const ddl=[
  ''
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
-fs.writeFileSync(compat,ddl);
-fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n'+runtime+'\n'+field+'\n');
+fs.writeFileSync(compat,ddl+'\n'+pickup+'\n');
+fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n'+runtime+'\n'+field+'\n'+archived.join('\n')+'\n');
 console.log('CI ONLY: staged verified parcel columns and original 20260731 finance foundation.');
