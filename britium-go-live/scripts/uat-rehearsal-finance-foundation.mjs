@@ -50,8 +50,8 @@ for(const p of [finance,compat]) if(fs.existsSync(p)) throw Error('Refusing over
 const ddl=[
  '-- CI ONLY: verified existing Production parcel column types, never execute on hosted DB.',
  'ALTER TABLE public.parcels',
- ' ADD COLUMN IF NOT EXISTS item_price numeric DEFAULT 0,',
- ' ADD COLUMN IF NOT EXISTS delivery_charges numeric DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS item_price numeric(14,2) DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS delivery_charges numeric(14,2) DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS cod_amount integer DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS way_id text,',
  ' ADD COLUMN IF NOT EXISTS merchant_id text,',
