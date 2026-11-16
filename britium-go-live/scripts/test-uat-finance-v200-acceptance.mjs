@@ -10,7 +10,7 @@ try{
  await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;
  create function auth.jwt() returns jsonb language sql as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
  create function auth.uid() returns uuid language sql as $$select nullif(auth.jwt()->>'sub','')::uuid$$;
- create table be_user_account_registry(auth_user_id uuid,email text,role text,is_active boolean default true,active boolean default true,status text default 'active',updated_at timestamptz default now());`);
+ create table be_user_account_registry(auth_user_id uuid,email text,full_name text,role text,role_code text,is_active boolean default true,active boolean default true,status text default 'active',updated_at timestamptz default now());`);
  const source=fs.readFileSync(new URL('../britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql',import.meta.url),'utf8');
  for(const m of source.matchAll(/create table if not exists public\.be_finance_settlement_[a-z_0-9]+ \([\s\S]*?\n\);/gi))await db.exec(m[0]);
  const script=new URL('./uat-rehearsal-finance-v200-acceptance.mjs',import.meta.url);
@@ -18,6 +18,18 @@ try{
  const migration=fs.readFileSync(new URL('../supabase/migrations/20261007090836_merchant_settlement_live_v200.sql',import.meta.url),'utf8');
  const actor=migration.match(/create or replace function public\.be_finance_actor_access_v3\(\)[\s\S]*?end \$fn\$;/i)?.[0];
  assert.ok(actor);await db.exec(actor);
+ await db.exec(`create table parcels(id uuid default gen_random_uuid(),tracking_code text,way_id text,merchant_id text,sender_name text,recipient_name text,recipient_phone text,recipient_address text,township text,customer_tier text,amount_entry_type text,item_price numeric(14,2),delivery_charges numeric(14,2),cod_amount integer,collect_amount numeric,status text,delivered_at timestamptz,validation_status text,merchant_final_settlement_amount bigint,net_system_delivery_charge bigint,settlement_direction text)`);
+ const backend=fs.readFileSync(new URL('../britium-current-ui-fixed/parcel_financial_v2_backend.sql',import.meta.url),'utf8');
+ const direction=backend.match(/alter table public\.parcels add constraint parcels_settlement_direction_check check \([\s\S]*?\) not valid;/i)?.[0];
+ assert.ok(direction);await db.exec(direction);
+ const codSource=fs.readFileSync(new URL('../britium-current-ui-fixed/finance_cod_settlement_v48.sql',import.meta.url),'utf8');
+ const codTable=codSource.match(/create table if not exists public\.be_finance_cod_settlements_v48 \([\s\S]*?\n\);/i)?.[0];
+ assert.ok(codTable);await db.exec(codTable);
+ await db.exec('BEGIN;SAVEPOINT acceptance;');
+ await db.exec(fs.readFileSync(new URL('../sql/candidates/uat_v200_rollback_acceptance_fixtures.sql',import.meta.url),'utf8'));
+ assert.equal((await db.query('select count(*) n from parcels')).rows[0].n,2);
+ await db.exec('ROLLBACK TO SAVEPOINT acceptance;COMMIT;');
+ for(const table of ['parcels','be_user_account_registry','be_finance_cod_settlements_v48'])assert.equal((await db.query('select count(*) n from '+table)).rows[0].n,0,'Acceptance fixtures must roll back');
  await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Authentication is required/);
  await db.query(`select set_config('request.jwt.claims',$1,false)`,[JSON.stringify({sub:'00000000-0000-4000-8000-000000000799',role:'authenticated',user_metadata:{portal_role:'SUPERADMIN',email:'spoof@example.test'}})]);
  await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Finance settlement permission is required/);
