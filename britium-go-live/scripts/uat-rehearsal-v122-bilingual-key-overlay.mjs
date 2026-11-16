@@ -10,7 +10,7 @@ const target=fileURLToPath(new URL('../supabase/migrations/20260923010245_missin
 const src=fs.readFileSync(historical,'utf8');
 const start='create or replace function public.be_approved_tariff_lookup_key(p_value text)';
 const begin=src.indexOf(start),end=src.indexOf('$key$;',begin);
-if(begin!==0||end<0)throw Error('Unexpected canonical September function source');
+if(begin<0||end<0||src.indexOf(start,begin+start.length)>=0)throw Error('Unexpected canonical September function source');
 let ddl=src.slice(begin,end+'$key$;'.length);
 const old="select coalesce((select 'APPROVED:'||min(key) from aliases,input where alias=k),public.be_financial_v2_township_key_v61_4_1(p_value));";
 const replacement="select coalesce((select 'MMR013031' from input where k in ('seikgyikanaungto','ဆိပ်ကြီးခနောင်တို')),(select 'APPROVED:'||min(key) from aliases,input where alias=k),public.be_financial_v2_township_key_v61_4_1(p_value));";
