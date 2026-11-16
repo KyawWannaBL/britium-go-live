@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const cfg=JSON.parse(readFileSync(new URL("../vercel.json",import.meta.url),"utf8"));
+const proxy=cfg.rewrites.find(x=>x.source==="/supabase/:path*");
+assert.equal(proxy?.destination,"https://hgijdyfwmvskchsruknp.supabase.co/:path*");
+const client=readFileSync(new URL("../src/integrations/supabase/client.ts",import.meta.url),"utf8");
+assert.match(client,/https:\/\/hgijdyfwmvskchsruknp\.supabase\.co/);
+assert.doesNotMatch(client,/dltavabvjwocknkyvwgz/);
+assert.doesNotMatch(client,/www\.britiumexpress\.com\/supabase/);
+console.log("PASS isolated Mandalay/Insein UAT API and client targets");
