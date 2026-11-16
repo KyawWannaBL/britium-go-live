@@ -8,6 +8,13 @@ const migrations=new URL('../supabase/migrations/',import.meta.url);
 const finance=fileURLToPath(new URL('20260731000000_CI_ONLY_original_financial_foundation.sql',migrations));
 const compat=fileURLToPath(new URL('20260730000000_CI_ONLY_missing_parcel_columns.sql',migrations));
 const content=fs.readFileSync(source,'utf8');
+const bridge=fs.readFileSync(new URL('../britium-current-ui-fixed/parcel_financial_v2_2_ui_finance_bridge.sql',import.meta.url),'utf8');
+if(!bridge.startsWith('-- PARCEL_FINANCIAL_V2_2_UI_FINANCE_BRIDGE_2026-07-31'))throw Error('Historical finance bridge mismatch');
+const blocks=[...bridge.matchAll(/alter table public\.be_data_entry_parcel_details\s+[\s\S]*?;/gi)];
+if(blocks.length!==1)throw Error('Missing/ambiguous original finance bridge column definition');
+const details=blocks[0][0];
+for(const marker of ['amount_entry_type text','financial_validation_status text',"financial_quote jsonb not null default '{}'::jsonb"])
+ if(!details.includes(marker))throw Error('Incomplete original finance bridge: '+marker);
 if(!content.includes('-- PARCEL_FINANCIAL_V2_BACKEND_2026-07-31') ||
    !content.includes('create table if not exists public.be_parcel_tariffs_v2') ||
    !content.includes('create or replace function public.be_calculate_parcel_financial_v2(')) throw Error('Historical foundation mismatch');
@@ -52,5 +59,5 @@ const ddl=[
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
 fs.writeFileSync(compat,ddl);
-fs.writeFileSync(finance,content);
+fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n');
 console.log('CI ONLY: staged verified parcel columns and original 20260731 finance foundation.');
