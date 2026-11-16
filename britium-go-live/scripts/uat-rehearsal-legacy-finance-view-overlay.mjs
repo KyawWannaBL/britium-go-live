@@ -17,6 +17,6 @@ const foundation=[
  ' ADD COLUMN IF NOT EXISTS settlement_account text,',
  ' ADD COLUMN IF NOT EXISTS settlement_notes text;',
  ''
-].join('\\n');
+].join('\n');
 fs.writeFileSync(file,foundation+source.replace(exact,'drop view if exists public.be_v_finance_merchant_settlement_queue_v2;'));
 console.log('CI only: conditional drop of absent legacy finance settlement queue before existing security-invoker CREATE VIEW.');
