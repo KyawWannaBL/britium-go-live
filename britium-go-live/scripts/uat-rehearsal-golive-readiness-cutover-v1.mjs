@@ -40,7 +40,7 @@ revoke all on table private.be_golive_readiness_cutovers_v1 from public, anon, a
 revoke all on table private.be_golive_readiness_scope_v1 from public, anon, authenticated;
 -- Exact archived report formula; no historical rows are seeded.
 create or replace function public.be_go_live_readiness_isolation_report_v1()
-returns jsonb language sql stable security definer set search_path = '' as $
+returns jsonb language sql stable security definer set search_path = '' as $uat_predecessor$
   select jsonb_build_object(
     'ok',true,'mode','READINESS_ONLY','cutover_code',c.cutover_code,
     'cutoff_at',c.cutoff_at,'target_tables',c.target_table_count,
@@ -55,10 +55,14 @@ returns jsonb language sql stable security definer set search_path = '' as $
   )
   from private.be_golive_readiness_cutovers_v1 c
   where c.cutover_code='PRE_GOLIVE_UAT_20260901';
-$;
+$uat_predecessor$;
 revoke all on function public.be_go_live_readiness_isolation_report_v1() from public,anon,authenticated;
 -- No direct application-role or anonymous access.
 `;
 fs.writeFileSync(migration,original.replace(anchor,predecessor+'\n'+anchor));
 assert.ok(fs.readFileSync(migration,'utf8').includes(predecessor));
+assert.equal(predecessor.split('$uat_predecessor
+console.log('CI-only empty private go-live cutover predecessor inserted before October reader; no rows seeded.');
+).length - 1, 2, 'SQL function dollar delimiters must balance');
+assert.ok(!predecessor.includes("as $\n"),'invalid bare SQL delimiter');
 console.log('CI-only empty private go-live cutover predecessor inserted before October reader; no rows seeded.');
