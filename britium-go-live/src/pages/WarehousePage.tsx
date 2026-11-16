@@ -47,6 +47,7 @@ export default function WarehousePage() {
   const warehouseCode = isBranchManager ? `${String(profile?.branch_code || "").trim().toUpperCase()}-MAIN` : "YGN-MAIN";
   const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
+  const [snapshotLoadError, setSnapshotLoadError] = useState(false);
   const batchBusyRef=useRef(false);
   const [batchBusy,setBatchBusy]=useState(false);
   const [snapshot, setSnapshot] = useState<any>({ stats: {}, rows: [], reasons: [] });
@@ -124,9 +125,12 @@ export default function WarehousePage() {
           }))
         : null;
       setSnapshot({ ...(data || {stats:{},rows:[]}), reasons:fieldCatalog || data?.reasons || [] });
+      setSnapshotLoadError(false);
+      setMessage("");
       if(!archiveResult.error) setHandoffArchive(archiveResult.data || {rows:[],count:0});
     } catch (e: any) {
-      setMessage(e.message || "Failed to load warehouse scan data.");
+      setSnapshotLoadError(true);
+      setMessage((e.message || "Failed to load warehouse scan data.") + " — Warehouse counts are unavailable. This does not mean there are zero parcels; check Refresh or contact IT.");
     } finally {
       if(!quiet) setLoading(false);
     }
@@ -761,7 +765,7 @@ export default function WarehousePage() {
           ["RTO", stats.rto],
         ].map(([k, v]: any) => (
           <div key={k} className={`rounded-xl border p-3 ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "border-amber-500 bg-amber-950/25" : "border-slate-800 bg-[#0B2133]"}`}>
-            <div className={`text-xl font-bold ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "text-amber-300" : "text-[#C09B30]"}`}>{v ?? 0}</div>
+            <div className={`text-xl font-bold ${k==="DISPATCH SCAN REQUIRED" && Number(v||0)>0 ? "text-amber-300" : "text-[#C09B30]"}`}>{snapshotLoadError ? "—" : (v ?? 0)}</div>
             <div className="text-xs uppercase text-slate-400">{k}</div>
           </div>
         ))}
