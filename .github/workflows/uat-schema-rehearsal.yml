@@ -38,7 +38,7 @@ jobs:
           persist-credentials: false
       - name: Verify isolated branch
         run: |
-          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
           test -f supabase/migrations/20260721093501_remote_schema.sql
           node scripts/uat-schema-replay-preflight.mjs
       - name: Run local Supabase stack and replay migrations
@@ -81,7 +81,7 @@ jobs:
       - name: Prepare disposable snapshot-first migration ordering
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
           node scripts/uat-schema-replay-preflight.mjs
           mkdir -p "$RUNNER_TEMP/uat-old-baseline"
           shopt -s nullglob
