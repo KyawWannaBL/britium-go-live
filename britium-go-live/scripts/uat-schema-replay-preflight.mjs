@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * MDY/Insein UAT migration preflight, source-only and non-mutating.
+ * PR evidence run: compare full sequence with snapshot-first without remote writes.
  * Usage: node scripts/uat-schema-replay-preflight.mjs [existing-table-list.json]
  * The optional JSON file is a read-only export of [{table_name:"..."}]
  * from information_schema.tables in the isolated UAT project.
