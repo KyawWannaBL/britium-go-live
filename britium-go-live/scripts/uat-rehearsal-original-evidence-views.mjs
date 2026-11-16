@@ -23,21 +23,13 @@ const fnEnd='revoke all on function private.be_current_operational_way_v1(text)f
 const from=authority.indexOf(fnStart),to=authority.indexOf(fnEnd,from);
 assert.ok(from>=0&&to>from,'Original October 31 cutoff/retirement-aware predicate is required');
 const originalPredicate=authority.slice(from,to+fnEnd.length);
-assert.equal((originalPredicate.match(/\\$\\$/g)||[]).length,2,'Original historical SQL must have exactly two body delimiters');
-const predicate=originalPredicate.replace(/\\$\\$/g,'$uat_operational_way
+assert.equal(originalPredicate.split('$$').length,3,'Original SQL body delimiter count changed');
+const predicate=originalPredicate.split('$$').join('$uat_operational_way$');
+assert.equal(predicate.split('$uat_operational_way$').length,3,'Named function delimiters must balance');
 assert.ok(predicate.includes('private.be_oct2026_retired_keys')&&predicate.includes('public.be_golive_live_cutoff_v1()'),'Historical retirement protections must be retained');
 const staged=original.replace(predecessorEnd,predecessorEnd+'\n'+predicate+'\n'+existingViewAnchor+'\n'+viewSql);
 assert.ok(staged.indexOf(predecessorEnd)<staged.indexOf('create view private.be_oct2026_external_settlement_review_v1'));
 assert.ok(staged.indexOf('create view private.be_oct2026_external_settlement_review_v1')<staged.indexOf('create view private.be_oct20_22_dispatch_evidence_worklist_v1'));
 fs.writeFileSync(pathToMigration,staged);
 assert.ok(fs.readFileSync(pathToMigration,'utf8').endsWith(original.slice(original.indexOf('insert into private.be_oct20_22_hybrid_assumptions_v1'))),'Original historical attestation retained');
-console.log('CI only: two verified private production evidence views staged without data, with grants revoked.');
-);
-assert.equal((predicate.match(/\\$uat_operational_way\\$/g)||[]).length,2,'Named function delimiters must balance');
-assert.ok(predicate.includes('private.be_oct2026_retired_keys')&&predicate.includes('public.be_golive_live_cutoff_v1()'),'Historical retirement protections must be retained');
-const staged=original.replace(predecessorEnd,predecessorEnd+'\n'+predicate+'\n'+existingViewAnchor+'\n'+viewSql);
-assert.ok(staged.indexOf(predecessorEnd)<staged.indexOf('create view private.be_oct2026_external_settlement_review_v1'));
-assert.ok(staged.indexOf('create view private.be_oct2026_external_settlement_review_v1')<staged.indexOf('create view private.be_oct20_22_dispatch_evidence_worklist_v1'));
-fs.writeFileSync(pathToMigration,staged);
-assert.ok(fs.readFileSync(pathToMigration,'utf8').endsWith(original.slice(original.indexOf('insert into private.be_oct20_22_hybrid_assumptions_v1'))),'Original historical attestation retained');
-console.log('CI only: two verified private production evidence views staged without data, with grants revoked.');
+console.log('CI only: source cutoff predicate and private evidence views staged without data; client grants revoked.');
