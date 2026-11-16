@@ -18,7 +18,19 @@ const ddl=[
  ' ADD COLUMN IF NOT EXISTS item_price numeric DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS delivery_charges numeric DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS cod_amount integer DEFAULT 0,',
- ' ADD COLUMN IF NOT EXISTS way_id text;',
+ ' ADD COLUMN IF NOT EXISTS way_id text,',
+ ' ADD COLUMN IF NOT EXISTS merchant_id text,',
+ ' ADD COLUMN IF NOT EXISTS customer_tier text,',
+ ' ADD COLUMN IF NOT EXISTS amount_entry_type text,',
+ ' ADD COLUMN IF NOT EXISTS merchant_stated_total_amount bigint,',
+ ' ADD COLUMN IF NOT EXISTS additional_customer_charge bigint NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS cbm_surcharge bigint NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS other_surcharge bigint NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS merchant_payable_charges bigint NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS other_merchant_credits bigint NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS monthly_ways integer,',
+ ' ADD COLUMN IF NOT EXISTS township text,',
+ ' ADD COLUMN IF NOT EXISTS weight_kg numeric DEFAULT 0;',
  ''
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
