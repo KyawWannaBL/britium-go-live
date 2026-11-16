@@ -1,0 +1,55 @@
+name: Isolated UAT migration replay (no remote)
+on:
+  push:
+    branches:
+      - uat/mdy-insein-isolated-20261116
+    paths:
+      - .github/workflows/uat-schema-rehearsal.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: isolated-uat-schema-rehearsal
+  cancel-in-progress: true
+
+jobs:
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      DO_NOT_CONNECT_REMOTE: "1"
+      SUPABASE_TELEMETRY_DISABLED: "1"
+    defaults:
+      run:
+        working-directory: britium-go-live
+        shell: bash
+    steps:
+      - name: Checkout isolated branch with no persisted GitHub credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Verify isolated branch
+        run: |
+          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          test -f supabase/migrations/20260721093501_remote_schema.sql
+          node scripts/uat-schema-replay-preflight.mjs
+      - name: Run local Supabase stack and replay migrations
+        id: replay
+        run: |
+          set -o pipefail
+          echo "Starting disposable local Supabase; NO linked project, credentials, or remote flags."
+          npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
+      - name: Report core table readiness if local replay succeeded
+        if: success()
+        run: |
+          echo "Local Supabase migration replay completed. This does not certify RLS or account readiness."
+          echo "Run branch-scoped RPC and RLS tests before promoting any repair."
+      - name: Publish sanitized first failure lines
+        if: failure()
+        run: |
+          if test -f "$RUNNER_TEMP/uat-schema-rehearsal.log"; then
+            grep -iE 'error:|failed|already exists|migration|syntax error' "$RUNNER_TEMP/uat-schema-rehearsal.log" | head -n 35 || true
+          fi
+          echo "The failure is isolated to the disposable CI database. No remote Supabase changes were attempted."
