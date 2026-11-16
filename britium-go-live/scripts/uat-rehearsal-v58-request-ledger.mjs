@@ -24,5 +24,11 @@ const foundation=[
  'ALTER TABLE public.be_data_entry_financial_v2_requests_v58 ENABLE ROW LEVEL SECURITY;',
  ''
 ].join('\n');
-fs.writeFileSync(path,foundation+sql);
+const predecessor=fileURLToPath(new URL('../sql/candidates/uat_v13_2_unbounded_save_historical_rehearsal_only.sql',import.meta.url));
+const historical=fs.readFileSync(predecessor,'utf8');
+if(!historical.includes('CREATE OR REPLACE FUNCTION public.be_data_entry_financial_v2_save(p_payload jsonb)') ||
+ !historical.includes('SECURITY DEFINER') ||
+ !historical.includes('be_data_entry_financial_v2_requests_v58%rowtype'))
+ throw Error('Historical V13.2 predecessor function validation failed');
+fs.writeFileSync(path,foundation+'\n'+historical+'\n'+sql);
 console.log('CI-only: original V58 ledger shape restored without permissions.');
