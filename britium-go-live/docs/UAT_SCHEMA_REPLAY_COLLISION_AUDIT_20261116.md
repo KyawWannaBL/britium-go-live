@@ -44,3 +44,12 @@ Reference: https://supabase.com/docs/guides/database/database-linter
 - The snapshot and UAT enum labels agree for 20 of the 21 enums.
 - `public.employee_role` contains an extra `branch-office` value in UAT (17 labels) absent from the July snapshot (16 labels). This is additive schema evolution; any repair that drops/recreates enums would risk losing it and breaking dependencies.
 - The current container has no PostgreSQL server, Docker, Supabase CLI, or PGlite installed, and outbound GitHub DNS is unavailable; a full isolated replay **was not executed** here. Do not treat static analysis as a passing rehearsal.
+
+
+## SQL replay run #8 and pgtap duplicate analysis — 2026-11-16
+- GitHub Actions run `43836590574` **reached SQL migration execution** after correcting legacy CLI `[inbucket]` config in disposable checkout.
+- BOTH full and snapshot-first strategies failed on July snapshot `20260721093501_remote_schema.sql`, statement **5946**: `create type "public"."_time_trial_type" as ("a_time" numeric);` — SQLSTATE **42710**, already exists.
+- Queried `pg_depend` in Production and operational UAT **read-only**: `public._time_trial_type` is a composite type owned by extension `pgtap`. The July snapshot first creates `pgtap` and later duplicates this extension-owned type.
+- Diagnostic-only draft PR #311, branch `diagnostic/uat-migration-replay-evidence-20261116`, contains `scripts/uat-snapshot-remove-pgtap-duplicate.mjs`: exact one-occurrence omission of duplicate declaration **only in temporary GitHub CI checkout**, never in hosted database.
+- New CI run `43838205386` tests both approaches after the scoped omission; do not claim success until the jobs finish and any subsequent errors are examined.
+- **Never drop extension-owned objects**, blanket-ignore duplicate definitions, merge diagnostic branch into Production, or mark migration applied despite failure. Hosted UAT still requires full historical reconciliation and Auth/RLS validation.
