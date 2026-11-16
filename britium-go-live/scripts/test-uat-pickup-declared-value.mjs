@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import {PGlite} from '@electric-sql/pglite';
 const db=new PGlite();
 try{
- await db.exec(`create table be_portal_pickup_requests(payment_type text,payment_method text,payment_terms text,total_cod numeric,cod_amount numeric,parcel_count integer,expected_parcels integer,pickup_township text,township text,pickup_date date,created_at timestamptz,updated_at timestamptz,metadata jsonb,cod_policy_status text,cod_service_fee_rate numeric,cod_service_fee_amount numeric,finance_pre_dispatch_status text);
+ await db.exec(`create table be_portal_pickup_requests(payment_type text,payment_method text,payment_terms text,total_cod numeric,cod_amount numeric,parcel_count integer,expected_parcels integer,pickup_township text,township text,pickup_date date,created_at timestamptz,updated_at timestamptz,metadata jsonb);
  create table be_data_entry_parcel_details(actual_collect numeric,cod_amount numeric,updated_at timestamptz);
  create table be_system_config(config_key text primary key,config_value jsonb,description text,updated_at timestamptz);`);
  const fixture=new URL('../sql/candidates/uat_pickup_declared_value_rehearsal_only.sql',import.meta.url);

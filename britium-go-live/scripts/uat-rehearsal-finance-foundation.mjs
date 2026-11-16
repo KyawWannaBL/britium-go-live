@@ -32,7 +32,8 @@ for(const [name,relative] of Object.entries(manifest)){
   if(new RegExp('\\bon\\s+public\\.'+name+'\\s*\\(','i').test(match[0]))indexes.add(match[0]);
 }
 archived.push(...indexes);
-if(!pickup.includes('ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0;'))throw Error('Pickup declared value fixture mismatch');
+for(const marker of ['ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0,',"ADD COLUMN IF NOT EXISTS cod_policy_status text NOT NULL DEFAULT 'NOT_EVALUATED'",'ADD COLUMN IF NOT EXISTS cod_service_fee_rate numeric NOT NULL DEFAULT 0','ADD COLUMN IF NOT EXISTS cod_service_fee_amount numeric NOT NULL DEFAULT 0',"ADD COLUMN IF NOT EXISTS finance_pre_dispatch_status text NOT NULL DEFAULT 'NOT_REQUIRED'"])
+ if(!pickup.includes(marker))throw Error('Pickup finance fixture incomplete: '+marker);
 for(const marker of ['CREATE TABLE public.be_field_finance_settlements_v1','UNIQUE (work_date, wayplan_id)','ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
  if(!field.includes(marker))throw Error('Field finance foundation incomplete: '+marker);
 for(const marker of ['CREATE TABLE public.be_data_entry_financial_v2_runtime_v58','CHECK (singleton)',"CHECK (mutation_mode IN ('MUTATION_SHADOW','ACTIVE'))",'ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
