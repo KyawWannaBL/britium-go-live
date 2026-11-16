@@ -36,6 +36,7 @@ jobs:
           ln -s "$RUNNER_TEMP/waybill-test/node_modules" node_modules
           node scripts/test-uat-financial-waybill-predecessor.mjs
           node scripts/test-uat-wayid-registry.mjs
+          node scripts/test-uat-finance-bridge-columns.mjs
 
   replay:
     runs-on: ubuntu-24.04
