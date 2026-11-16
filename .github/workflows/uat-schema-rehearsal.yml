@@ -68,6 +68,7 @@ jobs:
           node scripts/uat-rehearsal-v122-bilingual-key-overlay.mjs
           node scripts/uat-rehearsal-v140-pickup-verification.mjs
           node scripts/uat-rehearsal-v141-proof-sync.mjs
+          node scripts/uat-rehearsal-legacy-warehouse-revokes.mjs
           node scripts/uat-rehearsal-v122-diagnostic.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
@@ -158,6 +159,7 @@ jobs:
           node scripts/uat-rehearsal-v122-bilingual-key-overlay.mjs
           node scripts/uat-rehearsal-v140-pickup-verification.mjs
           node scripts/uat-rehearsal-v141-proof-sync.mjs
+          node scripts/uat-rehearsal-legacy-warehouse-revokes.mjs
           node scripts/uat-rehearsal-v122-diagnostic.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
