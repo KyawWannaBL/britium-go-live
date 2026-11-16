@@ -11,7 +11,8 @@ if(!original.startsWith('create or replace view public.be_v_dispatch_ready_queue
 const ddl=[
  '-- CI-only local schema dependency restored before September 1 dispatch ready view.',
  'ALTER TABLE public.be_data_entry_parcel_details',
- ' ADD COLUMN IF NOT EXISTS financial_validation_status text;',
+ ' ADD COLUMN IF NOT EXISTS financial_validation_status text,',
+ " ADD COLUMN IF NOT EXISTS financial_quote jsonb NOT NULL DEFAULT '{}'::jsonb;",
  ''
 ].join('\n');
 fs.writeFileSync(target,ddl+original);
