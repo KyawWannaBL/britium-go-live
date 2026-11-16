@@ -19,8 +19,10 @@ begin
   select coalesce(array_agg(s.table_name order by s.table_name),array[]::text[]) into missing
   from private.be_oct2026_scope s
   where to_regclass(format('public.%I',s.table_name)) is null;
-  raise notice 'CI_UAT_MISSING_CUTOVER_TABLE_COUNT=%', cardinality(missing);
-  raise notice 'CI_UAT_MISSING_CUTOVER_TABLE_NAMES=%', array_to_string(missing,',');
+  if cardinality(missing) > 0 then
+    raise exception 'CI_UAT_MISSING_CUTOVER_TABLE_COUNT=%, NAMES=%', cardinality(missing), array_to_string(missing,',') using errcode='P0001';
+  end if;
+  raise notice 'CI_UAT_CUTOVER_TABLES_COMPLETE';
 end
 $uat_cutover_inventory$;
 `;
