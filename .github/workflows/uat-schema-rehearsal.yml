@@ -6,6 +6,12 @@ on:
     paths:
       - .github/workflows/uat-schema-rehearsal.yml
   workflow_dispatch:
+  pull_request:
+    branches:
+      - uat/mdy-insein-isolated-20261116
+    paths:
+      - .github/workflows/uat-schema-rehearsal.yml
+      - britium-go-live/scripts/uat-schema-replay-preflight.mjs
 
 permissions:
   contents: read
