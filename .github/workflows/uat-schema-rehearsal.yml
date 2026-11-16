@@ -31,6 +31,7 @@ on:
       - britium-go-live/scripts/uat-rehearsal-enable-real-pg-cron.mjs
       - britium-go-live/scripts/uat-rehearsal-branch-account-function-terminators.mjs
       - britium-go-live/scripts/uat-rehearsal-tariff-rls-parity.mjs
+      - britium-go-live/scripts/uat-canonical-baseline-pgtap-composite-guard.mjs
 
 permissions:
   contents: read
@@ -308,6 +309,8 @@ jobs:
           done
           test "$count" -gt 0
           echo "Clean-baseline test excludes $count older migrations in ephemeral checkout only"
+      - name: Guard source-verified pgtap composite in clean baseline
+        run: node scripts/uat-canonical-baseline-pgtap-composite-guard.mjs
       - name: Replay authentic migration files without overlays
         run: |
           set -o pipefail
