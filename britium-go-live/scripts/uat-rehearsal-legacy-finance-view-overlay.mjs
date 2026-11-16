@@ -9,6 +9,8 @@ const exact='drop view public.be_v_finance_merchant_settlement_queue_v2;';
 if(source.split(exact).length!==2)throw Error('Expected exact single DROP VIEW not found');
 if(!source.includes('create view public.be_v_finance_merchant_settlement_queue_v2\nwith (security_invoker = true)'))throw Error('RLS-safe replacement view absent');
 const foundation=[
+ '-- CI-only source-verified business date helper (Production uses Asia/Yangon).',
+ "CREATE OR REPLACE FUNCTION public.be_business_date() RETURNS date LANGUAGE sql STABLE SET search_path TO 'public', 'pg_temp' AS $function$ SELECT (statement_timestamp() AT TIME ZONE 'Asia/Yangon')::date $function$;",
  '-- CI-only historically missing merchant financial profile projection fields.',
  'ALTER TABLE public.be_merchant_financial_profiles_v2',
  ' ADD COLUMN IF NOT EXISTS merchant_name text,',
