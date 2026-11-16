@@ -42,8 +42,11 @@ WITH eligible AS (
   SELECT a.id, LOWER(a.email) AS email,
     b.id AS branch_id,
     COALESCE(NULLIF(a.raw_app_meta_data ->> 'display_name',''),a.email) AS display_name,
+    -- Helpers must not inherit branch management privileges. They remain
+    -- 'helper' in the workforce registry, with restrictive portal profile
+    -- until an explicit employee_role + RLS policy has been reviewed.
     CASE WHEN a.raw_app_meta_data ->> 'uat_role' = 'helper'
-      THEN 'branch-office'
+      THEN 'customer'
       ELSE a.raw_app_meta_data ->> 'uat_role' END::public.employee_role AS employee_role
   FROM auth.users a
   JOIN public.branches b
