@@ -17,7 +17,8 @@ const ddl=[
  'ALTER TABLE public.parcels',
  ' ADD COLUMN IF NOT EXISTS item_price numeric DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS delivery_charges numeric DEFAULT 0,',
- ' ADD COLUMN IF NOT EXISTS cod_amount integer DEFAULT 0;',
+ ' ADD COLUMN IF NOT EXISTS cod_amount integer DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS way_id text;',
  ''
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
