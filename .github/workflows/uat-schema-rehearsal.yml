@@ -47,6 +47,7 @@ jobs:
           set -o pipefail
           echo "Starting disposable local Supabase; NO linked project, credentials, or remote flags."
           node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-finance-foundation.mjs
           node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
           node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
@@ -107,6 +108,7 @@ jobs:
           echo "This tests whether July schema snapshot can serve as a standalone baseline."
           echo "No linked Supabase project, credentials, data, or production commands."
           node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-finance-foundation.mjs
           node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
           node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
