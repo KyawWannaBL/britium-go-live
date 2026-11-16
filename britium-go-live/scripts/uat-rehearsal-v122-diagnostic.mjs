@@ -18,7 +18,7 @@ const instrumentation=[
 "   WHERE public.be_approved_tariff_lookup_key(t.township)=k AND t.customer_tier='STANDARD'",
 "   AND t.status='ACTIVE' AND t.effective_from <= public.be_business_date()",
 '   AND (t.effective_to IS NULL OR t.effective_to >= public.be_business_date());',
-"  RAISE NOTICE 'V122_MAPPING label=% key=% active_tariff_count=%', x.label, k, tariff_count;",
+"  IF tariff_count = 0 THEN RAISE EXCEPTION 'CI_V122_UNMAPPED_LABEL=% key=% active_tariff_count=%', x.label, coalesce(k,'<NULL>'), tariff_count; END IF;",
 ' END LOOP;',
 'END;',
 '$diagnose$;',
