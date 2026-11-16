@@ -79,3 +79,10 @@ Reference: https://supabase.com/docs/guides/database/database-linter
 - Production read-only inspection confirms that table exists with 9 columns. It is absent in hosted UAT. Historical source exists at `britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql`, including five original V39 ledgers.
 - Draft diagnostic branch commit `7611984f` introduces CI-only extraction of precisely five V39 ledger CREATE TABLE definitions into an ephemeral migration (plus fail-closed RLS) from the original V39 source; run `43843142196` tests it.
 - **None** of these diagnostics have been applied to operational UAT or production. The draft PR stays unmerged; staff Auth users remain unprovisioned. A complete migration replay and mandatory security/finance regression tests are required before deployment.
+
+## Confirmed transition into September & remaining source-history gap — 2026-11-16
+- Diagnostic PR #311 CI run `43843142196` advanced BOTH full-order and snapshot-first disposable replay through the original V39 warehouse/dispatch ledger tables, then failed in `20260901145928_dispatch_queue_auth_and_helper_optional_v12_11.sql`.
+- Failing statement begins `CREATE OR REPLACE VIEW public.be_v_dispatch_ready_queue AS ...`; PostgreSQL SQLSTATE **42703**: column `d.financial_validation_status` does not exist. This field belongs to `public.be_data_entry_parcel_details`.
+- Production read-only schema confirms `be_data_entry_parcel_details.financial_validation_status` exists as nullable TEXT. The isolated operational UAT query returned no matching columns. Historical migration replay is still missing Data Entry state schema before September 1.
+- Earlier run `43842649364` failed on absent `public.be_dispatch_scans_v39`, which was restored in disposable CI from original source `britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql` (no production data imported).
+- Do not silently fill missing columns in hosted UAT or flag the reconciliation as deployment-ready; examine full Data Entry schema history and permissions before introducing a permanent baseline. All changes described in this section are source-only diagnostics on unmerged draft PR #311.
