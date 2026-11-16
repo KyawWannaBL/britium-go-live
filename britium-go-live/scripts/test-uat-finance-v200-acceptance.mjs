@@ -1,0 +1,48 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {execFileSync} from 'node:child_process';
+import {PGlite} from '@electric-sql/pglite';
+const db=new PGlite();
+const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'uat-v200-'));
+try{
+ await db.exec(`create role anon;create role authenticated;create role service_role;create schema auth;
+ create function auth.jwt() returns jsonb language sql as $$select coalesce(nullif(current_setting('request.jwt.claims',true),''),'{}')::jsonb$$;
+ create function auth.uid() returns uuid language sql as $$select nullif(auth.jwt()->>'sub','')::uuid$$;
+ create table be_user_account_registry(auth_user_id uuid,email text,role text,is_active boolean default true,active boolean default true,status text default 'active',updated_at timestamptz default now());`);
+ const source=fs.readFileSync(new URL('../britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql',import.meta.url),'utf8');
+ for(const m of source.matchAll(/create table if not exists public\.be_finance_settlement_[a-z_0-9]+ \([\s\S]*?\n\);/gi))await db.exec(m[0]);
+ const script=new URL('./uat-rehearsal-finance-v200-acceptance.mjs',import.meta.url);
+ if(fs.existsSync(script)){const {financePrelude}=await import(script);await db.exec(financePrelude(source));}
+ const migration=fs.readFileSync(new URL('../supabase/migrations/20261007090836_merchant_settlement_live_v200.sql',import.meta.url),'utf8');
+ const actor=migration.match(/create or replace function public\.be_finance_actor_access_v3\(\)[\s\S]*?end \$fn\$;/i)?.[0];
+ assert.ok(actor);await db.exec(actor);
+ await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Authentication is required/);
+ await db.query(`select set_config('request.jwt.claims',$1,false)`,[JSON.stringify({sub:'00000000-0000-4000-8000-000000000799',role:'authenticated',user_metadata:{portal_role:'SUPERADMIN',email:'spoof@example.test'}})]);
+ await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Finance settlement permission is required/);
+ await db.exec(`insert into be_user_account_registry(auth_user_id,email,role) values('00000000-0000-4000-8000-000000000701','maker@example.test','SUPERADMIN'),('00000000-0000-4000-8000-000000000702','checker@example.test','FINANCE');
+ insert into be_finance_settlement_batches_v3(id,batch_number,merchant_id,created_by) values('00000000-0000-4000-8000-000000000703','CI-BATCH','CI','maker@example.test');`);
+ const claims=async(id,email)=>db.query(`select set_config('request.jwt.claims',$1,false)`,[JSON.stringify({sub:id,email,role:'authenticated'})]);
+ await claims('00000000-0000-4000-8000-000000000701','maker@example.test');
+ for(const action of ['SUBMIT_REVIEW','SUBMIT_APPROVAL'])await db.query('select be_finance_transition_batch_v3($1,$2)', ['00000000-0000-4000-8000-000000000703',action]);
+ await assert.rejects(db.query(`select be_finance_transition_batch_v3('00000000-0000-4000-8000-000000000703','APPROVE')`),/Maker-checker/);
+ await db.exec(`insert into be_finance_settlement_access_v3(email,access_role) values('checker@example.test','FINANCE_APPROVER')`);
+ await claims('00000000-0000-4000-8000-000000000702','checker@example.test');
+ await db.query(`select be_finance_transition_batch_v3('00000000-0000-4000-8000-000000000703','APPROVE')`);
+ assert.equal((await db.query('select status from be_finance_settlement_batches_v3')).rows[0].status,'APPROVED');
+ assert.equal((await db.query(`select has_function_privilege('anon','be_finance_transition_batch_v3(uuid,text,text)','EXECUTE') allowed`)).rows[0].allowed,false);
+ const root=path.resolve(path.dirname(new URL(import.meta.url).pathname),'..');
+ for(const relative of ['scripts/uat-rehearsal-finance-v200-acceptance.mjs','sql/candidates/uat_v200_rollback_acceptance_fixtures.sql','supabase/migrations/20261007090836_merchant_settlement_live_v200.sql','britium-current-ui-fixed/Britium_Integrated_Master_V4_1_Aligned_Source/Britium_Integrated_Master_V4_1_Aligned_Source/src/sql/SQL 0708/20260731_financial_settlement_v3.sql']){
+  const target=path.join(tmp,relative);fs.mkdirSync(path.dirname(target),{recursive:true});fs.copyFileSync(path.join(root,relative),target);
+ }
+ execFileSync(process.execPath,[path.join(tmp,'scripts/uat-rehearsal-finance-v200-acceptance.mjs')],{env:{...process.env,DO_NOT_CONNECT_REMOTE:'1'}});
+ const staged=fs.readFileSync(path.join(tmp,'supabase/migrations/20261007090836_merchant_settlement_live_v200.sql'),'utf8');
+ const assertions=migration.slice(migration.indexOf('DO $test$'),migration.indexOf('ROLLBACK TO SAVEPOINT acceptance;'));
+ assert.ok(staged.includes(assertions),'Every original acceptance assertion must remain unchanged');
+ const fixture=fs.readFileSync(path.join(root,'sql/candidates/uat_v200_rollback_acceptance_fixtures.sql'),'utf8');
+ assert.ok(staged.indexOf(fixture)>staged.indexOf('SAVEPOINT acceptance;'));
+ assert.ok(staged.indexOf(fixture)<staged.indexOf('DO $test$'));
+ assert.ok(!/insert\s+into\s+auth\.users/i.test(fixture));
+ console.log('PASS: authentic Finance V3 helpers plus V200 registry authorization deny anonymous/self-approval and allow an independent checker.');
+}finally{await db.close();fs.rmSync(tmp,{recursive:true,force:true});}
