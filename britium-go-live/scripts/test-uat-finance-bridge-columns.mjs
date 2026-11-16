@@ -15,6 +15,11 @@ try {
  fs.mkdirSync(path.join(tmp,'supabase/migrations'),{recursive:true});
  execFileSync(process.execPath,[path.join(tmp,'scripts/uat-rehearsal-finance-foundation.mjs')],{env:{...process.env,DO_NOT_CONNECT_REMOTE:'1'}});
  const staged=fs.readFileSync(path.join(tmp,'supabase/migrations/20260731000000_CI_ONLY_original_financial_foundation.sql'),'utf8');
+ const compatibility=fs.readFileSync(path.join(tmp,'supabase/migrations/20260730000000_CI_ONLY_missing_parcel_columns.sql'),'utf8');
+ const parcelColumns=compatibility.match(/ALTER TABLE public\.parcels\s+[\s\S]*?;/)?.[0];
+ assert.ok(parcelColumns);await db.exec('create table public.parcels(id uuid primary key)');await db.exec(parcelColumns);
+ await db.exec('create view ci_finance_type_contract as select null::numeric(14,2) item_price,null::numeric(14,2) merchant_declared_delivery_charge');
+ await db.exec('create or replace view ci_finance_type_contract as select item_price,delivery_charges as merchant_declared_delivery_charge from parcels');
  const ddl=staged.match(/alter table public\.be_data_entry_parcel_details\s+[\s\S]*?;/i)?.[0];
  assert.ok(ddl,'Replay foundation must restore the original complete financial bridge columns');
  for(const name of ['be_finance_cod_settlements_v48','be_finance_cod_events_v48','be_waybill_print_audit_v38','be_merchant_accounts','be_finance_settlement_access_v3','be_finance_settlement_batches_v3','be_finance_settlement_batch_items_v3','be_finance_settlement_payments_v3','be_finance_settlement_parcel_control_v3','be_finance_settlement_disputes_v3','be_finance_settlement_adjustments_v3','be_finance_settlement_audit_v3'])
