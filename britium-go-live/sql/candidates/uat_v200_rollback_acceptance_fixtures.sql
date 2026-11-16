@@ -15,8 +15,8 @@ VALUES
 
 INSERT INTO public.parcels(tracking_code,way_id,merchant_id,sender_name,recipient_name,recipient_phone,recipient_address,township,customer_tier,amount_entry_type,item_price,delivery_charges,cod_amount,collect_amount,status,delivered_at,validation_status,merchant_final_settlement_amount,net_system_delivery_charge,settlement_direction)
 VALUES
- ('D1007-TSW-001','D1007-TSW-001','TSW','CI Sender','CI Recipient','0000000000','CI address','သာကေတ','STANDARD','ITEM_PRICE_PLUS_DECLARED_DELIVERY',50000,4000,54000,54000,'delivered',now(),'OK',50000,4000,'PAY_MERCHANT'),
- ('D1006-KNY-001','D1006-KNY-001','KNY','CI Sender','CI Recipient','0000000000','CI address','သာကေတ','STANDARD','ITEM_PRICE_PLUS_DECLARED_DELIVERY',15000,4000,19000,19000,'delivered',now(),'OK',15000,4000,'PAY_MERCHANT');
+ ('D1007-TSW-001','D1007-TSW-001','TSW','CI Sender','CI Recipient','0000000000','CI address','သာကေတ','STANDARD','ITEM_PRICE_PLUS_DECLARED_DELIVERY',50000,4000,54000,54000,'delivered',now(),'OK',50000,4000,'NO_ADJUSTMENT'),
+ ('D1006-KNY-001','D1006-KNY-001','KNY','CI Sender','CI Recipient','0000000000','CI address','သာကေတ','STANDARD','ITEM_PRICE_PLUS_DECLARED_DELIVERY',15000,4000,19000,19000,'delivered',now(),'OK',15000,4000,'NO_ADJUSTMENT');
 
 INSERT INTO public.be_finance_cod_settlements_v48(delivery_way_id,wayplan_id,expected_cod,reported_collected,settled_amount,settlement_status)
 VALUES
