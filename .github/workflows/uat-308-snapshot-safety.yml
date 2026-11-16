@@ -1,0 +1,23 @@
+name: UAT Migration Snapshot Safety Gate
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/migrations/20260721093501_remote_schema.sql'
+      - 'supabase/ops/uat_308_tested_snapshot_guard.mjs'
+      - '.github/workflows/uat-308-snapshot-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-migration-source:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout reviewed commit
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Check historical snapshot classification
+        run: node supabase/ops/uat_308_tested_snapshot_guard.mjs supabase/migrations/20260721093501_remote_schema.sql
