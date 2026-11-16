@@ -55,3 +55,53 @@ jobs:
             grep -iE 'error:|failed|already exists|migration|syntax error' "$RUNNER_TEMP/uat-schema-rehearsal.log" | head -n 35 || true
           fi
           echo "The failure is isolated to the disposable CI database. No remote Supabase changes were attempted."
+
+  snapshot_first:
+    name: Snapshot-first schema compatibility
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_CONNECT_REMOTE: "1"
+    defaults:
+      run:
+        working-directory: britium-go-live
+        shell: bash
+    steps:
+      - name: Checkout isolated UAT code only
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Prepare disposable snapshot-first migration ordering
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          node scripts/uat-schema-replay-preflight.mjs
+          mkdir -p "$RUNNER_TEMP/uat-old-baseline"
+          shopt -s nullglob
+          count=0
+          for f in supabase/migrations/*.sql; do
+            base="$(basename "$f")"
+            version="${base:0:14}"
+            if [[ "$version" < "20260721093501" ]]; then
+              mv "$f" "$RUNNER_TEMP/uat-old-baseline/"
+              count=$((count + 1))
+            fi
+          done
+          echo "Excluded $count older migrations from this disposable checkout only."
+          test -f supabase/migrations/20260721093501_remote_schema.sql
+          test "$count" -gt 0
+      - name: Attempt snapshot-first local replay only
+        run: |
+          set -o pipefail
+          echo "This tests whether July schema snapshot can serve as a standalone baseline."
+          echo "No linked Supabase project, credentials, data, or production commands."
+          npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/snapshot-first.log"
+          npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/snapshot-first.log"
+      - name: Display first failure evidence
+        if: failure()
+        run: |
+          if test -f "$RUNNER_TEMP/snapshot-first.log"; then
+            grep -iE 'error:|failed|already exists|migration|syntax error|does not exist' "$RUNNER_TEMP/snapshot-first.log" | head -n 40 || true
+          fi
+          echo "Snapshot-first failure is diagnostic only. No remote changes."
