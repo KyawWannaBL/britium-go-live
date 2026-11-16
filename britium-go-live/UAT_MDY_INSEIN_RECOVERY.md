@@ -39,3 +39,11 @@
 - Read-only repeatable audit added: `sql/audits/uat_mdy_insein_schema_gate_readonly.sql`. It must pass before account provisioning or invitations.
 - **No UAT Auth accounts created**. The connected Supabase tools do not expose an Auth-admin invitation/create-user action; do not write directly into `auth.users`, do not invent user emails, and do not assign shared passwords. Use the official Supabase Dashboard or a scoped server-side Auth Admin action after schema/RLS readiness, with verified staff identities.
 - Keep Production `main` and Production Supabase unchanged. Never copy live parcels, finance data, or Auth users into UAT.
+
+
+## Authorized temporary schema rehearsal — 2026-11-16
+- User explicitly approved a new Supabase rehearsal branch at **US$0.01344/hour**; cost confirmation accepted.
+- Created branch `rehearsal-mdy-insein-20261116-schema`, id `2f3ba906-14a1-4083-aa3d-4565d8e7b7c5`, project ref `omxttoaopfafltphtybg`, parent `dltavabvjwocknkyvwgz`, `with_data=false`.
+- On creation response and immediate status check, branch is `CREATING_PROJECT`. Query access shows zero auth.users, no account registry, no branch registry, and the initial migration listing has 7 April versions; **do not mistake this intermediate state for final migration failure or success**.
+- Never publish the rehearsal URL or use for production/employee logins. Do not copy production records.
+- **Delete the temporary branch when testing is finished to stop hourly charges** using branch id above. Do not delete the separate existing operational UAT branch.
