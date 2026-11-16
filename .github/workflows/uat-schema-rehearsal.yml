@@ -12,6 +12,7 @@ on:
     paths:
       - .github/workflows/uat-schema-rehearsal.yml
       - britium-go-live/scripts/uat-schema-replay-preflight.mjs
+      - britium-go-live/scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
 
 permissions:
   contents: read
