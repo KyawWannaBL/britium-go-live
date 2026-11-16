@@ -18,5 +18,13 @@ const before="rider_status=case when v_role='rider' then 'VERIFIED' else p.rider
 const after="rider_status=case when v_role='rider' then 'VERIFIED' else p.rider_status end,driver_status=case when v_role='driver' then 'VERIFIED' else p.driver_status end,pickup_verified_at=now()";
 if(ddl.split(after).length!==2)throw Error('Verified current V140 synchronization preimage not found exactly once');
 ddl=ddl.replace(after,before);
-fs.writeFileSync(dest,ddl+'\n'+target);
+const actionPath=fileURLToPath(new URL('../sql/candidates/uat_field_pickup_action_v140_rehearsal_only.sql',import.meta.url));
+let action=fs.readFileSync(actionPath,'utf8');
+for(const marker of ['SECURITY DEFINER','auth.uid()','be_field_team_assert_assigned_pickup'])
+ if(!action.includes(marker))throw Error('Pickup action security invariant missing: '+marker);
+const actionNew="set pickup_status='PICKUP_COLLECTED',workflow_stage='PICKUP_COLLECTED',rider_app_stage='COLLECTED_PICKUP',rider_status=case when v_role='rider' then 'COLLECTED' else p.rider_status end,driver_status=case when v_role='driver' then 'COLLECTED' else p.driver_status end,pickup_collected_at=coalesce(p.pickup_collected_at,now()),data_entry_status='READY_FOR_DATA_ENTRY'";
+const actionOld="set pickup_status='PICKUP_COLLECTED',workflow_stage='PICKUP_COLLECTED',rider_app_stage='COLLECTED_PICKUP',pickup_collected_at=coalesce(p.pickup_collected_at,now()),data_entry_status='READY_FOR_DATA_ENTRY'";
+if(action.split(actionNew).length!==2)throw Error('Expected V140 pickup action predecessor not found exactly once');
+action=action.replace(actionNew,actionOld);
+fs.writeFileSync(dest,action+'\n'+ddl+'\n'+target);
 console.log('CI ONLY: original guarded field pickup verification RPC restored before V140.');
