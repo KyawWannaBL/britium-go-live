@@ -31,7 +31,15 @@ begin
 end
 $uat_tariff_lookup$;
 `;
+// Restore the production-consistent delegation path, not the completed MDY alias patch.
+const delegatedTownshipKey=`
+create or replace function public.be_financial_v2_township_key_v61_4_1(p_value text)
+returns text language sql stable parallel safe set search_path to 'public','pg_temp' as $uat_township_delegate$
+ select public.be_financial_v2_tariff_location_key_v61_7_1(p_value);
+$uat_township_delegate$;
+`;
+assert.ok(delegatedTownshipKey.includes('be_financial_v2_tariff_location_key_v61_7_1(p_value)'),'Catalog-verified delegation missing');
 assert.ok(!baseline.includes('MDY_EXPLICIT_ALIAS_PRIORITY_V1'),'Owner alias patch must run in original migration');
-fs.writeFileSync(file,baseline+'\n'+original);
+fs.writeFileSync(file,baseline+'\n'+delegatedTownshipKey+'\n'+original);
 assert.ok(fs.readFileSync(file,'utf8').endsWith(original),'Original approved migration preserved');
 console.log('CI only: source-verified pre-patch tariff lookup staged; original Mandalay priority patch remains enabled.');
