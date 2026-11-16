@@ -13,6 +13,12 @@ if(!bridge.startsWith('-- PARCEL_FINANCIAL_V2_2_UI_FINANCE_BRIDGE_2026-07-31'))t
 const blocks=[...bridge.matchAll(/alter table public\.be_data_entry_parcel_details\s+[\s\S]*?;/gi)];
 if(blocks.length!==1)throw Error('Missing/ambiguous original finance bridge column definition');
 const details=blocks[0][0];
+const runtime=fs.readFileSync(new URL('../sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql',import.meta.url),'utf8');
+const field=fs.readFileSync(new URL('../sql/candidates/uat_field_finance_foundation_rehearsal_only.sql',import.meta.url),'utf8');
+for(const marker of ['CREATE TABLE public.be_field_finance_settlements_v1','UNIQUE (work_date, wayplan_id)','ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
+ if(!field.includes(marker))throw Error('Field finance foundation incomplete: '+marker);
+for(const marker of ['CREATE TABLE public.be_data_entry_financial_v2_runtime_v58','CHECK (singleton)',"CHECK (mutation_mode IN ('MUTATION_SHADOW','ACTIVE'))",'ENABLE ROW LEVEL SECURITY','FROM PUBLIC,anon,authenticated'])
+ if(!runtime.includes(marker))throw Error('Financial runtime fixture incomplete: '+marker);
 for(const marker of ['amount_entry_type text','financial_validation_status text',"financial_quote jsonb not null default '{}'::jsonb"])
  if(!details.includes(marker))throw Error('Incomplete original finance bridge: '+marker);
 if(!content.includes('-- PARCEL_FINANCIAL_V2_BACKEND_2026-07-31') ||
@@ -59,5 +65,5 @@ const ddl=[
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
 fs.writeFileSync(compat,ddl);
-fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n');
+fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n'+runtime+'\n'+field+'\n');
 console.log('CI ONLY: staged verified parcel columns and original 20260731 finance foundation.');

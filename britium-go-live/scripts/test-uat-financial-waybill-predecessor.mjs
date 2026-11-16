@@ -9,8 +9,6 @@ const db=new PGlite();
 try {
  await db.exec(`create role anon; create role authenticated; create schema auth;
  create table be_data_entry_financial_v2_requests_v58(request_id text,operation text,actor_id uuid,payload_hash text,status text,response jsonb,completed_at timestamptz);
- create table be_data_entry_financial_v2_runtime_v58(singleton boolean,mutation_mode text);
- insert into be_data_entry_financial_v2_runtime_v58 values(true,'MUTATION_SHADOW');
  create table be_portal_pickup_requests(pickup_id text,pickup_verified_at timestamptz,pickup_collected_at timestamptz,pickup_status text,workflow_stage text,rider_app_stage text,assigned_rider_id uuid);
  create function be_data_entry_require_access_v57(text,boolean) returns jsonb language plpgsql as $$begin
  if coalesce(current_setting('test.authorized',true),'')<>'yes' then raise exception 'ACCESS_DENIED' using errcode='42501';end if;
@@ -19,6 +17,11 @@ try {
  -- Canonical legacy gate was installed by V136, immediately before V136.1.
  -- v_pickup.pickup_status v_pickup.workflow_stage COLLECTED_PICKUP
  return '{}'::jsonb;end$$;`);
+ const runtime=new URL('../sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql',import.meta.url);
+ if(fs.existsSync(runtime)){
+  await db.exec(fs.readFileSync(runtime,'utf8'));
+  await db.exec(`insert into be_data_entry_financial_v2_runtime_v58(singleton,mutation_mode,build,change_reason) values(true,'MUTATION_SHADOW','CI_TEST','Disposable regression')`);
+ }
  const path=new URL('../sql/candidates/uat_financial_waybill_v136_1_predecessor_rehearsal_only.sql',import.meta.url);
  const fixture=fs.existsSync(path)?fs.readFileSync(path,'utf8'):'';
  if(fixture)await db.exec(fixture);
