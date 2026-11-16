@@ -8,6 +8,15 @@ BEGIN
  END IF;
 END $fixture_guard$;
 
+-- Exact account codes required by private.be_merchant_payment_accounting_v200.
+-- All inserts/updates below are inside the original acceptance savepoint.
+INSERT INTO public.be_chart_of_accounts(account_code,account_name,account_type,normal_balance,report_group,is_active,is_postable)
+VALUES
+ ('212002','CI merchant payable','LIABILITY','CREDIT','CI_LIABILITIES',true,true),
+ ('111001','CI cash funds','ASSET','DEBIT','CI_ASSETS',true,true),
+ ('112003','CI bank funds','ASSET','DEBIT','CI_ASSETS',true,true)
+ON CONFLICT(account_code) DO UPDATE SET is_active=true,is_postable=true;
+
 INSERT INTO public.be_user_account_registry(auth_user_id,email,full_name,role,role_code,status,is_active,active)
 VALUES
  ('00000000-0000-4000-8000-000000000701','ci-finance-maker@example.test','CI Finance Maker','SUPERADMIN','SUPERADMIN','active',true,true),
