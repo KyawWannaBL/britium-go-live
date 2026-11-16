@@ -274,3 +274,53 @@ jobs:
             grep -iE 'error:|failed|already exists|migration|syntax error|does not exist' "$RUNNER_TEMP/snapshot-first.log" | head -n 40 || true
           fi
           echo "Snapshot-first failure is diagnostic only. No remote changes."
+
+  canonical_baseline_no_fixtures:
+    name: Clean July baseline — no CI fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_CONNECT_REMOTE: "1"
+    defaults:
+      run:
+        working-directory: britium-go-live
+        shell: bash
+    steps:
+      - name: Checkout isolated branch without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Isolate canonical July baseline without historical overlap
+        run: |
+          set -euo pipefail
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
+          test -f supabase/migrations/20260721093501_remote_schema.sql
+          mkdir -p "$RUNNER_TEMP/removed-pre-july"
+          shopt -s nullglob
+          count=0
+          for f in supabase/migrations/*.sql; do
+            version="$(basename "$f" | cut -c1-14)"
+            if [[ "$version" < "20260721093501" ]]; then
+              mv "$f" "$RUNNER_TEMP/removed-pre-july/"
+              count=$((count+1))
+            fi
+          done
+          test "$count" -gt 0
+          echo "Clean-baseline test excludes $count older migrations in ephemeral checkout only"
+      - name: Replay authentic migration files without overlays
+        run: |
+          set -o pipefail
+          node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
+          npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/canonical-baseline.log"
+          npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/canonical-baseline.log"
+      - name: Verify canonical RLS and account readiness
+        run: node scripts/uat-local-schema-gate.mjs
+      - name: Report first authentic missing dependency
+        if: failure()
+        run: |
+          if test -f "$RUNNER_TEMP/canonical-baseline.log"; then
+            grep -iE -m 12 'ERROR:|SQLSTATE|failed|does not exist|syntax error|already exists' "$RUNNER_TEMP/canonical-baseline.log" || true
+            tail -n 25 "$RUNNER_TEMP/canonical-baseline.log" || true
+          fi
+          echo "Clean baseline diagnostic failed. Do not deploy CI fixtures or manually mark migrations applied."
