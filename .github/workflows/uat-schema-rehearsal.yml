@@ -21,6 +21,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  financial_waybill_regression:
+    name: Financial waybill safety regression
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Exercise unchanged V136.1 and preserved denial paths
+        working-directory: britium-go-live
+        run: |
+          npm install --prefix "$RUNNER_TEMP/waybill-test" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.9
+          ln -s "$RUNNER_TEMP/waybill-test/node_modules" node_modules
+          node scripts/test-uat-financial-waybill-predecessor.mjs
+
   replay:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
