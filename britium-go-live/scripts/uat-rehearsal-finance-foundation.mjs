@@ -16,6 +16,9 @@ const details=blocks[0][0];
 const runtime=fs.readFileSync(new URL('../sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql',import.meta.url),'utf8');
 const field=fs.readFileSync(new URL('../sql/candidates/uat_field_finance_foundation_rehearsal_only.sql',import.meta.url),'utf8');
 const pickup=fs.readFileSync(new URL('../sql/candidates/uat_pickup_declared_value_rehearsal_only.sql',import.meta.url),'utf8');
+const commission=fs.readFileSync(new URL('../sql/candidates/uat_commission_event_lineage_rehearsal_only.sql',import.meta.url),'utf8');
+for(const marker of ['ALTER TABLE public.be_commission_events','ADD COLUMN IF NOT EXISTS source_key text','ADD COLUMN IF NOT EXISTS merchant_id text','ADD COLUMN IF NOT EXISTS merchant_name text','ADD COLUMN IF NOT EXISTS referral_assignment_id uuid;'])
+ if(!commission.includes(marker))throw Error('Commission lineage fixture incomplete: '+marker);
 const manifest=JSON.parse(fs.readFileSync(new URL('./uat-finance-prerequisite-sources.json',import.meta.url),'utf8'));
 if(Object.keys(manifest).length!==12)throw Error('Unexpected archived prerequisite manifest');
 const archived=['-- CI ONLY: archived missing table prerequisites.'];
@@ -83,6 +86,6 @@ const ddl=[
  ''
 ].join('\n');
 if(ddl.split('\n').length<6 || !ddl.includes('\nALTER TABLE public.parcels\n')) throw Error('Invalid diagnostic prelude line breaks');
-fs.writeFileSync(compat,ddl+'\n'+pickup+'\n');
+fs.writeFileSync(compat,ddl+'\n'+pickup+'\n'+commission+'\n');
 fs.writeFileSync(finance,content+'\n-- Original V2.2 Data Entry finance bridge columns, CI ONLY.\n'+details+'\n'+runtime+'\n'+field+'\n'+archived.join('\n')+'\n');
 console.log('CI ONLY: staged verified parcel columns and original 20260731 finance foundation.');

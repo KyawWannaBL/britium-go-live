@@ -27,3 +27,18 @@ if(missing.length||rlsOff.length||authCount!==0){
  process.exit(1);
 }
 console.log('PASS: eight canonical UAT tables present, RLS enabled, Auth empty.');
+query(`do $gate$
+begin
+ if to_regprocedure('public.be_data_entry_require_access_v57(text,boolean)') is null then
+  raise exception 'V57 Data Entry permission enforcement function is missing';
+ end if;
+ if to_regprocedure('public.be_field_team_resolve_login(text)') is null then
+  raise exception 'Field-team login resolver is missing';
+ end if;
+ begin
+  perform public.be_data_entry_require_access_v57('view',false);
+  raise exception 'Unauthenticated Data Entry access was unexpectedly allowed';
+ exception when insufficient_privilege then null;
+ end;
+end $gate$;`);
+console.log('PASS: real replayed Data Entry permission enforcement rejects an unauthenticated caller.');

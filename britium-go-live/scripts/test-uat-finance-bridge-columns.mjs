@@ -9,7 +9,7 @@ const tmp=fs.mkdtempSync(path.join(os.tmpdir(),'uat-finance-bridge-'));
 const db=new PGlite();
 try {
  const manifest=JSON.parse(fs.readFileSync(path.join(root,'scripts/uat-finance-prerequisite-sources.json'),'utf8'));
- for(const rel of ['scripts/uat-rehearsal-finance-foundation.mjs','scripts/uat-finance-prerequisite-sources.json',...new Set(Object.values(manifest)),'britium-current-ui-fixed/parcel_financial_v2_backend.sql','britium-current-ui-fixed/parcel_financial_v2_2_ui_finance_bridge.sql','sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql','sql/candidates/uat_field_finance_foundation_rehearsal_only.sql','sql/candidates/uat_pickup_declared_value_rehearsal_only.sql']){
+ for(const rel of ['scripts/uat-rehearsal-finance-foundation.mjs','scripts/uat-finance-prerequisite-sources.json',...new Set(Object.values(manifest)),'britium-current-ui-fixed/parcel_financial_v2_backend.sql','britium-current-ui-fixed/parcel_financial_v2_2_ui_finance_bridge.sql','sql/candidates/uat_financial_runtime_v58_rehearsal_only.sql','sql/candidates/uat_field_finance_foundation_rehearsal_only.sql','sql/candidates/uat_pickup_declared_value_rehearsal_only.sql','sql/candidates/uat_commission_event_lineage_rehearsal_only.sql']){
   fs.mkdirSync(path.dirname(path.join(tmp,rel)),{recursive:true});fs.copyFileSync(path.join(root,rel),path.join(tmp,rel));
  }
  fs.mkdirSync(path.join(tmp,'supabase/migrations'),{recursive:true});
