@@ -17,7 +17,14 @@ assert.equal(original.split(predecessorEnd).length,2,'Settlement manifest predec
 assert.ok(original.includes('-- CI_ONLY_EMPTY_EXTERNAL_SETTLEMENT_MANIFEST'),'Verified manifest required before creating dependent views');
 const existingViewAnchor='-- CI_ONLY_SOURCE_EVIDENCE_VIEWS';
 assert.ok(!original.includes(existingViewAnchor),'Already staged');
-const staged=original.replace(predecessorEnd,predecessorEnd+'\n'+existingViewAnchor+'\n'+viewSql);
+const authority=fs.readFileSync(path.resolve('supabase/migrations/20261031095042_cs_pickup_and_private_source_isolation.sql'),'utf8');
+const fnStart='create or replace function private.be_current_operational_way_v1(p_way text)';
+const fnEnd='revoke all on function private.be_current_operational_way_v1(text)from public,anon,authenticated,service_role;';
+const from=authority.indexOf(fnStart),to=authority.indexOf(fnEnd,from);
+assert.ok(from>=0&&to>from,'Original October 31 cutoff/retirement-aware predicate is required');
+const predicate=authority.slice(from,to+fnEnd.length);
+assert.ok(predicate.includes('private.be_oct2026_retired_keys')&&predicate.includes('public.be_golive_live_cutoff_v1()'),'Historical retirement protections must be retained');
+const staged=original.replace(predecessorEnd,predecessorEnd+'\\n'+predicate+'\\n'+existingViewAnchor+'\\n'+viewSql);
 assert.ok(staged.indexOf(predecessorEnd)<staged.indexOf('create view private.be_oct2026_external_settlement_review_v1'));
 assert.ok(staged.indexOf('create view private.be_oct2026_external_settlement_review_v1')<staged.indexOf('create view private.be_oct20_22_dispatch_evidence_worklist_v1'));
 fs.writeFileSync(pathToMigration,staged);
