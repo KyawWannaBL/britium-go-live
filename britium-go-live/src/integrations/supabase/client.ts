@@ -10,6 +10,11 @@ const DEFAULT_SUPABASE_URL = "https://hgijdyfwmvskchsruknp.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "";
 
 const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const EXPECTED_UAT_SUPABASE_URL = "https://hgijdyfwmvskchsruknp.supabase.co";
+// Fail closed if a future Vercel environment variable accidentally targets Production.
+if (new URL(directSupabaseUrl).origin !== EXPECTED_UAT_SUPABASE_URL) {
+  throw new Error("UAT_DB_ISOLATION_MISMATCH: isolated Mandalay/Insein UAT only");
+}
 const isNativeApp = Capacitor.isNativePlatform();
 // The native WebView's origin is capacitor://localhost, so it cannot use a
 // relative /supabase URL. Route native API calls through the public Britium
