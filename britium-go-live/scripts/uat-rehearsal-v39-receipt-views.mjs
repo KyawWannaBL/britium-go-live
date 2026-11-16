@@ -16,12 +16,14 @@ const extract=(start)=>{
 };
 if(fs.existsSync(target)) throw Error('Refusing override of existing migration');
 const settings=extract('create table if not exists public.be_operational_settings_v39 (');
+const v36Extensions=extract('alter table public.be_warehouse_receipts_v36\n  add column if not exists receipt_method text');
 const receipt=extract('create or replace view public.be_v_warehouse_receipt_v39 as');
 const lifecycle=extract('create or replace view public.be_v_warehouse_lifecycle_v39 as');
 fs.writeFileSync(target,[
   '-- DIAGNOSTIC LOCAL REPLAY ONLY, not canonical historical migration.',
   settings,
   "ALTER TABLE public.be_operational_settings_v39 ENABLE ROW LEVEL SECURITY;",
+  v36Extensions,
   receipt,
   lifecycle,
   ''
