@@ -52,6 +52,7 @@ jobs:
           node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
           node scripts/uat-rehearsal-fleet-master-catalog-overlay.mjs
           node scripts/uat-rehearsal-field-identity-overlay.mjs
+          node scripts/uat-rehearsal-v36-foundation.mjs
           node scripts/uat-rehearsal-v39-ledger-foundation.mjs
           node scripts/uat-rehearsal-v39-receipt-views.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
@@ -118,6 +119,7 @@ jobs:
           node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
           node scripts/uat-rehearsal-fleet-master-catalog-overlay.mjs
           node scripts/uat-rehearsal-field-identity-overlay.mjs
+          node scripts/uat-rehearsal-v36-foundation.mjs
           node scripts/uat-rehearsal-v39-ledger-foundation.mjs
           node scripts/uat-rehearsal-v39-receipt-views.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
