@@ -69,6 +69,7 @@ jobs:
           node scripts/uat-rehearsal-territory-table.mjs
           node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
           node scripts/uat-rehearsal-v63-data-entry-columns.mjs
+          node scripts/uat-rehearsal-return-scan-v39.mjs
           node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
@@ -154,6 +155,7 @@ jobs:
           node scripts/uat-rehearsal-territory-table.mjs
           node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
           node scripts/uat-rehearsal-v63-data-entry-columns.mjs
+          node scripts/uat-rehearsal-return-scan-v39.mjs
           node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
