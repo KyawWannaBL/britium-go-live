@@ -61,8 +61,6 @@ revoke all on function public.be_go_live_readiness_isolation_report_v1() from pu
 `;
 fs.writeFileSync(migration,original.replace(anchor,predecessor+'\n'+anchor));
 assert.ok(fs.readFileSync(migration,'utf8').includes(predecessor));
-assert.equal(predecessor.split('$uat_predecessor
-console.log('CI-only empty private go-live cutover predecessor inserted before October reader; no rows seeded.');
-).length - 1, 2, 'SQL function dollar delimiters must balance');
-assert.ok(!predecessor.includes("as $\n"),'invalid bare SQL delimiter');
+assert.equal(predecessor.split('$uat_predecessor$').length - 1, 2, 'SQL function dollar delimiters must balance');
+assert.ok(!predecessor.includes('as $\n'), 'invalid bare SQL delimiter');
 console.log('CI-only empty private go-live cutover predecessor inserted before October reader; no rows seeded.');
