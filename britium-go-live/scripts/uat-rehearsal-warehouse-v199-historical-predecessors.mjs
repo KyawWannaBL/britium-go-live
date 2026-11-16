@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 assert.equal(process.env.DO_NOT_CONNECT_REMOTE,'1','Remote guard required');
 assert.equal(process.env.GITHUB_ACTIONS,'true','Disposable CI only');
-const archive=path.resolve('supabase/migration_history_archive/local_only_not_in_production_20261114/20261007081000_warehouse_wayplan_view_rto_report_v199.sql');
+const archive=path.resolve('../supabase/migration_history_archive/local_only_not_in_production_20261114/20261007081000_warehouse_wayplan_view_rto_report_v199.sql');
 const sql=fs.readFileSync(archive,'utf8');
 const migration=path.resolve('supabase/migrations/20261029213548_branch_warehouse_scoped_reports.sql');
 const original=fs.readFileSync(migration,'utf8');
