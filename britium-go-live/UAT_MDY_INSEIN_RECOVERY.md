@@ -58,3 +58,11 @@
 - Do not assign logins until the initial migration source sequence is repaired and the full branch replay succeeds. Do not manually spoof the Supabase migration ledger. Delete temporary branch when done to stop charging.
 
 - Temporary rehearsal branch was **deleted successfully** after the isolated helper test to stop further hourly compute charges. Supabase `list_branches` confirmed it is absent; the operational UAT branch remains present and `MIGRATIONS_FAILED`.
+
+
+## Operational UAT SQL verification — after owner reported SQL SUCCESS
+- Queried isolated operational UAT `hgijdyfwmvskchsruknp` directly: `to_regprocedure('public._quote_ident_like(text,text)')` returned the installed helper.
+- Executed two harmless helper invocations (quoted and unquoted identifiers); both succeeded. Baseline count remains 242 public BASE TABLE objects.
+- Supabase branch status remains **MIGRATIONS_FAILED** with **27 recorded migrations**; account registry, branch registry and branch intake table remain absent. Auth user count still **0**.
+- This verifies the SQL helper, NOT completion of migration replay. It does not imply operational UAT or staff accounts are ready.
+- Do not bypass `20260721093501_remote_schema.sql` or mark it applied; reconcile source snapshot vs. baseline, execute a reviewed schema-only replay, verify role-scoped RLS, and provision Auth via supported admin invitation after the core gates pass.
