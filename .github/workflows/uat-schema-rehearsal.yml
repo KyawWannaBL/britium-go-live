@@ -67,6 +67,7 @@ jobs:
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
           node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
@@ -150,6 +151,7 @@ jobs:
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
           node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
