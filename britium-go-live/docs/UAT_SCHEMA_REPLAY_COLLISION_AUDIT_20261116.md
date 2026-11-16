@@ -37,3 +37,10 @@ Reference: https://supabase.com/docs/guides/database/database-linter
 
 ## Release decision
 **BLOCKED.** A Vercel READY deployment means the frontend built; it does not establish schema, permissions, user login, or operational UAT readiness. No account was created by this audit; no SQL migration was applied.
+
+
+## Follow-up enum reconciliation
+- Compared 21 named enum CREATE TYPE statements in the July snapshot with actual `pg_type/pg_enum` metadata from UAT: **all 21 enum types already exist**. The duplicate `app_role` at statement 2 is therefore the first visible failure, not the only type collision.
+- The snapshot and UAT enum labels agree for 20 of the 21 enums.
+- `public.employee_role` contains an extra `branch-office` value in UAT (17 labels) absent from the July snapshot (16 labels). This is additive schema evolution; any repair that drops/recreates enums would risk losing it and breaking dependencies.
+- The current container has no PostgreSQL server, Docker, Supabase CLI, or PGlite installed, and outbound GitHub DNS is unavailable; a full isolated replay **was not executed** here. Do not treat static analysis as a passing rehearsal.
