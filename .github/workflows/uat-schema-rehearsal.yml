@@ -14,6 +14,7 @@ on:
       - britium-go-live/scripts/uat-schema-replay-preflight.mjs
       - britium-go-live/scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
       - britium-go-live/scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+      - britium-go-live/scripts/uat-rehearsal-october-source-predecessors.mjs
 
 permissions:
   contents: read
@@ -112,6 +113,7 @@ jobs:
           node scripts/uat-rehearsal-empty-historical-backfill.mjs
           node scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
           node scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+          node scripts/uat-rehearsal-october-source-predecessors.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
           echo "Explicit clean LOCAL replay without seed data. No remote flags."
@@ -211,6 +213,7 @@ jobs:
           node scripts/uat-rehearsal-empty-historical-backfill.mjs
           node scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
           node scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+          node scripts/uat-rehearsal-october-source-predecessors.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/snapshot-first.log"
           npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/snapshot-first.log"
