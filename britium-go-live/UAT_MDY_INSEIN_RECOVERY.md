@@ -29,3 +29,13 @@
 - Insein: Manager 1, Rider 3, Warehouse 1, Finance/Cashier 1, Driver 1, Helper 1.
 
 **Release gate:** Draft only; never promote or merge into Production main.
+
+
+## Follow-up audit — 2026-11-16 (after Vercel READY)
+- Owner-provided Vercel screenshot shows the **dedicated UAT frontend deployment is READY** on its own project. This does **not** certify working login, backend schema, or UAT acceptance; any older frontend-deployment blockers above are historical.
+- Live read-only isolated Supabase check: **249 public tables**, **27 recorded migration ledger entries**, **0 users in auth.users**, and the **app_role enum already exists**.
+- Live schema check: **missing** `public.be_user_account_registry`, `public.be_branch_offices`, `public.be_role_authority_matrix`, `public.be_branch_intake_parcels_v1`, and `public.be_login_access_profile` RPC.
+- Supabase branch status remains **MIGRATIONS_FAILED**. Do not rebase/reset or mark snapshot migration applied to conceal the conflict; repair the full 26,003-statement snapshot vs. baseline dependencies in an isolated schema-only rehearsal first.
+- Read-only repeatable audit added: `sql/audits/uat_mdy_insein_schema_gate_readonly.sql`. It must pass before account provisioning or invitations.
+- **No UAT Auth accounts created**. The connected Supabase tools do not expose an Auth-admin invitation/create-user action; do not write directly into `auth.users`, do not invent user emails, and do not assign shared passwords. Use the official Supabase Dashboard or a scoped server-side Auth Admin action after schema/RLS readiness, with verified staff identities.
+- Keep Production `main` and Production Supabase unchanged. Never copy live parcels, finance data, or Auth users into UAT.
