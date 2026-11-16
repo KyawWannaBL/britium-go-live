@@ -28,7 +28,35 @@ create table if not exists private.be_golive_readiness_cutovers_v1 (
   created_by text not null default current_user,
   metadata jsonb not null default '{}'::jsonb
 );
+create table if not exists private.be_golive_readiness_scope_v1 (
+  cutover_id uuid not null references private.be_golive_readiness_cutovers_v1(cutover_id),
+  table_schema text not null default 'public',
+  table_name text not null,
+  category text not null,
+  row_count bigint not null default 0,
+  primary key (cutover_id, table_schema, table_name)
+);
 revoke all on table private.be_golive_readiness_cutovers_v1 from public, anon, authenticated;
+revoke all on table private.be_golive_readiness_scope_v1 from public, anon, authenticated;
+-- Exact archived report formula; no historical rows are seeded.
+create or replace function public.be_go_live_readiness_isolation_report_v1()
+returns jsonb language sql stable security definer set search_path = '' as $
+  select jsonb_build_object(
+    'ok',true,'mode','READINESS_ONLY','cutover_code',c.cutover_code,
+    'cutoff_at',c.cutoff_at,'target_tables',c.target_table_count,
+    'existing_tables',c.existing_table_count,'nonempty_tables',c.nonempty_table_count,
+    'isolated_rows',c.isolated_row_count,'isolated_keys',c.isolated_key_count,
+    'rows_updated',0,'rows_deleted',0,'statuses_changed',0,
+    'master_data_untouched',true,
+    'by_category',coalesce((select jsonb_object_agg(category,total order by category)
+      from (select category,sum(row_count) total
+            from private.be_golive_readiness_scope_v1 s
+            where s.cutover_id=c.cutover_id group by category) x),'{}'::jsonb)
+  )
+  from private.be_golive_readiness_cutovers_v1 c
+  where c.cutover_code='PRE_GOLIVE_UAT_20260901';
+$;
+revoke all on function public.be_go_live_readiness_isolation_report_v1() from public,anon,authenticated;
 -- No direct application-role or anonymous access.
 `;
 fs.writeFileSync(migration,original.replace(anchor,predecessor+'\n'+anchor));
