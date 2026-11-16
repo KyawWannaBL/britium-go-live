@@ -43,7 +43,7 @@ const ddl=[
  ' ADD COLUMN IF NOT EXISTS settlement_direction text,',
  ' ADD COLUMN IF NOT EXISTS validation_status text,',
  ' ADD COLUMN IF NOT EXISTS validation_message text,',
- ' ADD COLUMN IF NOT EXISTS calculation_version text NOT NULL DEFAULT 'PARCEL_FINANCIAL_V2',',
+ " ADD COLUMN IF NOT EXISTS calculation_version text NOT NULL DEFAULT 'PARCEL_FINANCIAL_V2',",
  ' ADD COLUMN IF NOT EXISTS calculated_at timestamptz,',
  ' ADD COLUMN IF NOT EXISTS financial_locked_at timestamptz,',
  ' ADD COLUMN IF NOT EXISTS financial_settled_at timestamptz,',
