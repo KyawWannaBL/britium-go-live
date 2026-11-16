@@ -25,11 +25,15 @@ try{
  const codSource=fs.readFileSync(new URL('../britium-current-ui-fixed/finance_cod_settlement_v48.sql',import.meta.url),'utf8');
  const codTable=codSource.match(/create table if not exists public\.be_finance_cod_settlements_v48 \([\s\S]*?\n\);/i)?.[0];
  assert.ok(codTable);await db.exec(codTable);
+ const accounting=fs.readFileSync(new URL('../supabase/migrations/20260925183604_enterprise_financial_ledger_foundation_v1.sql',import.meta.url),'utf8');
+ const accounts=accounting.match(/create table public\.be_chart_of_accounts \([\s\S]*?\n\);/i)?.[0];
+ assert.ok(accounts);await db.exec(accounts);
  await db.exec('BEGIN;SAVEPOINT acceptance;');
  await db.exec(fs.readFileSync(new URL('../sql/candidates/uat_v200_rollback_acceptance_fixtures.sql',import.meta.url),'utf8'));
  assert.equal((await db.query('select count(*) n from parcels')).rows[0].n,2);
+ assert.equal((await db.query(`select count(*) n from be_chart_of_accounts where account_code in ('212002','111001','112003') and is_active and is_postable`)).rows[0].n,3,'Payment acceptance needs all three configured accounting accounts');
  await db.exec('ROLLBACK TO SAVEPOINT acceptance;COMMIT;');
- for(const table of ['parcels','be_user_account_registry','be_finance_cod_settlements_v48'])assert.equal((await db.query('select count(*) n from '+table)).rows[0].n,0,'Acceptance fixtures must roll back');
+ for(const table of ['parcels','be_user_account_registry','be_finance_cod_settlements_v48','be_chart_of_accounts'])assert.equal((await db.query('select count(*) n from '+table)).rows[0].n,0,'Acceptance fixtures must roll back');
  await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Authentication is required/);
  await db.query(`select set_config('request.jwt.claims',$1,false)`,[JSON.stringify({sub:'00000000-0000-4000-8000-000000000799',role:'authenticated',user_metadata:{portal_role:'SUPERADMIN',email:'spoof@example.test'}})]);
  await assert.rejects(db.query('select be_finance_assert_internal_v3()'),/Finance settlement permission is required/);
