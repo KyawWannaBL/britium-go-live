@@ -40,6 +40,8 @@ jobs:
           node scripts/test-uat-field-finance-foundation.mjs
           node scripts/test-uat-pickup-declared-value.mjs
           node scripts/test-uat-operational-prerequisites.mjs
+          node scripts/test-uat-data-entry-access.mjs
+          node scripts/test-uat-commission-lineage.mjs
 
   replay:
     runs-on: ubuntu-24.04
