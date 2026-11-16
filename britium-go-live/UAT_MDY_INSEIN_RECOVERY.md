@@ -66,3 +66,10 @@
 - Supabase branch status remains **MIGRATIONS_FAILED** with **27 recorded migrations**; account registry, branch registry and branch intake table remain absent. Auth user count still **0**.
 - This verifies the SQL helper, NOT completion of migration replay. It does not imply operational UAT or staff accounts are ready.
 - Do not bypass `20260721093501_remote_schema.sql` or mark it applied; reconcile source snapshot vs. baseline, execute a reviewed schema-only replay, verify role-scoped RLS, and provision Auth via supported admin invitation after the core gates pass.
+
+
+## Comparative no-remote migration rehearsal — 2026-11-16
+- Commit `9f9b321d` adds a **second independent GitHub Actions job** in `.github/workflows/uat-schema-rehearsal.yml`: `snapshot_first`.
+- The original job replays the full local migration order. The new job stages all pre-`20260721093501` migration files into a **disposable checkout's temporary directory** and tries the July snapshot as the first migration, preserving every subsequent migration for this test. It does **not** alter repository migration history or any hosted database.
+- Both jobs use `supabase start` and explicit `supabase db reset --local --no-seed`, with no linked project or credentials. Neither job's result is yet verified by the available GitHub connector (it exposes PR-triggered runs only).
+- An individual successful SQL helper test does not release UAT: live isolated branch remains `MIGRATIONS_FAILED`, registries missing and zero Auth users. Proceed with one reviewed migration design only after comparing the two replay logs.
