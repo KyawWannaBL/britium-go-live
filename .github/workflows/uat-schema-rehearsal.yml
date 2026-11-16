@@ -37,6 +37,7 @@ jobs:
           node scripts/test-uat-financial-waybill-predecessor.mjs
           node scripts/test-uat-wayid-registry.mjs
           node scripts/test-uat-finance-bridge-columns.mjs
+          node scripts/test-uat-field-finance-foundation.mjs
 
   replay:
     runs-on: ubuntu-24.04
