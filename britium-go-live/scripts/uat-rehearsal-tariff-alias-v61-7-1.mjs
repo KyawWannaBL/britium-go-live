@@ -22,5 +22,13 @@ const table=[
  'ALTER TABLE public.be_tariff_location_alias_v61_7_1 ENABLE ROW LEVEL SECURITY;',
  ''
 ].join('\n');
-fs.writeFileSync(src,table+sql);
+const historicalPath=fileURLToPath(new URL('../britium-current-ui-fixed/data_entry_tariff_wiring_v61_7_patch/sql/20260803_financial_v2_canonical_tariff_wiring_v61_7.sql',import.meta.url));
+const historical=fs.readFileSync(historicalPath,'utf8');
+const marker='create or replace function public.be_financial_v2_normalize_township_text_v61_7(';
+const ix=historical.indexOf(marker),end=historical.indexOf('$normalize$;',ix);
+if(ix<0||end<ix||historical.indexOf(marker,ix+marker.length)>=0)throw Error('Historical V61.7 normalization definition missing');
+const normalize=historical.slice(ix,end+'$normalize$;'.length);
+if(!normalize.includes('set search_path = pg_catalog')||!normalize.includes('immutable'))throw Error('Unexpected function permissions');
+
+fs.writeFileSync(src,table+'\n'+normalize+'\n'+sql);
 console.log('CI only: staged canonical tariff alias metadata before V31 township seed.');
