@@ -1,0 +1,18 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+const file=(name)=>readFileSync(new URL(name,import.meta.url),"utf8");
+const sql=file("../sql/candidates/warehouse_snapshot_setbased_timeout_v212.sql");
+const page=file("../src/pages/WarehousePage.tsx");
+assert.match(sql,/CREATE OR REPLACE FUNCTION public.be_warehouse_scan_lifecycle_snapshot_v211/);
+assert.match(sql,/WITH src AS MATERIALIZED/);
+assert.match(sql,/JOIN keys k ON k.way_id/);
+assert.doesNotMatch(sql,/public\.be_warehouse_dispatch_scan_state_v75\(/);
+assert.match(sql,/WHEN rs.requested_delivery_date IS NOT NULL/);
+assert.match(sql,/RETURNED_WAITING_REPLAN/);
+assert.match(sql,/DISPATCH_SCAN_REQUIRED/);
+assert.match(sql,/last_return_scan_at/);
+assert.match(sql,/coalesce\(v_base->'stats'/);
+assert.match(page,/be_warehouse_scan_lifecycle_snapshot_v211/);
+assert.match(page,/snapshotLoadError \? "—" : \(v \?\? 0\)/);
+assert.match(page,/This does not mean there are zero parcels/);
+console.log("PASS: Warehouse snapshot uses set-based reconciliation and distinguishes load errors from zero parcel counts");
