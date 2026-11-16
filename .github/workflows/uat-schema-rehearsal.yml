@@ -57,6 +57,7 @@ jobs:
           node scripts/uat-rehearsal-v39-ledger-foundation.mjs
           node scripts/uat-rehearsal-v39-receipt-views.mjs
           node scripts/uat-rehearsal-login-identity-overlay.mjs
+          node scripts/uat-rehearsal-legacy-finance-view-overlay.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
@@ -126,6 +127,7 @@ jobs:
           node scripts/uat-rehearsal-v39-ledger-foundation.mjs
           node scripts/uat-rehearsal-v39-receipt-views.mjs
           node scripts/uat-rehearsal-login-identity-overlay.mjs
+          node scripts/uat-rehearsal-legacy-finance-view-overlay.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/snapshot-first.log"
