@@ -47,3 +47,12 @@
 - On creation response and immediate status check, branch is `CREATING_PROJECT`. Query access shows zero auth.users, no account registry, no branch registry, and the initial migration listing has 7 April versions; **do not mistake this intermediate state for final migration failure or success**.
 - Never publish the rehearsal URL or use for production/employee logins. Do not copy production records.
 - **Delete the temporary branch when testing is finished to stop hourly charges** using branch id above. Do not delete the separate existing operational UAT branch.
+
+
+## Fresh hosted rehearsal result — 2026-11-16
+- Approved hourly US$0.01344 temporary rehearsal branch `omxttoaopfafltphtybg` was created with `with_data=false`.
+- Automated migration runner reported `MIGRATIONS_FAILED` after only **7 April 2026 migrations**; new database had no UAT Auth users or modern branch tables.
+- Direct PostgreSQL logs showed first concrete error at `2026-11-16T08:48:51.477Z`: `function public._quote_ident_like(text, text) does not exist`. This precedes the later July `app_role` duplication problem.
+- Retrieved exact `public._quote_ident_like(text,text)` function definition using read-only `pg_get_functiondef` on Production. Applied definition to **temporary rehearsal project only**, not operational UAT or Production. Direct `to_regprocedure` and function invocation checks PASSED.
+- Archived UAT-only repair candidate `sql/candidates/uat_quote_ident_like_dependency.sql` for ordered-migration source reconciliation. Applying this helper after the initial migration failure does **not** retroactively mark the branch healthy or complete the full replay.
+- Do not assign logins until the initial migration source sequence is repaired and the full branch replay succeeds. Do not manually spoof the Supabase migration ledger. Delete temporary branch when done to stop charging.
