@@ -47,6 +47,7 @@ jobs:
           set -o pipefail
           echo "Starting disposable local Supabase; NO linked project, credentials, or remote flags."
           node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
           echo "Explicit clean LOCAL replay without seed data. No remote flags."
@@ -105,6 +106,7 @@ jobs:
           echo "This tests whether July schema snapshot can serve as a standalone baseline."
           echo "No linked Supabase project, credentials, data, or production commands."
           node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/snapshot-first.log"
           npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/snapshot-first.log"
