@@ -1,0 +1,12 @@
+/** CI-only: make one legacy pre-replacement DROP VIEW conditional.
+ * No remote database changes. Keep replacement view SQL untouched.
+ */
+import fs from 'node:fs';
+import {fileURLToPath} from 'node:url';
+const file=fileURLToPath(new URL('../supabase/migrations/20260901192455_finance_canonical_projection_v4_1.sql',import.meta.url));
+const source=fs.readFileSync(file,'utf8');
+const exact='drop view public.be_v_finance_merchant_settlement_queue_v2;';
+if(source.split(exact).length!==2)throw Error('Expected exact single DROP VIEW not found');
+if(!source.includes('create view public.be_v_finance_merchant_settlement_queue_v2\nwith (security_invoker = true)'))throw Error('RLS-safe replacement view absent');
+fs.writeFileSync(file,source.replace(exact,'drop view if exists public.be_v_finance_merchant_settlement_queue_v2;'));
+console.log('CI only: conditional drop of absent legacy finance settlement queue before existing security-invoker CREATE VIEW.');
