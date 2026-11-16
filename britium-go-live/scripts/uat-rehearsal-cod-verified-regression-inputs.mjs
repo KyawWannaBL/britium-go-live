@@ -46,7 +46,21 @@ const isolatedTag=dollar+'uat_verified_township'+dollar;
 assert.equal(sourceVerifiedTownshipHelper.split(originalTag).length,3,'Catalog function body delimiters must be balanced');
 const safeHelper=sourceVerifiedTownshipHelper.split(originalTag).join(isolatedTag);
 assert.ok(safeHelper.includes('be_township_identity_v61_7')&&safeHelper.includes('be_tariff_location_alias_v61_7_1'),'Canonical identity and alias lookups required');
-const finalSql='-- CI_ONLY_ORIGINAL_TOWNSHIP_CODE_HELPER: source-verified original resolver, no privileges changed.\n'+safeHelper+';\n'+staged;
+const officialTownshipIdentity=`-- CI_ONLY_INSEIN_TOWNSHIP_IDENTITY: production-catalog schema and one verified geographic reference, no personal records.
+create table public.be_township_identity_v61_7(
+ township_code text primary key, township_name_en text not null, township_name_mm text not null,
+ city text, state_region_name_en text, state_region_name_mm text,
+ normalized_en text not null default ''::text, normalized_mm text not null default ''::text,
+ created_at timestamptz not null default now(), updated_at timestamptz not null default now()
+);
+alter table public.be_township_identity_v61_7 enable row level security;
+revoke all on table public.be_township_identity_v61_7 from public, anon, authenticated;
+insert into public.be_township_identity_v61_7(
+ township_code,township_name_en,township_name_mm,city,state_region_name_en,state_region_name_mm,normalized_en,normalized_mm
+) values ('MMR013001','Insein','အင်းစိန်','Yangon','Yangon','ရန်ကုန်တိုင်းဒေသကြီး','insein','အင်းစိန်');
+`;
+assert.ok(officialTownshipIdentity.includes('MMR013001')&&officialTownshipIdentity.includes('enable row level security'),'Verified location identity and RLS are mandatory');
+const finalSql=officialTownshipIdentity+'\n-- CI_ONLY_ORIGINAL_TOWNSHIP_CODE_HELPER: source-verified original resolver, no privileges changed.\n'+safeHelper+';\n'+staged;
 fs.writeFileSync(file,finalSql);
 assert.ok(fs.readFileSync(file,'utf8').includes("THEN RAISE EXCEPTION 'COD regression: 006 %, 008 %'"),'Original COD guard preserved');
 console.log('CI only: production-catalog township code helper and real COD calculation checks staged.');
