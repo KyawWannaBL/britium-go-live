@@ -56,3 +56,5 @@
 - Retrieved exact `public._quote_ident_like(text,text)` function definition using read-only `pg_get_functiondef` on Production. Applied definition to **temporary rehearsal project only**, not operational UAT or Production. Direct `to_regprocedure` and function invocation checks PASSED.
 - Archived UAT-only repair candidate `sql/candidates/uat_quote_ident_like_dependency.sql` for ordered-migration source reconciliation. Applying this helper after the initial migration failure does **not** retroactively mark the branch healthy or complete the full replay.
 - Do not assign logins until the initial migration source sequence is repaired and the full branch replay succeeds. Do not manually spoof the Supabase migration ledger. Delete temporary branch when done to stop charging.
+
+- Temporary rehearsal branch was **deleted successfully** after the isolated helper test to stop further hourly compute charges. Supabase `list_branches` confirmed it is absent; the operational UAT branch remains present and `MIGRATIONS_FAILED`.
