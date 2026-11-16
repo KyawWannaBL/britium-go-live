@@ -24,7 +24,7 @@ const from=authority.indexOf(fnStart),to=authority.indexOf(fnEnd,from);
 assert.ok(from>=0&&to>from,'Original October 31 cutoff/retirement-aware predicate is required');
 const predicate=authority.slice(from,to+fnEnd.length);
 assert.ok(predicate.includes('private.be_oct2026_retired_keys')&&predicate.includes('public.be_golive_live_cutoff_v1()'),'Historical retirement protections must be retained');
-const staged=original.replace(predecessorEnd,predecessorEnd+'\\n'+predicate+'\\n'+existingViewAnchor+'\\n'+viewSql);
+const staged=original.replace(predecessorEnd,predecessorEnd+'\n'+predicate+'\n'+existingViewAnchor+'\n'+viewSql);
 assert.ok(staged.indexOf(predecessorEnd)<staged.indexOf('create view private.be_oct2026_external_settlement_review_v1'));
 assert.ok(staged.indexOf('create view private.be_oct2026_external_settlement_review_v1')<staged.indexOf('create view private.be_oct20_22_dispatch_evidence_worklist_v1'));
 fs.writeFileSync(pathToMigration,staged);
