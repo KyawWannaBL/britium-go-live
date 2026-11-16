@@ -67,6 +67,7 @@ jobs:
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
@@ -147,6 +148,7 @@ jobs:
           node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
           node scripts/uat-rehearsal-wayid-v33-allocator.mjs
           node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v45-wayplan-tables.mjs
           node scripts/uat-rehearsal-v46-rider-tables.mjs
           node scripts/uat-rehearsal-data-entry-view-dependency.mjs
           node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
