@@ -1,0 +1,21 @@
+/** Restore archived historical warehouse v199 RPCs in disposable CI only. */
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+assert.equal(process.env.DO_NOT_CONNECT_REMOTE,'1','Remote guard required');
+assert.equal(process.env.GITHUB_ACTIONS,'true','Disposable CI only');
+const archive=path.resolve('supabase/migration_history_archive/local_only_not_in_production_20261114/20261007081000_warehouse_wayplan_view_rto_report_v199.sql');
+const sql=fs.readFileSync(archive,'utf8');
+const migration=path.resolve('supabase/migrations/20261029213548_branch_warehouse_scoped_reports.sql');
+const original=fs.readFileSync(migration,'utf8');
+assert.ok(original.includes('CI_ONLY_WAREHOUSE_RPC_INVENTORY')&&original.includes('BRANCH_WAREHOUSE_ROWS_V1'),'Preflight and scoping guard required');
+assert.ok(!original.includes('CI_ONLY_HISTORICAL_WAREHOUSE_V199_PREDECESSORS'),'Repeated staging refused');
+assert.equal((sql.match(/create or replace function public\.be_warehouse_(wayplan_view|rto_report)_v199/g)||[]).length,2,'Exact archived v199 predecessors required');
+assert.ok(sql.includes('WAREHOUSE_WAYPLAN_VIEW_NOT_AUTHORIZED')&&sql.includes('WAREHOUSE_RTO_REPORT_NOT_AUTHORIZED'),'Original role denials must be retained');
+assert.ok(sql.includes('revoke all on function public.be_warehouse_wayplan_view_v199')&&sql.includes('revoke all on function public.be_warehouse_rto_report_v199'),'Original access controls required');
+const anchor='-- CI_ONLY_WAREHOUSE_RPC_INVENTORY';
+const staged='-- CI_ONLY_HISTORICAL_WAREHOUSE_V199_PREDECESSORS\n'+sql+'\n'+original;
+assert.ok(staged.indexOf('create or replace function public.be_warehouse_wayplan_view_v199')<staged.indexOf(anchor),'History must precede inventory');
+fs.writeFileSync(migration,staged);
+assert.ok(fs.readFileSync(migration,'utf8').endsWith(original),'Original branch scoping unchanged');
+console.log('CI-only exact archived warehouse v199 functions restored, original access denials intact.');
