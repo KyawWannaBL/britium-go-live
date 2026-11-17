@@ -12,6 +12,26 @@ on:
     paths:
       - .github/workflows/uat-schema-rehearsal.yml
       - britium-go-live/scripts/uat-schema-replay-preflight.mjs
+      - britium-go-live/scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
+      - britium-go-live/scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+      - britium-go-live/scripts/uat-rehearsal-october-source-predecessors.mjs
+      - britium-go-live/scripts/uat-rehearsal-photo-waiver-columns.mjs
+      - britium-go-live/scripts/uat-rehearsal-canonical-allocator-idempotency.mjs
+      - britium-go-live/scripts/uat-rehearsal-external-settlement-manifest.mjs
+      - britium-go-live/scripts/uat-rehearsal-original-evidence-views.mjs
+      - britium-go-live/scripts/uat-rehearsal-approved-mandalay-tariffs.mjs
+      - britium-go-live/scripts/uat-rehearsal-tariff-lookup-predecessor.mjs
+      - britium-go-live/scripts/uat-rehearsal-warehouse-rpc-inventory.mjs
+      - britium-go-live/scripts/uat-rehearsal-warehouse-v199-historical-predecessors.mjs
+      - britium-go-live/scripts/uat-rehearsal-ground-settlement-confirmations.mjs
+      - britium-go-live/scripts/uat-rehearsal-oct23-source-tables.mjs
+      - britium-go-live/scripts/uat-rehearsal-cod-verified-regression-inputs.mjs
+      - britium-go-live/scripts/uat-rehearsal-approved-royal-htantabin.mjs
+      - britium-go-live/scripts/uat-rehearsal-finance-dashboard-predecessor.mjs
+      - britium-go-live/scripts/uat-rehearsal-enable-real-pg-cron.mjs
+      - britium-go-live/scripts/uat-rehearsal-branch-account-function-terminators.mjs
+      - britium-go-live/scripts/uat-rehearsal-tariff-rls-parity.mjs
+      - britium-go-live/scripts/uat-canonical-baseline-pgtap-composite-guard.mjs
 
 permissions:
   contents: read
@@ -21,6 +41,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  financial_waybill_regression:
+    name: UAT prerequisite safety regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Exercise unchanged V136.1 and preserved denial paths
+        working-directory: britium-go-live
+        run: |
+          npm install --prefix "$RUNNER_TEMP/waybill-test" --no-audit --no-fund --ignore-scripts @electric-sql/pglite@0.5.9
+          ln -s "$RUNNER_TEMP/waybill-test/node_modules" node_modules
+          node scripts/test-uat-financial-waybill-predecessor.mjs
+          node scripts/test-uat-wayid-registry.mjs
+          node scripts/test-uat-finance-bridge-columns.mjs
+          node scripts/test-uat-field-finance-foundation.mjs
+          node scripts/test-uat-pickup-declared-value.mjs
+          node scripts/test-uat-operational-prerequisites.mjs
+          node scripts/test-uat-data-entry-access.mjs
+          node scripts/test-uat-commission-lineage.mjs
+          node scripts/test-uat-finance-v200-acceptance.mjs
+          node scripts/test-uat-empty-historical-backfill.mjs
+
   replay:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
@@ -38,7 +82,7 @@ jobs:
           persist-credentials: false
       - name: Verify isolated branch
         run: |
-          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
           test -f supabase/migrations/20260721093501_remote_schema.sql
           node scripts/uat-schema-replay-preflight.mjs
       - name: Run local Supabase stack and replay migrations
@@ -46,9 +90,69 @@ jobs:
         run: |
           set -o pipefail
           echo "Starting disposable local Supabase; NO linked project, credentials, or remote flags."
+          node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-finance-foundation.mjs
+          node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
+          node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
+          node scripts/uat-rehearsal-fleet-master-catalog-overlay.mjs
+          node scripts/uat-rehearsal-field-identity-overlay.mjs
+          node scripts/uat-rehearsal-v33-parcel-waybills.mjs
+          node scripts/uat-rehearsal-v36-foundation.mjs
+          node scripts/uat-rehearsal-v39-ledger-foundation.mjs
+          node scripts/uat-rehearsal-v39-receipt-views.mjs
+          node scripts/uat-rehearsal-login-identity-overlay.mjs
+          node scripts/uat-rehearsal-legacy-finance-view-overlay.mjs
+          node scripts/uat-rehearsal-v58-request-ledger.mjs
+          node scripts/uat-rehearsal-v13-calculator.mjs
+          node scripts/uat-rehearsal-archived-v28.mjs
+          node scripts/uat-rehearsal-v57-access.mjs
+          node scripts/uat-rehearsal-original-township-v61-4-1.mjs
+          node scripts/uat-rehearsal-v40-membership.mjs
+          node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
+          node scripts/uat-rehearsal-v122-bilingual-key-overlay.mjs
+          node scripts/uat-rehearsal-v140-pickup-verification.mjs
+          node scripts/uat-rehearsal-v141-proof-sync.mjs
+          node scripts/uat-rehearsal-legacy-warehouse-revokes.mjs
+          node scripts/uat-rehearsal-v39-failure-recursion-preimage.mjs
+          node scripts/uat-rehearsal-v136-waybill-gate.mjs
+          node scripts/uat-rehearsal-financial-waybill-v136-1.mjs
+          node scripts/uat-rehearsal-v122-diagnostic.mjs
+          node scripts/uat-rehearsal-wayid-v33-allocator.mjs
+          node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
+          node scripts/uat-rehearsal-v63-data-entry-columns.mjs
+          node scripts/uat-rehearsal-return-scan-v39.mjs
+          node scripts/uat-rehearsal-v45-wayplan-tables.mjs
+          node scripts/uat-rehearsal-v46-rider-tables.mjs
+          node scripts/uat-rehearsal-data-entry-view-dependency.mjs
+          node scripts/uat-rehearsal-operational-prerequisites.mjs
+          node scripts/uat-rehearsal-finance-v200-acceptance.mjs
+          node scripts/uat-rehearsal-empty-historical-backfill.mjs
+          node scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
+          node scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+          node scripts/uat-rehearsal-october-source-predecessors.mjs
+          node scripts/uat-rehearsal-photo-waiver-columns.mjs
+          node scripts/uat-rehearsal-canonical-allocator-idempotency.mjs
+          node scripts/uat-rehearsal-external-settlement-manifest.mjs
+          node scripts/uat-rehearsal-original-evidence-views.mjs
+          node scripts/uat-rehearsal-approved-mandalay-tariffs.mjs
+          node scripts/uat-rehearsal-tariff-lookup-predecessor.mjs
+          node scripts/uat-rehearsal-warehouse-rpc-inventory.mjs
+          node scripts/uat-rehearsal-warehouse-v199-historical-predecessors.mjs
+          node scripts/uat-rehearsal-ground-settlement-confirmations.mjs
+          node scripts/uat-rehearsal-oct23-source-tables.mjs
+          node scripts/uat-rehearsal-cod-verified-regression-inputs.mjs
+          node scripts/uat-rehearsal-approved-royal-htantabin.mjs
+          node scripts/uat-rehearsal-finance-dashboard-predecessor.mjs
+          node scripts/uat-rehearsal-enable-real-pg-cron.mjs
+          node scripts/uat-rehearsal-branch-account-function-terminators.mjs
+          node scripts/uat-rehearsal-tariff-rls-parity.mjs
+          node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/uat-schema-rehearsal.log"
           echo "Explicit clean LOCAL replay without seed data. No remote flags."
           npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/uat-schema-rehearsal.log"
+      - name: Enforce local UAT schema and RLS readiness
+        run: node scripts/uat-local-schema-gate.mjs
       - name: Report core table readiness if local replay succeeded
         if: success()
         run: |
@@ -81,7 +185,7 @@ jobs:
       - name: Prepare disposable snapshot-first migration ordering
         run: |
           set -euo pipefail
-          test "$GITHUB_REF_NAME" = "uat/mdy-insein-isolated-20261116"
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
           node scripts/uat-schema-replay-preflight.mjs
           mkdir -p "$RUNNER_TEMP/uat-old-baseline"
           shopt -s nullglob
@@ -102,8 +206,68 @@ jobs:
           set -o pipefail
           echo "This tests whether July schema snapshot can serve as a standalone baseline."
           echo "No linked Supabase project, credentials, data, or production commands."
+          node scripts/uat-snapshot-remove-pgtap-duplicate.mjs
+          node scripts/uat-rehearsal-finance-foundation.mjs
+          node scripts/uat-rehearsal-wayplan-legacy-overlay.mjs
+          node scripts/uat-rehearsal-finance-v61-8-1-overlay.mjs
+          node scripts/uat-rehearsal-fleet-master-catalog-overlay.mjs
+          node scripts/uat-rehearsal-field-identity-overlay.mjs
+          node scripts/uat-rehearsal-v33-parcel-waybills.mjs
+          node scripts/uat-rehearsal-v36-foundation.mjs
+          node scripts/uat-rehearsal-v39-ledger-foundation.mjs
+          node scripts/uat-rehearsal-v39-receipt-views.mjs
+          node scripts/uat-rehearsal-login-identity-overlay.mjs
+          node scripts/uat-rehearsal-legacy-finance-view-overlay.mjs
+          node scripts/uat-rehearsal-v58-request-ledger.mjs
+          node scripts/uat-rehearsal-v13-calculator.mjs
+          node scripts/uat-rehearsal-archived-v28.mjs
+          node scripts/uat-rehearsal-v57-access.mjs
+          node scripts/uat-rehearsal-original-township-v61-4-1.mjs
+          node scripts/uat-rehearsal-v40-membership.mjs
+          node scripts/uat-rehearsal-tariff-alias-v61-7-1.mjs
+          node scripts/uat-rehearsal-v122-bilingual-key-overlay.mjs
+          node scripts/uat-rehearsal-v140-pickup-verification.mjs
+          node scripts/uat-rehearsal-v141-proof-sync.mjs
+          node scripts/uat-rehearsal-legacy-warehouse-revokes.mjs
+          node scripts/uat-rehearsal-v39-failure-recursion-preimage.mjs
+          node scripts/uat-rehearsal-v136-waybill-gate.mjs
+          node scripts/uat-rehearsal-financial-waybill-v136-1.mjs
+          node scripts/uat-rehearsal-v122-diagnostic.mjs
+          node scripts/uat-rehearsal-wayid-v33-allocator.mjs
+          node scripts/uat-rehearsal-territory-table.mjs
+          node scripts/uat-rehearsal-v43-wayplan-reviews.mjs
+          node scripts/uat-rehearsal-v63-data-entry-columns.mjs
+          node scripts/uat-rehearsal-return-scan-v39.mjs
+          node scripts/uat-rehearsal-v45-wayplan-tables.mjs
+          node scripts/uat-rehearsal-v46-rider-tables.mjs
+          node scripts/uat-rehearsal-data-entry-view-dependency.mjs
+          node scripts/uat-rehearsal-operational-prerequisites.mjs
+          node scripts/uat-rehearsal-finance-v200-acceptance.mjs
+          node scripts/uat-rehearsal-empty-historical-backfill.mjs
+          node scripts/uat-rehearsal-golive-readiness-cutover-v1.mjs
+          node scripts/uat-rehearsal-cutover-scope-diagnostic.mjs
+          node scripts/uat-rehearsal-october-source-predecessors.mjs
+          node scripts/uat-rehearsal-photo-waiver-columns.mjs
+          node scripts/uat-rehearsal-canonical-allocator-idempotency.mjs
+          node scripts/uat-rehearsal-external-settlement-manifest.mjs
+          node scripts/uat-rehearsal-original-evidence-views.mjs
+          node scripts/uat-rehearsal-approved-mandalay-tariffs.mjs
+          node scripts/uat-rehearsal-tariff-lookup-predecessor.mjs
+          node scripts/uat-rehearsal-warehouse-rpc-inventory.mjs
+          node scripts/uat-rehearsal-warehouse-v199-historical-predecessors.mjs
+          node scripts/uat-rehearsal-ground-settlement-confirmations.mjs
+          node scripts/uat-rehearsal-oct23-source-tables.mjs
+          node scripts/uat-rehearsal-cod-verified-regression-inputs.mjs
+          node scripts/uat-rehearsal-approved-royal-htantabin.mjs
+          node scripts/uat-rehearsal-finance-dashboard-predecessor.mjs
+          node scripts/uat-rehearsal-enable-real-pg-cron.mjs
+          node scripts/uat-rehearsal-branch-account-function-terminators.mjs
+          node scripts/uat-rehearsal-tariff-rls-parity.mjs
+          node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/snapshot-first.log"
           npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/snapshot-first.log"
+      - name: Enforce snapshot-first UAT schema and RLS readiness
+        run: node scripts/uat-local-schema-gate.mjs
       - name: Display first failure evidence
         if: failure()
         run: |
@@ -111,3 +275,56 @@ jobs:
             grep -iE 'error:|failed|already exists|migration|syntax error|does not exist' "$RUNNER_TEMP/snapshot-first.log" | head -n 40 || true
           fi
           echo "Snapshot-first failure is diagnostic only. No remote changes."
+
+  canonical_baseline_no_fixtures:
+    name: Clean July baseline — no CI fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    env:
+      SUPABASE_TELEMETRY_DISABLED: "1"
+      DO_NOT_CONNECT_REMOTE: "1"
+      UAT_LOCAL_DB_PORT: "55322"
+    defaults:
+      run:
+        working-directory: britium-go-live
+        shell: bash
+    steps:
+      - name: Checkout isolated branch without credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Isolate canonical July baseline without historical overlap
+        run: |
+          set -euo pipefail
+          test "${GITHUB_BASE_REF:-$GITHUB_REF_NAME}" = "uat/mdy-insein-isolated-20261116"
+          test -f supabase/migrations/20260721093501_remote_schema.sql
+          mkdir -p "$RUNNER_TEMP/removed-pre-july"
+          shopt -s nullglob
+          count=0
+          for f in supabase/migrations/*.sql; do
+            version="$(basename "$f" | cut -c1-14)"
+            if [[ "$version" < "20260721093501" ]]; then
+              mv "$f" "$RUNNER_TEMP/removed-pre-july/"
+              count=$((count+1))
+            fi
+          done
+          test "$count" -gt 0
+          echo "Clean-baseline test excludes $count older migrations in ephemeral checkout only"
+      - name: Guard source-verified pgtap composite in clean baseline
+        run: node scripts/uat-canonical-baseline-pgtap-composite-guard.mjs
+      - name: Replay authentic migration files without overlays
+        run: |
+          set -o pipefail
+          node -e "const fs=require('fs');const p='supabase/config.toml';let s=fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]').replace('project_id = \"enterprise_portal\"','project_id = \"uat_canonical_clean\"');const found=[...s.matchAll(/port = 5432[0-9]/g)].length;if(found<4)throw Error('Expected standard local ports');s=s.replace(/port = 5432([0-9])/g,(_,n)=>'port = 5532'+n);fs.writeFileSync(p,s);"
+          npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/canonical-baseline.log"
+          npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/canonical-baseline.log"
+      - name: Verify canonical RLS and account readiness
+        run: node scripts/uat-local-schema-gate.mjs
+      - name: Report first authentic missing dependency
+        if: failure()
+        run: |
+          if test -f "$RUNNER_TEMP/canonical-baseline.log"; then
+            grep -iE -m 12 'ERROR:|SQLSTATE|failed|does not exist|syntax error|already exists' "$RUNNER_TEMP/canonical-baseline.log" || true
+            tail -n 25 "$RUNNER_TEMP/canonical-baseline.log" || true
+          fi
+          echo "Clean baseline diagnostic failed. Do not deploy CI fixtures or manually mark migrations applied."

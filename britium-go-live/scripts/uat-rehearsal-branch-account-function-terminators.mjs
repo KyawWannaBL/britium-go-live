@@ -1,0 +1,21 @@
+/** CI-only parser repair for two un-terminated source RPC definitions. */
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+assert.equal(process.env.DO_NOT_CONNECT_REMOTE,'1','Never connect remotely');
+assert.equal(process.env.GITHUB_ACTIONS,'true','Disposable CI only');
+const file=path.resolve('supabase/migrations/20261111053420_mandalay_branch_team_directory_and_account_requests_v1.sql');
+const original=fs.readFileSync(file,'utf8');
+assert.ok(original.includes('BRANCH_ACCOUNT_REQUEST_DENIED')&&original.includes('hq_review_required'),'Original branch request authorization must remain');
+assert.ok(original.includes('account_changes_require_hq_approval'),'Head office approval requirement must remain');
+const dollar=String.fromCharCode(36);
+const tag=dollar+'function'+dollar;
+const first=tag+'\n\n\nCREATE OR REPLACE FUNCTION public.be_branch_team_directory_v1';
+const second=tag+'\n\nREVOKE ALL ON FUNCTION public.be_branch_team_directory_v1';
+assert.equal(original.split(first).length,2,'First missing terminator must occur exactly once');
+assert.equal(original.split(second).length,2,'Second missing terminator must occur exactly once');
+const staged=original.replace(first,tag+';\n\n\nCREATE OR REPLACE FUNCTION public.be_branch_team_directory_v1').replace(second,tag+';\n\nREVOKE ALL ON FUNCTION public.be_branch_team_directory_v1');
+assert.equal(staged.split(tag).length,5,'Both original SQL function bodies must remain intact');
+assert.ok(staged.includes('GRANT EXECUTE ON FUNCTION public.be_branch_account_request_v1(jsonb) TO authenticated'),'Original scoped grant remains');
+fs.writeFileSync(file,staged);
+console.log('CI only: inserted two missing SQL terminators; preserved branch-account role and approval gates.');

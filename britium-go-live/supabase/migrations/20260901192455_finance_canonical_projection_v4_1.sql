@@ -304,7 +304,7 @@ $block$;
 -- The prior view exposed parcel_id as text while every settlement control and
 -- batch API uses uuid. No dependent relation exists, so recreate it with the
 -- correct type and the precomputed canonical projection.
-drop view public.be_v_finance_merchant_settlement_queue_v2;
+drop view if exists public.be_v_finance_merchant_settlement_queue_v2;
 
 create view public.be_v_finance_merchant_settlement_queue_v2
 with (security_invoker = true)
