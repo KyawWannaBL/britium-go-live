@@ -66,7 +66,7 @@ const ddl=[
  ' ADD COLUMN IF NOT EXISTS monthly_ways integer,',
  ' ADD COLUMN IF NOT EXISTS township text,',
  ' ADD COLUMN IF NOT EXISTS weight_kg numeric DEFAULT 0,',
- ' ADD COLUMN IF NOT EXISTS collect_amount numeric NOT NULL DEFAULT 0,',
+ ' ADD COLUMN IF NOT EXISTS collect_amount numeric(14,2) NOT NULL DEFAULT 0,',
  ' ADD COLUMN IF NOT EXISTS base_tariff bigint,',
  ' ADD COLUMN IF NOT EXISTS weight_surcharge bigint,',
  ' ADD COLUMN IF NOT EXISTS gross_system_delivery_charge bigint,',
