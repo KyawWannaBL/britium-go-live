@@ -106,6 +106,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   const [approved, setApproved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [blockedWayIds, setBlockedWayIds] = useState<string[]>([]);
   const request = useRef<{ body: string; id: string } | null>(null);
 
   useEffect(() => {
@@ -159,6 +160,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       setReason("");
     }
     request.current = null;
+    setBlockedWayIds([]);
   }
 
   function repairCrewGaps(nextPlans: OperationalVanPlan[]) {
@@ -184,6 +186,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const used = waveUsed.get(wave) || new Set<string>();
       waveUsed.set(wave, used);
 
+      if (isRiderOnlyVehicle(plan.vehicle_code)) {
+        // Rider-only routes must never auto-assign a Driver or Helper.
+        const selectedRider = find(riders, plan.rider_code);
+        const rider = free(used, selectedRider) ? selectedRider : undefined;
+        reserve(used, rider);
+        return { ...plan, crew_mode: "ROSTER", driver_code: "", rider_code: rider?.id || "", helper_code: "" };
+      }
       const requestedHelper = find(helpers, plan.helper_code);
       const requestedHelperPerson = personKey(requestedHelper);
       let driver = find(drivers, plan.driver_code);
@@ -244,10 +253,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       rider_code: plans[index]?.rider_code || "",
     }));
     reset(repaired, true);
-    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code);
+    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && (isRiderOnlyVehicle(plan.vehicle_code) ? !plan.rider_code : !plan.driver_code));
     setMessage(stillMissing
-      ? "Automatic crew repair could not find an available Driver for every route. Choose an available Driver or use an approved Emergency substitution."
-      : "Missing Driver assignments were repaired automatically. Rider and Helper are optional; review the crew, then create the reviewed Wayplans.");
+      ? "Crew repair cannot fill every route. Select an available Rider for Bicycle/Motor Bike or an available Driver for van/car/truck."
+      : "Crew checked: Bicycle/Motor Bike requires Rider only; van/car/truck requires Driver with optional Helper.");
   }
 
   async function roadSession() {
