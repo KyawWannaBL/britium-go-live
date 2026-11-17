@@ -513,8 +513,9 @@ export default function DataEntryLocationEditor({
     if (!synced) return;
     setManualOpen(true);
     reportResolution("REVIEW_REQUIRED");
-    setMessage(`Coordinates copied automatically from the ${action} Google Map pin: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. Validating and synchronizing this pin now…`);
-    void autoPersistManualPin(synced.next, action);
+    // Do not submit a second background write while the operator is still moving
+    // the marker. Only Apply coordinates may accept and persist a manual pin.
+    setMessage(`Pin selected: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. Check the location, then press Apply coordinates to save.`);
   }
 
   function setMapFocus(focused: boolean) {
@@ -597,7 +598,7 @@ export default function DataEntryLocationEditor({
     setFallbackMapCenter(center);
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
-    setMessage(`Drop-off pin set: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
+    setMessage(`Pin selected: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Press Apply coordinates to save.`);
   }
 
   function moveMapByPixels(horizontalPixels: number, verticalPixels: number) {
@@ -695,16 +696,15 @@ export default function DataEntryLocationEditor({
         }).addTo(map);
         leafletMarkerRef.current = marker;
 
-        const syncMarker = (latlng:any, messageText:string) => {
+        const syncMarker = (latlng:any) => {
           const next = { latitude: Number(latlng.lat), longitude: Number(latlng.lng) };
           fallbackCenterRef.current = next;
           setFallbackMapCenter(next);
           setManualMapCoordinate(next.latitude, next.longitude, "clicked");
-          setMessage(messageText);
         };
 
         marker.on("dragend", () => {
-          syncMarker(marker.getLatLng(), "Pin moved. Review the exact gate/building, then click Apply coordinates.");
+          syncMarker(marker.getLatLng());
         });
 
         map.on("moveend", () => {
@@ -716,7 +716,7 @@ export default function DataEntryLocationEditor({
         map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
         map.on("click", (event: any) => {
           marker.setLatLng(event.latlng);
-          syncMarker(event.latlng, "Pin moved to the tapped location. Review it, then click Apply coordinates.");
+          syncMarker(event.latlng);
         });
 
         window.setTimeout(() => map.invalidateSize(true), 60);
@@ -844,12 +844,28 @@ export default function DataEntryLocationEditor({
       }
       const next: DeliveryLocation = {
         ...(candidate || { deliveryWayId, label: query || address, originalAddress: address, englishAddress: english, township, postalCode: postal.postalCode, postalMatchLevel: postal.matchLevel, matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED" }),
+        deliveryWayId, originalAddress: address, township,
         latitude: Number(lat), longitude: Number(lng), matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED",
       };
-      await saveDeliveryLocation(supabase, next);
+      const saved = await saveDeliveryLocation(supabase, next);
+      // A successful HTTP response is not proof that the intended pin persisted.
+      // Read back the registry before enabling Save/Waybill.
+      if (saved?.ok === false) throw new Error(saved.error || saved.message || "Location save was rejected.");
+      const { data: readBack, error: readError } = await supabase.rpc("be_delivery_location_get_v10", {
+        p_delivery_way_id: deliveryWayId,
+      });
+      if (readError) throw readError;
+      const persisted = readBack?.location;
+      if (!persisted || readBack?.ok === false
+        || Math.abs(Number(persisted.latitude) - Number(lat)) > 0.000002
+        || Math.abs(Number(persisted.longitude) - Number(lng)) > 0.000002
+        || persisted.review_status !== "ACCEPTED") {
+        throw new Error("The saved location did not match the selected pin. Please retry Apply coordinates.");
+      }
       setCandidate(next);
+      candidateCallback.current?.(next);
       setManualOpen(false);
-      setMessage("Manual coordinates applied, map updated, and location shared with Wayplan.");
+      setMessage(`Location saved and verified: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Parcel is ready for Save/Waybill.`);
       reportResolution("SYNCED");
     } catch (error: any) {
       setMessage(error?.message || "Coordinates could not be applied.");
