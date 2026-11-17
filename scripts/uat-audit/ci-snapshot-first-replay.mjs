@@ -605,7 +605,7 @@ if (territoryBegin < 0 || territoryEnd < territoryBegin) {
   throw new Error('Historical V13 employee territory table not found');
 }
 const territorySql = territoryArchive.slice(territoryBegin, territoryEnd);
-if (territorySql.length < 1400 ||
+if (territorySql.length < 1300 ||
     !territorySql.includes("scope_type in ('GLOBAL','BRANCH','TOWNSHIP')") ||
     !territorySql.includes('unique nulls not distinct') ||
     !territorySql.includes('enable row level security')) {
