@@ -592,6 +592,30 @@ writeFileSync(resolve(root,'20260914022751_uat308_original_delivery_allocator_ci
   originalWayAllocatorCi);
 console.log('CI-only original WayID allocator restored before V33 preservation.');
 
+// V35 Customer Service territory updates rely on original V13 territory
+// assignments, omitted by historical placeholder migrations. Restore only
+// the audited V13 table and its indexes, without inserting staff or grants.
+const territoryArchive = readFileSync(resolve(
+  'britium-go-live/supabase/migration_history_archive/local_only_not_in_production_20261114/20260901204500_activate_financial_v2_and_employee_territory_rls_v13.sql'), 'utf8');
+const territoryBegin = territoryArchive.indexOf(
+  'create table if not exists public.be_employee_territory_assignments (');
+const territoryEnd = territoryArchive.indexOf(
+  'create or replace function public.be_normalize_territory_key(', territoryBegin);
+if (territoryBegin < 0 || territoryEnd < territoryBegin) {
+  throw new Error('Historical V13 employee territory table not found');
+}
+const territorySql = territoryArchive.slice(territoryBegin, territoryEnd);
+if (territorySql.length < 1400 ||
+    !territorySql.includes("scope_type in ('GLOBAL','BRANCH','TOWNSHIP')") ||
+    !territorySql.includes('unique nulls not distinct') ||
+    !territorySql.includes('enable row level security')) {
+  throw new Error('Historical employee territory access constraints unexpected');
+}
+writeFileSync(resolve(root, '20260914040606_uat308_original_employee_territory_v13_ci.sql'),
+  '-- Original V13 territory schema, disposable CI baseline only.\n' + territorySql);
+console.log('CI-only original V13 employee territory assignments restored before V35.');
+
+
 
 
 
