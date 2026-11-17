@@ -8,7 +8,10 @@ const editor = readFileSync(resolve(root, "src/components/workflow/DataEntryLoca
 const service = readFileSync(resolve(root, "src/lib/deliveryLocationService.ts"), "utf8");
 
 const selection = editor.slice(editor.indexOf("function setPinAtMapCenter()"), editor.indexOf("function moveMapByPixels("));
-assert.match(selection, /const center = leafletCenter\s*\?/, "Map pan should use center before stale marker");
+assert.match(selection, /manualPinTargetRef\.current === "PIN"/, "A dragged/tapped marker must be honored before the map center");
+assert.match(selection, /const center = selectedMarker\s*\?/, "Use selected marker when last interaction was a pin");
+assert.match(editor, /map\.on\("dragstart",/, "Panning must switch to map center mode");
+assert.match(editor, /manualPinTargetRef\.current = "PIN"/, "Dragging/tapping a marker must select pin mode");
 assert.match(selection, /leafletMarkerRef\.current\?\.setLatLng\?\.\(\[center\.latitude, center\.longitude\]\)/, "Confirming a center should move the marker");
 
 const edits = editor.slice(editor.indexOf("function setManualMapCoordinate("), editor.indexOf("function setMapFocus("));
