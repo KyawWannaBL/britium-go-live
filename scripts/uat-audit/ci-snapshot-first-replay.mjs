@@ -504,6 +504,26 @@ writeFileSync(resolve(root,
   townshipV614Function + '\n');
 console.log('CI-only authentic V61.4.1 tariff township key restored before tariff lookup.');
 
+// The September 11 dispatch-ready view projects the financial quote stored
+// in Data Entry. July's snapshot predates the field. Restore the confirmed
+// production column definition only in disposable CI, before the view loads.
+const dispatchQuoteMigration =
+  resolve(root, '20260911205409_uat308_original_data_entry_quote_column_ci.sql');
+const dispatchReadyViewSql = readFileSync(
+  resolve(root, '20260911205410_restore_imported_wayplan_ready_queue.sql'), 'utf8');
+if (!dispatchReadyViewSql.includes("d.financial_quote->>'source_waybill_no'") ||
+    !dispatchReadyViewSql.includes('be_v_warehouse_receipt_v39')) {
+  throw new Error('Dispatch-ready projection differs from verified historical source');
+}
+writeFileSync(dispatchQuoteMigration, [
+  '-- Disposable CI only: catalog-verified Data Entry financial quote column.',
+  'ALTER TABLE public.be_data_entry_parcel_details',
+  "  ADD COLUMN IF NOT EXISTS financial_quote jsonb NOT NULL DEFAULT '{}'::jsonb;",
+  ''
+].join('\n'));
+console.log('CI-only catalog-verified financial_quote column restored before dispatch queue.');
+
+
 
 
 
