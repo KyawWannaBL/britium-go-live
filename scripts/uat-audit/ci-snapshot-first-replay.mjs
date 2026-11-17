@@ -412,6 +412,24 @@ copyFileSync(locationAliasArchivePath,
   resolve(root, '20260906200806_uat308_original_location_alias_v28_ci.sql'));
 console.log('CI-only original V28 location alias objects and access policy restored.');
 
+// V29 location permission enforcement depends on the actual V57 account/RLS
+// gate. Preserve the source definition unchanged, with API execution revoked,
+// and restore it only for CI disposable migration verification.
+const actorAccessV57Fixture = resolve(
+  'scripts/uat-audit/fixtures/data_entry_actor_access_v57_ci_bootstrap.sql');
+const actorAccessV57Sql = readFileSync(actorAccessV57Fixture, 'utf8');
+if (actorAccessV57Sql.length < 10000 ||
+    !actorAccessV57Sql.includes('CREATE OR REPLACE FUNCTION public.be_data_entry_actor_access_v57(') ||
+    !actorAccessV57Sql.includes('auth.uid()') ||
+    !actorAccessV57Sql.includes('be_data_entry_access_grants_v57') ||
+    !actorAccessV57Sql.includes('REVOKE ALL ON FUNCTION public.be_data_entry_actor_access_v57(text,boolean)')) {
+  throw new Error('V57 actor permission guard fixture is incomplete');
+}
+copyFileSync(actorAccessV57Fixture,
+  resolve(root, '20260906213641_uat308_original_data_entry_access_v57_ci.sql'));
+console.log('CI-only authentic role-scoped Data Entry V57 guard restored before V29.');
+
+
 
 
 
