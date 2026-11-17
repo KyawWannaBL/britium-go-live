@@ -196,6 +196,21 @@ writeFileSync(resolve(root, '20260901192454_uat308_original_finance_parcel_colum
   'ALTER TABLE public.parcels\n' + additions.join(',\n') + ';\n');
 console.log('CI-only original Finance V2 parcel columns restored before canonical projection.');
 
+// Historical Finance V4 assumes a superseded settlement view exists. The July
+// disposable baseline lacks it. Make only its unconditional drop idempotent
+// within this ephemeral checkout; do not change committed migration bytes.
+const financeProjectionPath = resolve(root, '20260901192455_finance_canonical_projection_v4_1.sql');
+const financeProjectionSql = readFileSync(financeProjectionPath, 'utf8');
+const oldFinanceDrop = 'drop view public.be_v_finance_merchant_settlement_queue_v2;';
+if (financeProjectionSql.split(oldFinanceDrop).length !== 2 ||
+    !financeProjectionSql.includes('create view public.be_v_finance_merchant_settlement_queue_v2')) {
+  throw new Error('Expected single historical settlement-view replacement not found');
+}
+writeFileSync(financeProjectionPath, financeProjectionSql.replace(
+  oldFinanceDrop, 'drop view if exists public.be_v_finance_merchant_settlement_queue_v2;'));
+console.log('CI-only conditional drop of missing superseded Finance V2 view; Git history unchanged.');
+
+
 
 
 
