@@ -59,7 +59,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
   const otherBusy = (context?.busy || []).filter((b: any) => !sourceId || ![b.wayplan_id, b.wayplan_code].includes(sourceId));
   const available = (items: any[], key: string): Resource[] => (items || []).map((x) => ({
     ...x,
-    available: !otherBusy.some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
+    available: x.mobile_auth_ready !== false && !otherBusy.some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
   const vehicles = available((context?.vehicles || []).filter((v: any) => v.operation_type === "DELIVERY"), "vehicle_code");
@@ -85,6 +85,31 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
       rider_code: riderOnly ? (rider?.id || "") : "",
       helper_code: riderOnly ? "" : (helper?.id || ""),
     };
+  }
+
+  async function requireDispatchEligibleStops(stops: Stop[]) {
+    const ids = stops.map((row) => String(row.delivery_way_id || "").trim());
+    if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
+      throw new Error("Revision contains missing or duplicated Way IDs. Correct the selected stops.");
+    }
+    const blocked: string[] = [];
+    const unchecked: string[] = [];
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(8, ids.length) }, async () => {
+      while (cursor < ids.length) {
+        const id = ids[cursor++];
+        try {
+          const { data, error } = await supabase.rpc("be_delivery_schedule_allows_wayplan_v71", { p_delivery_way_id: id });
+          if (error || typeof data !== "boolean") unchecked.push(id);
+          else if (!data) blocked.push(id);
+        } catch { unchecked.push(id); }
+      }
+    }));
+    if (blocked.length || unchecked.length) {
+      throw new Error("Cannot revise this route with held parcels: " + (blocked.sort().join(", ") || "none")
+        + ". Eligibility could not be verified: " + (unchecked.sort().join(", ") || "none")
+        + ". Remove the held stops from the revision or complete their genuine Warehouse return checks.");
+    }
   }
 
   async function roadSession() {
@@ -135,6 +160,7 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
       if (!context || !origin) throw new Error("Wayplan routing context is not ready.");
       if (!rows.length) throw new Error("Keep at least one way in the revision.");
       if (rows.length > 75) throw new Error("A revised Wayplan cannot exceed 75 ways.");
+      await requireDispatchEligibleStops(rows);
       const usableVehicles = vehicles.filter((v) => v.available !== false);
       if (!usableVehicles.length) throw new Error("No delivery vehicle is currently available.");
       const strategic: RevisionPlan[] = [{
@@ -184,9 +210,17 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
       setMessage("Choose a vehicle and its required Rider or Driver before saving the revised Wayplan.");
       return;
     }
+    const primary = isRiderOnlyVehicle(plan.vehicle_code)
+      ? riders.find((x) => x.id === plan.rider_code)
+      : drivers.find((x) => x.id === plan.driver_code);
+    if (!primary || primary.available === false || (plan.helper_code && helpers.find((x) => x.id === plan.helper_code)?.available === false)) {
+      setMessage("Selected crew is unavailable, busy, or missing its active app authentication mapping. Select an available Rider/Driver and optional Helper.");
+      return;
+    }
     setBusy(true);
-    setMessage("Saving the reviewed route and replacement CREATED Wayplan…");
+    setMessage("Rechecking parcel holds and saving the replacement CREATED Wayplan…");
     try {
+      await requireDispatchEligibleStops(plan.rows);
       const reviewed = plan;
       const payload = {
         source_wayplan_id: sourceWayplan.wayplan_id,
@@ -239,7 +273,11 @@ export default function CreatedWayplanRevisionPlanner({ sourceWayplan, rows, reg
 
   const riderOnly = Boolean(plan && isRiderOnlyVehicle(plan.vehicle_code));
   const short = !riderOnly && rows.length > 0 && rows.length < 50;
-  const cannotSave = busy || !plan || !plan.vehicle_code || (riderOnly ? !plan.rider_code : !plan.driver_code) || plan.rows.length > 75 || (short && (!approved || reason.trim().length < 5));
+  const primaryReady = Boolean(plan && (riderOnly
+    ? riders.some((x) => x.id === plan.rider_code && x.available !== false)
+    : drivers.some((x) => x.id === plan.driver_code && x.available !== false)));
+  const helperReady = !plan?.helper_code || helpers.some((x) => x.id === plan.helper_code && x.available !== false);
+  const cannotSave = busy || !plan || !plan.vehicle_code || !primaryReady || !helperReady || plan.rows.length > 75 || (short && (!approved || reason.trim().length < 5));
 
   return <section style={{ padding: 16, border: "1px solid #8f5a2a", borderRadius: 16, background: "#0b2236", display: "grid", gap: 12 }}>
     <div>
