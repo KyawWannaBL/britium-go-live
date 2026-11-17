@@ -355,8 +355,10 @@ if (dataEntrySaveSql.length < 30000 ||
     !dataEntrySaveSql.includes('REVOKE ALL ON FUNCTION public.be_data_entry_financial_v2_save(jsonb)')) {
   throw new Error('Enterprise V13.2 save-function fixture is incomplete or unsafe');
 }
-copyFileSync(dataEntrySaveFixturePath,
-  resolve(root, '20260902220114_uat308_data_entry_v13_2_save_function_ci.sql'));
+const dataEntryV14PrerequisitesPath =
+  resolve(root, '20260902220114_uat308_verified_data_entry_v58_request_ledger_ci.sql');
+writeFileSync(dataEntryV14PrerequisitesPath,
+  readFileSync(dataEntryV14PrerequisitesPath, 'utf8') + '\n' + dataEntrySaveSql);
 console.log('CI-only complete enterprise V13.2 save body restored before V14 rename.');
 
 
