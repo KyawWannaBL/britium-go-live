@@ -14,6 +14,7 @@ const checks = [
   ["crew selection starts with vehicle", planner.includes("Choose vehicle first") && planner.includes("Crew is intentionally not auto-assigned")],
   ["vehicle-specific driver and rider requirements are explicit", planner.includes("choose a Driver for the selected vehicle") && planner.includes("choose a Rider for the Motor Bike/Bicycle")],
   ["button is controlled by readiness issues", planner.includes("const cannotSave = busy || readinessIssues.length > 0")],
+  ["A rejected Rider is not silently restored", !planner.includes('rider_code: plans[index]?.rider_code || ""')],
   ["Bicycle crews cannot be auto-repaired with a Driver", planner.includes('if (isRiderOnlyVehicle(plan.vehicle_code)) {') && planner.includes('driver_code: "", rider_code: rider?.id || "", helper_code: ""')],
   ["Dispatch eligibility checked before generation", planner.includes('await findDispatchHeldWays(wayIds)') && planner.indexOf('await findDispatchHeldWays(wayIds)') < planner.indexOf('supabase.rpc("be_generate_multi_van_v43"')],
   ["Dispatch preflight uses authoritative reschedule predicate", planner.includes('be_delivery_schedule_allows_wayplan_v71')],
