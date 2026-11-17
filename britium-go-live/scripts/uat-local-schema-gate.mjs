@@ -11,7 +11,7 @@ const objects=[
 const env={...process.env,PGPASSWORD:'postgres',PGSSLMODE:'disable'};
 function query(sql){
  return execFileSync('psql',['-X','-q','-A','-t','-v','ON_ERROR_STOP=1',
- '-h','127.0.0.1','-p','54322','-U','postgres','-d','postgres','-c',sql],
+ '-h','127.0.0.1','-p',process.env.UAT_LOCAL_DB_PORT||'54322','-U','postgres','-d','postgres','-c',sql],
  {encoding:'utf8',env,timeout:15000}).trim();
 }
 const missing=[],rlsOff=[];
