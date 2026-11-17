@@ -89,6 +89,24 @@ const takeSection = (source, start, end, name) => {
   }
   return source.slice(a, b).trim() + '\n';
 };
+// Recover the original Waybill Studio parent table referenced by V36.
+// The selected source is the historical Data Entry backend, not a fabricated row set.
+const waybillBackendSource = readFileSync(
+  resolve('britium-go-live/britium-current-ui-fixed/src/pages/data_entry_excel_register_backend.sql'), 'utf8');
+const waybillTableSql = takeSection(waybillBackendSource,
+  'create table if not exists public.be_parcel_waybills (',
+  '-- -----------------------------------------------------------------------------\n-- 3) Shared helpers', 'original parcel waybill table');
+if (!waybillTableSql.includes('pickup_id text not null unique') ||
+    !waybillTableSql.includes('waybill_no text not null unique') ||
+    !waybillTableSql.includes('updated_at timestamptz not null default now()')) {
+  throw new Error('Original Waybill Studio parent table definition changed');
+}
+writeFileSync(resolve(root, '20260901152004_uat308_original_waybill_table_ci.sql'),
+  '-- CI-only original Waybill Studio parent table, no live data or direct API grants.\n' +
+  waybillTableSql +
+  '\nALTER TABLE public.be_parcel_waybills ENABLE ROW LEVEL SECURITY;\n' +
+  'REVOKE ALL ON TABLE public.be_parcel_waybills FROM PUBLIC, anon, authenticated;\n');
+console.log('CI-only historical Waybill Studio parent table restored before V36.');
 const warehouseV36Sql = takeSection(warehouseV36Source,
   'create extension if not exists pgcrypto;',
   'create or replace function public.be_warehouse_receipt_snapshot_v36(', 'V36 table + receipt view');
