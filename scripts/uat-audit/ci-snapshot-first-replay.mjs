@@ -107,6 +107,18 @@ writeFileSync(resolve(root, '20260901152004_uat308_original_waybill_table_ci.sql
   '\nALTER TABLE public.be_parcel_waybills ENABLE ROW LEVEL SECURITY;\n' +
   'REVOKE ALL ON TABLE public.be_parcel_waybills FROM PUBLIC, anon, authenticated;\n');
 console.log('CI-only historical Waybill Studio parent table restored before V36.');
+// The original Data Entry backend adds parcels.way_id; the July snapshot lacks it.
+// Restore just that verified nullable text column in disposable CI, without moving
+// data, inventing way IDs, or running the original data-mutating backfill.
+const parcelWayIdDefinition = waybillBackendSource.match(
+  /alter table public\.parcels\s+add column if not exists (way_id text),/i);
+if (!parcelWayIdDefinition || parcelWayIdDefinition[1].toLowerCase() !== 'way_id text') {
+  throw new Error('Original parcels.way_id definition missing or changed');
+}
+writeFileSync(resolve(root, '20260901152003_uat308_original_parcel_way_id_ci.sql'),
+  '-- CI-only historical nullable parcels.way_id dependency; no data updates.\n' +
+  'ALTER TABLE public.parcels ADD COLUMN IF NOT EXISTS ' + parcelWayIdDefinition[1] + ';\n');
+console.log('CI-only historical parcels.way_id text restored before warehouse V36.');
 const warehouseV36Sql = takeSection(warehouseV36Source,
   'create extension if not exists pgcrypto;',
   'create or replace function public.be_warehouse_receipt_snapshot_v36(', 'V36 table + receipt view');
