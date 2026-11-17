@@ -283,6 +283,7 @@ jobs:
     env:
       SUPABASE_TELEMETRY_DISABLED: "1"
       DO_NOT_CONNECT_REMOTE: "1"
+      UAT_LOCAL_DB_PORT: "55322"
     defaults:
       run:
         working-directory: britium-go-live
@@ -314,7 +315,7 @@ jobs:
       - name: Replay authentic migration files without overlays
         run: |
           set -o pipefail
-          node -e "const fs=require('fs');const p='supabase/config.toml';fs.writeFileSync(p,fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]'))"
+          node -e "const fs=require('fs');const p='supabase/config.toml';let s=fs.readFileSync(p,'utf8').replace('[inbucket]','[local_smtp]').replace('project_id = \"enterprise_portal\"','project_id = \"uat_canonical_clean\"');const found=[...s.matchAll(/port = 5432[0-9]/g)].length;if(found<4)throw Error('Expected standard local ports');s=s.replace(/port = 5432([0-9])/g,(_,n)=>'port = 5532'+n);fs.writeFileSync(p,s);"
           npm exec --yes --package=supabase@3.1.0 -- supabase start 2>&1 | tee "$RUNNER_TEMP/canonical-baseline.log"
           npm exec --yes --package=supabase@3.1.0 -- supabase db reset --local --no-seed 2>&1 | tee -a "$RUNNER_TEMP/canonical-baseline.log"
       - name: Verify canonical RLS and account readiness
