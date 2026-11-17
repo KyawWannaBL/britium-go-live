@@ -158,6 +158,45 @@ copyFileSync(loginResolverFixture,
   resolve(root, '20260901192436_uat308_original_field_login_resolver_ci.sql'));
 console.log('CI-only original guarded workforce login resolver loaded before September public lockdown.');
 
+// Restore the historical Finance V2 parcel columns as a single dependency set.
+// Both sources are original checked-in SQL; this runs only in disposable CI.
+const parcelFinanceLegacySource = readFileSync(
+  resolve('britium-go-live/britium-current-ui-fixed/parcel_financial_v2_backend.sql'), 'utf8');
+const originalParcelAdditions = [waybillBackendSource, parcelFinanceLegacySource]
+  .flatMap(source => source.split('\n').map(line =>
+    line.trim().match(/^add column if not exists ([a-z_][a-z0-9_]*) (.+?)[,;]?\s*$/i)
+  ).filter(Boolean).map(match => [match[1], match[2].replace(/,\s*$/, '')]));
+const financeParcelColumns = [
+  'merchant_id','township','customer_tier','amount_entry_type','item_price',
+  'delivery_charges','merchant_stated_total_amount','additional_customer_charge',
+  'cbm_surcharge','other_surcharge','merchant_payable_charges',
+  'other_merchant_credits','weight_kg','monthly_ways'
+];
+const originalDefinitions = new Map(originalParcelAdditions);
+const verifiedTypes = new Map([
+  ['merchant_id','text'],['township','text'],['customer_tier','text'],
+  ['amount_entry_type','text'],['item_price','numeric(14,2)'],
+  ['delivery_charges','numeric(14,2)'],
+  ['merchant_stated_total_amount','bigint'],['additional_customer_charge','bigint'],
+  ['cbm_surcharge','bigint'],['other_surcharge','bigint'],
+  ['merchant_payable_charges','bigint'],['other_merchant_credits','bigint'],
+  ['weight_kg','numeric(12,3)'],['monthly_ways','integer']
+]);
+const additions = financeParcelColumns.map(column => {
+  const original = originalDefinitions.get(column);
+  const expectedType = verifiedTypes.get(column);
+  if (!original || !expectedType || !original.toLowerCase().startsWith(expectedType)) {
+    throw new Error('Historical Finance V2 parcel column mismatch: ' + column + ': ' + original);
+  }
+  return '  ADD COLUMN IF NOT EXISTS ' + column + ' ' + original;
+});
+writeFileSync(resolve(root, '20260901192454_uat308_original_finance_parcel_columns_ci.sql'),
+  '-- CI-only historical additive Finance V2 parcel definitions, sourced from original SQL.\n' +
+  '-- Never apply this diagnostic fixture to hosted UAT or production.\n' +
+  'ALTER TABLE public.parcels\n' + additions.join(',\n') + ';\n');
+console.log('CI-only original Finance V2 parcel columns restored before canonical projection.');
+
+
 
 
 
