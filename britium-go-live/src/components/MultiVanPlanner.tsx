@@ -821,6 +821,11 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       else if (drivers.find((x) => x.id === plan.driver_code)?.available === false) readinessIssues.push(`${label}: selected Driver is busy or lacks active Field App authentication. Choose another available Driver.`);
     }
   });
+  plans.forEach((plan, index) => {
+    if (plan.crew_mode === "EMERGENCY_MANUAL" || !plan.helper_code) return;
+    const helper = helpers.find((x) => x.id === plan.helper_code);
+    if (!helper || helper.available === false) readinessIssues.push((plan.master?.routeCode || "route " + (index + 1)) + ": selected Helper is busy or lacks active Field App authentication. Choose No helper or an available Helper.");
+  });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
   if (oversized.length) readinessIssues.push("Split any route above 75 parcels before creation.");
   if (!isYangonMaster && short.length > 1) readinessIssues.push("More than one Driver/vehicle-crew route is below 50 parcels; rebalance, use a Motor Bike/Bicycle Rider route, or hold low-volume parcels.");
