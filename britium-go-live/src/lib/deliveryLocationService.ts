@@ -929,7 +929,10 @@ export async function saveDeliveryLocation(client: any, location: DeliveryLocati
     },
   });
   if (error) throw error;
-  return data?.location || data;
+  if (!data || data.ok === false) {
+    throw new Error(data?.error || data?.message || "The location service did not confirm the save.");
+  }
+  return data.location || data;
 }
 
 export function googleMapsLocationUrl(location: Pick<DeliveryLocation, "longitude" | "latitude">, zoom = 17) {

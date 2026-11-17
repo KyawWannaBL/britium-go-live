@@ -172,6 +172,8 @@ export default function DataEntryLocationEditor({
   const leafletMapRef = useRef<any>(null);
   const leafletTileLayerRef = useRef<any>(null);
   const leafletMarkerRef = useRef<any>(null);
+  // Whether the user last selected a draggable/tapped pin or panned the map.
+  const manualPinTargetRef = useRef<"PIN" | "CENTER">("CENTER");
   const fallbackCenterRef = useRef<{latitude:number;longitude:number}|null>(null);
   const mapPointers = useRef(new Map<number,{x:number;y:number;startX:number;startY:number;moved:boolean}>());
   const pinchDistanceRef = useRef<number | null>(null);
@@ -457,64 +459,18 @@ export default function DataEntryLocationEditor({
     return { nextLat, nextLng, next };
   }
 
-  async function autoPersistManualPin(next: DeliveryLocation, action: "dragged" | "clicked") {
-    if (!deliveryWayId) {
-      reportResolution("REVIEW_REQUIRED");
-      setMessage("Coordinates were copied from the Google pin, but a Delivery Way ID is required before they can be synchronized.");
-      return;
-    }
-
-    try {
-      const verified = verifiedAddressLocation(query || address, township);
-      if (verified) {
-        const distance = Math.hypot(
-          (Number(next.latitude) - verified.latitude) * 111_320,
-          (Number(next.longitude) - verified.longitude) * 106_000
-        );
-        if (distance > 750) {
-          reportResolution("REVIEW_REQUIRED");
-          setMessage("The selected Google pin is outside the verified address area. Coordinates remain visible for correction but were not synchronized.");
-          return;
-        }
-      }
-
-      const insideTownship = await coordinateMatchesTownship(township, next.latitude, next.longitude);
-      if (!insideTownship) {
-        reportResolution("REVIEW_REQUIRED");
-        setMessage(`The selected Google pin is outside ${township || "the selected township"}. Coordinates remain visible, but were not synchronized.`);
-        return;
-      }
-
-      const accepted: DeliveryLocation = {
-        ...next,
-        latitude: Number(next.latitude),
-        longitude: Number(next.longitude),
-        matchLevel: "MANUAL",
-        confidence: 1,
-        coordinateSource: "DATA_ENTRY_GOOGLE_PIN_CONFIRMED",
-        reviewStatus: "ACCEPTED",
-      };
-
-      await saveDeliveryLocation(supabase, accepted);
-      setCandidate(accepted);
-      candidateCallback.current?.(accepted);
-      reportResolution("SYNCED");
-      setMessage(`Google pin ${action} and synchronized automatically: ${Number(accepted.latitude).toFixed(6)}, ${Number(accepted.longitude).toFixed(6)}. This parcel location is now ready for Save/Waybill.`);
-    } catch (error:any) {
-      console.error("Automatic Google pin synchronization failed", error);
-      reportResolution("REVIEW_REQUIRED");
-      setMessage(error?.message || "Coordinates were copied from the Google pin but could not be synchronized. Use Apply coordinates to retry.");
-    }
-  }
-
   function setManualMapCoordinate(latitude: number, longitude: number, action: "dragged" | "clicked") {
     operatorEditedRef.current = true;
+    // A background geocoder must never overwrite an operator-selected pin.
+    requestSequence.current += 1;
+    setBusy(false);
     const synced = syncPinCoordinates(latitude, longitude, action);
     if (!synced) return;
     setManualOpen(true);
     reportResolution("REVIEW_REQUIRED");
-    setMessage(`Coordinates copied automatically from the ${action} Google Map pin: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. Validating and synchronizing this pin now…`);
-    void autoPersistManualPin(synced.next, action);
+    // Do not submit a second background write while the operator is still moving
+    // the marker. Only Apply coordinates may accept and persist a manual pin.
+    setMessage(`Pin selected: ${synced.nextLat.toFixed(6)}, ${synced.nextLng.toFixed(6)}. Check the location, then press Apply coordinates to save.`);
   }
 
   function setMapFocus(focused: boolean) {
@@ -527,6 +483,7 @@ export default function DataEntryLocationEditor({
   }
 
   async function openRelocationMap() {
+    manualPinTargetRef.current = "CENTER";
     setManualOpen(true);
     setMapFocus(true);
     setMapError("");
@@ -584,15 +541,24 @@ export default function DataEntryLocationEditor({
   function setPinAtMapCenter() {
     const markerPoint = leafletMarkerRef.current?.getLatLng?.();
     const leafletCenter = leafletMapRef.current?.getCenter?.();
-    const center = markerPoint
+    // A dragged or tapped marker is the chosen pin. Only a deliberate map pan
+    // should make the map center the target. Otherwise SET PIN HERE used to
+    // overwrite the operator's precise marker with the old map center.
+    const selectedMarker = manualPinTargetRef.current === "PIN" && markerPoint;
+    const center = selectedMarker
       ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
       : leafletCenter
         ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
-        : (fallbackCenterRef.current || fallbackMapCenter);
-    if (!center) return;
+        : markerPoint
+          ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
+          : (fallbackCenterRef.current || fallbackMapCenter);
+    if (!center || !validMyanmarCoordinate(center.longitude, center.latitude)) return;
+    leafletMarkerRef.current?.setLatLng?.([center.latitude, center.longitude]);
+    fallbackCenterRef.current = center;
+    setFallbackMapCenter(center);
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
-    setMessage(`Drop-off pin set: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
+    setMessage(`Pin selected: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Press Apply coordinates to save.`);
   }
 
   function moveMapByPixels(horizontalPixels: number, verticalPixels: number) {
@@ -690,26 +656,31 @@ export default function DataEntryLocationEditor({
         }).addTo(map);
         leafletMarkerRef.current = marker;
 
-        const syncMarker = (latlng:any, messageText:string) => {
+        const syncMarker = (latlng:any) => {
+          manualPinTargetRef.current = "PIN";
           const next = { latitude: Number(latlng.lat), longitude: Number(latlng.lng) };
           fallbackCenterRef.current = next;
           setFallbackMapCenter(next);
           setManualMapCoordinate(next.latitude, next.longitude, "clicked");
-          setMessage(messageText);
         };
 
         marker.on("dragend", () => {
-          syncMarker(marker.getLatLng(), "Pin moved. Review the exact gate/building, then click Apply coordinates.");
+          syncMarker(marker.getLatLng());
         });
 
+        map.on("dragstart", () => {
+          manualPinTargetRef.current = "CENTER";
+        });
         map.on("moveend", () => {
-          const point = marker.getLatLng();
+          // Moving the map keeps the map center available without clearing a
+          // pin explicitly selected by tapping or dragging the red marker.
+          const point = map.getCenter();
           fallbackCenterRef.current = { latitude: Number(point.lat), longitude: Number(point.lng) };
         });
         map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
         map.on("click", (event: any) => {
           marker.setLatLng(event.latlng);
-          syncMarker(event.latlng, "Pin moved to the tapped location. Review it, then click Apply coordinates.");
+          syncMarker(event.latlng);
         });
 
         window.setTimeout(() => map.invalidateSize(true), 60);
@@ -837,12 +808,28 @@ export default function DataEntryLocationEditor({
       }
       const next: DeliveryLocation = {
         ...(candidate || { deliveryWayId, label: query || address, originalAddress: address, englishAddress: english, township, postalCode: postal.postalCode, postalMatchLevel: postal.matchLevel, matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED" }),
+        deliveryWayId, originalAddress: address, township,
         latitude: Number(lat), longitude: Number(lng), matchLevel: "MANUAL", confidence: 1, coordinateSource: "DATA_ENTRY_MANUAL_COORDINATE", reviewStatus: "ACCEPTED",
       };
-      await saveDeliveryLocation(supabase, next);
+      const saved = await saveDeliveryLocation(supabase, next);
+      // A successful HTTP response is not proof that the intended pin persisted.
+      // Read back the registry before enabling Save/Waybill.
+      if (saved?.ok === false) throw new Error(saved.error || saved.message || "Location save was rejected.");
+      const { data: readBack, error: readError } = await supabase.rpc("be_delivery_location_get_v10", {
+        p_delivery_way_id: deliveryWayId,
+      });
+      if (readError) throw readError;
+      const persisted = readBack?.location;
+      if (!persisted || readBack?.ok === false
+        || Math.abs(Number(persisted.latitude) - Number(lat)) > 0.000002
+        || Math.abs(Number(persisted.longitude) - Number(lng)) > 0.000002
+        || persisted.review_status !== "ACCEPTED") {
+        throw new Error("The saved location did not match the selected pin. Please retry Apply coordinates.");
+      }
       setCandidate(next);
+      candidateCallback.current?.(next);
       setManualOpen(false);
-      setMessage("Manual coordinates applied, map updated, and location shared with Wayplan.");
+      setMessage(`Location saved and verified: ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}. Parcel is ready for Save/Waybill.`);
       reportResolution("SYNCED");
     } catch (error: any) {
       setMessage(error?.message || "Coordinates could not be applied.");
@@ -1021,14 +1008,29 @@ export default function DataEntryLocationEditor({
             <button type="button" onClick={()=>setMapFocus(false)} className="rounded-lg border border-emerald-300/50 bg-emerald-400/10 px-4 py-2 text-[10px] font-black text-emerald-100">RETURN TO TABLE</button>
           </> : null}
         </div>
+        {mapExpanded && (fallbackMapCenter || candidate) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-2">
+            <button
+              type="button"
+              onClick={setPinAtMapCenter}
+              disabled={busy}
+              className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-40"
+            >
+              SET PIN AT MAP CENTER / မြေပုံအလယ်တွင် သတ်မှတ်ရန်
+            </button>
+            <span className="text-[11px] font-semibold text-emerald-100">
+              Pan the map to the delivery gate, confirm the center here, then Apply coordinates below.
+            </span>
+          </div>
+        )}
         {(enabled || manualOpen) && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
-            <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{operatorEditedRef.current=true;setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+            <input aria-label="Latitude" type="number" step="0.000001" value={lat} onChange={(event)=>{operatorEditedRef.current=true;requestSequence.current+=1;setBusy(false);setLat(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Latitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
           </label>
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Longitude / လောင်ဂျီကျု</span>
-            <input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{operatorEditedRef.current=true;setLng(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
+            <input aria-label="Longitude" type="number" step="0.000001" value={lng} onChange={(event)=>{operatorEditedRef.current=true;requestSequence.current+=1;setBusy(false);setLng(event.target.value);setManualOpen(true);reportResolution("REVIEW_REQUIRED");}} placeholder="Longitude" className="w-full rounded-lg border border-[#1a3a5c] bg-white px-3 py-2 text-sm font-bold text-black"/>
           </label>
           <button type="button" onClick={()=>void apply()} disabled={busy || !validMyanmarCoordinate(lng,lat)} className="self-end rounded-lg bg-emerald-500 px-4 py-2.5 text-xs font-black text-[#061524] disabled:opacity-40">Apply coordinates</button>
         </div>}
@@ -1055,19 +1057,8 @@ export default function DataEntryLocationEditor({
                 </div>
               )}
               {tileLoadState === "ERROR" && (
-                <div className="absolute inset-0 z-20 grid place-items-center bg-slate-100/92 p-6">
-                  <div className="max-w-sm text-center">
-                    <AlertTriangle className="mx-auto h-9 w-9 text-amber-600"/>
-                    <p className="mt-3 text-sm font-black text-slate-900">Map imagery did not load.</p>
-                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Retry this view or switch to another map mode.</p>
-                    <button
-                      type="button"
-                      onClick={()=>{ setTileLoadState("LOADING"); setMapError(""); const current = fallbackCenterRef.current || fallbackMapCenter; setMapFocus(false); window.setTimeout(()=>{ if(current){ fallbackCenterRef.current=current; setFallbackMapCenter(current); } setMapFocus(true); },80); }}
-                      className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white"
-                    >
-                      RETRY MAP
-                    </button>
-                  </div>
+                <div className="pointer-events-none absolute bottom-20 left-3 z-20 max-w-[70%] rounded-lg bg-amber-100/95 p-2 text-xs font-bold text-amber-950 shadow-lg">
+                  Map tiles are unavailable. You can still enter coordinates below, or use SET PIN HERE when the map center is correct.
                 </div>
               )}
               <div className="pointer-events-none absolute left-3 top-3 max-w-[78%] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-black text-slate-800 shadow-xl">
