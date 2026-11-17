@@ -84,6 +84,6 @@ BEGIN
     'assigned_zone', NULLIF(BTRIM(v_row.assigned_zone), '')
   );
 END;
-$function$
+$function$;
 
 REVOKE ALL ON FUNCTION public.be_current_field_team_identity() FROM PUBLIC, anon;
