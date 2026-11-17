@@ -1,3 +1,15 @@
+-- Production-catalog verified original Yangon business date helper.
+CREATE OR REPLACE FUNCTION public.be_business_date()
+ RETURNS date
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public', 'pg_temp'
+AS $function$
+  select (statement_timestamp() at time zone 'Asia/Yangon')::date
+$function$;
+REVOKE ALL ON FUNCTION public.be_business_date() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.be_business_date() TO authenticated, service_role;
+
 -- Original July 31 merchant financial profile structure, followed by original V2.2 bridge fields.
 -- Restored ahead of September finance canonical projection; no merchant data is copied.
 create table if not exists public.be_merchant_financial_profiles_v2 (
