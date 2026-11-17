@@ -854,7 +854,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
         Exclude held parcels from these routes (does not delete parcels)
       </button>
       <div style={{ marginTop: 5, fontSize: 12 }}>Re-optimize after exclusion; Warehouse custody and reschedule rules remain enforced.</div>
-    </div>
+    </div>}
 
     {plans.map((plan, i) => {
       const delivery = plan.rows;
