@@ -3,8 +3,12 @@ import path from "node:path";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const planner = fs.readFileSync(path.join(root, "src/components/MultiVanPlanner.tsx"), "utf8");
+const commandCenter = fs.readFileSync(path.join(root, "src/pages/WayplanCommandCenterPage.tsx"), "utf8");
 
 const checks = [
+  ["Publish readiness verifies every manifest stop against current reschedule predicate", commandCenter.includes('be_delivery_schedule_allows_wayplan_v71') && commandCenter.includes('rawStops.length !== ids.length')],
+  ["Publish readiness shows exact held Way IDs", commandCenter.includes('data-dispatch-reschedule-holds="true"') && commandCenter.includes('RESCHEDULE_OR_RETURN_HOLD: ')],
+  ["Unverified dispatch eligibility fails closed", commandCenter.includes('DISPATCH_ELIGIBILITY_NOT_VERIFIED: ') && commandCenter.includes('issues.length === 0')],
   ["crew edits preserve below-minimum approval", planner.includes("reset(repairCrewGaps(next), true)") || planner.includes("reset(next, true)")],
   ["route reoptimization preserves approval", planner.includes("reset(plans.map((p, j) => j === index ? optimized : p), true)")],
   ["explicit readiness panel exists", planner.includes('data-wayplan-create-readiness-v56="true"')],
