@@ -1013,7 +1013,7 @@ export default function DataEntryLocationEditor({
             <button
               type="button"
               onClick={setPinAtMapCenter}
-              disabled={busy || tileLoadState === "ERROR"}
+              disabled={busy}
               className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-40"
             >
               SET PIN AT MAP CENTER / မြေပုံအလယ်တွင် သတ်မှတ်ရန်
@@ -1057,19 +1057,8 @@ export default function DataEntryLocationEditor({
                 </div>
               )}
               {tileLoadState === "ERROR" && (
-                <div className="absolute inset-0 z-20 grid place-items-center bg-slate-100/92 p-6">
-                  <div className="max-w-sm text-center">
-                    <AlertTriangle className="mx-auto h-9 w-9 text-amber-600"/>
-                    <p className="mt-3 text-sm font-black text-slate-900">Map imagery did not load.</p>
-                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-600">Retry this view or switch to another map mode.</p>
-                    <button
-                      type="button"
-                      onClick={()=>{ setTileLoadState("LOADING"); setMapError(""); const current = fallbackCenterRef.current || fallbackMapCenter; setMapFocus(false); window.setTimeout(()=>{ if(current){ fallbackCenterRef.current=current; setFallbackMapCenter(current); } setMapFocus(true); },80); }}
-                      className="mt-3 rounded-xl bg-slate-950 px-4 py-2 text-xs font-black text-white"
-                    >
-                      RETRY MAP
-                    </button>
-                  </div>
+                <div className="pointer-events-none absolute bottom-20 left-3 z-20 max-w-[70%] rounded-lg bg-amber-100/95 p-2 text-xs font-bold text-amber-950 shadow-lg">
+                  Map tiles are unavailable. You can still enter coordinates below, or use SET PIN HERE when the map center is correct.
                 </div>
               )}
               <div className="pointer-events-none absolute left-3 top-3 max-w-[78%] rounded-xl border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-black text-slate-800 shadow-xl">
