@@ -429,6 +429,54 @@ copyFileSync(actorAccessV57Fixture,
   resolve(root, '20260906213641_uat308_original_data_entry_access_v57_ci.sql'));
 console.log('CI-only authentic role-scoped Data Entry V57 guard restored before V29.');
 
+// Catalog-verified support tables are required for compilation of the original
+// V57 access-guard function (in particular, its %rowtype declaration).
+// No grants are seeded; data API roles receive no access in the CI baseline.
+const dataEntryAccessSupportCi = [
+  '-- Catalog-verified V57 security tables, exclusively for disposable CI.',
+  'CREATE TABLE IF NOT EXISTS public.be_data_entry_access_grants_v57 (',
+  '  grant_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),',
+  '  auth_user_id uuid NOT NULL,',
+  '  registry_user_id text,',
+  '  email_snapshot text NOT NULL,',
+  '  branch_code text,',
+  "  grant_status text NOT NULL CHECK (grant_status IN ('PENDING','APPROVED','DENIED','REVOKED')),",
+  "  allowed_actions text[] NOT NULL DEFAULT ARRAY['view','create','update','upload','export'],",
+  "  waybill_allowed_actions text[] NOT NULL DEFAULT ARRAY['view','create','update','upload','export'],",
+  '  effective_from timestamptz NOT NULL DEFAULT now(),',
+  '  effective_to timestamptz,',
+  '  approved_by uuid,',
+  '  approval_reason text NOT NULL,',
+  '  request_id text,',
+  '  created_at timestamptz NOT NULL DEFAULT now(),',
+  '  updated_at timestamptz NOT NULL DEFAULT now(),',
+  '  CHECK (effective_to IS NULL OR effective_to > effective_from)',
+  ');',
+  'CREATE TABLE IF NOT EXISTS public.be_data_entry_access_mode_v57 (',
+  '  singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),',
+  "  enforcement_mode text NOT NULL DEFAULT 'MATRIX_SHADOW'",
+  "    CHECK (enforcement_mode IN ('MATRIX_SHADOW','EXPLICIT_ONLY')),",
+  '  note text,',
+  '  updated_at timestamptz NOT NULL DEFAULT now(),',
+  '  updated_by uuid',
+  ');',
+  'ALTER TABLE public.be_data_entry_access_grants_v57 ENABLE ROW LEVEL SECURITY;',
+  'ALTER TABLE public.be_data_entry_access_mode_v57 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_data_entry_access_grants_v57,',
+  '  public.be_data_entry_access_mode_v57 FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n');
+const actorAccessMigrationPath =
+  resolve(root, '20260906213641_uat308_original_data_entry_access_v57_ci.sql');
+if (!readFileSync(actorAccessMigrationPath, 'utf8')
+       .includes('v_grant public.be_data_entry_access_grants_v57%rowtype;')) {
+  throw new Error('Original V57 guard access grants rowtype changed');
+}
+writeFileSync(actorAccessMigrationPath,
+  dataEntryAccessSupportCi + '\n' + readFileSync(actorAccessMigrationPath, 'utf8'));
+console.log('CI-only V57 access security tables restored empty with RLS enabled.');
+
+
 
 
 
