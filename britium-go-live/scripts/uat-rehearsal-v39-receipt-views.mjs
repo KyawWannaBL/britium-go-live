@@ -5,6 +5,13 @@
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const src=fileURLToPath(new URL('../britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql',import.meta.url));
+const canonical=fileURLToPath(new URL('../supabase/migrations/20260831000001_original_v39_warehouse_receipt_views.sql',import.meta.url));
+if(fs.existsSync(canonical)) {
+ const ddl=fs.readFileSync(canonical,'utf8');
+ if(!ddl.includes('be_v_warehouse_receipt_v39')||!ddl.includes('security_invoker = true')) throw Error('Canonical V39 receipt view source guard mismatch');
+ console.log('Canonical V39 receipt views present; no CI-only duplicate.');
+ process.exit(0);
+}
 const target=fileURLToPath(new URL('../supabase/migrations/20260831000001_CI_ONLY_V39_receipt_view.sql',import.meta.url));
 const sql=fs.readFileSync(src,'utf8');
 const extract=(start)=>{
