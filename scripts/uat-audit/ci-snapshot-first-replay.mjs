@@ -476,6 +476,35 @@ writeFileSync(actorAccessMigrationPath,
   dataEntryAccessSupportCi + '\n' + readFileSync(actorAccessMigrationPath, 'utf8'));
 console.log('CI-only V57 access security tables restored empty with RLS enabled.');
 
+// September's approved-tariff lookup references the original V61.4.1
+// township normalizer. Extract that authentic function from checked-in
+// source rather than substituting an approximate alias normalizer.
+const townshipV614ArchivePath = resolve(
+  'britium-go-live/britium-current-ui-fixed/data_entry_clean_review_v61_4_1_patch/sql/20260803_financial_v2_township_alias_v61_4_1.sql');
+const townshipV614Source = readFileSync(townshipV614ArchivePath, 'utf8');
+const townshipV614Header =
+  'create or replace function public.be_financial_v2_township_key_v61_4_1(p_value text)';
+const townshipV614Start = townshipV614Source.indexOf(townshipV614Header);
+const townshipV614End = townshipV614Source.indexOf('$normalize$;', townshipV614Start);
+if (townshipV614Start < 0 || townshipV614End < townshipV614Start ||
+    townshipV614Source.indexOf(townshipV614Header, townshipV614Start + 1) !== -1) {
+  throw new Error('Authentic V61.4.1 township normalizer is not uniquely present');
+}
+const townshipV614Function =
+  townshipV614Source.slice(townshipV614Start, townshipV614End + '$normalize$;'.length);
+if (townshipV614Function.length < 400 ||
+    !townshipV614Function.includes('language plpgsql') ||
+    !townshipV614Function.includes('immutable') ||
+    !townshipV614Function.includes('regexp_replace')) {
+  throw new Error('Authentic V61.4.1 township normalization logic changed');
+}
+writeFileSync(resolve(root,
+  '20260911000202_uat308_original_township_key_v61_4_1_ci.sql'),
+  '-- CI-only: original V61.4.1 township normalization function.\n' +
+  townshipV614Function + '\n');
+console.log('CI-only authentic V61.4.1 tariff township key restored before tariff lookup.');
+
+
 
 
 
