@@ -530,12 +530,20 @@ export default function WayplanCommandCenterPage() {
         }
       }));
       if (rawStops.length !== ids.length) unchecked.push("WAYPLAN_MANIFEST_IDS_INCOMPLETE");
+      // The manifest can contain returned/reversed stops that are not caught
+      // by delivery-date eligibility alone. Do not mark these routes ready.
+      const custodyExceptions = rawStops
+        .filter((stop: any) => ["RETURN_TO_WAREHOUSE", "ON_HOLD", "RTO", "RETURN_SCANNED"].includes(String(stop.stop_status || "").toUpperCase())
+          || ["RETURN_TO_WAREHOUSE", "ON_HOLD", "RTO", "RETURN_SCANNED"].includes(String(stop.dispatch_status || "").toUpperCase()))
+        .map((stop: any) => text(stop.delivery_way_id))
+        .filter(Boolean);
       const issues = [
         ...(Array.isArray(data?.issues) ? data.issues : []),
         ...held.sort().map((id) => "RESCHEDULE_OR_RETURN_HOLD: " + id),
+        ...custodyExceptions.map((id) => "WAREHOUSE_CUSTODY_EXCEPTION: " + id),
         ...unchecked.sort().map((id) => "DISPATCH_ELIGIBILITY_NOT_VERIFIED: " + id),
       ];
-      setDispatchPreflight({ wayplanId, ...data, ok: Boolean(data?.ok) && issues.length === 0, issues, heldWayIds: held, uncheckedWayIds: unchecked });
+      setDispatchPreflight({ wayplanId, ...data, ok: Boolean(data?.ok) && issues.length === 0, issues, heldWayIds: held, custodyExceptionIds: custodyExceptions, uncheckedWayIds: unchecked });
     } catch (err: any) {
       setDispatchPreflight({ wayplanId, ok: false, issues: [err?.message || "Readiness check unavailable"] });
     } finally {
@@ -767,6 +775,11 @@ export default function WayplanCommandCenterPage() {
                     {dispatchPreflight?.wayplanId === activeWayplan.wayplan_id && <div role="status" style={{ border: `1px solid ${dispatchPreflight.ok ? C.green : C.gold}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
                       <strong>{dispatchPreflight.ok ? "Checks passed. Publish after Supervisor and Warehouse release." : "Publication blocked. Fix these items:"}</strong>
                       <div>Membership: {dispatchPreflight.membership_ready_rows ?? "-"}/{dispatchPreflight.total_stops ?? "-"} · Scanned: {dispatchPreflight.dispatch_scanned_stops ?? "-"}/{dispatchPreflight.total_stops ?? "-"}</div>
+                      {Array.isArray(dispatchPreflight.custodyExceptionIds) && dispatchPreflight.custodyExceptionIds.length > 0 && <div data-dispatch-custody-exceptions="true" style={{ padding: 8, border: `1px solid ${C.red}`, borderRadius: 8, marginTop: 6 }}>
+                        <strong>Warehouse return / custody exceptions</strong>
+                        <div>{dispatchPreflight.custodyExceptionIds.join(", ")}</div>
+                        <div style={{ color: C.sub }}>Investigate the original parcel return and scan history; do not re-scan or republish the original wayplan.</div>
+                      </div>}
                       {Array.isArray(dispatchPreflight.heldWayIds) && dispatchPreflight.heldWayIds.length > 0 && <div data-dispatch-reschedule-holds="true" style={{ padding: 8, border: `1px solid ${C.gold}`, borderRadius: 8, marginTop: 6 }}>
                         <strong>Held parcels requiring Warehouse / Operations review</strong>
                         <div>{dispatchPreflight.heldWayIds.join(", ")}</div>
