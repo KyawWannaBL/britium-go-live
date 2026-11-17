@@ -17,6 +17,11 @@ create table if not exists public.be_parcel_waybills (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+-- The historical warehouse receipt view resolves original parcel Way IDs.
+-- Production pg_catalog confirms parcels.way_id is an optional text column.
+ALTER TABLE public.parcels
+ ADD COLUMN IF NOT EXISTS way_id text;
+
 ALTER TABLE public.be_parcel_waybills
  ADD COLUMN IF NOT EXISTS total_collect_amount numeric(16,2) NOT NULL DEFAULT 0;
 ALTER TABLE public.be_parcel_waybills ENABLE ROW LEVEL SECURITY;
