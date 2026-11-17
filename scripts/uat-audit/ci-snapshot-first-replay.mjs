@@ -361,6 +361,37 @@ writeFileSync(dataEntryV14PrerequisitesPath,
   readFileSync(dataEntryV14PrerequisitesPath, 'utf8') + '\n' + dataEntrySaveSql);
 console.log('CI-only complete enterprise V13.2 save body restored before V14 rename.');
 
+// V17's calculator rename expects the original V13.2 Data Entry calculator.
+// The authentic definition is retained in the archived September V13.2 source.
+// Copy only this validated function body into the disposable replay; never
+// enable Data Entry mutations, invent quotes, or grant public execution.
+const v13CalculatorArchive = readFileSync(resolve(
+  'britium-go-live/supabase/migration_history_archive/local_only_not_in_production_20261114/20260902153000_financial_reconciliation_and_data_entry_options_v13_2.sql'
+), 'utf8');
+const v13CalculatorHeader =
+  'create or replace function public.be_data_entry_financial_v2_calculate(p_payload jsonb)';
+const calcStart = v13CalculatorArchive.indexOf(v13CalculatorHeader);
+const calcEnd = v13CalculatorArchive.indexOf('$function$;', calcStart);
+if (calcStart < 0 || calcEnd < calcStart ||
+    v13CalculatorArchive.indexOf(v13CalculatorHeader, calcStart + 1) >= 0) {
+  throw new Error('Original V13.2 calculator definition not uniquely available');
+}
+const v13CalculatorDefinition = v13CalculatorArchive.slice(calcStart, calcEnd + 11);
+if (v13CalculatorDefinition.length < 5800 ||
+    !v13CalculatorDefinition.includes('be_data_entry_financial_v2_calculate_v61_3_3_legacy') ||
+    !v13CalculatorDefinition.includes('v_update_access') ||
+    !v13CalculatorDefinition.includes('customer_tier_override')) {
+  throw new Error('Original V13.2 calculator safety checks changed');
+}
+writeFileSync(dataEntryV14PrerequisitesPath,
+  readFileSync(dataEntryV14PrerequisitesPath, 'utf8') +
+  '\n-- CI-only authentic archived V13.2 calculator; required for V17 rename.\n' +
+  v13CalculatorDefinition + '\n' +
+  'REVOKE ALL ON FUNCTION public.be_data_entry_financial_v2_calculate(jsonb)' +
+  ' FROM PUBLIC, anon, authenticated, service_role;\n');
+console.log('CI-only original V13.2 Data Entry calculator restored before V17.');
+
+
 
 
 
