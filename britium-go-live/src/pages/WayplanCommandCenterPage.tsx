@@ -511,7 +511,31 @@ export default function WayplanCommandCenterPage() {
         p_helper_code: null,
       });
       if (checkError) throw checkError;
-      setDispatchPreflight({ wayplanId, ...data });
+      // Existing integrity results do not include late customer reschedules.
+      // Verify the actual manifest stops against the authoritative predicate.
+      const plan = wayplans.find((row) => row.wayplan_id === wayplanId);
+      const rawStops = Array.isArray(plan?.stops) ? plan.stops : [];
+      const ids = Array.from(new Set(rawStops.map((stop: any) => text(stop.delivery_way_id)).filter(Boolean))) as string[];
+      const held: string[] = [];
+      const unchecked: string[] = [];
+      let cursor = 0;
+      await Promise.all(Array.from({ length: Math.min(8, ids.length) }, async () => {
+        while (cursor < ids.length) {
+          const id = ids[cursor++];
+          try {
+            const response = await supabase.rpc("be_delivery_schedule_allows_wayplan_v71", { p_delivery_way_id: id });
+            if (response.error || typeof response.data !== "boolean") unchecked.push(id);
+            else if (!response.data) held.push(id);
+          } catch { unchecked.push(id); }
+        }
+      }));
+      if (rawStops.length !== ids.length) unchecked.push("WAYPLAN_MANIFEST_IDS_INCOMPLETE");
+      const issues = [
+        ...(Array.isArray(data?.issues) ? data.issues : []),
+        ...held.sort().map((id) => "RESCHEDULE_OR_RETURN_HOLD: " + id),
+        ...unchecked.sort().map((id) => "DISPATCH_ELIGIBILITY_NOT_VERIFIED: " + id),
+      ];
+      setDispatchPreflight({ wayplanId, ...data, ok: Boolean(data?.ok) && issues.length === 0, issues, heldWayIds: held, uncheckedWayIds: unchecked });
     } catch (err: any) {
       setDispatchPreflight({ wayplanId, ok: false, issues: [err?.message || "Readiness check unavailable"] });
     } finally {
@@ -743,6 +767,11 @@ export default function WayplanCommandCenterPage() {
                     {dispatchPreflight?.wayplanId === activeWayplan.wayplan_id && <div role="status" style={{ border: `1px solid ${dispatchPreflight.ok ? C.green : C.gold}`, borderRadius: 8, padding: 10, fontSize: 12 }}>
                       <strong>{dispatchPreflight.ok ? "Checks passed. Publish after Supervisor and Warehouse release." : "Publication blocked. Fix these items:"}</strong>
                       <div>Membership: {dispatchPreflight.membership_ready_rows ?? "-"}/{dispatchPreflight.total_stops ?? "-"} · Scanned: {dispatchPreflight.dispatch_scanned_stops ?? "-"}/{dispatchPreflight.total_stops ?? "-"}</div>
+                      {Array.isArray(dispatchPreflight.heldWayIds) && dispatchPreflight.heldWayIds.length > 0 && <div data-dispatch-reschedule-holds="true" style={{ padding: 8, border: `1px solid ${C.gold}`, borderRadius: 8, marginTop: 6 }}>
+                        <strong>Held parcels requiring Warehouse / Operations review</strong>
+                        <div>{dispatchPreflight.heldWayIds.join(", ")}</div>
+                        <div style={{ color: C.sub }}>Do not publish or re-scan these parcels until actual return custody and reschedule rules are satisfied.</div>
+                      </div>}
                       {Array.isArray(dispatchPreflight.issues) && dispatchPreflight.issues.map((issue: string) => <div key={issue} style={{ color: C.gold }}>{issue}</div>)}
                       {!dispatchPreflight.ok && <div style={{ color: C.sub }}>If any parcel has already been returned, keep its return record. Ask Operations to reconcile or replace the wayplan; never recreate a dispatch scan to bypass a return.</div>}
                     </div>}
