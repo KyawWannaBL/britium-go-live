@@ -226,8 +226,10 @@ for (const [col] of legacyFinanceViewColumns) {
     throw new Error('Finance V4 no longer references expected historical parcel column: ' + col);
   }
 }
-writeFileSync(resolve(root, '20260901192454_uat308_finance_legacy_view_columns_ci.sql'),
-  '-- CI-only historical Finance V4 view prerequisites verified against production catalog.\n' +
+const combinedFinanceColumnsPath = resolve(root, '20260901192454_uat308_original_finance_parcel_columns_ci.sql');
+writeFileSync(combinedFinanceColumnsPath,
+  readFileSync(combinedFinanceColumnsPath, 'utf8') +
+  '\n-- CI-only historical Finance V4 view prerequisites verified against production catalog.\n' +
   'ALTER TABLE public.parcels\n' +
   legacyFinanceViewColumns.map(([col, definition]) =>
     '  ADD COLUMN IF NOT EXISTS ' + col + ' ' + definition).join(',\n') + ';\n');
