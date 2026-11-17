@@ -106,6 +106,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   const [approved, setApproved] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [blockedWayIds, setBlockedWayIds] = useState<string[]>([]);
   const request = useRef<{ body: string; id: string } | null>(null);
 
   useEffect(() => {
@@ -125,7 +126,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   const available = (items: any[], key: string): Resource[] => (items || []).map((x) => ({
     ...x,
-    available: !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
+    available: x.mobile_auth_ready !== false && !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
   const baseVehicles = available(
@@ -159,6 +160,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       setReason("");
     }
     request.current = null;
+    setBlockedWayIds([]);
   }
 
   function repairCrewGaps(nextPlans: OperationalVanPlan[]) {
@@ -184,6 +186,13 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       const used = waveUsed.get(wave) || new Set<string>();
       waveUsed.set(wave, used);
 
+      if (isRiderOnlyVehicle(plan.vehicle_code)) {
+        // Rider-only routes must never auto-assign a Driver or Helper.
+        const selectedRider = find(riders, plan.rider_code);
+        const rider = free(used, selectedRider) ? selectedRider : undefined;
+        reserve(used, rider);
+        return { ...plan, crew_mode: "ROSTER", driver_code: "", rider_code: rider?.id || "", helper_code: "" };
+      }
       const requestedHelper = find(helpers, plan.helper_code);
       const requestedHelperPerson = personKey(requestedHelper);
       let driver = find(drivers, plan.driver_code);
@@ -239,15 +248,12 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   }
 
   function autoAssignMissingCrew() {
-    const repaired = repairCrewGaps(plans).map((plan, index) => ({
-      ...plan,
-      rider_code: plans[index]?.rider_code || "",
-    }));
+    const repaired = repairCrewGaps(plans);
     reset(repaired, true);
-    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && !plan.driver_code);
+    const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && (isRiderOnlyVehicle(plan.vehicle_code) ? !plan.rider_code : !plan.driver_code));
     setMessage(stillMissing
-      ? "Automatic crew repair could not find an available Driver for every route. Choose an available Driver or use an approved Emergency substitution."
-      : "Missing Driver assignments were repaired automatically. Rider and Helper are optional; review the crew, then create the reviewed Wayplans.");
+      ? "Crew repair cannot fill every route. Select an available Rider for Bicycle/Motor Bike or an available Driver for van/car/truck."
+      : "Crew checked: Bicycle/Motor Bike requires Rider only; van/car/truck requires Driver with optional Helper.");
   }
 
   async function roadSession() {
@@ -633,12 +639,68 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     return list.find((x) => x.id === code)?.name || "";
   }
 
+  async function findDispatchHeldWays(wayIds: string[]) {
+    // The same authoritative predicate is enforced by the generator.
+    const blocked: string[] = [];
+    const failures: string[] = [];
+    const unique = Array.from(new Set(wayIds.filter(Boolean)));
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(8, unique.length) }, async () => {
+      while (cursor < unique.length) {
+        const id = unique[cursor++];
+        try {
+          const { data, error } = await supabase.rpc("be_delivery_schedule_allows_wayplan_v71", { p_delivery_way_id: id });
+          if (error || typeof data !== "boolean") failures.push(id);
+          else if (!data) blocked.push(id);
+        } catch { failures.push(id); }
+      }
+    }));
+    return { blocked: blocked.sort(), failures: failures.sort() };
+  }
+
+  function excludeBlockedWays() {
+    if (!blockedWayIds.length) return;
+    const excluded = new Set(blockedWayIds);
+    const revised = plans.map((plan) => ({
+      ...plan,
+      rows: plan.rows.filter((row) => !excluded.has(row.delivery_way_id)),
+      route: {
+        ...(plan.route || {}),
+        source: "NEEDS_REOPTIMIZATION",
+        base_source: plan.route?.source || "",
+        manual: true,
+        warning: "Held parcels excluded. Re-optimize and review updated stop sequence before creating.",
+      },
+    })).filter((plan) => plan.rows.length > 0) as OperationalVanPlan[];
+    reset(revised, true);
+    setMessage(excluded.size + " held Way ID(s) excluded from this route only. No parcel records were deleted. Re-optimize and review before creating.");
+  }
+
   async function save() {
     if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")))) {
       setMessage("Cannot create Wayplans: every active route must be road-reviewed or explicitly marked as a deferred assignment.");
       return;
     }
     setBusy(true);
+    setBlockedWayIds([]);
+    const wayIds = plans.flatMap((plan) => plan.rows.map((row) => String(row.delivery_way_id || "").trim()));
+    const missing = wayIds.filter((id) => !id);
+    const duplicate = Array.from(new Set(wayIds.filter((id, index) => id && wayIds.indexOf(id) !== index)));
+    if (missing.length || duplicate.length) {
+      setMessage("Wayplan creation blocked: " + missing.length + " missing Way IDs and " + duplicate.length + " duplicated Way IDs. Check the selected parcels.");
+      setBusy(false);
+      return;
+    }
+    setMessage("Checking dispatch eligibility for " + wayIds.length + " parcels...");
+    const eligibility = await findDispatchHeldWays(wayIds);
+    if (eligibility.blocked.length || eligibility.failures.length) {
+      setBlockedWayIds(eligibility.blocked);
+      setMessage("Wayplan creation blocked. Held parcels: " + (eligibility.blocked.join(", ") || "none")
+        + ". Eligibility check failures: " + (eligibility.failures.join(", ") || "none")
+        + ". Exclude held parcels or have Warehouse complete genuine return scans, then retry.");
+      setBusy(false);
+      return;
+    }
 
     let plansForSave = plans;
     const removedBusyHelpers: string[] = [];
@@ -732,7 +794,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       if (String(p.emergency_substitution_reason || "").trim().length < 5) return true;
       return riderOnly ? !p.manual_rider_name?.trim() : !p.manual_driver_name?.trim();
     }
-    return riderOnly ? !p.rider_code : !p.driver_code;
+    const assigned = riderOnly ? riders.find((x) => x.id === p.rider_code) : drivers.find((x) => x.id === p.driver_code);
+    return !assigned || assigned.available === false;
   });
   const invalidCrew = invalidCrewPlans.length > 0;
   const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")));
@@ -752,9 +815,16 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       if (String(plan.emergency_substitution_reason || "").trim().length < 5) readinessIssues.push(`${label}: enter an emergency substitution reason of at least 5 characters.`);
     } else if (riderOnly) {
       if (!plan.rider_code) readinessIssues.push(`${label}: choose a Rider for the Motor Bike/Bicycle.`);
+      else if (riders.find((x) => x.id === plan.rider_code)?.available === false) readinessIssues.push(`${label}: selected Rider is busy or lacks active Rider App authentication. Choose another available Rider.`);
     } else {
       if (!plan.driver_code) readinessIssues.push(`${label}: choose a Driver for the selected vehicle.`);
+      else if (drivers.find((x) => x.id === plan.driver_code)?.available === false) readinessIssues.push(`${label}: selected Driver is busy or lacks active Field App authentication. Choose another available Driver.`);
     }
+  });
+  plans.forEach((plan, index) => {
+    if (plan.crew_mode === "EMERGENCY_MANUAL" || !plan.helper_code) return;
+    const helper = helpers.find((x) => x.id === plan.helper_code);
+    if (!helper || helper.available === false) readinessIssues.push((plan.master?.routeCode || "route " + (index + 1)) + ": selected Helper is busy or lacks active Field App authentication. Choose No helper or an available Helper.");
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
   if (oversized.length) readinessIssues.push("Split any route above 75 parcels before creation.");
@@ -785,6 +855,14 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
+    {blockedWayIds.length > 0 && <div data-wayplan-dispatch-preflight-v221="true" style={{ padding: 10, border: "1px solid #eab308", borderRadius: 8 }}>
+      <strong>Dispatch hold: {blockedWayIds.length} Way ID(s)</strong>
+      <div style={{ marginTop: 4, fontSize: 12 }}>{blockedWayIds.join(", ")}</div>
+      <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={excludeBlockedWays}>
+        Exclude held parcels from these routes (does not delete parcels)
+      </button>
+      <div style={{ marginTop: 5, fontSize: 12 }}>Re-optimize after exclusion; Warehouse custody and reschedule rules remain enforced.</div>
+    </div>}
 
     {plans.map((plan, i) => {
       const delivery = plan.rows;
@@ -811,12 +889,12 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           const riderOnly = isRiderOnlyVehicle(plan.vehicle_code);
           return <>
             <div data-vehicle-driven-crew-v148="true" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <label>Vehicle * <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => selectVehicle(i, e.target.value)}><option value="">Choose vehicle first</option>{vehicles.map((x) => <option key={x.id} value={x.id} disabled={x.available === false}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
+              <label>Vehicle * <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => selectVehicle(i, e.target.value)}><option value="">Choose vehicle first</option>{vehicles.map((x) => <option key={x.id} value={x.id} disabled={x.available === false}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
               <label>Crew mode <select style={field} disabled={busy || !vehicleSelected} value={plan.crew_mode || "ROSTER"} onChange={(e) => patchPlan(i, { crew_mode: e.target.value as any, driver_code: "", rider_code: "", helper_code: "", manual_driver_name: "", manual_rider_name: "", manual_helper_name: "" })}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
               {!emergency && <>
-                <label>Driver {vehicleSelected && !riderOnly ? "*" : "(disabled)"} <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "Choose name"}</option>{drivers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.driver_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
-                <label>Rider {vehicleSelected && riderOnly ? "*" : "(disabled)"} <select data-rider-vehicle-mode-v148="true" style={field} disabled={busy || !vehicleSelected || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">{riderOnly ? "Choose Rider" : "Disabled for van/car/truck"}</option>{riders.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.rider_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
-                <label>Helper (optional) <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "No helper"}</option>{helpers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.helper_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
+                <label>Driver {vehicleSelected && !riderOnly ? "*" : "(disabled)"} <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "Choose name"}</option>{drivers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.driver_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
+                <label>Rider {vehicleSelected && riderOnly ? "*" : "(disabled)"} <select data-rider-vehicle-mode-v148="true" style={field} disabled={busy || !vehicleSelected || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">{riderOnly ? "Choose Rider" : "Disabled for van/car/truck"}</option>{riders.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.rider_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
+                <label>Helper (optional) <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "No helper"}</option>{helpers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.helper_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
               </>}
             </div>
 
