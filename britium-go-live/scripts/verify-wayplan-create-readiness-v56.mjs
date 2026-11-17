@@ -4,8 +4,13 @@ import path from "node:path";
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
 const planner = fs.readFileSync(path.join(root, "src/components/MultiVanPlanner.tsx"), "utf8");
 const commandCenter = fs.readFileSync(path.join(root, "src/pages/WayplanCommandCenterPage.tsx"), "utf8");
+const revision = fs.readFileSync(path.join(root, "src/components/CreatedWayplanRevisionPlanner.tsx"), "utf8");
 
 const checks = [
+  ["Revision crew options enforce active app authentication", revision.includes('x.mobile_auth_ready !== false')],
+  ["Replacement creation rechecks live dispatch eligibility", revision.includes('await requireDispatchEligibleStops(rows)') && revision.includes('await requireDispatchEligibleStops(plan.rows)')],
+  ["Revision rejects missing and duplicate Way IDs", revision.includes('new Set(ids).size !== ids.length')],
+  ["Revision cannot save unavailable crew", revision.includes('!primaryReady || !helperReady')],
   ["Publish readiness verifies every manifest stop against current reschedule predicate", commandCenter.includes('be_delivery_schedule_allows_wayplan_v71') && commandCenter.includes('rawStops.length !== ids.length')],
   ["Returned stops are reported as custody exceptions", commandCenter.includes('WAREHOUSE_CUSTODY_EXCEPTION: ') && commandCenter.includes('data-dispatch-custody-exceptions="true"')],
   ["Return / RTO states block publish readiness", commandCenter.includes('"RETURN_TO_WAREHOUSE", "ON_HOLD", "RTO", "RETURN_SCANNED"')],
