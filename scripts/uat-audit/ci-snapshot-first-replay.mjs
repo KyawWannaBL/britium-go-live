@@ -210,6 +210,30 @@ writeFileSync(financeProjectionPath, financeProjectionSql.replace(
   oldFinanceDrop, 'drop view if exists public.be_v_finance_merchant_settlement_queue_v2;'));
 console.log('CI-only conditional drop of missing superseded Finance V2 view; Git history unchanged.');
 
+// Production's canonical Finance view relies on legacy parcels columns missing
+// from the July disposable snapshot. Recover their verified historical shapes.
+// No financial status is fabricated; existing rows remain unchanged.
+const legacyFinanceViewColumns = [
+  ['collect_amount', 'numeric NOT NULL DEFAULT 0'],
+  ['financial_locked_at', 'timestamptz'],
+  ['financial_settled_at', 'timestamptz'],
+  ['financial_settlement_batch_id', 'uuid']
+];
+const canonicalViewSource = financeProjectionSql.slice(
+  financeProjectionSql.indexOf('create view public.be_v_finance_merchant_settlement_queue_v2'));
+for (const [col] of legacyFinanceViewColumns) {
+  if (!canonicalViewSource.includes('p.' + col)) {
+    throw new Error('Finance V4 no longer references expected historical parcel column: ' + col);
+  }
+}
+writeFileSync(resolve(root, '20260901192454_uat308_finance_legacy_view_columns_ci.sql'),
+  '-- CI-only historical Finance V4 view prerequisites verified against production catalog.\n' +
+  'ALTER TABLE public.parcels\n' +
+  legacyFinanceViewColumns.map(([col, definition]) =>
+    '  ADD COLUMN IF NOT EXISTS ' + col + ' ' + definition).join(',\n') + ';\n');
+console.log('CI-only historical collection and settlement-lock parcel fields restored.');
+
+
 
 
 
