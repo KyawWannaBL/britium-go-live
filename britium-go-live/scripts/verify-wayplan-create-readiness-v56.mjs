@@ -14,6 +14,12 @@ const checks = [
   ["crew selection starts with vehicle", planner.includes("Choose vehicle first") && planner.includes("Crew is intentionally not auto-assigned")],
   ["vehicle-specific driver and rider requirements are explicit", planner.includes("choose a Driver for the selected vehicle") && planner.includes("choose a Rider for the Motor Bike/Bicycle")],
   ["button is controlled by readiness issues", planner.includes("const cannotSave = busy || readinessIssues.length > 0")],
+  ["Bicycle crews cannot be auto-repaired with a Driver", planner.includes('if (isRiderOnlyVehicle(plan.vehicle_code)) {') && planner.includes('driver_code: "", rider_code: rider?.id || "", helper_code: ""')],
+  ["Dispatch eligibility checked before generation", planner.includes('await findDispatchHeldWays(wayIds)') && planner.indexOf('await findDispatchHeldWays(wayIds)') < planner.indexOf('supabase.rpc("be_generate_multi_van_v43"')],
+  ["Dispatch preflight uses authoritative reschedule predicate", planner.includes('be_delivery_schedule_allows_wayplan_v71')],
+  ["Duplicate Way IDs block create", planner.includes('const duplicate = Array.from(new Set(wayIds.filter(')],
+  ["Held parcels can be excluded only with operator action", planner.includes('data-wayplan-dispatch-preflight-v221="true"') && planner.includes('onClick={excludeBlockedWays}')],
+
   ["below-50 approval is explicit for Driver/van-only routes", planner.includes("Approve one Driver/vehicle-crew route below 50 parcels")],
   ["Rider-selected route minimum exemption is explicit", planner.includes('data-rider-minimum-exempt-v84="true"') && planner.includes("Rider assignment: no minimum parcel count")],
 ];
