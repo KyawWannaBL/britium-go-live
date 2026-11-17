@@ -312,6 +312,39 @@ writeFileSync(merchantProfileFixturePath,
     '  ADD COLUMN IF NOT EXISTS ' + column + ' ' + definition).join(',\n') + ';\n');
 console.log('CI-only merchant settlement profile descriptor columns restored.');
 
+// V58 request ledger exists in production but is absent in the July snapshot.
+// Reconstruct its catalog-verified columns in disposable CI without request data.
+const v58RequestMigration = readFileSync(
+  resolve(root, '20260902220115_data_entry_extra_registration_bulk_actions.sql'), 'utf8');
+if (!v58RequestMigration.includes('alter table public.be_data_entry_financial_v2_requests_v58') ||
+    !v58RequestMigration.includes('be_data_entry_financial_v2_requests_v58_operation_check')) {
+  throw new Error('V14 request ledger dependency changed');
+}
+const v58RequestsCiSql = [
+  '-- CI-only catalog-verified V58 request ledger; no request data.',
+  'CREATE TABLE IF NOT EXISTS public.be_data_entry_financial_v2_requests_v58 (',
+  '  request_id text PRIMARY KEY,',
+  '  operation text NOT NULL,',
+  '  actor_id uuid,',
+  '  payload_hash text NOT NULL,',
+  '  status text NOT NULL CONSTRAINT be_data_entry_financial_v2_requests_v58_status_check',
+  "    CHECK (status IN ('IN_PROGRESS','COMPLETE')),",
+  '  response jsonb,',
+  '  created_at timestamptz NOT NULL DEFAULT now(),',
+  '  completed_at timestamptz,',
+  '  CONSTRAINT be_data_entry_financial_v2_requests_v58_operation_check',
+  "    CHECK (operation IN ('SAVE','IMPORT','CREATE_WAYBILL'))",
+  ');',
+  'ALTER TABLE public.be_data_entry_financial_v2_requests_v58 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_data_entry_financial_v2_requests_v58',
+  '  FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n');
+writeFileSync(resolve(root, '20260902220114_uat308_verified_data_entry_v58_request_ledger_ci.sql'),
+  v58RequestsCiSql);
+console.log('CI-only catalog-verified V58 request ledger restored before V14.');
+
+
 
 
 
