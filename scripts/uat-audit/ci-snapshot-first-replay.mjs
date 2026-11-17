@@ -523,6 +523,33 @@ writeFileSync(dispatchQuoteMigration, [
 ].join('\n'));
 console.log('CI-only catalog-verified financial_quote column restored before dispatch queue.');
 
+// The V40 membership ledger was present historically but is absent from the
+// July snapshot. Restore its exact schema/indices from original checked-in
+// V40 source before September's dispatch-ready view, not a permissive stub.
+const v40Source = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/wayplan_warehouse_dispatch_v40.sql'), 'utf8');
+const v40Start = v40Source.indexOf('create table if not exists public.be_wayplan_membership_v40 (');
+const v40End = v40Source.indexOf('create table if not exists public.be_wayplan_events_v40 (', v40Start);
+if (v40Start < 0 || v40End <= v40Start) {
+  throw new Error('Original V40 membership source is missing');
+}
+const v40MembershipSql = v40Source.slice(v40Start,v40End);
+if (v40MembershipSql.length < 1500 ||
+    !v40MembershipSql.includes('be_wayplan_membership_v40_status_check') ||
+    !v40MembershipSql.includes('be_wayplan_membership_v40_active_way_idx') ||
+    !v40MembershipSql.includes('unique (wayplan_id, delivery_way_id)')) {
+  throw new Error('Original V40 membership checks or uniqueness missing');
+}
+writeFileSync(resolve(root, '20260911205409_uat308_original_wayplan_membership_v40_ci.sql'), [
+  '-- CI-only original V40 membership table/indexes; original production policy retained.',
+  v40MembershipSql,
+  'ALTER TABLE public.be_wayplan_membership_v40 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_wayplan_membership_v40 FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n'));
+console.log('CI-only original V40 membership ledger with uniqueness and RLS restored.');
+
+
 
 
 
