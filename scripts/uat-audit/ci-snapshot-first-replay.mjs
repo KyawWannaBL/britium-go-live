@@ -577,6 +577,22 @@ writeFileSync(resolve(root, '20260913124918_uat308_tariff_alias_v61_7_1_ci.sql')
   tariffAliasV617Sql);
 console.log('CI-only catalog-verified tariff alias dictionary restored before V31.');
 
+// Historical V33 preserves/renames the pre-alias delivery allocator.
+// Restore the source body from read-only production legacy definition in CI.
+const originalWayAllocatorCi = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/original_delivery_way_allocator_v33_ci.sql'), 'utf8');
+if (!originalWayAllocatorCi.includes(
+      'CREATE OR REPLACE FUNCTION public.be_allocate_delivery_way_id(') ||
+    !originalWayAllocatorCi.includes('pg_advisory_xact_lock') ||
+    !originalWayAllocatorCi.includes('be_delivery_way_id_registry') ||
+    originalWayAllocatorCi.length < 3000) {
+  throw new Error('Original way ID allocator fixture missing or altered');
+}
+writeFileSync(resolve(root,'20260914022751_uat308_original_delivery_allocator_ci.sql'),
+  originalWayAllocatorCi);
+console.log('CI-only original WayID allocator restored before V33 preservation.');
+
+
 
 
 
