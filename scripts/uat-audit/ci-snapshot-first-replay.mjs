@@ -55,6 +55,17 @@ if (!fieldIdentitySql.includes('Authenticated field-team session is required') |
 }
 copyFileSync(fieldIdentityFixture, resolve(root,'20260830094499_uat308_field_identity_reconstruction.sql'));
 console.log('CI-only guarded field-team resolver inserted before v10_1; no production database changes.');
+const scanFixture = resolve('scripts/uat-audit/fixtures/dispatch_scans_v39_ci_bootstrap.sql');
+const scanSql = readFileSync(scanFixture,'utf8');
+if (!scanSql.includes('CREATE TABLE IF NOT EXISTS public.be_dispatch_scans_v39') ||
+    !scanSql.includes('delivery_way_id text PRIMARY KEY') ||
+    !scanSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !scanSql.includes('REVOKE ALL ON TABLE public.be_dispatch_scans_v39')) {
+  throw new Error('Dispatch scan v39 CI fixture is absent or missing fail-closed safeguards');
+}
+copyFileSync(scanFixture, resolve(root,'20260901111808_uat308_dispatch_scans_v39_reconstruction.sql'));
+console.log('CI-only dispatch scan table reconstructed before health v12_10c; no remote writes.');
+
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
