@@ -669,7 +669,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       rows: plan.rows.filter((row) => !excluded.has(row.delivery_way_id)),
       route: {
         ...(plan.route || {}),
-        source: "OPERATOR_EDITED",
+        source: "NEEDS_REOPTIMIZATION",
         base_source: plan.route?.source || "",
         manual: true,
         warning: "Held parcels excluded. Re-optimize and review updated stop sequence before creating.",
