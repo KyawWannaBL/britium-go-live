@@ -5,6 +5,13 @@
  */
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
+const predecessor=fileURLToPath(new URL('../supabase/migrations/20260828010000_fleet_master_catalog_predecessor.sql',import.meta.url));
+if(fs.existsSync(predecessor)) {
+ const ddl=fs.readFileSync(predecessor,'utf8');
+ if(!ddl.includes('FLEET_MASTER_CATALOG_MISMATCH')||!ddl.includes("'Fleet_Master (EN)'")) throw Error('Historical fleet predecessor verification failed');
+ console.log('Historical fleet catalog predecessor exists; skip obsolete diagnostic overlay.');
+ process.exit(0);
+}
 const file=fileURLToPath(new URL('../supabase/migrations/20260828012127_fleet_master_reconciliation_v1.sql',import.meta.url));
 const source=fs.readFileSync(file,'utf8');
 if(!source.includes("with approved_fleet(record_key, payload) as (") ||
