@@ -12,6 +12,7 @@ async function scenario(vehicle='VAN1',routeSource='MAPBOX_FALLBACK',rows=stops,
  const context={vehicles:[{id:vehicle,name:vehicle,operation_type:'DELIVERY',available:true}],drivers:[{id:'D1',name:'Driver',branch_code:'YGN'}],riders:[{id:'R1',name:'Rider',branch_code:'YGN'}],helpers:[{id:'H1',name:'Helper',branch_code:'YGN'}],busy:[],route_origins:{YANGON:{latitude:16.84,longitude:96.17}}};
  const client={auth:{getSession:async()=>({data:{session:{access_token:'test-token'}}})},rpc:async(name,args)=>{
    if(name==='be_multi_van_context')return{data:context,error:null};
+   if(name==='be_delivery_schedule_allows_wayplan_v71')return{data:true,error:null};
    assert.equal(name,'be_replace_created_wayplan_v46');saved=args.p_payload;return{data:{ok:true,replacement_wayplan_id:'REPLACEMENT',replaces_wayplan_id:'SOURCE'},error:null};
  }};
  const module={exports:{}};
