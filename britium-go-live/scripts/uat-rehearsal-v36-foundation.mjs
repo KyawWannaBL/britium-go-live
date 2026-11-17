@@ -4,6 +4,13 @@
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const dir=new URL('../supabase/migrations/',import.meta.url);
+const canonical=fileURLToPath(new URL('20260830050000_original_v36_warehouse_receipt_foundation.sql',dir));
+if(fs.existsSync(canonical)) {
+ const ddl=fs.readFileSync(canonical,'utf8');
+ if(!ddl.includes('be_warehouse_receipts_v36')||!ddl.includes('security_invoker = true')) throw Error('V36 canonical security source missing');
+ console.log('Original V36 warehouse foundation versioned; CI overlay skipped.');
+ process.exit(0);
+}
 const dst=fileURLToPath(new URL('20260830050000_CI_ONLY_V36_receipt_foundation.sql',dir));
 const src=fileURLToPath(new URL('../britium-current-ui-fixed/warehouse_receipt_reconciliation_v36.sql',import.meta.url));
 if(fs.existsSync(dst)) throw Error('Existing migration; refusing overwrite');
