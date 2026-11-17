@@ -248,10 +248,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
   }
 
   function autoAssignMissingCrew() {
-    const repaired = repairCrewGaps(plans).map((plan, index) => ({
-      ...plan,
-      rider_code: plans[index]?.rider_code || "",
-    }));
+    const repaired = repairCrewGaps(plans);
     reset(repaired, true);
     const stillMissing = repaired.some((plan) => plan.crew_mode !== "EMERGENCY_MANUAL" && (isRiderOnlyVehicle(plan.vehicle_code) ? !plan.rider_code : !plan.driver_code));
     setMessage(stillMissing
