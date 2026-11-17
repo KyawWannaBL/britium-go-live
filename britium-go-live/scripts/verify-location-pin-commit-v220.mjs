@@ -30,4 +30,7 @@ assert.match(apply, /coordinateMatchesTownship\(/, "Retain township protection")
 const save = service.slice(service.indexOf("export async function saveDeliveryLocation("), service.indexOf("export function googleMapsLocationUrl("));
 assert.match(save, /if \(!data \|\| data\.ok === false\)/, "Reject false-success RPC responses");
 
+assert.doesNotMatch(editor, /disabled=\{busy \|\| tileLoadState === "ERROR"\}/, "A tile failure must not disable manual pin confirmation");
+assert.doesNotMatch(editor, /absolute inset-0 z-20 grid place-items-center bg-slate-100\/92/, "A tile failure must not cover the interactive map");
+
 console.log("PASS Location pin commit V220 save/readback contract");
