@@ -126,7 +126,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
 
   const available = (items: any[], key: string): Resource[] => (items || []).map((x) => ({
     ...x,
-    available: !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
+    available: x.mobile_auth_ready !== false && !(context?.busy || []).some((b: any) => [b.driver_code, b.rider_code, b.helper_code, b[key]].filter(Boolean).includes(x.id)),
   }));
   const branch = region === "YANGON" ? "YGN" : region === "MANDALAY" ? "MDY" : "NPT";
   const baseVehicles = available(
@@ -794,7 +794,8 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       if (String(p.emergency_substitution_reason || "").trim().length < 5) return true;
       return riderOnly ? !p.manual_rider_name?.trim() : !p.manual_driver_name?.trim();
     }
-    return riderOnly ? !p.rider_code : !p.driver_code;
+    const assigned = riderOnly ? riders.find((x) => x.id === p.rider_code) : drivers.find((x) => x.id === p.driver_code);
+    return !assigned || assigned.available === false;
   });
   const invalidCrew = invalidCrewPlans.length > 0;
   const roadInvalidPlans = plans.filter((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")));
@@ -814,8 +815,10 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       if (String(plan.emergency_substitution_reason || "").trim().length < 5) readinessIssues.push(`${label}: enter an emergency substitution reason of at least 5 characters.`);
     } else if (riderOnly) {
       if (!plan.rider_code) readinessIssues.push(`${label}: choose a Rider for the Motor Bike/Bicycle.`);
+      else if (riders.find((x) => x.id === plan.rider_code)?.available === false) readinessIssues.push(`${label}: selected Rider is busy or lacks active Rider App authentication. Choose another available Rider.`);
     } else {
       if (!plan.driver_code) readinessIssues.push(`${label}: choose a Driver for the selected vehicle.`);
+      else if (drivers.find((x) => x.id === plan.driver_code)?.available === false) readinessIssues.push(`${label}: selected Driver is busy or lacks active Field App authentication. Choose another available Driver.`);
     }
   });
   roadInvalidPlans.forEach((plan, index) => readinessIssues.push(`${plan.master?.routeCode || `route ${index + 1}`}: road optimization is incomplete.`));
@@ -881,12 +884,12 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           const riderOnly = isRiderOnlyVehicle(plan.vehicle_code);
           return <>
             <div data-vehicle-driven-crew-v148="true" style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 10 }}>
-              <label>Vehicle * <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => selectVehicle(i, e.target.value)}><option value="">Choose vehicle first</option>{vehicles.map((x) => <option key={x.id} value={x.id} disabled={x.available === false}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
+              <label>Vehicle * <select style={field} disabled={busy} value={plan.vehicle_code} onChange={(e) => selectVehicle(i, e.target.value)}><option value="">Choose vehicle first</option>{vehicles.map((x) => <option key={x.id} value={x.id} disabled={x.available === false}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
               <label>Crew mode <select style={field} disabled={busy || !vehicleSelected} value={plan.crew_mode || "ROSTER"} onChange={(e) => patchPlan(i, { crew_mode: e.target.value as any, driver_code: "", rider_code: "", helper_code: "", manual_driver_name: "", manual_rider_name: "", manual_helper_name: "" })}><option value="ROSTER">Normal roster</option><option value="EMERGENCY_MANUAL">Emergency substitution</option></select></label>
               {!emergency && <>
-                <label>Driver {vehicleSelected && !riderOnly ? "*" : "(disabled)"} <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "Choose name"}</option>{drivers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.driver_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
-                <label>Rider {vehicleSelected && riderOnly ? "*" : "(disabled)"} <select data-rider-vehicle-mode-v148="true" style={field} disabled={busy || !vehicleSelected || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">{riderOnly ? "Choose Rider" : "Disabled for van/car/truck"}</option>{riders.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.rider_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
-                <label>Helper (optional) <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "No helper"}</option>{helpers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.helper_code}>{x.name}{x.available === false ? " — BUSY · active route" : " — AVAILABLE"}</option>)}</select></label>
+                <label>Driver {vehicleSelected && !riderOnly ? "*" : "(disabled)"} <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.driver_code} onChange={(e) => patchPlan(i, { driver_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "Choose name"}</option>{drivers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.driver_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
+                <label>Rider {vehicleSelected && riderOnly ? "*" : "(disabled)"} <select data-rider-vehicle-mode-v148="true" style={field} disabled={busy || !vehicleSelected || !riderOnly} value={riderOnly ? (plan.rider_code || "") : ""} onChange={(e) => patchPlan(i, { rider_code: e.target.value })}><option value="">{riderOnly ? "Choose Rider" : "Disabled for van/car/truck"}</option>{riders.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.rider_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
+                <label>Helper (optional) <select style={field} disabled={busy || !vehicleSelected || riderOnly} value={riderOnly ? "" : plan.helper_code} onChange={(e) => patchPlan(i, { helper_code: e.target.value })}><option value="">{riderOnly ? "Disabled for Motor Bike/Bicycle" : "No helper"}</option>{helpers.map((x) => <option key={x.id} value={x.id} disabled={x.available === false && x.id !== plan.helper_code}>{x.name}{x.available === false ? ((x as any).mobile_auth_ready === false ? " — AUTH MAPPING REQUIRED" : " — BUSY · active route") : " — AVAILABLE"}</option>)}</select></label>
               </>}
             </div>
 
