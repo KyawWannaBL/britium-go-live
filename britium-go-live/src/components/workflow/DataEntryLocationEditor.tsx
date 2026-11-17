@@ -584,12 +584,17 @@ export default function DataEntryLocationEditor({
   function setPinAtMapCenter() {
     const markerPoint = leafletMarkerRef.current?.getLatLng?.();
     const leafletCenter = leafletMapRef.current?.getCenter?.();
-    const center = markerPoint
-      ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
-      : leafletCenter
-        ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
+    // The confirmation button follows the current map center, not the previous
+    // marker position. Operators often pan the map without dragging the marker.
+    const center = leafletCenter
+      ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
+      : markerPoint
+        ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
         : (fallbackCenterRef.current || fallbackMapCenter);
-    if (!center) return;
+    if (!center || !validMyanmarCoordinate(center.longitude, center.latitude)) return;
+    leafletMarkerRef.current?.setLatLng?.([center.latitude, center.longitude]);
+    fallbackCenterRef.current = center;
+    setFallbackMapCenter(center);
     setManualMapCoordinate(center.latitude, center.longitude, "clicked");
     setMapError("");
     setMessage(`Drop-off pin set: ${center.latitude.toFixed(6)}, ${center.longitude.toFixed(6)}. Verify the point, then click Apply coordinates.`);
@@ -703,7 +708,9 @@ export default function DataEntryLocationEditor({
         });
 
         map.on("moveend", () => {
-          const point = marker.getLatLng();
+          // Preserve the position the operator actually panned to; the existing
+          // marker remains draggable and tap-to-select continues to work.
+          const point = map.getCenter();
           fallbackCenterRef.current = { latitude: Number(point.lat), longitude: Number(point.lng) };
         });
         map.on("zoomend", () => setFallbackMapZoom(Math.round(map.getZoom())));
@@ -1021,6 +1028,21 @@ export default function DataEntryLocationEditor({
             <button type="button" onClick={()=>setMapFocus(false)} className="rounded-lg border border-emerald-300/50 bg-emerald-400/10 px-4 py-2 text-[10px] font-black text-emerald-100">RETURN TO TABLE</button>
           </> : null}
         </div>
+        {mapExpanded && (fallbackMapCenter || candidate) && (
+          <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-2">
+            <button
+              type="button"
+              onClick={setPinAtMapCenter}
+              disabled={busy || tileLoadState === "ERROR"}
+              className="min-h-11 rounded-lg bg-emerald-500 px-4 py-2 text-xs font-black text-slate-950 disabled:opacity-40"
+            >
+              SET PIN AT MAP CENTER / မြေပုံအလယ်တွင် သတ်မှတ်ရန်
+            </button>
+            <span className="text-[11px] font-semibold text-emerald-100">
+              Pan the map to the delivery gate, confirm the center here, then Apply coordinates below.
+            </span>
+          </div>
+        )}
         {(enabled || manualOpen) && <div className="mt-2 grid gap-2 sm:grid-cols-[1fr_1fr_auto]">
           <label className="block">
             <span className="mb-1 block text-[10px] font-black uppercase tracking-[0.12em] text-cyan-200">Latitude / လတ္တီကျု</span>
