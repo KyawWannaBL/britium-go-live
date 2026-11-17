@@ -65,6 +65,15 @@ if (!scanSql.includes('CREATE TABLE IF NOT EXISTS public.be_dispatch_scans_v39')
 }
 copyFileSync(scanFixture, resolve(root,'20260901111808_uat308_dispatch_scans_v39_reconstruction.sql'));
 console.log('CI-only dispatch scan table reconstructed before health v12_10c; no remote writes.');
+const financialColumnFixture = resolve('scripts/uat-audit/fixtures/data_entry_financial_validation_column_ci.sql');
+const financialSql = readFileSync(financialColumnFixture,'utf8');
+if (!financialSql.includes('ADD COLUMN IF NOT EXISTS financial_validation_status text') ||
+    !financialSql.includes('No default VALID')) {
+  throw new Error('CI financial validation status fixture not nullable or safe');
+}
+copyFileSync(financialColumnFixture, resolve(root,'20260901145927_uat308_financial_status_column_reconstruction.sql'));
+console.log('CI-only nullable financial_validation_status restored before dispatch v12_11; never mark unverified parcels VALID.');
+
 
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
