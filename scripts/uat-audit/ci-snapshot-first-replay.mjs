@@ -46,6 +46,16 @@ if (!readFileSync(tariffFixture, 'utf8').includes('create table if not exists pu
 }
 copyFileSync(tariffFixture, resolve(root,'20260827070903_uat308_tariff_structure_reconstruction.sql'));
 copyFileSync(financeFixture, resolve(root,'20260827070904_uat308_finance_legacy_reconstruction.sql'));
+const fieldIdentityFixture = resolve('scripts/uat-audit/fixtures/field_team_identity_ci_bootstrap.sql');
+const fieldIdentitySql = readFileSync(fieldIdentityFixture, 'utf8');
+if (!fieldIdentitySql.includes('Authenticated field-team session is required') ||
+    !fieldIdentitySql.includes('w.auth_user_id = v_uid') ||
+    !fieldIdentitySql.includes('REVOKE ALL ON FUNCTION public.be_current_field_team_identity()')) {
+  throw new Error('CI-only field identity fixture missing required auth and privilege guards');
+}
+copyFileSync(fieldIdentityFixture, resolve(root,'20260830094499_uat308_field_identity_reconstruction.sql'));
+console.log('CI-only guarded field-team resolver inserted before v10_1; no production database changes.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
