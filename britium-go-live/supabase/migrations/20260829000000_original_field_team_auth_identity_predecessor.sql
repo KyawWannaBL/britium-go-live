@@ -82,7 +82,7 @@ BEGIN
     'assigned_zone', NULLIF(BTRIM(v_row.assigned_zone), '')
   );
 END;
-$function$
+$function$;
 
 revoke all on function public.be_current_field_team_identity() from public, anon;
 grant execute on function public.be_current_field_team_identity() to authenticated, service_role;
