@@ -534,7 +534,7 @@ if (v40Start < 0 || v40End <= v40Start) {
   throw new Error('Original V40 membership source is missing');
 }
 const v40MembershipSql = v40Source.slice(v40Start,v40End);
-if (v40MembershipSql.length < 1500 ||
+if (v40MembershipSql.length < 1400 ||
     !v40MembershipSql.includes('be_wayplan_membership_v40_status_check') ||
     !v40MembershipSql.includes('be_wayplan_membership_v40_active_way_idx') ||
     !v40MembershipSql.includes('unique (wayplan_id, delivery_way_id)')) {
