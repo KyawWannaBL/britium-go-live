@@ -287,6 +287,32 @@ writeFileSync(resolve(root, '20260901192453_uat308_original_merchant_financial_p
   'REVOKE ALL ON TABLE public.be_merchant_financial_profiles_v2 FROM PUBLIC, anon, authenticated;\n');
 console.log('CI-only real merchant financial profile parent schema restored without records.');
 
+// The original Finance V2 profile gained descriptive settlement columns after
+// its base definition. Restore their verified production types only in CI.
+const merchantProfileViewColumns = [
+  ['merchant_name', 'text'],
+  ['counterparty_type', "text NOT NULL DEFAULT 'MERCHANT'"],
+  ['settlement_method', 'text'],
+  ['settlement_account', 'text']
+];
+const merchantProfileViewSql = financeProjectionSql.slice(
+  financeProjectionSql.indexOf('create view public.be_v_finance_merchant_settlement_queue_v2'));
+for (const [column] of merchantProfileViewColumns) {
+  if (!merchantProfileViewSql.includes('m.' + column)) {
+    throw new Error('Merchant settlement view dependency changed: ' + column);
+  }
+}
+const merchantProfileFixturePath =
+  resolve(root, '20260901192453_uat308_original_merchant_financial_profiles_ci.sql');
+writeFileSync(merchantProfileFixturePath,
+  readFileSync(merchantProfileFixturePath, 'utf8') +
+  '\n-- Add verified historical merchant settlement profile fields; no profile data.\n' +
+  'ALTER TABLE public.be_merchant_financial_profiles_v2\n' +
+  merchantProfileViewColumns.map(([column, definition]) =>
+    '  ADD COLUMN IF NOT EXISTS ' + column + ' ' + definition).join(',\n') + ';\n');
+console.log('CI-only merchant settlement profile descriptor columns restored.');
+
+
 
 
 
