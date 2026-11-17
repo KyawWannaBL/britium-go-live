@@ -75,6 +75,47 @@ copyFileSync(financialColumnFixture, resolve(root,'20260901145927_uat308_financi
 console.log('CI-only nullable financial_validation_status restored before dispatch v12_11; never mark unverified parcels VALID.');
 
 
+// Restore real historical warehouse V36/V39 view dependencies only in disposable CI.
+// Extract original SQL instead of fabricating ready/received warehouse statuses.
+const warehouseV36Source = readFileSync(
+  resolve('britium-go-live/britium-current-ui-fixed/warehouse_receipt_reconciliation_v36.sql'), 'utf8');
+const warehouseV39Source = readFileSync(
+  resolve('britium-go-live/britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql'), 'utf8');
+const takeSection = (source, start, end, name) => {
+  const a = source.indexOf(start);
+  const b = source.indexOf(end, a + start.length);
+  if (a < 0 || b <= a || source.indexOf(start, a + start.length) >= 0) {
+    throw new Error('Ambiguous/missing original warehouse section: ' + name);
+  }
+  return source.slice(a, b).trim() + '\n';
+};
+const warehouseV36Sql = takeSection(warehouseV36Source,
+  'create extension if not exists pgcrypto;',
+  'create or replace function public.be_warehouse_receipt_snapshot_v36(', 'V36 table + receipt view');
+const warehouseV39Tables = takeSection(warehouseV39Source,
+  'create extension if not exists pgcrypto;',
+  'create or replace function public.be_is_super_admin_v39()', 'V39 operational tables');
+const warehouseV39View = takeSection(warehouseV39Source,
+  'create or replace view public.be_v_warehouse_receipt_v39 as',
+  'create or replace view public.be_v_warehouse_lifecycle_v39 as', 'V39 receipt view');
+if (!warehouseV36Sql.includes('create table if not exists public.be_warehouse_receipts_v36') ||
+    !warehouseV36Sql.includes('enable row level security') ||
+    !warehouseV36Sql.includes('revoke all on public.be_warehouse_receipts_v36') ||
+    !warehouseV36Sql.includes('create or replace view public.be_v_warehouse_receipt_v36') ||
+    !warehouseV39Tables.includes('create table if not exists public.be_delivery_attempt_state_v39') ||
+    !warehouseV39Tables.includes('enable row level security') ||
+    !warehouseV39View.includes('from public.be_v_warehouse_receipt_v36 v') ||
+    !warehouseV39View.includes('where ds.delivery_way_id = v.delivery_way_id')) {
+  throw new Error('Original V36/V39 warehouse safety dependencies not verified');
+}
+writeFileSync(resolve(root, '20260901152005_uat308_original_warehouse_v36_ci.sql'),
+  '-- CI-only extract of original warehouse V36 source; never apply remotely.\n' + warehouseV36Sql);
+writeFileSync(resolve(root, '20260901152006_uat308_original_warehouse_v39_ci.sql'),
+  '-- CI-only extract of original warehouse V39 source; never apply remotely.\n' +
+  warehouseV39Tables + '\n' + warehouseV39View);
+console.log('CI-only V36/V39 genuine warehouse receipt dependencies injected before dispatch v12_12.');
+
+
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
