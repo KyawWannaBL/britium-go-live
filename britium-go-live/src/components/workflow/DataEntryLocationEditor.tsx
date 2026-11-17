@@ -172,6 +172,8 @@ export default function DataEntryLocationEditor({
   const leafletMapRef = useRef<any>(null);
   const leafletTileLayerRef = useRef<any>(null);
   const leafletMarkerRef = useRef<any>(null);
+  // Whether the user last selected a draggable/tapped pin or panned the map.
+  const manualPinTargetRef = useRef<"PIN" | "CENTER">("CENTER");
   const fallbackCenterRef = useRef<{latitude:number;longitude:number}|null>(null);
   const mapPointers = useRef(new Map<number,{x:number;y:number;startX:number;startY:number;moved:boolean}>());
   const pinchDistanceRef = useRef<number | null>(null);
@@ -481,6 +483,7 @@ export default function DataEntryLocationEditor({
   }
 
   async function openRelocationMap() {
+    manualPinTargetRef.current = "CENTER";
     setManualOpen(true);
     setMapFocus(true);
     setMapError("");
@@ -538,13 +541,17 @@ export default function DataEntryLocationEditor({
   function setPinAtMapCenter() {
     const markerPoint = leafletMarkerRef.current?.getLatLng?.();
     const leafletCenter = leafletMapRef.current?.getCenter?.();
-    // The confirmation button follows the current map center, not the previous
-    // marker position. Operators often pan the map without dragging the marker.
-    const center = leafletCenter
-      ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
-      : markerPoint
-        ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
-        : (fallbackCenterRef.current || fallbackMapCenter);
+    // A dragged or tapped marker is the chosen pin. Only a deliberate map pan
+    // should make the map center the target. Otherwise SET PIN HERE used to
+    // overwrite the operator's precise marker with the old map center.
+    const selectedMarker = manualPinTargetRef.current === "PIN" && markerPoint;
+    const center = selectedMarker
+      ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
+      : leafletCenter
+        ? { latitude: Number(leafletCenter.lat), longitude: Number(leafletCenter.lng) }
+        : markerPoint
+          ? { latitude: Number(markerPoint.lat), longitude: Number(markerPoint.lng) }
+          : (fallbackCenterRef.current || fallbackMapCenter);
     if (!center || !validMyanmarCoordinate(center.longitude, center.latitude)) return;
     leafletMarkerRef.current?.setLatLng?.([center.latitude, center.longitude]);
     fallbackCenterRef.current = center;
@@ -650,6 +657,7 @@ export default function DataEntryLocationEditor({
         leafletMarkerRef.current = marker;
 
         const syncMarker = (latlng:any) => {
+          manualPinTargetRef.current = "PIN";
           const next = { latitude: Number(latlng.lat), longitude: Number(latlng.lng) };
           fallbackCenterRef.current = next;
           setFallbackMapCenter(next);
@@ -660,9 +668,12 @@ export default function DataEntryLocationEditor({
           syncMarker(marker.getLatLng());
         });
 
+        map.on("dragstart", () => {
+          manualPinTargetRef.current = "CENTER";
+        });
         map.on("moveend", () => {
-          // Preserve the position the operator actually panned to; the existing
-          // marker remains draggable and tap-to-select continues to work.
+          // Moving the map keeps the map center available without clearing a
+          // pin explicitly selected by tapping or dragging the red marker.
           const point = map.getCenter();
           fallbackCenterRef.current = { latitude: Number(point.lat), longitude: Number(point.lng) };
         });
