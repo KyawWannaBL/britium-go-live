@@ -550,6 +550,34 @@ writeFileSync(dispatchQuoteMigration, [
 ].join('\n'));
 console.log('CI-only original V40 membership ledger with uniqueness and RLS restored.');
 
+// The V31 Yangon township aliases import into the canonical tariff alias
+// dictionary created by the omitted V61.7.1 baseline. Restore the catalog-
+// verified empty dictionary with the exact primary key before that import.
+const tariffAliasV617Sql = [
+  '-- CI-only historical tariff-location alias dictionary; no seed records.',
+  'CREATE TABLE IF NOT EXISTS public.be_tariff_location_alias_v61_7_1 (',
+  '  normalized_alias text PRIMARY KEY,',
+  '  alias_value text NOT NULL,',
+  '  location_key text NOT NULL,',
+  '  township_code text,',
+  '  location_kind text NOT NULL,',
+  '  canonical_label text NOT NULL,',
+  '  created_at timestamptz NOT NULL DEFAULT now(),',
+  '  updated_at timestamptz NOT NULL DEFAULT now()',
+  ');',
+  'ALTER TABLE public.be_tariff_location_alias_v61_7_1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_tariff_location_alias_v61_7_1 FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n');
+if (!readFileSync(resolve(root, '20260913124919_britium_yangon_township_aliases_v31.sql'), 'utf8')
+       .includes('insert into public.be_tariff_location_alias_v61_7_1(')) {
+  throw new Error('V31 tariff alias import signature changed');
+}
+writeFileSync(resolve(root, '20260913124918_uat308_tariff_alias_v61_7_1_ci.sql'),
+  tariffAliasV617Sql);
+console.log('CI-only catalog-verified tariff alias dictionary restored before V31.');
+
+
 
 
 
