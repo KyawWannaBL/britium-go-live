@@ -5,6 +5,13 @@
 import fs from 'node:fs';
 import {fileURLToPath} from 'node:url';
 const src=fileURLToPath(new URL('../britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql',import.meta.url));
+const canonical=fileURLToPath(new URL('../supabase/migrations/20260831000000_original_v39_dispatch_delivery_ledger.sql',import.meta.url));
+if(fs.existsSync(canonical)){
+ const ddl=fs.readFileSync(canonical,'utf8');
+ if(!ddl.includes('be_dispatch_scans_v39')||((ddl.match(/enable row level security/gi)||[]).length!==5)) throw Error('Versioned V39 security migration invalid');
+ console.log('Canonical V39 ledger predecessor present; no diagnostic duplicate.');
+ process.exit(0);
+}
 const dest=fileURLToPath(new URL('../supabase/migrations/20260831000000_CI_ONLY_V39_ledger_foundation.sql',import.meta.url));
 const names=[
  'be_dispatch_scans_v39','be_dispatch_scan_events_v39','be_delivery_attempt_state_v39',
