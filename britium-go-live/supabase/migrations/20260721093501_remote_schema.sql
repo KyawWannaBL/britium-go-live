@@ -29711,15 +29711,15 @@ DECLARE
   v_full_name TEXT;
 BEGIN
   -- Check if user exists and password matches
-  SELECT 
+  SELECT
     dlc.id,
     dlc.email,
     dlc.role,
     dlc.full_name
   INTO v_user_id, v_email, v_role, v_full_name
   FROM demo_login_credentials_2026_02_19_14_00 dlc
-  WHERE dlc.email = p_email 
-    AND dlc.password_hash = p_password 
+  WHERE dlc.email = p_email
+    AND dlc.password_hash = p_password
     AND dlc.is_active = true;
 
   -- If no match found
@@ -29727,10 +29727,10 @@ BEGIN
     RETURN QUERY SELECT false, NULL::UUID, NULL::TEXT, NULL::TEXT, NULL::TEXT, 'Invalid email or password'::TEXT;
   ELSE
     -- Update last login
-    UPDATE demo_login_credentials_2026_02_19_14_00 
+    UPDATE demo_login_credentials_2026_02_19_14_00
     SET last_login = NOW(), login_attempts = 0
     WHERE demo_login_credentials_2026_02_19_14_00.email = p_email;
-    
+
     -- Return success
     RETURN QUERY SELECT true, v_user_id, v_email, v_role, v_full_name, 'Login successful'::TEXT;
   END IF;
@@ -29752,43 +29752,43 @@ BEGIN
     SELECT * INTO user_record
     FROM public.auth_users_2026_02_17_18_40
     WHERE email = user_email AND is_active = true;
-    
+
     IF NOT FOUND THEN
         RETURN json_build_object('success', false, 'error', 'Invalid credentials');
     END IF;
-    
+
     -- Check if account is locked
     IF user_record.locked_until IS NOT NULL AND user_record.locked_until > now() THEN
         RETURN json_build_object('success', false, 'error', 'Account is temporarily locked');
     END IF;
-    
+
     -- Simple password check (in production, use proper hashing)
     IF user_record.password_hash != user_password THEN
         -- Increment failed attempts
         UPDATE public.auth_users_2026_02_17_18_40
         SET failed_attempts = failed_attempts + 1,
-            locked_until = CASE 
+            locked_until = CASE
                 WHEN failed_attempts >= 4 THEN now() + interval '15 minutes'
                 ELSE NULL
             END
         WHERE id = user_record.id;
-        
+
         RETURN json_build_object('success', false, 'error', 'Invalid credentials');
     END IF;
-    
+
     -- Get branch info
     SELECT * INTO branch_info
     FROM public.branches_2026_02_17_18_40
     WHERE id = user_record.branch_id;
-    
+
     -- Update successful login
     UPDATE public.auth_users_2026_02_17_18_40
-    SET last_login_at = now(), 
+    SET last_login_at = now(),
         updated_at = now(),
         failed_attempts = 0,
         locked_until = NULL
     WHERE id = user_record.id;
-    
+
     -- Build success result
     result := json_build_object(
         'success', true,
@@ -29804,7 +29804,7 @@ BEGIN
             'last_login_at', user_record.last_login_at
         )
     );
-    
+
     RETURN result;
 END;
 $function$
@@ -29845,30 +29845,30 @@ BEGIN
         SELECT pickup_zone INTO v_zone
         FROM public.parcels_2026_02_18_17_00
         WHERE id = v_parcel_id;
-        
+
         -- Find or create route for the zone and date
         SELECT id INTO v_route_id
         FROM public.route_plans_2026_02_18_17_00
-        WHERE zone = v_zone 
+        WHERE zone = v_zone
         AND route_date = CURRENT_DATE
         AND status = 'PLANNED'
         AND total_parcels < 20 -- Max parcels per route
         ORDER BY total_parcels ASC
         LIMIT 1;
-        
+
         -- Create new route if none available
         IF v_route_id IS NULL THEN
             INSERT INTO public.route_plans_2026_02_18_17_00 (
                 route_code, route_date, zone
             ) VALUES (
-                v_zone || '-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' || 
-                LPAD((SELECT COUNT(*) + 1 FROM public.route_plans_2026_02_18_17_00 
+                v_zone || '-' || TO_CHAR(CURRENT_DATE, 'YYYYMMDD') || '-' ||
+                LPAD((SELECT COUNT(*) + 1 FROM public.route_plans_2026_02_18_17_00
                       WHERE zone = v_zone AND route_date = CURRENT_DATE)::TEXT, 3, '0'),
                 CURRENT_DATE,
                 v_zone
             ) RETURNING id INTO v_route_id;
         END IF;
-        
+
         -- Assign available rider
         SELECT personnel_code INTO v_rider_id
         FROM public.delivery_personnel_2026_02_18_17_00
@@ -29877,7 +29877,7 @@ BEGIN
         AND v_zone = ANY(zone_assignments)
         ORDER BY total_deliveries ASC
         LIMIT 1;
-        
+
         -- Assign available vehicle
         SELECT vehicle_code INTO v_vehicle_id
         FROM public.vehicles_2026_02_18_17_00
@@ -29885,40 +29885,40 @@ BEGIN
         AND vehicle_type IN ('MOTORCYCLE', 'VAN')
         ORDER BY capacity_parcels DESC
         LIMIT 1;
-        
+
         -- Update parcel with assignments
         UPDATE public.parcels_2026_02_18_17_00
-        SET 
+        SET
             assigned_route_id = v_route_id,
             assigned_rider_id = v_rider_id,
             assigned_vehicle_id = v_vehicle_id,
             status = 'ASSIGNED',
             updated_at = NOW()
         WHERE id = v_parcel_id;
-        
+
         -- Update route parcel count
         UPDATE public.route_plans_2026_02_18_17_00
         SET total_parcels = total_parcels + 1
         WHERE id = v_route_id;
-        
+
         -- Update personnel status
         IF v_rider_id IS NOT NULL THEN
             UPDATE public.delivery_personnel_2026_02_18_17_00
-            SET 
+            SET
                 current_status = 'ASSIGNED',
                 current_route_id = v_route_id
             WHERE personnel_code = v_rider_id;
         END IF;
-        
+
         -- Update vehicle status
         IF v_vehicle_id IS NOT NULL THEN
             UPDATE public.vehicles_2026_02_18_17_00
-            SET 
+            SET
                 status = 'ASSIGNED',
                 current_route_id = v_route_id
             WHERE vehicle_code = v_vehicle_id;
         END IF;
-        
+
         -- Add to result
         v_result := jsonb_set(
             v_result,
@@ -29931,7 +29931,7 @@ BEGIN
             )
         );
     END LOOP;
-    
+
     RETURN v_result;
 END;
 $function$
@@ -29949,55 +29949,55 @@ DECLARE
     v_priority INTEGER := 5;
 BEGIN
     -- Get applicable assignment rules
-    FOR v_rule IN 
-        SELECT * FROM shipment_assignment_rules_2026_02_19_17_00 
-        WHERE is_active = true 
+    FOR v_rule IN
+        SELECT * FROM shipment_assignment_rules_2026_02_19_17_00
+        WHERE is_active = true
         ORDER BY priority ASC
     LOOP
         -- Check if rule conditions match (simplified logic)
         IF v_rule.rule_type = 'PICKUP' THEN
             -- Find nearest branch for pickup
-            SELECT id INTO v_branch_id 
-            FROM branches_2026_02_19_13_00 
-            WHERE status = 'ACTIVE' 
-            ORDER BY RANDOM() 
+            SELECT id INTO v_branch_id
+            FROM branches_2026_02_19_13_00
+            WHERE status = 'ACTIVE'
+            ORDER BY RANDOM()
             LIMIT 1;
-            
+
             -- Find available user at branch
-            SELECT id INTO v_user_id 
-            FROM users_2026_02_19_13_00 
-            WHERE branch_id = v_branch_id 
+            SELECT id INTO v_user_id
+            FROM users_2026_02_19_13_00
+            WHERE branch_id = v_branch_id
             AND role IN ('WAREHOUSE_MANAGER', 'SUPERVISOR')
             AND status = 'ACTIVE'
             ORDER BY RANDOM()
             LIMIT 1;
-            
+
             -- Create workflow state
             INSERT INTO shipment_workflow_states_2026_02_19_17_00 (
-                shipment_id, current_state, assigned_to_user_id, 
+                shipment_id, current_state, assigned_to_user_id,
                 assigned_to_branch_id, auto_assigned, assignment_reason
             ) VALUES (
-                p_shipment_id, 'PENDING_PICKUP', v_user_id, 
+                p_shipment_id, 'PENDING_PICKUP', v_user_id,
                 v_branch_id, true, v_rule.rule_name
             );
-            
+
             -- Add to assignment queue
             INSERT INTO assignment_queue_2026_02_19_17_00 (
                 shipment_id, queue_type, branch_id, assigned_user_id, priority
             ) VALUES (
                 p_shipment_id, 'PICKUP', v_branch_id, v_user_id, v_priority
             );
-            
+
             -- Create notification
             INSERT INTO realtime_notifications_2026_02_19_17_00 (
                 user_id, notification_type, title, message, data, action_required, action_url
             ) VALUES (
                 v_user_id, 'PICKUP_ASSIGNMENT', 'New Pickup Assignment',
-                'A new shipment has been assigned for pickup', 
+                'A new shipment has been assigned for pickup',
                 jsonb_build_object('shipment_id', p_shipment_id, 'branch_id', v_branch_id),
                 true, '/warehouse/receiving'
             );
-            
+
             v_assignment_result := jsonb_build_object(
                 'success', true,
                 'assigned_to_branch', v_branch_id,
@@ -30005,11 +30005,11 @@ BEGIN
                 'workflow_state', 'PENDING_PICKUP',
                 'rule_applied', v_rule.rule_name
             );
-            
+
             EXIT; -- Exit after first successful assignment
         END IF;
     END LOOP;
-    
+
     RETURN v_assignment_result;
 END;
 $function$
@@ -30630,7 +30630,7 @@ CREATE OR REPLACE FUNCTION public.be_assign_live_dispatch_wayplan(p_pickup_ids t
 AS $function$
 DECLARE v_count INT;
 BEGIN
-  UPDATE public.be_portal_pickup_requests 
+  UPDATE public.be_portal_pickup_requests
   SET assigned_rider_id = p_worker_id, status = 'PICKUP_ASSIGNED', route_label = p_route_label, updated_at = NOW()
   WHERE pickup_id = ANY(p_pickup_ids);
   GET DIAGNOSTICS v_count = ROW_COUNT;
@@ -32008,27 +32008,27 @@ BEGIN
 
     -- Insert record
     INSERT INTO public.be_portal_pickup_requests (
-        pickup_id, 
-        merchant_code, 
-        status,               
-        pickup_status,        
-        pickup_address,       
-        pickup_township, 
+        pickup_id,
+        merchant_code,
+        status,
+        pickup_status,
+        pickup_address,
+        pickup_township,
         pickup_city,
         expected_parcels,    -- Mapped successfully now that the column exists
         created_at
     ) VALUES (
-        v_pickup_id, 
-        p_merchant_code, 
-        'PICKUP_REQUESTED',   
-        'Draft', 
-        COALESCE(p_pickup_address_override, 'Address not provided'), 
+        v_pickup_id,
+        p_merchant_code,
+        'PICKUP_REQUESTED',
+        'Draft',
+        COALESCE(p_pickup_address_override, 'Address not provided'),
         p_township_override,
         p_city_override,
         p_expected_parcels,
         now()
     );
-    
+
     RETURN json_build_object('pickup_id', v_pickup_id, 'requires_confirmation', false);
 END;
 $function$
@@ -38654,17 +38654,17 @@ DECLARE
 BEGIN
   -- 1. Format the date as MMDD (e.g., '0705' for July 5th)
   v_date_str := to_char(p_request_date, 'MMDD');
-  
+
   -- 2. Create the base string (e.g., '0705-BBG')
   v_base_str := v_date_str || '-' || p_merchant_code;
-  
+
   -- 3. Generate the master Pickup ID (e.g., 'P0705-BBG-015')
   v_pickup_id := 'P' || v_base_str || '-' || LPAD(p_parcel_count::text, 3, '0');
-  
+
   -- 4. Loop to generate individual IDs for each parcel
   FOR i IN 1..p_parcel_count LOOP
     v_idx_str := LPAD(i::text, 3, '0'); -- Pads to '001', '002', etc.
-    
+
     v_parcels := v_parcels || jsonb_build_object(
       'parcel_sequence', i,
       'delivery_way_id', 'D' || v_base_str || '-' || v_idx_str,
@@ -38672,7 +38672,7 @@ BEGIN
       'invoice_id', 'INV' || v_base_str || '-' || v_idx_str
     );
   END LOOP;
-  
+
   -- 5. Return the full structured payload
   RETURN jsonb_build_object(
     'pickup_id', v_pickup_id,
@@ -39261,18 +39261,18 @@ DECLARE
   v_exception_count INTEGER;
 BEGIN
   -- Count active pickups
-  SELECT COUNT(*) INTO v_pickup_count 
-  FROM be_pickup_requests 
+  SELECT COUNT(*) INTO v_pickup_count
+  FROM be_pickup_requests
   WHERE status NOT IN ('DONE', 'CANCELLED');
 
   -- Sum pending COD collections
-  SELECT COALESCE(SUM(cod_amount), 0) INTO v_cod_total 
-  FROM be_pickup_requests 
+  SELECT COALESCE(SUM(cod_amount), 0) INTO v_cod_total
+  FROM be_pickup_requests
   WHERE cod_settlement_status = 'PENDING';
 
   -- Count open exceptions
-  SELECT COUNT(*) INTO v_exception_count 
-  FROM be_pickup_requests 
+  SELECT COUNT(*) INTO v_exception_count
+  FROM be_pickup_requests
   WHERE status = 'EXCEPTION';
 
   RETURN json_build_object(
@@ -39610,14 +39610,14 @@ AS $function$
 BEGIN
   RETURN json_build_object(
     'unassigned', (
-        SELECT COALESCE(json_agg(row_to_json(p)), '[]'::json) 
-        FROM public.be_portal_pickup_requests p 
-        WHERE assigned_rider_id IS NULL AND status IN ('PICKUP_REQUESTED', 'READY_FOR_DISPATCH') 
+        SELECT COALESCE(json_agg(row_to_json(p)), '[]'::json)
+        FROM public.be_portal_pickup_requests p
+        WHERE assigned_rider_id IS NULL AND status IN ('PICKUP_REQUESTED', 'READY_FOR_DISPATCH')
         AND (p_branch_code IS NULL OR branch_code = p_branch_code)
     ),
     'workforce', (
-        SELECT COALESCE(json_agg(row_to_json(w)), '[]'::json) 
-        FROM public.be_user_account_registry w 
+        SELECT COALESCE(json_agg(row_to_json(w)), '[]'::json)
+        FROM public.be_user_account_registry w
         WHERE role IN ('rider', 'driver') AND status = 'active'
         AND (p_branch_code IS NULL OR branch_code = p_branch_code)
     )
@@ -40080,8 +40080,8 @@ CREATE OR REPLACE FUNCTION public.be_get_pickup_order_options()
  RETURNS json
  LANGUAGE sql
  STABLE SECURITY DEFINER
-AS $function$ 
-    SELECT public.be_get_operational_masterdata(); 
+AS $function$
+    SELECT public.be_get_operational_masterdata();
 $function$
 ;
 
@@ -40103,7 +40103,7 @@ CREATE OR REPLACE FUNCTION public.be_get_report_download_data(p_report_id text, 
  STABLE
 AS $function$
 BEGIN
-    RETURN '[]'::json; 
+    RETURN '[]'::json;
 END;
 $function$
 ;
@@ -40642,7 +40642,7 @@ BEGIN
     SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = v_schema AND table_name = v_name AND column_name = 'updated_at') INTO v_has_updated_at;
 
     v_set := ARRAY[]::text[];
-    
+
     -- Fix: Use array_append instead of || concatenation
     IF v_has_status THEN
       v_set := array_append(v_set, 'status = ''archived_test_data''');
@@ -42050,8 +42050,8 @@ DECLARE
     v_event_id UUID;
 BEGIN
     -- 1. Lock and verify the record exists
-    SELECT status INTO v_current_status 
-    FROM be_portal_pickup_requests 
+    SELECT status INTO v_current_status
+    FROM be_portal_pickup_requests
     WHERE pickup_id = p_pickup_id FOR UPDATE;
 
     IF v_current_status IS NULL THEN
@@ -42060,28 +42060,28 @@ BEGIN
 
     -- 2. Update the master request table to the new workflow state
     UPDATE be_portal_pickup_requests
-    SET 
+    SET
         status = p_new_status,
         updated_at = NOW()
     WHERE pickup_id = p_pickup_id;
 
     -- 3. Insert the immutable cargo event / audit log
     INSERT INTO be_portal_cargo_events (
-        pickup_id, 
-        event_status, 
-        exception_reason, 
-        remarks, 
-        updated_by_role, 
+        pickup_id,
+        event_status,
+        exception_reason,
+        remarks,
+        updated_by_role,
         photo_url,
         gps_lat,
         gps_lng,
         event_timestamp
     ) VALUES (
-        p_pickup_id, 
-        p_new_status, 
-        p_exception_code, 
-        p_remarks, 
-        p_user_role, 
+        p_pickup_id,
+        p_new_status,
+        p_exception_code,
+        p_remarks,
+        p_user_role,
         p_photo_url,
         p_lat,
         p_lng,
@@ -42090,8 +42090,8 @@ BEGIN
 
     -- 4. Return success payload for frontend toast notifications
     RETURN jsonb_build_object(
-        'success', true, 
-        'pickup_id', p_pickup_id, 
+        'success', true,
+        'pickup_id', p_pickup_id,
         'previous_status', v_current_status,
         'new_status', p_new_status,
         'event_id', v_event_id
@@ -42109,8 +42109,8 @@ DECLARE
     v_current_status text;
 BEGIN
     -- Get current status for audit trail
-    SELECT status INTO v_current_status 
-    FROM public.be_portal_pickup_requests 
+    SELECT status INTO v_current_status
+    FROM public.be_portal_pickup_requests
     WHERE pickup_id = p_pickup_id;
 
     IF NOT FOUND THEN
@@ -42119,7 +42119,7 @@ BEGIN
 
     -- Update the main operational record
     UPDATE public.be_portal_pickup_requests
-    SET 
+    SET
         status = p_new_status,
         pickup_status = p_new_status,
         exception_reason = p_exception_code,
@@ -44140,7 +44140,7 @@ BEGIN
   IF NEW.date_prefix IS NULL AND NEW.pickup_date IS NOT NULL THEN
     NEW.date_prefix := to_char(NEW.pickup_date, 'MMDD');
   END IF;
-  
+
   RETURN NEW;
 END;
 $function$
@@ -44768,7 +44768,7 @@ BEGIN
   NEW.pickup_id := 'P' || date_str || '-' || base_code || '-' || lpad(seq_num::text, 3, '0');
 
   -- 5. Fallback guard: If by some tiny chance this exact ID was just inserted
-  -- in the last millisecond by another user, append a random string to guarantee uniqueness 
+  -- in the last millisecond by another user, append a random string to guarantee uniqueness
   -- without causing a database loop.
   IF EXISTS (SELECT 1 FROM public.be_portal_pickup_requests WHERE pickup_id = NEW.pickup_id) THEN
      NEW.pickup_id := NEW.pickup_id || '-' || substr(md5(random()::text), 1, 4);
@@ -46527,9 +46527,9 @@ CREATE OR REPLACE FUNCTION public.be_resolve_user_access_by_email(p_email text)
 AS $function$
 DECLARE v_user RECORD;
 BEGIN
-    SELECT user_id, full_name, role, branch_code, status 
+    SELECT user_id, full_name, role, branch_code, status
     INTO v_user FROM public.be_user_account_registry WHERE email = p_email AND status = 'active' LIMIT 1;
-    
+
     IF v_user IS NULL THEN RETURN json_build_object('authorized', false); END IF;
     RETURN json_build_object('authorized', true, 'role', v_user.role, 'branch', v_user.branch_code, 'name', v_user.full_name);
 END;
@@ -56634,12 +56634,12 @@ DECLARE
 BEGIN
     dLat := RADIANS(lat2 - lat1);
     dLon := RADIANS(lon2 - lon1);
-    
-    a := SIN(dLat/2) * SIN(dLat/2) + 
-         COS(RADIANS(lat1)) * COS(RADIANS(lat2)) * 
+
+    a := SIN(dLat/2) * SIN(dLat/2) +
+         COS(RADIANS(lat1)) * COS(RADIANS(lat2)) *
          SIN(dLon/2) * SIN(dLon/2);
     c := 2 * ATAN2(SQRT(a), SQRT(1-a));
-    
+
     RETURN R * c;
 END;
 $function$
@@ -56664,12 +56664,12 @@ BEGIN
     FROM public.myanmar_locations_2026_02_19_13_00
     WHERE state_division = p_from_state
     LIMIT 1;
-    
+
     SELECT zone INTO to_zone
     FROM public.myanmar_locations_2026_02_19_13_00
     WHERE state_division = p_to_state
     LIMIT 1;
-    
+
     -- Get rate information
     SELECT dr.base_rate, dr.per_kg_rate, dr.remote_area_surcharge, dr.fuel_surcharge_percent
     INTO base_rate, per_kg_rate, remote_surcharge, fuel_surcharge_percent
@@ -56683,12 +56683,12 @@ BEGIN
     AND (dr.effective_to IS NULL OR dr.effective_to >= CURRENT_DATE)
     ORDER BY dr.weight_from DESC
     LIMIT 1;
-    
+
     -- Calculate total cost
     IF base_rate IS NOT NULL THEN
         total_cost := base_rate + (p_weight * per_kg_rate) + remote_surcharge;
         total_cost := total_cost + (total_cost * fuel_surcharge_percent / 100);
-        
+
         result := jsonb_build_object(
             'success', true,
             'base_rate', base_rate,
@@ -56706,7 +56706,7 @@ BEGIN
             'error', 'No rate found for the specified route and weight'
         );
     END IF;
-    
+
     RETURN result;
 END;
 $function$
@@ -56733,33 +56733,33 @@ BEGIN
     SELECT * INTO v_township
     FROM public.townships_2026_02_18_18_00
     WHERE id = p_township_id AND is_active = true;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object('error', 'Township not found');
     END IF;
-    
+
     -- Get state information
     SELECT * INTO v_state
     FROM public.myanmar_states_divisions_2026_02_18_18_00
     WHERE id = v_township.state_division_id;
-    
+
     -- Get applicable rate
     SELECT * INTO v_rate
     FROM public.domestic_shipping_rates_2026_02_18_18_00
     WHERE service_type = p_service_type
-    AND p_weight_kg >= weight_from_kg 
+    AND p_weight_kg >= weight_from_kg
     AND p_weight_kg <= weight_to_kg
     AND is_active = true
     ORDER BY weight_from_kg DESC
     LIMIT 1;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object('error', 'No rate found for this weight');
     END IF;
-    
+
     -- Calculate base rate
     v_base_rate := v_rate.base_rate_mmk;
-    
+
     -- Apply zone multiplier
     v_zone_multiplier := CASE v_state.zone_classification
         WHEN 'METRO' THEN v_rate.metro_multiplier
@@ -56767,28 +56767,28 @@ BEGIN
         WHEN 'REMOTE' THEN v_rate.remote_multiplier
         ELSE 1.00
     END;
-    
+
     v_base_rate := v_base_rate * v_zone_multiplier * v_township.rate_multiplier;
-    
+
     -- Calculate COD fee
     IF p_cod_amount > 0 THEN
         v_cod_fee := GREATEST(v_rate.cod_fee_mmk, p_cod_amount * v_rate.cod_percentage / 100);
     END IF;
-    
+
     -- Calculate insurance fee
     IF p_declared_value > 0 THEN
         v_insurance_fee := p_declared_value * v_rate.insurance_percentage / 100;
     END IF;
-    
+
     -- Calculate fuel surcharge
     v_fuel_surcharge := v_base_rate * v_rate.fuel_surcharge_percentage / 100;
-    
+
     -- Calculate total
     v_total := v_base_rate + v_cod_fee + v_insurance_fee + v_fuel_surcharge;
-    
+
     -- Calculate delivery time
     v_delivery_days := v_rate.delivery_time_days + COALESCE(v_township.delivery_time_days, 0);
-    
+
     RETURN jsonb_build_object(
         'base_rate', v_base_rate,
         'zone_multiplier', v_zone_multiplier,
@@ -56834,7 +56834,7 @@ CREATE OR REPLACE FUNCTION public.calculate_merchant_payout(way_id_input text)
 AS $function$
 BEGIN
   RETURN QUERY
-  SELECT 
+  SELECT
     (cod_amount - (delivery_fee + extra_weight_charges)) as net_payout,
     (delivery_fee + extra_weight_charges) as service_fees
   FROM way_records
@@ -56869,7 +56869,7 @@ BEGIN
     -- (၂) အလေးချိန် တွက်ချက်ခြင်း (ceil(weight) rule အတိုင်း)
     v_chargeable_weight := CEIL(p_actual_weight);
     v_extra_weight := GREATEST(0, v_chargeable_weight - v_allowance);
-    
+
     -- (၃) ပိုမိုသော အလေးချိန်အတွက် Surcharge (500 MMK per extra kg)
     v_surcharge := v_extra_weight * 500;
 
@@ -57122,7 +57122,7 @@ BEGIN
         must_change_password = false,
         updated_at = now()
     WHERE id = user_id AND is_active = true;
-    
+
     IF FOUND THEN
         RETURN json_build_object('success', true, 'message', 'Password changed successfully');
     ELSE
@@ -57145,16 +57145,16 @@ BEGIN
     INTO v_geofence
     FROM public.geofences_2026_02_18_18_00
     WHERE id = p_geofence_id;
-    
+
     IF NOT FOUND OR NOT v_geofence.is_active THEN
         RETURN false;
     END IF;
-    
+
     -- Calculate distance using Haversine formula
     v_distance := public.calculate_distance_km_2026_02_18_17_00(
         p_lat, p_lng, v_geofence.center_lat, v_geofence.center_lng
     ) * 1000; -- convert to meters
-    
+
     RETURN v_distance <= v_geofence.radius_meters;
 END;
 $function$
@@ -57167,8 +57167,8 @@ CREATE OR REPLACE FUNCTION public.check_security_clearance()
 AS $function$
 BEGIN
   RETURN EXISTS (
-    SELECT 1 FROM public.profiles 
-    WHERE id = auth.uid() 
+    SELECT 1 FROM public.profiles
+    WHERE id = auth.uid()
     AND must_change_password = false
   );
 END;
@@ -57230,9 +57230,9 @@ BEGIN
   -- 1. Create the user in Auth
   INSERT INTO auth.users (email, encrypted_password, email_confirmed_at, raw_user_meta_data)
   VALUES (
-    user_email, 
-    crypt(user_password, gen_salt('bf')), 
-    now(), 
+    user_email,
+    crypt(user_password, gen_salt('bf')),
+    now(),
     jsonb_build_object('full_name', user_full_name, 'role', user_role)
   )
   RETURNING id INTO new_user_id;
@@ -57262,7 +57262,7 @@ BEGIN
     ) VALUES (
         p_recipient_id, p_title, p_message, p_type, p_category, p_reference_type, p_reference_id
     ) RETURNING id INTO notification_id;
-    
+
     RETURN notification_id;
 END;
 $function$
@@ -57278,7 +57278,7 @@ DECLARE
 BEGIN
     -- Generate AWB number
     SELECT generate_awb_number() INTO awb_number;
-    
+
     -- Insert shipment
     INSERT INTO public.shipments_2026_02_19_13_00 (
         awb_number, merchant_id, customer_id,
@@ -57293,14 +57293,14 @@ BEGIN
         p_package_type, p_weight, p_dimensions, p_declared_value, p_contents_description,
         p_service_type, p_payment_method, p_cod_amount, p_shipping_cost, p_insurance_cost, p_total_cost
     ) RETURNING id INTO shipment_id;
-    
+
     -- Create initial tracking entry
     INSERT INTO public.shipment_tracking_2026_02_19_13_00 (
         shipment_id, status, location, notes
     ) VALUES (
         shipment_id, 'CREATED', p_sender_city, 'Shipment created'
     );
-    
+
     RETURN shipment_id;
 END;
 $function$
@@ -57397,7 +57397,7 @@ BEGIN
     'name', coalesce(p_sender_name, business_name, 'Unknown'),
     'phone', coalesce(p_sender_phone, phone, ''),
     'address', coalesce(p_sender_address, address, '')
-  ) INTO v_sender_json 
+  ) INTO v_sender_json
   FROM public.merchants WHERE id = v_mer_id;
 
   v_recipient_json := jsonb_build_object(
@@ -57419,8 +57419,8 @@ BEGIN
   v_prepaid := v_total - coalesce(p_cod_amount, 0);
 
   v_way := public.generate_waybill_id(
-    coalesce(p_sender_city, 'YANGON'), 
-    p_receiver_city, 
+    coalesce(p_sender_city, 'YANGON'),
+    p_receiver_city,
     NULL, NULL, current_date
   );
 
@@ -57440,12 +57440,12 @@ BEGIN
     p_sender_name, p_sender_phone, p_sender_address, p_sender_city,
     p_receiver_name, p_receiver_phone, p_receiver_address, p_receiver_city,
     p_delivery_fee, p_cod_amount, p_item_price, v_prepaid, v_total,
-    p_package_weight, 
-    lower(p_delivery_type), 
-    lower(p_service_type)::public.service_type, 
+    p_package_weight,
+    lower(p_delivery_type),
+    lower(p_service_type)::public.service_type,
     p_remarks,
     p_pickup_branch_id, p_delivery_branch_id,
-    auth.uid(), 
+    auth.uid(),
     'pending'::public.shipment_status
   ) RETURNING id INTO v_sid;
 
@@ -57712,31 +57712,31 @@ BEGIN
     SELECT * INTO user_record
     FROM public.auth_users_2026_02_17_18_40
     WHERE email = user_email;
-    
+
     IF NOT FOUND THEN
         RETURN json_build_object('step', 'user_lookup', 'found', false, 'email', user_email);
     END IF;
-    
+
     -- Step 2: Check if user is active
     IF NOT user_record.is_active THEN
         RETURN json_build_object('step', 'active_check', 'is_active', false, 'email', user_email);
     END IF;
-    
+
     -- Step 3: Check password
     IF user_record.password_hash != user_password THEN
         RETURN json_build_object(
-            'step', 'password_check', 
-            'match', false, 
+            'step', 'password_check',
+            'match', false,
             'provided', user_password,
             'stored', user_record.password_hash
         );
     END IF;
-    
+
     -- Step 4: Get branch info
     SELECT * INTO branch_info
     FROM public.branches_2026_02_17_18_40
     WHERE id = user_record.branch_id;
-    
+
     -- Step 5: Return success
     RETURN json_build_object(
         'step', 'success',
@@ -57828,7 +57828,7 @@ BEGIN
   SELECT count(*) INTO open_reqs FROM pickup_queue WHERE status = 'Open';
   SELECT count(*) INTO pickup_reqs FROM pickup_queue;
   SELECT count(*) INTO merchant_opts FROM merchant_master;
-  
+
   RETURN json_build_object(
     'total_tickets', 0,
     'open_requests', open_reqs,
@@ -57855,8 +57855,8 @@ BEGIN
 
   IF p_resolution = 'DELIVERED' THEN
     -- ⚡ ATOMIC PoD TRANSACTION
-    UPDATE shipments 
-    SET status = 'DELIVERED' 
+    UPDATE shipments
+    SET status = 'DELIVERED'
     WHERE awb = p_awb;
 
     INSERT INTO chain_of_custody_logs (awb, actor_id, action_type, lat, lng, evidence_url, created_at)
@@ -57866,8 +57866,8 @@ BEGIN
 
   ELSIF p_resolution = 'FAILED' THEN
     -- ⚡ ATOMIC NDR TRANSACTION
-    UPDATE shipments 
-    SET status = 'DELIVERY_FAILED' 
+    UPDATE shipments
+    SET status = 'DELIVERY_FAILED'
     WHERE awb = p_awb;
 
     INSERT INTO chain_of_custody_logs (awb, actor_id, action_type, lat, lng, evidence_url, created_at)
@@ -57897,7 +57897,7 @@ BEGIN
     WITH moved AS (DELETE FROM be_exception_audit RETURNING *)
     INSERT INTO be_go_live_archived_operational_test_data (original_table_name, record_data, archived_by)
     SELECT 'be_exception_audit', row_to_json(moved)::jsonb, p_admin_id FROM moved;
-    
+
     GET DIAGNOSTICS v_count = ROW_COUNT;
     INSERT INTO be_go_live_runtime_reset_log (action_name, records_affected, executed_by)
     VALUES ('CLEANUP_EXCEPTION_AUDIT', v_count, p_admin_id);
@@ -57971,13 +57971,13 @@ BEGIN
   END IF;
 
   -- 3. ACTIVATE TRANSACTION: Update Tamper Tag
-  UPDATE tamper_tags 
-  SET status = 'USED', used_at = NOW() 
+  UPDATE tamper_tags
+  SET status = 'USED', used_at = NOW()
   WHERE tag_id = p_tag_id;
 
   -- 4. ACTIVATE TRANSACTION: Update Shipment
-  UPDATE shipments 
-  SET status = 'IN_TRANSIT_TO_HUB', tamper_tag_id = p_tag_id 
+  UPDATE shipments
+  SET status = 'IN_TRANSIT_TO_HUB', tamper_tag_id = p_tag_id
   WHERE awb = p_awb;
 
   -- 5. ACTIVATE TRANSACTION: Insert GPS Audit Log
@@ -58008,7 +58008,7 @@ BEGIN
   IF v_shipment_status IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'Invalid AWB. Parcel not found.');
   END IF;
-  
+
   -- Verify Tag
   SELECT status INTO v_tag_status FROM tamper_tags WHERE tag_id = p_tag_id;
   IF v_tag_status IS NULL THEN
@@ -58019,12 +58019,12 @@ BEGIN
   END IF;
 
   -- ⚡ ATOMIC TRANSACTION BEGINS
-  UPDATE tamper_tags 
-  SET status = 'USED', used_at = NOW() 
+  UPDATE tamper_tags
+  SET status = 'USED', used_at = NOW()
   WHERE tag_id = p_tag_id;
 
-  UPDATE shipments 
-  SET status = 'IN_TRANSIT_TO_HUB', tamper_tag_id = p_tag_id 
+  UPDATE shipments
+  SET status = 'IN_TRANSIT_TO_HUB', tamper_tag_id = p_tag_id
   WHERE awb = p_awb;
 
   INSERT INTO chain_of_custody_logs (awb, actor_id, action_type, lat, lng, evidence_url, created_at)
@@ -58050,9 +58050,9 @@ BEGIN
   SELECT coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb)
   INTO v_result
   FROM (
-    SELECT 
+    SELECT
       pr.id::text as id,
-      coalesce(pr.pickup_request_id, pr.id::text) as pickup_id, 
+      coalesce(pr.pickup_request_id, pr.id::text) as pickup_id,
       coalesce(pr.sender_name, 'Merchant') as sender_name,
       pr.sender_phone,
       coalesce(pr.parcel_count, 1) as parcel_count,
@@ -58065,7 +58065,7 @@ BEGIN
        OR pr.id::text = 'd0b612d1-662b-43f3-b89a-1e7d704f3779'
     ORDER BY pr.created_at DESC
   ) t;
-  
+
   RETURN v_result;
 END;
 $function$
@@ -58102,15 +58102,15 @@ DECLARE
 BEGIN
     -- Get current date in YYYYMMDD format
     SELECT TO_CHAR(NOW(), 'YYYYMMDD') INTO new_awb;
-    
+
     -- Get count of shipments created today
     SELECT COUNT(*) + 1 INTO counter
     FROM public.shipments_2026_02_19_13_00
     WHERE DATE(created_at) = CURRENT_DATE;
-    
+
     -- Format: YYYYMMDD + 6-digit counter (e.g., 20260219000001)
     new_awb := new_awb || LPAD(counter::TEXT, 6, '0');
-    
+
     RETURN new_awb;
 END;
 $function$
@@ -58126,16 +58126,16 @@ DECLARE
     v_count text;
 BEGIN
     v_date := to_char(now(), 'MMDD');
-    
+
     -- Extract first 3 alphanumeric characters of merchant code
     v_merchant := upper(substring(regexp_replace(COALESCE(p_merchant_code, 'XXX'), '[^a-zA-Z0-9]', '', 'g') from 1 for 3));
     IF length(v_merchant) < 3 THEN
         v_merchant := rpad(v_merchant, 3, 'X');
     END IF;
-    
+
     -- Pad parcel count to 3 digits
     v_count := lpad(COALESCE(p_parcel_count, 1)::text, 3, '0');
-    
+
     RETURN 'P' || v_date || '-' || v_merchant || '-' || v_count;
 END;
 $function$
@@ -58152,10 +58152,10 @@ BEGIN
     -- Get count of customers
     SELECT COUNT(*) + 1 INTO counter
     FROM public.customers_2026_02_19_13_00;
-    
+
     -- Format: CUST + 6-digit counter (e.g., CUST000001)
     new_code := 'CUST' || LPAD(counter::TEXT, 6, '0');
-    
+
     RETURN new_code;
 END;
 $function$
@@ -58181,8 +58181,8 @@ BEGIN
     FOREACH v_pickup_id IN ARRAY p_pickup_ids
     LOOP
         -- Update Pickup Request Status to 'PICKUP_ASSIGNED'
-        UPDATE be_portal_pickup_requests 
-        SET 
+        UPDATE be_portal_pickup_requests
+        SET
             route_id = v_route_id,
             assigned_rider_id = p_rider_id,
             status = 'PICKUP_ASSIGNED'
@@ -58191,12 +58191,12 @@ BEGIN
         -- Cargo Event အသစ်ထည့်သွင်းခြင်း (Merchant/Customer Tracking အတွက်)
         INSERT INTO be_portal_cargo_events (pickup_id, status_code, updated_by)
         VALUES (v_pickup_id, 'PICKUP_ASSIGNED', p_dispatcher_id);
-        
+
         -- အကယ်၍ Rider အဟောင်းမှ REASSIGN_RIDER Exception တင်ထားခဲ့ပါက Resolved အဖြစ်ပြောင်းပေးရန်
-        UPDATE be_exception_audit 
+        UPDATE be_exception_audit
         SET resolved_at = NOW(), resolved_by = p_dispatcher_id
         WHERE shipment_id = v_pickup_id AND next_action = 'REASSIGN_RIDER' AND resolved_at IS NULL;
-        
+
     END LOOP;
 
     -- (၄) Rider App သို့ Notification ပေးပို့ခြင်း
@@ -58230,10 +58230,10 @@ BEGIN
     -- Get count of merchants
     SELECT COUNT(*) + 1 INTO counter
     FROM public.merchants_2026_02_19_13_00;
-    
+
     -- Format: MERCH + 6-digit counter (e.g., MERCH000001)
     new_code := 'MERCH' || LPAD(counter::TEXT, 6, '0');
-    
+
     RETURN new_code;
 END;
 $function$
@@ -58254,10 +58254,10 @@ BEGIN
     FROM public.parcels_2026_02_18_17_00
     WHERE parcel_id LIKE p_pickup_zone || '%' || p_pickup_zone
     AND DATE(created_at) = CURRENT_DATE;
-    
+
     -- Format: YGN119874YGN (zone + 6-digit number + zone)
     v_parcel_id := p_pickup_zone || LPAD(v_sequence_num::TEXT, 6, '0') || p_pickup_zone;
-    
+
     RETURN v_parcel_id;
 END;
 $function$
@@ -58275,7 +58275,7 @@ BEGIN
     SELECT id INTO v_qr_id
     FROM public.qr_codes_2026_02_18_17_00
     WHERE qr_data = p_qr_data AND is_active = true;
-    
+
     -- If not exists, create new QR code record
     IF v_qr_id IS NULL THEN
         INSERT INTO public.qr_codes_2026_02_18_17_00 (
@@ -58295,7 +58295,7 @@ BEGIN
         SET updated_at = NOW()
         WHERE id = v_qr_id;
     END IF;
-    
+
     RETURN v_qr_id;
 END;
 $function$
@@ -58311,10 +58311,10 @@ DECLARE
   v_qr_id UUID;
 BEGIN
   -- Generate unique QR code
-  v_qr_code := 'BRT-' || p_qr_type || '-' || EXTRACT(YEAR FROM NOW()) || '-' || 
-               LPAD(EXTRACT(DOY FROM NOW())::TEXT, 3, '0') || '-' || 
-               LPAD(EXTRACT(HOUR FROM NOW())::TEXT, 2, '0') || 
-               LPAD(EXTRACT(MINUTE FROM NOW())::TEXT, 2, '0') || 
+  v_qr_code := 'BRT-' || p_qr_type || '-' || EXTRACT(YEAR FROM NOW()) || '-' ||
+               LPAD(EXTRACT(DOY FROM NOW())::TEXT, 3, '0') || '-' ||
+               LPAD(EXTRACT(HOUR FROM NOW())::TEXT, 2, '0') ||
+               LPAD(EXTRACT(MINUTE FROM NOW())::TEXT, 2, '0') ||
                LPAD(EXTRACT(SECOND FROM NOW())::TEXT, 2, '0') || '-' ||
                SUBSTRING(p_reference_id::TEXT, 1, 8);
 
@@ -58339,7 +58339,7 @@ CREATE OR REPLACE FUNCTION public.generate_smart_user_id()
 AS $function$
 BEGIN
     -- Determine Office Prefix
-    NEW.display_id := CASE 
+    NEW.display_id := CASE
         WHEN NEW.branch_code = 'YGN-HQ' THEN 'H'
         WHEN NEW.branch_code LIKE 'YGN%' THEN 'Y'
         WHEN NEW.branch_code LIKE 'MDY%' THEN 'M'
@@ -58348,7 +58348,7 @@ BEGIN
     END;
 
     -- Map Roles to Abbreviations
-    NEW.display_id := NEW.display_id || '-' || CASE 
+    NEW.display_id := NEW.display_id || '-' || CASE
         WHEN NEW.role = 'admin' THEN 'SADM'
         WHEN NEW.role = 'rider_bike' THEN 'RDB'
         WHEN NEW.role = 'rider_van' THEN 'RDD'
@@ -58359,7 +58359,7 @@ BEGIN
 
     -- Append Serial (Simplified for demo)
     NEW.display_id := NEW.display_id || '-' || LPAD((SELECT COUNT(*) + 1 FROM public.operators WHERE role = NEW.role)::text, 4, '0');
-    
+
     -- Auto-populate email from auth if not provided
     IF NEW.email IS NULL THEN
         SELECT email INTO NEW.email FROM auth.users WHERE id = NEW.id;
@@ -58376,11 +58376,11 @@ CREATE OR REPLACE FUNCTION public.generate_transaction_hash()
 AS $function$
 BEGIN
   NEW.auth_hash := encode(digest(
-    NEW.id::text || 
-    NEW.amount::text || 
-    COALESCE(NEW.sender_id::text, 'none') || 
-    COALESCE(NEW.recipient_id::text, 'none') || 
-    'BRITIUM_SECURE_SALT_2026', 
+    NEW.id::text ||
+    NEW.amount::text ||
+    COALESCE(NEW.sender_id::text, 'none') ||
+    COALESCE(NEW.recipient_id::text, 'none') ||
+    'BRITIUM_SECURE_SALT_2026',
     'sha256'
   ), 'hex');
   RETURN NEW;
@@ -58398,15 +58398,15 @@ DECLARE
 BEGIN
     -- Get current date in YYYYMMDD format
     SELECT TO_CHAR(NOW(), 'YYYYMMDD') INTO new_number;
-    
+
     -- Get count of transactions created today
     SELECT COUNT(*) + 1 INTO counter
     FROM public.transactions_2026_02_19_13_00
     WHERE DATE(created_at) = CURRENT_DATE;
-    
+
     -- Format: TXN + YYYYMMDD + 4-digit counter (e.g., TXN202602190001)
     new_number := 'TXN' || new_number || LPAD(counter::TEXT, 4, '0');
-    
+
     RETURN new_number;
 END;
 $function$
@@ -58495,13 +58495,13 @@ BEGIN
         ORDER BY aq.priority ASC, aq.created_at ASC
     ) INTO v_result
     FROM assignment_queue_2026_02_19_17_00 aq
-    WHERE 
+    WHERE
         (p_user_id IS NULL OR aq.assigned_user_id = p_user_id)
         AND (p_branch_id IS NULL OR aq.branch_id = p_branch_id)
         AND (p_queue_type IS NULL OR aq.queue_type = p_queue_type)
         AND aq.status = 'PENDING'
     LIMIT p_limit;
-    
+
     RETURN COALESCE(v_result, '[]'::jsonb);
 END;
 $function$
@@ -58554,7 +58554,7 @@ BEGIN
   SELECT count(*) INTO open_reqs FROM pickup_queue WHERE status = 'Open';
   SELECT count(*) INTO pickup_reqs FROM pickup_queue;
   SELECT count(*) INTO merchant_opts FROM merchant_master;
-  
+
   -- Return the exact JSON structure your frontend expects
   RETURN json_build_object(
     'total_tickets', 0,
@@ -58584,37 +58584,37 @@ BEGIN
     FROM public.shipments_2026_02_19_13_00
     WHERE created_at::DATE BETWEEN p_date_from AND p_date_to
     AND (p_branch_id IS NULL OR origin_branch_id = p_branch_id);
-    
+
     SELECT COUNT(*) INTO pending_shipments
     FROM public.shipments_2026_02_19_13_00
     WHERE status IN ('CREATED', 'PICKED_UP', 'IN_TRANSIT')
     AND (p_branch_id IS NULL OR origin_branch_id = p_branch_id);
-    
+
     SELECT COUNT(*) INTO delivered_shipments
     FROM public.shipments_2026_02_19_13_00
     WHERE status = 'DELIVERED'
     AND created_at::DATE BETWEEN p_date_from AND p_date_to
     AND (p_branch_id IS NULL OR origin_branch_id = p_branch_id);
-    
+
     -- Get financial metrics
     SELECT COALESCE(SUM(total_cost), 0) INTO total_revenue
     FROM public.shipments_2026_02_19_13_00
     WHERE created_at::DATE BETWEEN p_date_from AND p_date_to
     AND (p_branch_id IS NULL OR origin_branch_id = p_branch_id);
-    
+
     SELECT COALESCE(SUM(amount), 0) INTO cod_collected
     FROM public.transactions_2026_02_19_13_00
     WHERE transaction_type = 'COD_COLLECTION'
     AND status = 'COMPLETED'
     AND created_at::DATE BETWEEN p_date_from AND p_date_to
     AND (p_branch_id IS NULL OR branch_id = p_branch_id);
-    
+
     -- Get vehicle metrics
     SELECT COUNT(*) INTO active_vehicles
     FROM public.vehicles_2026_02_19_13_00
     WHERE status = 'AVAILABLE'
     AND (p_branch_id IS NULL OR home_branch_id = p_branch_id);
-    
+
     -- Build result JSON
     result := jsonb_build_object(
         'total_shipments', total_shipments,
@@ -58626,7 +58626,7 @@ BEGIN
         'active_vehicles', active_vehicles,
         'date_range', jsonb_build_object('from', p_date_from, 'to', p_date_to)
     );
-    
+
     RETURN result;
 END;
 $function$
@@ -58654,7 +58654,7 @@ AS $function$
 BEGIN
     RETURN QUERY
     WITH stats AS (
-        SELECT 
+        SELECT
             COUNT(*) as generated_count,
             SUM(scan_count) as total_scan_count,
             COUNT(DISTINCT last_scanned_by) FILTER (WHERE last_scanned_by IS NOT NULL) as unique_scanner_count
@@ -58684,7 +58684,7 @@ BEGIN
         AND generated_at >= NOW() - INTERVAL '1 day' * p_days
         LIMIT 10
     )
-    SELECT 
+    SELECT
         s.generated_count,
         s.total_scan_count,
         s.unique_scanner_count,
@@ -58733,7 +58733,7 @@ BEGIN
     WHERE sws.shipment_id = p_shipment_id
     ORDER BY sws.created_at DESC
     LIMIT 1;
-    
+
     RETURN COALESCE(v_result, '{"error": "Shipment workflow not found"}'::jsonb);
 END;
 $function$
@@ -58767,18 +58767,18 @@ BEGIN
         'created_at', p.created_at,
         'branch_code', p.branch_code,
         'status', p.status,
-        
+
         -- Sender Info
         'sender_name', p.sender_name,
         'sender_phone', p.sender_phone,
         'sender_address', p.sender_address,
-        
+
         -- Receiver Info
         'receiver_name', p.receiver_name,
         'receiver_phone', p.receiver_phone,
         'receiver_address', p.receiver_address,
         'receiver_city', p.receiver_city,
-        
+
         -- Parcel & Tariff Info
         'weight', p.weight,
         'tier', p.tier,
@@ -58788,9 +58788,9 @@ BEGIN
         'weight_surcharge', COALESCE(p.weight_surcharge, 0),
         'highway_fee', COALESCE(p.highway_fee, 0),
         'total_tariff', COALESCE(p.base_fee, 0) + COALESCE(p.weight_surcharge, 0) + COALESCE(p.highway_fee, 0),
-        
+
         -- Routing Info
-        'destination_hub', CASE 
+        'destination_hub', CASE
             WHEN p.receiver_city ILIKE '%Mandalay%' THEN 'MDY-HUB'
             WHEN p.receiver_city ILIKE '%Naypyitaw%' THEN 'NPT-HUB'
             ELSE 'YGN-HUB'
@@ -58960,7 +58960,7 @@ CREATE OR REPLACE FUNCTION public.handle_new_user_setup()
  SECURITY DEFINER
 AS $function$
 BEGIN
-  UPDATE auth.users 
+  UPDATE auth.users
   SET raw_user_meta_data = raw_user_meta_data || '{"must_change_password": true}'::jsonb
   WHERE id = NEW.id;
   RETURN NEW;
@@ -59001,7 +59001,7 @@ AS $function$
 BEGIN
     RETURN EXISTS (
         SELECT 1 FROM role_permissions rp
-        WHERE rp.role_code = user_role 
+        WHERE rp.role_code = user_role
         AND rp.permission_code = permission_code
     );
 END;
@@ -59105,8 +59105,8 @@ CREATE OR REPLACE FUNCTION public.is_master_data_admin()
  SECURITY DEFINER
 AS $function$
   SELECT EXISTS (
-    SELECT 1 FROM be_user_account_registry 
-    WHERE auth_user_id = auth.uid() 
+    SELECT 1 FROM be_user_account_registry
+    WHERE auth_user_id = auth.uid()
     AND role IN ('Super Admin', 'System Administrator', 'Finance Manager')
   );
 $function$
@@ -59141,8 +59141,8 @@ CREATE OR REPLACE FUNCTION public.is_staff()
  STABLE
 AS $function$
   SELECT EXISTS (
-    SELECT 1 FROM public.users 
-    WHERE id = auth.uid() 
+    SELECT 1 FROM public.users
+    WHERE id = auth.uid()
     AND role IN ('RIDER', 'STAFF', 'ADMIN', 'SUPER_ADMIN')
   );
 $function$
@@ -59283,7 +59283,7 @@ BEGIN
     ) VALUES (
         p_user_id, p_action, p_resource_type, p_resource_id, p_old_values, p_new_values
     ) RETURNING id INTO audit_id;
-    
+
     RETURN audit_id;
 END;
 $function$
@@ -59316,12 +59316,12 @@ BEGIN
     SELECT id INTO v_qr_id
     FROM public.qr_codes_2026_02_18_17_00
     WHERE qr_data = p_qr_data AND is_active = true;
-    
+
     -- If QR code doesn't exist, create it
     IF v_qr_id IS NULL THEN
         v_qr_id := public.generate_qr_code_2026_02_18_17_00(p_qr_data, 'UNKNOWN', NULL, 'scanner');
     END IF;
-    
+
     -- Log the scan
     INSERT INTO public.qr_scan_logs_2026_02_18_17_00 (
         qr_code_id,
@@ -59336,16 +59336,16 @@ BEGIN
         p_scan_location,
         p_device_info
     ) RETURNING id INTO v_scan_id;
-    
+
     -- Update scan count and last scan info
     UPDATE public.qr_codes_2026_02_18_17_00
-    SET 
+    SET
         scan_count = scan_count + 1,
         last_scanned_at = NOW(),
         last_scanned_by = p_scanned_by,
         updated_at = NOW()
     WHERE id = v_qr_id;
-    
+
     RETURN v_scan_id;
 END;
 $function$
@@ -59420,14 +59420,14 @@ BEGIN
     IF OLD.status IS DISTINCT FROM NEW.status THEN
         INSERT INTO public.audit_logs (record_id, action, actor_id, old_data, new_data)
         VALUES (
-            NEW.tracking_number, 
-            'STATUS_CHANGED_TO_' || UPPER(NEW.status::text), 
-            auth.uid(), 
-            jsonb_build_object('status', OLD.status), 
+            NEW.tracking_number,
+            'STATUS_CHANGED_TO_' || UPPER(NEW.status::text),
+            auth.uid(),
+            jsonb_build_object('status', OLD.status),
             jsonb_build_object('status', NEW.status)
         );
     END IF;
-    
+
     -- Auto-update the 'updated_at' timestamp
     NEW.updated_at = now();
     RETURN NEW;
@@ -59549,18 +59549,18 @@ DECLARE
 BEGIN
     -- Determine if moving (speed > 5 km/h)
     v_is_moving := COALESCE(p_speed, 0) > 5;
-    
+
     -- Insert GPS tracking record
     INSERT INTO public.gps_tracking_2026_02_18_18_00 (
-        device_id, latitude, longitude, speed, heading, accuracy, 
+        device_id, latitude, longitude, speed, heading, accuracy,
         is_moving, recorded_at
     ) VALUES (
         p_device_id, p_latitude, p_longitude, p_speed, p_heading, p_accuracy,
         v_is_moving, NOW()
     ) RETURNING id, user_id, route_id INTO v_tracking_id, v_user_id, v_route_id;
-    
+
     -- Check for geofence events
-    FOR v_geofence IN 
+    FOR v_geofence IN
         SELECT id, name, type, entry_alert, exit_alert
         FROM public.geofences_2026_02_18_18_00
         WHERE is_active = true
@@ -59580,14 +59580,14 @@ BEGIN
                 jsonb_build_object('lat', p_latitude, 'lng', p_longitude),
                 v_geofence.id
             );
-            
+
             v_events := v_events || jsonb_build_object(
                 'type', 'geofence_entry',
                 'geofence', v_geofence.name
             );
         END IF;
     END LOOP;
-    
+
     -- Check for speed violations (> 80 km/h)
     IF COALESCE(p_speed, 0) > 80 THEN
         INSERT INTO public.realtime_events_2026_02_18_18_00 (
@@ -59603,13 +59603,13 @@ BEGIN
             jsonb_build_object('lat', p_latitude, 'lng', p_longitude),
             'HIGH'
         );
-        
+
         v_events := v_events || jsonb_build_object(
             'type', 'speed_violation',
             'speed', p_speed
         );
     END IF;
-    
+
     RETURN jsonb_build_object(
         'tracking_id', v_tracking_id,
         'events_triggered', v_events,
@@ -59642,7 +59642,7 @@ BEGIN
     IF p_actual_weight IS NOT NULL AND ABS(p_actual_weight - v_declared_weight) > 0.5 THEN
         INSERT INTO be_exception_audit (shipment_id, branch_id, exception_code, new_status, remarks, reported_by_user_id, next_action)
         VALUES (p_pickup_id, p_branch_code, 'WEIGHT_MISMATCH', 'QC_FAILED', 'Actual weight differs significantly.', p_scanned_by, 'RECALCULATE_TARIFF');
-        
+
         UPDATE be_portal_pickup_requests SET status = 'QC_FAILED' WHERE pickup_id = p_pickup_id;
         RETURN 'EXCEPTION_WEIGHT_MISMATCH';
     END IF;
@@ -59657,8 +59657,8 @@ BEGIN
     END IF;
 
     -- (၄) Status Update လုပ်ခြင်း & Cargo Event ထည့်သွင်းခြင်း
-    UPDATE be_portal_pickup_requests 
-    SET status = v_new_status, current_branch = p_branch_code 
+    UPDATE be_portal_pickup_requests
+    SET status = v_new_status, current_branch = p_branch_code
     WHERE pickup_id = p_pickup_id;
 
     INSERT INTO be_portal_cargo_events (pickup_id, status_code, branch_code, updated_by)
@@ -59894,7 +59894,7 @@ DECLARE
 BEGIN
     -- Generate transaction number
     SELECT generate_transaction_number() INTO transaction_number;
-    
+
     -- Insert transaction
     INSERT INTO public.transactions_2026_02_19_13_00 (
         transaction_number, transaction_type, reference_type, reference_id,
@@ -59903,7 +59903,7 @@ BEGIN
         transaction_number, 'COD_COLLECTION', 'SHIPMENT', p_shipment_id,
         p_amount, p_payment_method, p_collected_by, 'COMPLETED'
     ) RETURNING id INTO transaction_id;
-    
+
     RETURN transaction_id;
 END;
 $function$
@@ -61390,7 +61390,7 @@ BEGIN
   -- Handle system-level auto-approvals
   NEW.auth_user_id := COALESCE(auth.uid(), NEW.auth_user_id);
   NEW.actor_role := COALESCE(NEW.actor_role, 'SYSTEM_AUTO');
-  
+
   -- Re-link way_id if missing
   IF NEW.shipment_id IS NULL THEN
     SELECT id INTO NEW.shipment_id FROM public.shipments WHERE way_id = NEW.way_id LIMIT 1;
@@ -61424,7 +61424,7 @@ BEGIN
 
   -- Update scan information
   UPDATE qr_codes_advanced_2026_02_19_15_00
-  SET 
+  SET
     status = 'SCANNED',
     scanned_by = p_scanned_by,
     scanned_at = NOW(),
@@ -61432,11 +61432,11 @@ BEGIN
     metadata = metadata || p_scan_metadata
   WHERE qr_code = p_qr_code;
 
-  RETURN QUERY SELECT 
-    true, 
-    v_qr_record.data, 
-    v_qr_record.reference_id, 
-    v_qr_record.reference_type, 
+  RETURN QUERY SELECT
+    true,
+    v_qr_record.data,
+    v_qr_record.reference_id,
+    v_qr_record.reference_type,
     'QR code scanned successfully'::TEXT;
 EXCEPTION
   WHEN OTHERS THEN
@@ -61486,7 +61486,7 @@ CREATE OR REPLACE FUNCTION public.set_new_user_password_policy()
  SECURITY DEFINER
 AS $function$
 BEGIN
-  NEW.raw_user_meta_data = coalesce(NEW.raw_user_meta_data, '{}'::jsonb) 
+  NEW.raw_user_meta_data = coalesce(NEW.raw_user_meta_data, '{}'::jsonb)
     || jsonb_build_object('must_change_password', true);
   RETURN NEW;
 END;
@@ -61554,7 +61554,7 @@ BEGIN
 
     -- (၅) Notification များ ပေးပို့ခြင်း
     INSERT INTO be_app_notifications (pickup_id, target_role, message)
-    VALUES 
+    VALUES
         (v_pickup_id, 'Supervisor', 'New Pickup Request: ' || v_pickup_id),
         (v_pickup_id, 'Customer Service', 'Pickup initiated: ' || v_pickup_id);
 
@@ -61851,7 +61851,7 @@ BEGIN
             'weight', NEW.weight
         )
     );
-    
+
     RETURN NEW;
 END;
 $function$
@@ -61880,7 +61880,7 @@ BEGIN
     SELECT current_stock INTO current_stock
     FROM public.inventory_2026_02_19_13_00
     WHERE id = p_inventory_id;
-    
+
     -- Calculate new stock based on movement type
     IF p_movement_type = 'IN' THEN
         new_stock := current_stock + p_quantity;
@@ -61892,19 +61892,19 @@ BEGIN
     ELSE
         new_stock := current_stock;
     END IF;
-    
+
     -- Update inventory
     UPDATE public.inventory_2026_02_19_13_00
     SET current_stock = new_stock
     WHERE id = p_inventory_id;
-    
+
     -- Record movement
     INSERT INTO public.inventory_movements_2026_02_19_13_00 (
         inventory_id, movement_type, quantity, reference_type, reference_id, performed_by, notes
     ) VALUES (
         p_inventory_id, p_movement_type, p_quantity, p_reference_type, p_reference_id, p_performed_by, p_notes
     );
-    
+
     RETURN TRUE;
 END;
 $function$
@@ -61918,8 +61918,8 @@ AS $function$
 BEGIN
     INSERT INTO be_live_rider_locations (rider_id, current_lat, current_lng, heading, speed_kmh, last_updated, branch_code)
     VALUES (p_rider_id, p_lat, p_lng, p_heading, p_speed, NOW(), p_branch)
-    ON CONFLICT (rider_id) 
-    DO UPDATE SET 
+    ON CONFLICT (rider_id)
+    DO UPDATE SET
         current_lat = EXCLUDED.current_lat,
         current_lng = EXCLUDED.current_lng,
         heading = EXCLUDED.heading,
@@ -61949,12 +61949,12 @@ DECLARE
     v_branch_code TEXT;
 BEGIN
     -- (၁) လက်ရှိ Branch ကို ရယူခြင်း
-    SELECT current_branch INTO v_branch_code 
+    SELECT current_branch INTO v_branch_code
     FROM be_portal_pickup_requests WHERE pickup_id = p_pickup_id;
 
     -- (၂) Pickup Request ကို Update လုပ်ခြင်း
-    UPDATE be_portal_pickup_requests 
-    SET 
+    UPDATE be_portal_pickup_requests
+    SET
         status = p_new_status,
         pod_signature_url = COALESCE(p_pod_signature_url, pod_signature_url),
         pod_photo_url = COALESCE(p_pod_photo_url, pod_photo_url),
@@ -61986,14 +61986,14 @@ BEGIN
     UPDATE public.shipments_2026_02_19_13_00
     SET status = p_status, current_location = p_location
     WHERE id = p_shipment_id;
-    
+
     -- Add tracking entry
     INSERT INTO public.shipment_tracking_2026_02_19_13_00 (
         shipment_id, status, location, updated_by, notes
     ) VALUES (
         p_shipment_id, p_status, p_location, p_updated_by, p_notes
     );
-    
+
     RETURN TRUE;
 END;
 $function$
@@ -62012,8 +62012,8 @@ BEGIN
   IF v_sid IS NULL THEN RAISE EXCEPTION 'Shipment not found'; END IF;
 
   -- 1. Update the main table
-  UPDATE public.shipments 
-  SET 
+  UPDATE public.shipments
+  SET
     status = p_new_status::public.shipment_status,
     actual_pickup_time = CASE WHEN p_new_status = 'picked_up' THEN now() ELSE actual_pickup_time END,
     actual_delivery_time = CASE WHEN p_new_status = 'delivered' THEN now() ELSE actual_delivery_time END
@@ -62021,16 +62021,16 @@ BEGIN
 
   -- 2. Add to the tracking history (the audit trail)
   INSERT INTO public.shipment_tracking (
-    shipment_id, 
-    status, 
-    location, 
-    notes, 
+    shipment_id,
+    status,
+    location,
+    notes,
     handled_by
   ) VALUES (
-    v_sid, 
-    p_new_status, 
-    p_location, 
-    p_notes, 
+    v_sid,
+    p_new_status,
+    p_location,
+    p_notes,
     auth.uid()
   );
 
@@ -62053,49 +62053,49 @@ BEGIN
     WHERE shipment_id = p_shipment_id
     ORDER BY created_at DESC
     LIMIT 1;
-    
+
     -- Update workflow state
     UPDATE shipment_workflow_states_2026_02_19_17_00
-    SET 
+    SET
         previous_state = v_current_state,
         current_state = p_new_state,
         updated_at = NOW()
     WHERE shipment_id = p_shipment_id;
-    
+
     -- Update assignment queue if needed
     UPDATE assignment_queue_2026_02_19_17_00
-    SET 
-        status = CASE 
+    SET
+        status = CASE
             WHEN p_new_state IN ('DELIVERED', 'CANCELLED') THEN 'COMPLETED'
             WHEN p_new_state IN ('OUT_FOR_DELIVERY', 'IN_TRANSIT') THEN 'PROCESSING'
             ELSE status
         END,
-        processed_at = CASE 
+        processed_at = CASE
             WHEN p_new_state IN ('DELIVERED', 'CANCELLED') THEN NOW()
             ELSE processed_at
         END
     WHERE shipment_id = p_shipment_id;
-    
+
     -- Create notifications for state changes
     IF p_new_state = 'READY_FOR_PICKUP' THEN
         INSERT INTO realtime_notifications_2026_02_19_17_00 (
             user_id, notification_type, title, message, data
         )
-        SELECT 
+        SELECT
             u.id, 'SHIPMENT_READY', 'Shipment Ready for Pickup',
             'Shipment is ready for pickup from warehouse',
             jsonb_build_object('shipment_id', p_shipment_id)
         FROM users_2026_02_19_13_00 u
         WHERE u.role = 'RIDER' AND u.status = 'ACTIVE';
     END IF;
-    
+
     v_result := jsonb_build_object(
         'success', true,
         'previous_state', v_current_state,
         'new_state', p_new_state,
         'updated_at', NOW()
     );
-    
+
     RETURN v_result;
 END;
 $function$
@@ -62437,11 +62437,11 @@ BEGIN
     SELECT * INTO v_signature
     FROM public.electronic_signatures_2026_02_18_18_00
     WHERE id = p_signature_id;
-    
+
     IF NOT FOUND THEN
         RETURN jsonb_build_object('error', 'Signature not found');
     END IF;
-    
+
     -- Basic validation checks
     v_validation_result := jsonb_build_object(
         'signature_present', v_signature.signature_data IS NOT NULL,
@@ -62449,7 +62449,7 @@ BEGIN
         'delivery_location_present', v_signature.delivery_location IS NOT NULL,
         'timestamp_valid', v_signature.delivery_timestamp IS NOT NULL
     );
-    
+
     -- Calculate quality score
     IF v_signature.signature_data IS NOT NULL THEN v_quality_score := v_quality_score + 25; END IF;
     IF v_signature.signer_name IS NOT NULL THEN v_quality_score := v_quality_score + 15; END IF;
@@ -62458,20 +62458,20 @@ BEGIN
     IF v_signature.recipient_photo_url IS NOT NULL THEN v_quality_score := v_quality_score + 15; END IF;
     IF v_signature.package_photo_url IS NOT NULL THEN v_quality_score := v_quality_score + 10; END IF;
     IF v_signature.delivery_location IS NOT NULL THEN v_quality_score := v_quality_score + 5; END IF;
-    
+
     -- Update signature with quality score
     UPDATE public.electronic_signatures_2026_02_18_18_00
-    SET 
+    SET
         signature_quality_score = v_quality_score,
         is_verified = v_quality_score >= 70,
         updated_at = NOW()
     WHERE id = p_signature_id;
-    
+
     RETURN jsonb_build_object(
         'validation_result', v_validation_result,
         'quality_score', v_quality_score,
         'is_verified', v_quality_score >= 70,
-        'recommendations', CASE 
+        'recommendations', CASE
             WHEN v_quality_score < 70 THEN jsonb_build_array(
                 'Add recipient photo',
                 'Verify signer ID',
