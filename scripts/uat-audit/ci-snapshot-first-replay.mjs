@@ -145,6 +145,20 @@ writeFileSync(resolve(root, '20260901152006_uat308_original_warehouse_v39_ci.sql
   warehouseV39Tables + '\n' + warehouseV39View);
 console.log('CI-only V36/V39 genuine warehouse receipt dependencies injected before dispatch v12_12.');
 
+const loginResolverFixture = resolve('scripts/uat-audit/fixtures/field_team_login_resolver_ci_bootstrap.sql');
+const loginResolverSql = readFileSync(loginResolverFixture, 'utf8');
+if (!loginResolverSql.includes('CREATE OR REPLACE FUNCTION public.be_field_team_resolve_login(p_login text)') ||
+    !loginResolverSql.includes('coalesce(w.active, true) = true') ||
+    !loginResolverSql.includes('v_row.auth_user_id is null') ||
+    !loginResolverSql.includes('from auth.users u') ||
+    !loginResolverSql.includes('REVOKE ALL ON FUNCTION public.be_field_team_resolve_login(text)')) {
+  throw new Error('CI field login fixture fails active workforce and Auth mapping checks');
+}
+copyFileSync(loginResolverFixture,
+  resolve(root, '20260901192436_uat308_original_field_login_resolver_ci.sql'));
+console.log('CI-only original guarded workforce login resolver loaded before September public lockdown.');
+
+
 
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
