@@ -642,12 +642,68 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     return list.find((x) => x.id === code)?.name || "";
   }
 
+  async function findDispatchHeldWays(wayIds: string[]) {
+    // The same authoritative predicate is enforced by the generator.
+    const blocked: string[] = [];
+    const failures: string[] = [];
+    const unique = Array.from(new Set(wayIds.filter(Boolean)));
+    let cursor = 0;
+    await Promise.all(Array.from({ length: Math.min(8, unique.length) }, async () => {
+      while (cursor < unique.length) {
+        const id = unique[cursor++];
+        try {
+          const { data, error } = await supabase.rpc("be_delivery_schedule_allows_wayplan_v71", { p_delivery_way_id: id });
+          if (error || typeof data !== "boolean") failures.push(id);
+          else if (!data) blocked.push(id);
+        } catch { failures.push(id); }
+      }
+    }));
+    return { blocked: blocked.sort(), failures: failures.sort() };
+  }
+
+  function excludeBlockedWays() {
+    if (!blockedWayIds.length) return;
+    const excluded = new Set(blockedWayIds);
+    const revised = plans.map((plan) => ({
+      ...plan,
+      rows: plan.rows.filter((row) => !excluded.has(row.delivery_way_id)),
+      route: {
+        ...(plan.route || {}),
+        source: "OPERATOR_EDITED",
+        base_source: plan.route?.source || "",
+        manual: true,
+        warning: "Held parcels excluded. Re-optimize and review updated stop sequence before creating.",
+      },
+    })).filter((plan) => plan.rows.length > 0) as OperationalVanPlan[];
+    reset(revised, true);
+    setMessage(excluded.size + " held Way ID(s) excluded from this route only. No parcel records were deleted. Re-optimize and review before creating.");
+  }
+
   async function save() {
     if (plans.some((p) => !["GOOGLE_ROUTES", "MAPBOX_FALLBACK", "OPERATOR_EDITED", "DEFERRED_LOCATION", "DEFERRED_PROVIDER"].includes(String(p.route?.source || "")))) {
       setMessage("Cannot create Wayplans: every active route must be road-reviewed or explicitly marked as a deferred assignment.");
       return;
     }
     setBusy(true);
+    setBlockedWayIds([]);
+    const wayIds = plans.flatMap((plan) => plan.rows.map((row) => String(row.delivery_way_id || "").trim()));
+    const missing = wayIds.filter((id) => !id);
+    const duplicate = Array.from(new Set(wayIds.filter((id, index) => id && wayIds.indexOf(id) !== index)));
+    if (missing.length || duplicate.length) {
+      setMessage("Wayplan creation blocked: " + missing.length + " missing Way IDs and " + duplicate.length + " duplicated Way IDs. Check the selected parcels.");
+      setBusy(false);
+      return;
+    }
+    setMessage("Checking dispatch eligibility for " + wayIds.length + " parcels...");
+    const eligibility = await findDispatchHeldWays(wayIds);
+    if (eligibility.blocked.length || eligibility.failures.length) {
+      setBlockedWayIds(eligibility.blocked);
+      setMessage("Wayplan creation blocked. Held parcels: " + (eligibility.blocked.join(", ") || "none")
+        + ". Eligibility check failures: " + (eligibility.failures.join(", ") || "none")
+        + ". Exclude held parcels or have Warehouse complete genuine return scans, then retry.");
+      setBusy(false);
+      return;
+    }
 
     let plansForSave = plans;
     const removedBusyHelpers: string[] = [];
@@ -794,6 +850,14 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
     </div>
 
     {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
+    {blockedWayIds.length > 0 && <div data-wayplan-dispatch-preflight-v221="true" style={{ padding: 10, border: "1px solid #eab308", borderRadius: 8 }}>
+      <strong>Dispatch hold: {blockedWayIds.length} Way ID(s)</strong>
+      <div style={{ marginTop: 4, fontSize: 12 }}>{blockedWayIds.join(", ")}</div>
+      <button type="button" style={{ ...secondary, marginTop: 8 }} disabled={busy} onClick={excludeBlockedWays}>
+        Exclude held parcels from these routes (does not delete parcels)
+      </button>
+      <div style={{ marginTop: 5, fontSize: 12 }}>Re-optimize after exclusion; Warehouse custody and reschedule rules remain enforced.</div>
+    </div>
 
     {plans.map((plan, i) => {
       const delivery = plan.rows;
