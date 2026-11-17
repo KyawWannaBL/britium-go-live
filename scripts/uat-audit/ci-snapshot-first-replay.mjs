@@ -235,6 +235,38 @@ writeFileSync(combinedFinanceColumnsPath,
     '  ADD COLUMN IF NOT EXISTS ' + col + ' ' + definition).join(',\n') + ';\n');
 console.log('CI-only historical collection and settlement-lock parcel fields restored.');
 
+// Restore the complete referenced Finance V2 projection field set, rather than
+// whack-a-mole individual missing fields. Every definition comes from checked-in
+// historical SQL and is used ONLY in the ephemeral replay checkout.
+const financeViewParcelFields = [...new Set(
+  [...canonicalViewSource.matchAll(/\bp\.([a-z_][a-z0-9_]*)/g)].map(m => m[1])
+)];
+const knownHistoricalBaseFields = new Set([
+  'id', 'delivery_way_id', 'collect_amount', 'financial_locked_at',
+  'financial_settled_at', 'financial_settlement_batch_id'
+]);
+const financeProjectionAdditions = financeViewParcelFields
+  .filter(column => !knownHistoricalBaseFields.has(column))
+  .map(column => {
+    const definition = originalDefinitions.get(column);
+    if (!definition || !/^(text|bigint|numeric\(|integer|uuid|timestamptz)\b/i.test(definition)) {
+      throw new Error('Missing checked-in Finance V2 column definition: ' + column);
+    }
+    return '  ADD COLUMN IF NOT EXISTS ' + column + ' ' + definition;
+  });
+if (financeProjectionAdditions.length < 20 ||
+    !financeProjectionAdditions.some(s => s.includes('base_tariff bigint'))) {
+  throw new Error('Incomplete original Finance V2 settlement projection column set');
+}
+const financeCombinedFixturePath =
+  resolve(root, '20260901192454_uat308_original_finance_parcel_columns_ci.sql');
+writeFileSync(financeCombinedFixturePath,
+  readFileSync(financeCombinedFixturePath, 'utf8') +
+  '\n-- Additional original Finance V2 settlement projection columns.\n' +
+  'ALTER TABLE public.parcels\n' + financeProjectionAdditions.join(',\n') + ';\n');
+console.log('CI-only full Finance settlement projection columns restored from original SQL.');
+
+
 
 
 
