@@ -391,6 +391,28 @@ writeFileSync(dataEntryV14PrerequisitesPath,
   ' FROM PUBLIC, anon, authenticated, service_role;\n');
 console.log('CI-only original V13.2 Data Entry calculator restored before V17.');
 
+// Restore the *original* V28 location alias migration that is archived outside
+// the current migration directory. This keeps its RLS policy, validated pin
+// bounds, address-learning trigger and resolver unchanged in disposable CI.
+const locationAliasArchivePath = resolve(
+  'britium-go-live/supabase/migration_history_archive/local_only_not_in_production_20261114/20260906193000_location_alias_learning_v28.sql');
+const locationAliasArchiveSql = readFileSync(locationAliasArchivePath, 'utf8');
+if (locationAliasArchiveSql.length < 9000 ||
+    !locationAliasArchiveSql.includes('create table if not exists public.be_location_aliases') ||
+    !locationAliasArchiveSql.includes('constraint be_location_alias_lat_ck') ||
+    !locationAliasArchiveSql.includes('alter table public.be_location_aliases enable row level security') ||
+    !locationAliasArchiveSql.includes('private.be_location_editor_allowed_v10()') ||
+    !locationAliasArchiveSql.includes('create or replace function public.be_location_alias_resolve_v28(') ||
+    !locationAliasArchiveSql.includes('create trigger be_delivery_location_learn_alias_v28') ||
+    !readFileSync(resolve(root, '20260906200807_location_alias_learning_v28.sql'), 'utf8')
+      .includes("V28 location alias objects are incomplete")) {
+  throw new Error('Original V28 location alias source/dependency verification failed');
+}
+copyFileSync(locationAliasArchivePath,
+  resolve(root, '20260906200806_uat308_original_location_alias_v28_ci.sql'));
+console.log('CI-only original V28 location alias objects and access policy restored.');
+
+
 
 
 
