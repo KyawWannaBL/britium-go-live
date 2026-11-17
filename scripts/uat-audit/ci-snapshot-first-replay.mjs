@@ -266,6 +266,28 @@ writeFileSync(financeCombinedFixturePath,
   'ALTER TABLE public.parcels\n' + financeProjectionAdditions.join(',\n') + ';\n');
 console.log('CI-only full Finance settlement projection columns restored from original SQL.');
 
+// Restore the original merchant financial profile parent table needed by the
+// canonical projection, without inserting merchant identities or tariff values.
+const merchantProfileStart = 'create table if not exists public.be_merchant_financial_profiles_v2 (';
+const merchantProfileEnd = 'create table if not exists public.be_parcel_tariffs_v2 (';
+const merchantProfileSql = takeSection(
+  parcelFinanceLegacySource, merchantProfileStart, merchantProfileEnd,
+  'original Finance V2 merchant financial profiles');
+if (!merchantProfileSql.includes('merchant_id text primary key') ||
+    !merchantProfileSql.includes('customer_tier text not null') ||
+    !merchantProfileSql.includes('effective_from date not null') ||
+    !merchantProfileSql.includes('be_merchant_financial_profiles_v2_tier_check') ||
+    !financeProjectionSql.includes('from public.be_merchant_financial_profiles_v2 m')) {
+  throw new Error('Original Finance V2 merchant profile schema or dependency changed');
+}
+writeFileSync(resolve(root, '20260901192453_uat308_original_merchant_financial_profiles_ci.sql'),
+  '-- CI-only original historical merchant financial profiles, no merchant records.\n' +
+  merchantProfileSql +
+  '\nALTER TABLE public.be_merchant_financial_profiles_v2 ENABLE ROW LEVEL SECURITY;\n' +
+  'REVOKE ALL ON TABLE public.be_merchant_financial_profiles_v2 FROM PUBLIC, anon, authenticated;\n');
+console.log('CI-only real merchant financial profile parent schema restored without records.');
+
+
 
 
 
