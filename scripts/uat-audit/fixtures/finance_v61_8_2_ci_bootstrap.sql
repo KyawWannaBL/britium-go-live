@@ -1,6 +1,7 @@
 -- CI-ONLY RECONSTRUCTION FOR ISSUE 308. DO NOT APPLY TO PRODUCTION.
 -- Source: read-only pg_get_functiondef of existing production legacy function.
--- Represents post-20260827 implementation expected to be renamed on 20260901.
+-- Reconstructs pre-20260911 calculator township-key calls; the September approved-tariff migration applies their verified replacement.
+-- Only CI migration rehearsal; neither tariffs nor production functions are modified.
 CREATE OR REPLACE FUNCTION public.be_calculate_parcel_financial_v2(p_township text, p_customer_tier text, p_amount_entry_type text, p_item_price bigint DEFAULT NULL::bigint, p_delivery_charges bigint DEFAULT NULL::bigint, p_merchant_stated_total_amount bigint DEFAULT NULL::bigint, p_additional_customer_charge bigint DEFAULT 0, p_cbm_surcharge bigint DEFAULT 0, p_other_surcharge bigint DEFAULT 0, p_merchant_payable_charges bigint DEFAULT 0, p_other_merchant_credits bigint DEFAULT 0, p_actual_weight_kg numeric DEFAULT 0, p_merchant_monthly_ways integer DEFAULT 0)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -74,7 +75,7 @@ begin
     ))::integer
   into v_candidate_count, v_shape_count
   from public.be_parcel_tariffs_v2 t
-  where public.be_approved_tariff_lookup_key(t.township) = public.be_approved_tariff_lookup_key(p_township)
+  where public.be_financial_v2_township_key_v61_4_1(t.township) = public.be_financial_v2_township_key_v61_4_1(p_township)
     and t.customer_tier = v_tier
     and t.status = 'ACTIVE'
     and t.effective_from <= public.be_business_date()
@@ -97,7 +98,7 @@ begin
   else
     select * into v_tariff
     from public.be_parcel_tariffs_v2 t
-    where public.be_approved_tariff_lookup_key(t.township) = public.be_approved_tariff_lookup_key(p_township)
+    where public.be_financial_v2_township_key_v61_4_1(t.township) = public.be_financial_v2_township_key_v61_4_1(p_township)
       and t.customer_tier = v_tier
       and t.status = 'ACTIVE'
       and t.effective_from <= public.be_business_date()
@@ -241,7 +242,7 @@ begin
     'validation_message', array_to_string(v_messages, ' '),
     'calculation_version', 'PARCEL_FINANCIAL_V2_DECLARED_DELIVERY_SETTLEMENT_V61_8_2',
     'resolved_tariff_township', v_tariff.township,
-    'resolved_township_key', public.be_approved_tariff_lookup_key(p_township),
+    'resolved_township_key', public.be_financial_v2_township_key_v61_4_1(p_township),
     'calculated_at', now()
   );
 end
