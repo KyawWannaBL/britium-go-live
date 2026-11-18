@@ -671,6 +671,34 @@ writeFileSync(resolve(root, '20260917190226_uat308_rider_settings_v46_ci.sql'),
   'REVOKE ALL ON TABLE public.be_rider_route_settings_v46 FROM PUBLIC, anon, authenticated;\n');
 console.log('CI-only original rider V46 route settings restored before geofence V50.');
 
+// V52 route-status evaluator requires the original V45 reviewed route-plan
+// ledger. Preserve the V45 constraints from archived source, including
+// valid status, non-empty stops and bounded origin coordinates.
+const v45Archive = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/wayplan_mapbox_head_office_v45.sql'), 'utf8');
+const v45Header = 'create table if not exists public.be_wayplan_route_plans_v45 (';
+const v45Begin = v45Archive.indexOf(v45Header);
+const v45End = v45Archive.indexOf('\n);',v45Begin);
+if (v45Begin < 0 || v45End <= v45Begin ||
+    v45Archive.indexOf(v45Header,v45Begin+1) !== -1) {
+  throw new Error('Original V45 reviewed route-plan table not unique');
+}
+const v45TableSql = v45Archive.slice(v45Begin, v45End+3);
+if (!v45TableSql.includes('be_wayplan_route_plans_v45_stop_count') ||
+    !v45TableSql.includes('origin_longitude between -180 and 180') ||
+    !v45TableSql.includes('wayplan_id text primary key')) {
+  throw new Error('V45 route-plan constraints unexpectedly changed');
+}
+writeFileSync(resolve(root, '20260918174736_uat308_reviewed_route_plans_v45_ci.sql'), [
+  '-- Exact original V45 route plan table, disposable CI only.',
+  v45TableSql,
+  'ALTER TABLE public.be_wayplan_route_plans_v45 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_wayplan_route_plans_v45 FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n'));
+console.log('CI-only original V45 reviewed route-plan ledger restored before V52.');
+
+
 
 
 
