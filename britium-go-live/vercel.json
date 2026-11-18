@@ -55,7 +55,7 @@
     },
     {
       "source": "/supabase/:path*",
-      "destination": "https://dltavabvjwocknkyvwgz.supabase.co/:path*"
+      "destination": "https://hgijdyfwmvskchsruknp.supabase.co/:path*"
     },
     {
       "source": "/login",
