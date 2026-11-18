@@ -644,6 +644,34 @@ writeFileSync(territoryMigration,
   'REVOKE ALL ON FUNCTION public.be_employee_can_access_territory(uuid,text,text,text) FROM PUBLIC, anon;\n');
 console.log('CI-only original V13 territory evaluator and normalizer restored before V35.');
 
+// Rider V50 expects the original V46 route settings and its safe defaults.
+// Restore its exact original table and seed in disposable CI; do not omit
+// the geofence checks or alter the newer V50 radius adjustment.
+const riderV46Archive = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/rider_delivery_execution_v46.sql'), 'utf8');
+const riderV46SettingsBegin = riderV46Archive.indexOf(
+  'create table if not exists public.be_rider_route_settings_v46 (');
+const riderV46SettingsEnd = riderV46Archive.indexOf(
+  'create table if not exists public.be_rider_route_runs_v46 (',
+  riderV46SettingsBegin);
+if (riderV46SettingsBegin < 0 || riderV46SettingsEnd < riderV46SettingsBegin) {
+  throw new Error('Original rider V46 settings schema is missing');
+}
+const riderV46SettingsSql = riderV46Archive.slice(
+  riderV46SettingsBegin, riderV46SettingsEnd);
+if (!riderV46SettingsSql.includes("('head_office_start_radius_m', 1000") ||
+    !riderV46SettingsSql.includes("('delivery_arrival_radius_m', 1000") ||
+    !riderV46SettingsSql.includes('setting_key text primary key')) {
+  throw new Error('Historical rider V46 geofence settings unexpected');
+}
+writeFileSync(resolve(root, '20260917190226_uat308_rider_settings_v46_ci.sql'),
+  '-- Original V46 rider geofence settings, disposable CI only.\n' +
+  riderV46SettingsSql + '\n' +
+  'ALTER TABLE public.be_rider_route_settings_v46 ENABLE ROW LEVEL SECURITY;\n' +
+  'REVOKE ALL ON TABLE public.be_rider_route_settings_v46 FROM PUBLIC, anon, authenticated;\n');
+console.log('CI-only original rider V46 route settings restored before geofence V50.');
+
+
 
 
 
