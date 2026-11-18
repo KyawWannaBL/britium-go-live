@@ -720,6 +720,23 @@ writeFileSync(resolve(root,'20260919152130_uat308_supervisor_review_v43_ci.sql')
   '-- Original Supervisor V43 review ledger, disposable CI only.\n' + v43ReviewSql);
 console.log('CI-only original V43 approval and event tables restored before Supervisor V62.');
 
+// V63 Dispatch Command references the legacy Data Entry delivery_charges
+// column. Restore the catalog-verified nullable bigint, without inventing
+// charges or modifying existing parcel values.
+const dispatchV63Source = readFileSync(
+  resolve(root,'20260919163523_dispatch_command_v63.sql'),'utf8');
+if (!dispatchV63Source.includes('coalesce(p.delivery_charges,p.delivery_fee,0)')) {
+  throw new Error('V63 delivery-charge projection differs from historical source');
+}
+writeFileSync(resolve(root,'20260919163522_uat308_delivery_charges_ci.sql'),[
+  '-- CI-only historical Data Entry column; not a financial data backfill.',
+  'ALTER TABLE public.be_data_entry_parcel_details',
+  '  ADD COLUMN IF NOT EXISTS delivery_charges bigint;',
+  ''
+].join('\n'));
+console.log('CI-only catalog-verified delivery_charges column restored before V63.');
+
+
 
 
 
