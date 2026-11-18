@@ -615,6 +615,36 @@ writeFileSync(resolve(root, '20260914040606_uat308_original_employee_territory_v
   '-- Original V13 territory schema, disposable CI baseline only.\n' + territorySql);
 console.log('CI-only original V13 employee territory assignments restored before V35.');
 
+// V35 policies depend on the original V13 territory evaluator and its
+// normalization entrypoint. Restore the authentic policy function bodies,
+// retaining their auth.uid(), registry role and branch-scoped checks.
+const territoryNormalizerBegin = territoryArchive.indexOf(
+  'create or replace function public.be_normalize_territory_key(', territoryEnd);
+const territoryEvaluatorBegin = territoryArchive.indexOf(
+  'create or replace function public.be_employee_can_access_territory(', territoryNormalizerBegin);
+const territoryEvaluatorEnd = territoryArchive.indexOf(
+  'revoke all on function public.be_employee_can_access_territory(', territoryEvaluatorBegin);
+if (territoryNormalizerBegin < 0 || territoryEvaluatorBegin < territoryNormalizerBegin ||
+    territoryEvaluatorEnd < territoryEvaluatorBegin) {
+  throw new Error('Original V13 territory evaluator and normalizer not found');
+}
+const territoryEvaluatorSql = territoryArchive.slice(
+  territoryNormalizerBegin, territoryEvaluatorEnd);
+if (territoryEvaluatorSql.length < 1900 ||
+    !territoryEvaluatorSql.includes('auth.uid()') ||
+    !territoryEvaluatorSql.includes('be_employee_territory_assignments a') ||
+    !territoryEvaluatorSql.includes("a.scope_type='BRANCH'") ||
+    !territoryEvaluatorSql.includes('p_action')) {
+  throw new Error('Historical V13 access evaluator security checks changed');
+}
+const territoryMigration = resolve(root, '20260914040606_uat308_original_employee_territory_v13_ci.sql');
+writeFileSync(territoryMigration,
+  readFileSync(territoryMigration,'utf8') + '\n' +
+  territoryEvaluatorSql + '\n' +
+  'REVOKE ALL ON FUNCTION public.be_employee_can_access_territory(uuid,text,text,text) FROM PUBLIC, anon;\n');
+console.log('CI-only original V13 territory evaluator and normalizer restored before V35.');
+
+
 
 
 
