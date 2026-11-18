@@ -698,6 +698,29 @@ writeFileSync(resolve(root, '20260918174736_uat308_reviewed_route_plans_v45_ci.s
 ].join('\n'));
 console.log('CI-only original V45 reviewed route-plan ledger restored before V52.');
 
+// V62 Supervisor list compiles against the original V43 approval ledger.
+// Preserve the authentic review status check and event audit tables; do not
+// manufacture approved rows or weaken the Supervisor review gate.
+const v43Source = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/wayplan_supervisor_approval_v43.sql'), 'utf8');
+const v43Begin = v43Source.indexOf('create table if not exists public.be_wayplan_review_v43 (');
+const v43End = v43Source.indexOf(
+  'create or replace function public.be_wayplan_review_actor_v43(', v43Begin);
+if (v43Begin < 0 || v43End <= v43Begin) {
+  throw new Error('Original V43 review tables not found');
+}
+const v43ReviewSql = v43Source.slice(v43Begin,v43End);
+if (!v43ReviewSql.includes('be_wayplan_review_v43_status_check') ||
+    !v43ReviewSql.includes("'PENDING_REVIEW','APPROVED','REJECTED'") ||
+    !v43ReviewSql.includes('be_wayplan_review_events_v43') ||
+    !v43ReviewSql.includes('enable row level security')) {
+  throw new Error('Original V43 approval states or RLS unexpectedly changed');
+}
+writeFileSync(resolve(root,'20260919152130_uat308_supervisor_review_v43_ci.sql'),
+  '-- Original Supervisor V43 review ledger, disposable CI only.\n' + v43ReviewSql);
+console.log('CI-only original V43 approval and event tables restored before Supervisor V62.');
+
+
 
 
 
