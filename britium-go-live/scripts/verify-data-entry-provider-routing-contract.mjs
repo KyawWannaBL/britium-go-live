@@ -110,6 +110,13 @@ try {
   assert.match(geographyMigration, /'thongwa','thone gwa','thone-gwa','သုံးခွ'/);
   assert.match(geographyMigration, /v_provider := 'H\.TERMINAL DROP-OFF'/);
   assert.match(geographyMigration, /'AUNG_MINGALAR' then 3000/);
+  const tariffPage = await readFile(
+    new URL("../src/pages/TariffPage.tsx", import.meta.url), "utf8",
+  );
+  assert.match(tariffPage, /data-royal-tariff-missing="true"/, "missing Royal tariffs need a visible diagnostic");
+  assert.match(tariffPage, /setRoyalSearch\(name\)/, "the saved destination should remain visible after add");
+  assert.match(tariffPage, /Tariff was submitted but could not be verified/, "Royal tariff writes need read-back verification");
+  assert.match(tariffPage, /royalLookup/, "Royal tariff search must ignore slash and whitespace variants");
   assert.match(royalCommissionMigration, /ROYAL_PARTNER_NORMAL_TARIFF_15_PERCENT/);
   assert.match(royalCommissionMigration, /round\(v_tariff::numeric\*0\.15\)::bigint/);
   assert.match(royalCommissionMigration, /ROYAL_COMMISSION_TARIFF_NOT_FOUND/);

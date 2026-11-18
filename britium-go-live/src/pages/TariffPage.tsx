@@ -72,7 +72,7 @@ export default function TariffPage(){
   const [royalSearch,setRoyalSearch]=useState("");
   const [royalEdit,setRoyalEdit]=useState<any>(null);
   const [newRoyalName,setNewRoyalName]=useState("");
-  const [newRoyalRate,setNewRoyalRate]=useState("5000");
+  const [newRoyalRate,setNewRoyalRate]=useState("");
   const [newOperational,setNewOperational]=useState({
     township:"", zone:"Yangon", zoneCode:"YGN", tier:"STANDARD",
     baseFee:"4500", includedKg:"3", extraPerKg:"500", note:""
@@ -223,7 +223,7 @@ export default function TariffPage(){
     if(!canEdit){setMessage("Tariff edit permission required.");return;}
     const name=String(row.destination_name||"").trim();
     const rate=String(row.standard_rate_mmk??"").trim();
-    if(action!=="REMOVE"&&(!name||!/^\d+$/.test(rate))){setMessage("Enter a destination and a non-negative whole-number MMK rate.");return;}
+    if(action!=="REMOVE"&&(!name||!/^\d+$/.test(rate)||Number(rate)<=0)){setMessage("Enter a destination and its confirmed positive whole-number Royal Express rate. Do not reuse another provider\u0027s tariff.");return;}
     if(action==="REMOVE"&&!window.confirm("Deactivate Royal Express tariff for "+name+"?"))return;
     const key=action==="ADD"?name.toLowerCase().replace(/\s+/g,"-")+"-royal":row.destination_key;
     setSaving(true);setMessage("");
@@ -234,10 +234,22 @@ export default function TariffPage(){
       });
       if(error)throw error;
       if(data?.ok!==true)throw Error(data?.error||"Tariff change was not accepted by the backend.");
+      // A successful mutation is not enough: confirm the exact catalog row
+      // is visible to the authenticated operator before reporting success.
+      const { data: savedRows, error: readbackError } = await (supabase as any)
+        .from("be_data_entry_tariff_catalog")
+        .select("destination_key,destination_name,standard_rate_mmk,is_active,provider_code")
+        .eq("destination_key",key).eq("provider_code","ROYAL EXPRESS").limit(1);
+      if(readbackError)throw new Error("Tariff was submitted but could not be verified: "+readbackError.message);
+      const persisted=Array.isArray(savedRows)?savedRows[0]:null;
+      if(!persisted || Boolean(persisted.is_active)!==(action!=="REMOVE")
+         || (action!=="REMOVE" && (Number(persisted.standard_rate_mmk)!==Number(rate) || String(persisted.destination_name)!==name))){
+        throw new Error("Royal tariff was not confirmed in the live destination catalog. Refresh and check before trying again.");
+      }
       setRoyalEdit(null);
-      if(action==="ADD"){setNewRoyalName("");setNewRoyalRate("5000");}
+      if(action==="ADD"){setNewRoyalName("");setNewRoyalRate("");setRoyalSearch(name);}
       await load();
-      setMessage("Royal Express tariff "+(action==="REMOVE"?"deactivated":"saved")+" successfully.");
+      setMessage("Royal Express destination "+name+" "+(action==="REMOVE"?"deactivated":"saved and verified")+" at "+(action==="REMOVE"?"its prior":Number(rate).toLocaleString()+" MMK")+" in the live catalog.");
     }catch(e:any){setMessage(e?.message||"Royal Express tariff operation failed.");}
     finally{setSaving(false);}
   }
@@ -254,6 +266,13 @@ export default function TariffPage(){
   }
 
   useEffect(()=>{void load()},[]);
+
+  const royalLookup=(value:any)=>String(value||"").toLocaleLowerCase().replace(/[\\/\s\-()（）၊။]/g,"");
+  const searchedRoyal=useMemo(()=>{
+    const key=royalLookup(royalSearch);
+    if(!key)return royal;
+    return royal.filter(row=>royalLookup(row.destination_name+" "+row.destination_key).includes(key));
+  },[royal,royalSearch]);
 
   const filtered=useMemo(()=>{
     const q=search.trim().toLowerCase();if(!q)return rows;
@@ -295,12 +314,18 @@ export default function TariffPage(){
             placeholder="Destination" className="rounded-lg bg-white px-3 py-2 text-[#061524]"/>
           <input aria-label="New Royal tariff MMK" type="number" min="0" step="1" value={newRoyalRate}
             onChange={e=>setNewRoyalRate(e.target.value)} className="w-36 rounded-lg bg-white px-3 py-2 text-[#061524]"/>
-          <button type="button" disabled={saving||!newRoyalName.trim()} onClick={()=>void manageRoyal("ADD",{destination_name:newRoyalName,standard_rate_mmk:newRoyalRate})}
+          <button type="button" disabled={saving||!newRoyalName.trim()||!/^\d+$/.test(newRoyalRate)||Number(newRoyalRate)<=0} onClick={()=>void manageRoyal("ADD",{destination_name:newRoyalName,standard_rate_mmk:newRoyalRate})}
             className="rounded-lg bg-[#f6b84b] px-4 py-2 font-black text-[#061524] disabled:opacity-50">Add destination</button>
+        </div>}
+        {royalSearch.trim() && searchedRoyal.length===0 && <div data-royal-tariff-missing="true" className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
+          No saved Royal Express tariff matches “{royalSearch}”. An address/township alias alone does not create a payable Royal tariff.
+          {canEdit && <button type="button" className="ml-3 rounded-lg bg-[#f6b84b] px-3 py-2 font-black text-[#061524]" onClick={()=>{setNewRoyalName(royalSearch.trim());setMessage("Enter the confirmed Royal Express charge in MMK above, then click Add destination.");}}>
+            Prepare new Royal destination
+          </button>}
         </div>}
         <div className="max-h-[620px] overflow-auto"><table className="w-full min-w-[720px] text-left text-sm">
           <thead><tr className="text-[#f6b84b]"><th className="p-3">Destination</th><th className="p-3">Rate (MMK)</th><th className="p-3">Status</th><th className="p-3">Actions</th></tr></thead>
-          <tbody>{royal.filter(row=>(row.destination_name+" "+row.destination_key).toLowerCase().includes(royalSearch.toLowerCase())).map(row=>{
+          <tbody>{searchedRoyal.map(row=>{
             const selected=royalEdit?.destination_key===row.destination_key;
             const draft=selected?royalEdit:row;
             return <tr key={row.destination_key} className="border-t border-[#1a3a5c]">
