@@ -217,7 +217,7 @@ if (!merchantSettlementFieldsV200.includes('d.merchant_final_settlement_amount')
     !merchantSettlementFieldsV200.includes('d.settlement_direction')) {
   throw new Error('V200 canonical settlement field references changed');
 }
-writeFileSync(resolve(root,'20261007090835_uat308_settlement_fields_ci.sql'),
+writeFileSync(resolve(root,'20261007090834_uat308_settlement_fields_ci.sql'),
   '-- CI-only original nullable Data Entry settlement projection columns.\n' +
   'ALTER TABLE public.be_data_entry_parcel_details\n' +
   ' ADD COLUMN IF NOT EXISTS merchant_final_settlement_amount bigint,\n' +
