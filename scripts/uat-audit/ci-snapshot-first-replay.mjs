@@ -782,49 +782,16 @@ if (!tariffV122Source.includes(
     'public.be_financial_v2_normalize_township_text_v61_7(')) {
   throw new Error('V122 township normalizer dependency changed');
 }
-writeFileSync(resolve(root, '20260923010244_uat308_township_normalizer_v61_7_ci.sql'), [
-  '-- Original immutable V61.7 township text normalizer (CI only).',
+const originalNormalizerSql = [
+  '-- Original V61.7 immutable normalizer, disposable CI only.',
   'CREATE OR REPLACE FUNCTION public.be_financial_v2_normalize_township_text_v61_7(p_value text)',
   'RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE',
   "SET search_path TO 'pg_catalog'",
-  'AS $function
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
-
-console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
-,
-  "  SELECT btrim(regexp_replace(regexp_replace(lower(coalesce(p_value,'')),",
-  "    '[[:punct:]]+', ' ', 'g'), '[[:space:]]+', ' ', 'g'));",
-  '$function$;',
-  ''
-].join('\n'));
+  'AS $function$',
+  " SELECT btrim(regexp_replace(regexp_replace(lower(coalesce(p_value,\'\')), \'[[:punct:]]+\', \' \', \'g\'), \'[[:space:]]+\', \' \', \'g\'));",
+  '$function$;'
+].join(String.fromCharCode(10));
+writeFileSync(resolve(root, '20260923010244_uat308_township_normalizer_v61_7_ci.sql'), originalNormalizerSql);
 console.log('CI-only authentic V61.7 Yangon township normalizer restored before V122.');
 
 
