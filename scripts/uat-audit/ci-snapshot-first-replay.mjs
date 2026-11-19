@@ -944,6 +944,29 @@ writeFileSync(resolve(root,'20260925194038_uat308_original_dispatch_scan_ci.sql'
   legacyDispatchScanner);
 console.log('CI-only catalog-authentic dispatch scan restored before return snapshot.');
 
+// Sep 25 recursive-callback patch requires the authentic pre-patch V39
+// failure writer. Pull its original implementation from the archived V39
+// operational SQL (no generated fallback or disabled callback).
+const deliveryFailureV39Archive = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql'),'utf8');
+const failureFnStart = deliveryFailureV39Archive.indexOf(
+  'create or replace function public.be_record_delivery_failure_v39(');
+const failureFnEnd = deliveryFailureV39Archive.indexOf('\n$;',failureFnStart);
+if (failureFnStart < 0 || failureFnEnd <= failureFnStart) {
+  throw new Error('Historical V39 delivery failure writer not found');
+}
+const failureFnSql = deliveryFailureV39Archive.slice(failureFnStart,failureFnEnd+4);
+if (!failureFnSql.includes("  if to_regprocedure('public.be_driver_update_delivery_status(text,text,text,text)') is not null then") ||
+    !failureFnSql.includes("  if to_regclass('public.be_portal_pickup_request_items') is not null") ||
+    !failureFnSql.includes('be_delivery_attempt_events_v39') ||
+    !failureFnSql.includes('p_operation_id text default null')) {
+  throw new Error('Historical V39 failure writer and idempotency guard changed');
+}
+writeFileSync(resolve(root,'20260925205229_uat308_original_delivery_failure_v39_ci.sql'),
+  '-- Authentic pre-patch V39 failure writer; disposable CI only.\n' + failureFnSql + '\n');
+console.log('CI-only historical failure event writer restored before recursive-callback repair.');
+
+
 
 
 
