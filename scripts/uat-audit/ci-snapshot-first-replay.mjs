@@ -168,6 +168,29 @@ writeFileSync(resolve(root,'20260930054449_uat308_commission_event_fields_ci.sql
   ';\n');
 console.log('CI-only source key, merchant and referral descriptors restored before commission V1; no commission rows.');
 
+const originalRiderV46 = readFileSync(resolve(
+  'britium-go-live/britium-current-ui-fixed/rider_delivery_execution_v46.sql'),'utf8');
+const v46StateAndEvents = takeSection(originalRiderV46,
+  'create table if not exists public.be_rider_route_stop_state_v46 (',
+  'alter table public.be_rider_route_settings_v46 enable row level security;',
+  'Rider V46 stop state and route event ledgers');
+const v46ReturnMigration = readFileSync(resolve(root,
+  '20261007082151_rto_after_three_failed_attempts.sql'),'utf8');
+if (!v46StateAndEvents.includes('be_rider_route_stop_state_v46_status_check') ||
+    !v46StateAndEvents.includes('be_rider_route_events_v46_operation_uidx') ||
+    !v46StateAndEvents.includes('primary key (wayplan_id, delivery_way_id)') ||
+    !v46ReturnMigration.includes('update public.be_rider_route_stop_state_v46')) {
+  throw new Error('Original Rider V46 state/event constraints or RTO dependency changed');
+}
+writeFileSync(resolve(root,'20261007082150_uat308_rider_v46_stop_state_ci.sql'),
+  '-- Original Rider V46 state and event ledger, disposable CI only.\n' +
+  v46StateAndEvents +
+  '\nALTER TABLE public.be_rider_route_stop_state_v46 ENABLE ROW LEVEL SECURITY;\n' +
+  'ALTER TABLE public.be_rider_route_events_v46 ENABLE ROW LEVEL SECURITY;\n' +
+  'REVOKE ALL ON TABLE public.be_rider_route_stop_state_v46, public.be_rider_route_events_v46 FROM PUBLIC, anon, authenticated;\n');
+console.log('CI-only original Rider V46 route stop state and event tables restored before RTO V1.');
+
+
 
 
 
