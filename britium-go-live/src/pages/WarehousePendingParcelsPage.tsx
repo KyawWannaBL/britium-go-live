@@ -73,6 +73,10 @@ export default function WarehousePendingParcelsPage(){
   const [to,setTo]=useState("");
   const [exporting,setExporting]=useState(false);
   const [exportError,setExportError]=useState("");
+  const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
+  const [handoffBusy,setHandoffBusy]=useState(false);
+  const [handoffNotice,setHandoffNotice]=useState("");
+  const [handoffErrors,setHandoffErrors]=useState<string[]>([]);
 
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
@@ -127,6 +131,55 @@ export default function WarehousePendingParcelsPage(){
       return !q || [r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
     });
   },[pending,query,merchant,type,age,from,to,dateBasis]);
+
+  // A Warehouse READY handoff is not a dispatch scan: Supervisor release and
+  // physical dispatch scanning remain mandatory for every provider.
+  const selectableReceived=useMemo(()=>visible.filter((r:any)=>
+    txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase()==="RECEIVED"
+    && r._pendingType==="NEW INBOUND"
+    && !r.active_wayplan_id
+    && r.branch_receipt_current!==false
+  ),[visible]);
+  const readyIds=useMemo(()=>new Set(selectableReceived.map((r:any)=>txt(r.delivery_way_id||r.waybill_no)).filter(Boolean)),[selectableReceived]);
+  const selectedIds=useMemo(()=>Object.keys(selectedWays).filter(id=>selectedWays[id]&&readyIds.has(id)),[selectedWays,readyIds]);
+
+  const handoffReceived=async()=>{
+    if(handoffBusy || loading || !selectedIds.length) return;
+    const ids=selectedIds.slice(0,100);
+    if(!window.confirm("Mark "+ids.length+" physically received parcel(s) WAREHOUSE_READY and send them to Wayplan Command? This does not dispatch or confirm third-party delivery. Existing authorization and scan gates remain enforced."))return;
+    setHandoffBusy(true);
+    setHandoffErrors([]);
+    setHandoffNotice("");
+    const done:string[]=[];
+    const failures:string[]=[];
+    try {
+      for(const id of ids){
+        try{
+          const {data,error}=await (supabase as any).rpc("be_warehouse_mark_delivery_ready_v150",{p_delivery_way_id:id});
+          if(error)throw error;
+          if(data?.ok!==true)throw new Error(data?.message||data?.error||"Not eligible");
+          done.push(id);
+        }catch(e:any){
+          failures.push(id+": "+(e?.message||"Readiness confirmation failed"));
+        }
+      }
+      setSelectedWays(previous=>{
+        const next={...previous};
+        done.forEach(id=>delete next[id]);
+        return next;
+      });
+      if(done.length){
+        // The existing Command Center validates that these IDs are actually
+        // present in its authorized region queue before preselecting them.
+        window.sessionStorage.setItem("be_wayplan_handoff_ids_v150",JSON.stringify(done));
+        window.sessionStorage.setItem("be_wayplan_handoff_notice_v150",
+          done.length+" received parcel(s) staged for Wayplan review; assign the correct service provider and follow Supervisor/dispatch scan steps.");
+      }
+      setHandoffErrors(failures);
+      setHandoffNotice(done.length+" of "+ids.length+" parcel(s) marked ready. "+(failures.length?"Review rejected IDs before retrying.":"Open Wayplan Command to review the batch alongside pickup ways."));
+      await load(false);
+    }finally{setHandoffBusy(false);}
+  };
 
   const exportExcel=async()=>{
     if(exporting||!visible.length||Boolean(from&&to&&from>to))return;
@@ -246,13 +299,32 @@ export default function WarehousePendingParcelsPage(){
         <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
         {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
+          <div className="flex-1 text-sm text-slate-200">
+            <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
+            <div className="text-xs text-slate-300">Select physically received parcels only. Return/replan cases require the correct return workflow. Provider pickup or transfer is recorded through the approved Wayplan and a real dispatch scan, not by this action.</div>
+            <div className="mt-1 text-xs">{selectedIds.length} selected · {selectableReceived.length} eligible in this filtered view · maximum 100 per batch</div>
+          </div>
+          <button type="button" onClick={()=>setSelectedWays(prev=>{
+            const all=selectableReceived.slice(0,100).every((r:any)=>prev[txt(r.delivery_way_id||r.waybill_no)]);
+            const next={...prev};
+            selectableReceived.forEach((r:any)=>delete next[txt(r.delivery_way_id||r.waybill_no)]);
+            if(!all) selectableReceived.slice(0,100).forEach((r:any)=>{next[txt(r.delivery_way_id||r.waybill_no)]=true});
+            return next;
+          })} className="rounded border border-slate-500 px-3 py-2 text-xs font-bold">Select / clear eligible</button>
+          <button type="button" disabled={handoffBusy||loading||!selectedIds.length} onClick={()=>void handoffReceived()} className="rounded bg-amber-500 px-4 py-2 font-bold text-slate-950 disabled:opacity-50">{handoffBusy?"Staging...":"Mark Ready for Wayplan"}</button>
+          <button type="button" disabled={handoffBusy} onClick={()=>{window.location.hash="/wayplan-command"}} className="rounded bg-blue-600 px-4 py-2 font-bold text-white">Open Wayplan Command</button>
+        </div>
+        {handoffNotice&&<p role="status" className="mb-2 text-sm text-amber-200">{handoffNotice}</p>}
+        {handoffErrors.length>0&&<div role="alert" className="mb-3 rounded border border-red-700 p-2 text-xs text-red-200">Rejected ({handoffErrors.length}): {handoffErrors.slice(0,8).join("; ")}{handoffErrors.length>8?" …":""}</div>}
         <div className="overflow-auto">
           <table className="w-full min-w-[1450px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
-              {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
+              {["Select","Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
               {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
+                <td className="p-2"><input aria-label={"Select "+txt(r.delivery_way_id||r.waybill_no)} type="checkbox" disabled={!readyIds.has(txt(r.delivery_way_id||r.waybill_no))||handoffBusy} checked={Boolean(selectedWays[txt(r.delivery_way_id||r.waybill_no)])&&readyIds.has(txt(r.delivery_way_id||r.waybill_no))} onChange={e=>setSelectedWays(prev=>({...prev,[txt(r.delivery_way_id||r.waybill_no)]:e.target.checked}))}/></td>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
                 <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
@@ -266,7 +338,7 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
               </tr>)}
-              {!visible.length && <tr><td colSpan={12} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
+              {!visible.length && <tr><td colSpan={13} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
