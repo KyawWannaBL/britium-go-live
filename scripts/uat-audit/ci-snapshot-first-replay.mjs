@@ -342,6 +342,25 @@ ALTER TABLE public.be_pickup_parcel_verifications
 `);
 console.log('CI-only original proof review fields installed before reason-only photo skip V1; no waivers created.');
 
+const allocatorMigrationPath=resolve(root,'20261023043151_registration_save_canonical_allocator.sql');
+const originalAllocatorMigration=readFileSync(allocatorMigrationPath,'utf8');
+const oldAllocatorGuard="IF position(old_assignment in f)=0 THEN RAISE EXCEPTION 'Unexpected function definition: %',fn; END IF;\n    EXECUTE replace(f,old_assignment,new_assignment);";
+if (originalAllocatorMigration.split(oldAllocatorGuard).length!==2 ||
+    !originalAllocatorMigration.includes("be_data_entry_financial_v2_save_v13_2_unbounded") ||
+    !originalAllocatorMigration.includes("be_allocate_delivery_way_id")) {
+  throw new Error('Canonical allocator V216 exact baseline or safety guard changed');
+}
+const idempotentAllocatorGuard=`IF position(old_assignment in f)>0 THEN
+      EXECUTE replace(f,old_assignment,new_assignment);
+    ELSIF position(new_assignment in f)>0 THEN
+      RAISE NOTICE 'CI replay: canonical allocator already present in %',fn;
+    ELSE
+      RAISE EXCEPTION 'Unexpected function definition or unsafe way ID allocation: %',fn;
+    END IF;`;
+writeFileSync(allocatorMigrationPath,originalAllocatorMigration.replace(oldAllocatorGuard,idempotentAllocatorGuard));
+console.log('V216 allocator exact post-patch is idempotent in disposable CI only; noncanonical/unknown expressions still fail.');
+
+
 
 
 
