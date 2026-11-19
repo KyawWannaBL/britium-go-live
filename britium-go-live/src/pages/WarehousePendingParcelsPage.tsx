@@ -66,6 +66,7 @@ export default function WarehousePendingParcelsPage(){
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
   const [merchant,setMerchant]=useState("ALL");
+  const [provider,setProvider]=useState("ALL");
   const [type,setType]=useState("ALL");
   const [age,setAge]=useState("ALL");
   const [dateBasis,setDateBasis]=useState("INBOUND");
@@ -81,7 +82,13 @@ export default function WarehousePendingParcelsPage(){
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
     try{
-      const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
+      // Enriched provider data is optional during phased UAT rollout. The old
+      // authorized Warehouse snapshot remains the read-only fallback.
+      let result=await (supabase as any).rpc("be_warehouse_provider_transfer_preview_v1");
+      if(result.error?.code==="PGRST202" || result.error?.code==="42883"){
+        result=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
+      }
+      const {data,error}=result;
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
       setMessage("");
@@ -112,10 +119,12 @@ export default function WarehousePendingParcelsPage(){
   const failedPending=useMemo(()=>pending.filter((r:any)=>r._pendingType!=="NEW INBOUND"),[pending]);
 
   const merchants=useMemo(()=>Array.from(new Set(pending.map((r:any)=>txt(r.merchant_name||r.merchant_code)).filter(Boolean))).sort(),[pending]);
+  const providers=useMemo(()=>Array.from(new Set(pending.map((r:any)=>txt(r.service_provider_code)).filter(Boolean))).sort(),[pending]);
   const visible=useMemo(()=>{
     const q=query.trim().toLowerCase();
     return pending.filter((r:any)=>{
       if(merchant!=="ALL" && txt(r.merchant_name||r.merchant_code)!==merchant) return false;
+      if(provider!=="ALL" && txt(r.service_provider_code)!==provider) return false;
       if(type!=="ALL" && r._pendingType!==type) return false;
       if(age==="OVERDUE" && !r._overdue) return false;
       if(age==="CURRENT" && r._overdue) return false;
@@ -130,7 +139,7 @@ export default function WarehousePendingParcelsPage(){
       }
       return !q || [r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
     });
-  },[pending,query,merchant,type,age,from,to,dateBasis]);
+  },[pending,query,merchant,provider,type,age,from,to,dateBasis]);
 
   // A Warehouse READY handoff is not a dispatch scan: Supervisor release and
   // physical dispatch scanning remain mandatory for every provider.
@@ -217,7 +226,7 @@ export default function WarehousePendingParcelsPage(){
         });
         return {
           "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
-          "Merchant code":excelText(r.merchant_code),"Recipient":excelText(r.recipient_name),
+          "Merchant code":excelText(r.merchant_code),"Service provider":excelText(r.service_provider_code),"Provider lane":excelText(r.service_lane),"Planning gate":excelText(r.provider_planning_gate),"Recipient":excelText(r.recipient_name),
           "Recipient phone":excelText(r.recipient_phone||r.phone_number),
           "Township":excelText(r.delivery_township),"Pending type":r._pendingType,
           "Overdue 48h":r._overdue?"YES":"NO","Age hours":Number(r._ageHours.toFixed(1)),
@@ -236,7 +245,7 @@ export default function WarehousePendingParcelsPage(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
         ["Report","Warehouse pending parcels"],["Exported (Myanmar time)",fmt(new Date())],
         ["Date basis",dateBasis==="RETURN"?"Last return scan":"Inbound scan"],["Date from",from||"All"],["Date to",to||"All"],
-        ["Merchant",excelText(merchant)],["Pending category",type],["Age",age],
+        ["Merchant",excelText(merchant)],["Service provider",excelText(provider)],["Pending category",type],["Age",age],
         ["Search",excelText(query)||"All"],["Number of parcels",items.length],
         ["Timeline scope","Only event timestamps supplied by the warehouse snapshot"]
       ]),"Filters");
@@ -296,14 +305,15 @@ export default function WarehousePendingParcelsPage(){
           </div>
         </div>
 
-        <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+        <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-8">
           <label className="text-xs text-slate-300">Date field<select aria-label="Date field" value={dateBasis} onChange={e=>setDateBasis(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="INBOUND">Inbound scan</option><option value="RETURN">Last return scan</option></select></label>
           <label className="text-xs text-slate-300">From<input aria-label="Inbound from" type="date" value={from} max={to||undefined} onChange={e=>setFrom(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"/></label>
           <label className="text-xs text-slate-300">To<input aria-label="Inbound to" type="date" value={to} min={from||undefined} onChange={e=>setTo(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"/></label>
           <label className="text-xs text-slate-300">Merchant<select aria-label="Merchant" value={merchant} onChange={e=>setMerchant(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All merchants</option>{merchants.map(m=><option key={m} value={m}>{m}</option>)}</select></label>
+          <label className="text-xs text-slate-300">Provider<select aria-label="Service provider" value={provider} onChange={e=>setProvider(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All providers</option>{providers.map(p=><option key={p} value={p}>{p}</option>)}</select></label>
           <label className="text-xs text-slate-300">Pending category<select aria-label="Pending category" value={type} onChange={e=>setType(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All</option><option value="NEW INBOUND">New inbound</option><option value="FAILED RETURN / REPLAN">Failed return / replan</option></select></label>
           <label className="text-xs text-slate-300">Pending age<select aria-label="Pending age" value={age} onChange={e=>setAge(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All</option><option value="OVERDUE">48+ hours</option><option value="CURRENT">Under 48 hours</option></select></label>
-          <div className="flex items-end gap-2"><button type="button" className="rounded border border-slate-400 p-2" onClick={()=>{setQuery("");setMerchant("ALL");setType("ALL");setAge("ALL");setDateBasis("INBOUND");setFrom("");setTo("");}}>Clear</button><button type="button" onClick={()=>void exportExcel()} disabled={loading||exporting||!visible.length||Boolean(from&&to&&from>to)} className="flex-1 rounded bg-emerald-600 p-2 font-bold disabled:opacity-50"><Download className="mr-1 inline h-4 w-4"/>{exporting?"Exporting":"Export Excel"}</button></div>
+          <div className="flex items-end gap-2"><button type="button" className="rounded border border-slate-400 p-2" onClick={()=>{setQuery("");setMerchant("ALL");setProvider("ALL");setType("ALL");setAge("ALL");setDateBasis("INBOUND");setFrom("");setTo("");}}>Clear</button><button type="button" onClick={()=>void exportExcel()} disabled={loading||exporting||!visible.length||Boolean(from&&to&&from>to)} className="flex-1 rounded bg-emerald-600 p-2 font-bold disabled:opacity-50"><Download className="mr-1 inline h-4 w-4"/>{exporting?"Exporting":"Export Excel"}</button></div>
         </div>
         <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
@@ -329,7 +339,7 @@ export default function WarehousePendingParcelsPage(){
         <div className="overflow-auto">
           <table className="w-full min-w-[1450px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
-              {["Select","Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
+              {["Select","Alert","Delivery Way","Pickup","Type","Merchant","Provider","Planning gate","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
               {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
@@ -339,6 +349,8 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{txt(r.pickup_id)}</td>
                 <td className="p-2"><span className="rounded border border-slate-700 px-2 py-1 text-xs font-bold">{r._pendingType}</span></td>
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
+                <td className="p-2">{txt(r.service_provider_code)||"Not enriched"}</td>
+                <td className="max-w-[200px] p-2 text-xs">{txt(r.provider_planning_gate)||"Provider review"}</td>
                 <td className="p-2">{txt(r.recipient_name)}<div className="text-xs text-slate-400">{txt(r.recipient_phone || r.phone_number)}</div></td>
                 <td className="p-2">{txt(r.delivery_township)}</td>
                 <td className="p-2">{fmt(r.inbound_scan_at)}</td>
@@ -347,7 +359,7 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
               </tr>)}
-              {!visible.length && <tr><td colSpan={13} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
+              {!visible.length && <tr><td colSpan={15} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
