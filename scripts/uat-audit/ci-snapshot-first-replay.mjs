@@ -794,6 +794,48 @@ const originalNormalizerSql = [
 writeFileSync(resolve(root, '20260923010244_uat308_township_normalizer_v61_7_ci.sql'), originalNormalizerSql);
 console.log('CI-only authentic V61.7 Yangon township normalizer restored before V122.');
 
+// September V122 approved tariff verification relies on the production
+// township aliases for Thanlyin / Seikgyikanaungto (including Burmese).
+// Older replayed lookup predated these aliases. Mirror only the three
+// verified canonical township keys; preserve all other original lookup
+// behavior and do not insert or modify any parcel tariff amounts.
+const approvedLookupArchive = readFileSync(resolve(root,
+  '20260911010636_optimize_approved_tariff_alias_lookup.sql'),'utf8');
+const approvedLookupHeader =
+  'create or replace function public.be_approved_tariff_lookup_key(p_value text)';
+const approvedLookupStart = approvedLookupArchive.indexOf(approvedLookupHeader);
+const approvedLookupEnd = approvedLookupArchive.indexOf('end $fn$;',approvedLookupStart);
+if (approvedLookupStart < 0 || approvedLookupEnd <= approvedLookupStart ||
+    approvedLookupArchive.indexOf(approvedLookupHeader,approvedLookupStart+1)!==-1) {
+  throw new Error('Original optimized approved tariff lookup definition unavailable');
+}
+const originalApprovedLookup = approvedLookupArchive.slice(
+  approvedLookupStart,approvedLookupEnd+'end $fn$;'.length);
+if (!originalApprovedLookup.includes('matched:=') ||
+    !originalApprovedLookup.includes('be_financial_v2_township_key_v61_4_1')) {
+  throw new Error('Original approved tariff lookup fallback unexpectedly changed');
+}
+const approvedAliasPrelude = [
+  'begin',
+  " if lower(btrim(coalesce(p_value,''))) in ('seikgyikanaungto','ဆိပ်ကြီးခနောင်တို') then",
+  "   return 'MMR013031';",
+  ' end if;',
+  " if lower(btrim(coalesce(p_value,''))) = 'thanlyin' then",
+  "   return 'MMR013023';",
+  ' end if;'
+].join(String.fromCharCode(10));
+const approvedLookupWithAliases = originalApprovedLookup.replace(
+  'begin',approvedAliasPrelude);
+if (approvedLookupWithAliases === originalApprovedLookup) {
+  throw new Error('Approved tariff lookup compatibility prelude not installed');
+}
+writeFileSync(resolve(root,
+  '20260923010244_uat309_verified_yangon_alias_compat_ci.sql'),
+  '-- Disposable CI only: verified production township codes, no prices.' +
+  String.fromCharCode(10) + approvedLookupWithAliases + String.fromCharCode(10));
+console.log('CI-only verified township-code compatibility installed before V122.');
+
+
 
 
 
