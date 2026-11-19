@@ -196,6 +196,22 @@ writeFileSync(resolve(root,'20261007082150_uat308_rider_v46_stop_state_ci.sql'),
   'REVOKE ALL ON TABLE public.be_rider_route_stop_state_v46, public.be_rider_route_events_v46 FROM PUBLIC, anon, authenticated;\n');
 console.log('CI-only original Rider V46 route stop state and event tables restored before RTO V1.');
 
+const settlementBatchFixture = resolve('scripts/uat-audit/fixtures/finance_settlement_batches_v3_ci_bootstrap.sql');
+const settlementBatchSql = readFileSync(settlementBatchFixture,'utf8');
+const merchantSettlementV200 = readFileSync(resolve(root,
+  '20261007090836_merchant_settlement_live_v200.sql'),'utf8');
+if (!settlementBatchSql.includes('be_finance_settlement_batches_v3_status_check') ||
+    !settlementBatchSql.includes('be_finance_settlement_batches_v3_payment_status_check') ||
+    !settlementBatchSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !settlementBatchSql.includes('REVOKE ALL ON TABLE public.be_finance_settlement_batches_v3') ||
+    !merchantSettlementV200.includes('references public.be_finance_settlement_batches_v3(id)')) {
+  throw new Error('Merchant settlement batch schema or V200 FK contract changed');
+}
+copyFileSync(settlementBatchFixture,
+  resolve(root,'20261007090835_uat308_finance_settlement_batches_v3_ci.sql'));
+console.log('CI-only original Finance settlement batch ledger restored before V200; no payments or approvals created.');
+
+
 
 
 
