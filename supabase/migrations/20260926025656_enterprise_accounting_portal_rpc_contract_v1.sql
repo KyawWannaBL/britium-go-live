@@ -18,7 +18,7 @@ begin
   v_post := public.be_accounting_post_event_v1(p_event_id);
   return v_post||jsonb_build_object('review',v_review);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_balance_sheet_v1(p_as_of date)
@@ -68,7 +68,7 @@ AS $function$
       'difference',(select assets-liabilities-equity from s)-(select current_earnings from pnl),
       'rows',coalesce((select jsonb_agg(to_jsonb(x) order by account_code) from x),'[]'::jsonb)
     ) end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_general_ledger_v1(p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date, p_account_code text DEFAULT NULL::text, p_search text DEFAULT NULL::text, p_limit integer DEFAULT 1000)
@@ -107,7 +107,7 @@ AS $function$
         ) q
       ),'[]'::jsonb)
     ) end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_profit_loss_v1(p_from date, p_to date)
@@ -145,7 +145,7 @@ AS $function$
       'gross_profit',(select revenue-cogs from s),'net_profit',(select revenue-cogs-opex from s),
       'rows',coalesce((select jsonb_agg(to_jsonb(x) order by account_code) from x),'[]'::jsonb)
     ) end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_review_event_v1(p_event_id uuid, p_decision text, p_note text DEFAULT NULL::text)
@@ -214,7 +214,7 @@ begin
 
   return jsonb_build_object('ok',true,'code',v_status,'event_id',v_event.id,'review_status',v_status);
 end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_review_queue_v1(p_from date DEFAULT NULL::date, p_to date DEFAULT NULL::date, p_status text DEFAULT NULL::text, p_limit integer DEFAULT 500)
@@ -251,7 +251,7 @@ AS $function$
         ) q
       ),'[]'::jsonb)
     ) end;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.be_accounting_submit_finance_daily_v1(p_entry_date date, p_department_code text, p_delivery_fees_collected numeric, p_cod_handling_fees numeric, p_surcharges numeric, p_rider_commissions_accrued numeric, p_fuel_and_tolls_spent numeric, p_packaging_supplies_spent numeric, p_petty_cash_expenses numeric, p_cod_cash_collected_in_hand numeric, p_accounts_receivable_invoiced numeric, p_accounts_payable_incurred numeric, p_funding_account_code text, p_metadata jsonb DEFAULT '{}'::jsonb)
@@ -535,7 +535,7 @@ begin
     'locked',true,'debit',v_total_debit,'credit',v_total_credit
   );
 end;
-$function$
+$function$;
 
 
 
