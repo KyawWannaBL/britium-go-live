@@ -5,6 +5,10 @@ import { supabase } from "@/integrations/supabase/client";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
 const txt = (v:any) => String(v ?? "").trim();
+const excelText=(v:any)=>{
+  const value=txt(v);
+  return /^[\\s\\u0000-\\u001f]*[=+@-]/.test(value) ? String.fromCharCode(39)+value : value;
+};
 
 function hoursSince(raw:any){
   if(!raw) return 0;
@@ -130,8 +134,8 @@ export default function WarehousePendingParcelsPage(){
       const XLSX=await import("xlsx");
       const events:any[]=[];
       const items=visible.map((r:any)=>{
-        const way=txt(r.delivery_way_id||r.waybill_no);
-        const merchantName=txt(r.merchant_name||r.merchant_code);
+        const way=excelText(r.delivery_way_id||r.waybill_no);
+        const merchantName=excelText(r.merchant_name||r.merchant_code);
         const timestamps:[string,string][]=[
           ["Inbound scan","inbound_scan_at"],["Dispatch scan","dispatch_scan_at"],
           ["Last dispatch","last_dispatch_scan_at"],["Return attempt 1","return_scan_1_at"],
@@ -160,8 +164,8 @@ export default function WarehousePendingParcelsPage(){
       XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
         ["Report","Warehouse pending parcels"],["Exported (Myanmar time)",fmt(new Date())],
         ["Inbound from",from||"All"],["Inbound to",to||"All"],
-        ["Merchant",merchant],["Pending category",type],["Age",age],
-        ["Search",query||"All"],["Number of parcels",items.length],
+        ["Merchant",excelText(merchant)],["Pending category",type],["Age",age],
+        ["Search",excelText(query)||"All"],["Number of parcels",items.length],
         ["Timeline scope","Only event timestamps supplied by the warehouse snapshot"]
       ]),"Filters");
       XLSX.writeFile(wb,"Warehouse_Pending_"+new Date().toISOString().slice(0,10)+".xlsx");
