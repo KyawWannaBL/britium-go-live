@@ -923,7 +923,7 @@ if (!legacyWarehouseReturnScan.includes('be_warehouse_return_scan_v39_legacy_202
       'revoke all on function public.be_warehouse_return_scan_v39_legacy_20260823(')) {
   throw new Error('Historical return-scan function or security checks changed');
 }
-writeFileSync(resolve(root,'20260925194040_uat309_original_warehouse_return_scan_ci.sql'),
+writeFileSync(resolve(root,'20260925194039_uat309_original_warehouse_return_scan_ci.sql'),
   legacyWarehouseReturnScan);
 console.log('CI-only original warehouse return-scan restored before V39 return snapshot.');
 
