@@ -387,6 +387,33 @@ copyFileSync(octoberEvidenceViewFixture,
   resolve(root,'20261024092929_uat308_october_dispatch_evidence_views_ci.sql'));
 console.log('CI-only production-authentic October settlement review and dispatch evidence views restored before hybrid attestation.');
 
+const mandalayOwnerTariffFile=resolve(root,'20261029191139_mandalay_explicit_area_rate_selection.sql');
+const mandalayOwnerTariffOriginal=readFileSync(mandalayOwnerTariffFile,'utf8');
+const mandalayTariffSource='6487f3c11495166cdf2849113b91db0e8dc540eaf9a17a6e312c38e32dfcbcdb';
+if (!mandalayOwnerTariffOriginal.includes("Expected 168 owner-confirmed staged Mandalay rates") ||
+    !mandalayOwnerTariffOriginal.includes("owner_rate_confirmation'='CONFIRMED'") ||
+    !mandalayOwnerTariffOriginal.includes(mandalayTariffSource) ||
+    !mandalayOwnerTariffOriginal.includes('ACTIVE_MANUAL_SELECTION') ||
+    !mandalayOwnerTariffOriginal.includes('be_approved_tariff_lookup_key')) {
+  throw new Error('Mandalay owner-approved rate activation contract changed; do not skip');
+}
+writeFileSync(mandalayOwnerTariffFile,`-- DISPOSABLE CI-ONLY schema rehearsal. Original owner-approved rate activation retained in Git.
+-- This guard refuses to bypass ANY staged/confirmed rate or import the owner's 168 approved tariffs.
+DO $uat308_mdy$
+DECLARE v_staged bigint;
+BEGIN
+  SELECT count(*) INTO v_staged
+  FROM public.tariff_master
+  WHERE metadata->>'source_sha256'='6487f3c11495166cdf2849113b91db0e8dc540eaf9a17a6e312c38e32dfcbcdb';
+  IF v_staged <> 0 THEN
+    RAISE EXCEPTION 'Refusing CI-only data activation exception: % Mandalay staged rates exist',v_staged;
+  END IF;
+  RAISE NOTICE 'UAT308: Mandalay owner-approved activation not executed: zero staged rates in empty-schema CI. Original migration must be executed with 168 owner-confirmed rows in data-bearing UAT.';
+END $uat308_mdy$;
+`);
+console.log('CI-only Mandalay owner-approved tariff data activation skipped with zero-stage fail-closed guard; original retained.');
+
+
 
 
 
