@@ -830,7 +830,7 @@ if (approvedLookupWithAliases === originalApprovedLookup) {
   throw new Error('Approved tariff lookup compatibility prelude not installed');
 }
 writeFileSync(resolve(root,
-  '20260923010244_uat309_verified_yangon_alias_compat_ci.sql'),
+  '20260923010243_uat309_verified_yangon_alias_compat_ci.sql'),
   '-- Disposable CI only: verified production township codes, no prices.' +
   String.fromCharCode(10) + approvedLookupWithAliases + String.fromCharCode(10));
 console.log('CI-only verified township-code compatibility installed before V122.');
