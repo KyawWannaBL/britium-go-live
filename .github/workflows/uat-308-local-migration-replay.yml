@@ -56,11 +56,16 @@ jobs:
           import { readFileSync, writeFileSync } from 'node:fs';
           const file = 'supabase/config.toml';
           let config = readFileSync(file, 'utf8');
+          const runId = Number(process.env.GITHUB_RUN_ID);
+          if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error('GITHUB_RUN_ID missing');
+          const databasePort = 40000 + runId % 7000;
+          const shadowPort = databasePort + 8000;
+          const poolerPort = databasePort + 16000;
           const changes = [
             [/^project_id = "branch_office_nav_fixes"$/m, 'project_id = "uat308_ci_replay"'],
-            [/^port = 54326$/m, 'port = 55326'],
-            [/^shadow_port = 54320$/m, 'shadow_port = 55320'],
-            [/^port = 54329$/m, 'port = 55329']
+            [/^port = 54326$/m, 'port = ' + databasePort],
+            [/^shadow_port = 54320$/m, 'shadow_port = ' + shadowPort],
+            [/^port = 54329$/m, 'port = ' + poolerPort]
           ];
           for (const [pattern, replacement] of changes) {
             if (!pattern.test(config)) throw new Error('Expected CI config baseline missing: ' + pattern);
