@@ -425,6 +425,20 @@ if (!warehouseV199Source.includes('be_warehouse_rto_report_v199(') ||
 copyFileSync(warehouseV199Fixture,resolve(root,'20261029213547_uat308_original_warehouse_v199_reports_ci.sql'));
 console.log('CI-only authentic warehouse V199 reports restored with existing branch access scopes before October 29 reports migration.');
 
+const groundSettlementFixture=resolve('scripts/uat-audit/fixtures/ci_ground_settlement_confirmations_v1.sql');
+const groundSettlementSql=readFileSync(groundSettlementFixture,'utf8');
+const novemberPrivateIsolation=readFileSync(resolve(root,'20261031095042_cs_pickup_and_private_source_isolation.sql'),'utf8');
+if (!groundSettlementSql.includes('CONSTRAINT be_gsc_finance_proof_ck') ||
+    !groundSettlementSql.includes('CONSTRAINT be_gsc_ground_status_ck') ||
+    !groundSettlementSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !groundSettlementSql.includes('REVOKE ALL ON TABLE private.be_ground_settlement_confirmations_v1') ||
+    !novemberPrivateIsolation.includes('private.be_ground_settlement_confirmations_v1')) {
+  throw new Error('Original private ground settlement confirmation guard or November dependency changed');
+}
+copyFileSync(groundSettlementFixture,resolve(root,'20261031095041_uat308_ground_settlement_confirmations_ci.sql'));
+console.log('CI-only original private settlement confirmations with mandatory finance evidence, no records seeded.');
+
+
 
 
 
