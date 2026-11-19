@@ -773,6 +773,61 @@ writeFileSync(resolve(root, '20260920194700_uat308_warehouse_return_scans_v39_ci
 ].join('\n'));
 console.log('CI-only catalog-verified V39 warehouse return ledger restored before V92.');
 
+// V122 reconciles Yangon tariffs using the historical immutable V61.7
+// township text normalizer. Restore the exact catalog-verified SQL expression
+// without adding or modifying any tariff records in the disposable baseline.
+const tariffV122Source = readFileSync(resolve(root,
+  '20260923010245_missing_yangon_tariffs_v122.sql'), 'utf8');
+if (!tariffV122Source.includes(
+    'public.be_financial_v2_normalize_township_text_v61_7(')) {
+  throw new Error('V122 township normalizer dependency changed');
+}
+writeFileSync(resolve(root, '20260923010244_uat308_township_normalizer_v61_7_ci.sql'), [
+  '-- Original immutable V61.7 township text normalizer (CI only).',
+  'CREATE OR REPLACE FUNCTION public.be_financial_v2_normalize_township_text_v61_7(p_value text)',
+  'RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE',
+  "SET search_path TO 'pg_catalog'",
+  'AS $function
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
+
+console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
+,
+  "  SELECT btrim(regexp_replace(regexp_replace(lower(coalesce(p_value,'')),",
+  "    '[[:punct:]]+', ' ', 'g'), '[[:space:]]+', ' ', 'g'));",
+  '$function$;',
+  ''
+].join('\n'));
+console.log('CI-only authentic V61.7 Yangon township normalizer restored before V122.');
+
+
 
 
 
