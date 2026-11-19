@@ -371,8 +371,22 @@ if (!octoberExternalManifestSql.includes('PRIMARY KEY (source_sha256, delivery_w
   throw new Error('Original external settlement manifest structure or owner attestation dependency changed');
 }
 copyFileSync(octoberExternalManifestFixture,
-  resolve(root,'20261024092929_uat308_external_settlement_manifest_ci.sql'));
+  resolve(root,'20261024092928_uat308_external_settlement_manifest_ci.sql'));
 console.log('CI-only empty external settlement manifest before owner hybrid attestation; no financial evidence fabricated.');
+
+const octoberEvidenceViewFixture=resolve('scripts/uat-audit/fixtures/ci_oct2026_dispatch_evidence_authentic_views.sql');
+const octoberEvidenceViewSql=readFileSync(octoberEvidenceViewFixture,'utf8');
+if (!octoberEvidenceViewSql.includes('CREATE OR REPLACE VIEW private.be_oct2026_external_settlement_review_v1 AS') ||
+    !octoberEvidenceViewSql.includes('CREATE OR REPLACE VIEW private.be_oct20_22_dispatch_evidence_worklist_v1 AS') ||
+    !octoberEvidenceViewSql.includes('public.be_finance_cod_settlements_v48') && !octoberEvidenceViewSql.includes('be_finance_cod_settlements_v48') ||
+    !octoberEvidenceViewSql.includes('REVOKE ALL ON TABLE private.be_oct20_22_dispatch_evidence_worklist_v1') ||
+    !ownerHybridAttestation.includes('private.be_oct20_22_dispatch_evidence_worklist_v1')) {
+  throw new Error('Authentic October dispatch evidence and settlement review view contract changed');
+}
+copyFileSync(octoberEvidenceViewFixture,
+  resolve(root,'20261024092929_uat308_october_dispatch_evidence_views_ci.sql'));
+console.log('CI-only production-authentic October settlement review and dispatch evidence views restored before hybrid attestation.');
+
 
 
 
