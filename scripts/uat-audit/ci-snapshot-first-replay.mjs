@@ -113,7 +113,12 @@ if (!codPolicyV1.includes('coalesce(declared_item_value,0)') ||
 }
 writeFileSync(resolve(root,'20260930051109_uat308_declared_item_value_ci.sql'),
   '-- CI-only catalog verified pickup declared item amount; no price backfill.\n' +
-  'ALTER TABLE public.be_portal_pickup_requests ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0;\n');
+  'ALTER TABLE public.be_portal_pickup_requests\n' +
+  ' ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0,\n' +
+  " ADD COLUMN IF NOT EXISTS cod_policy_status text NOT NULL DEFAULT 'NOT_EVALUATED',\n" +
+  ' ADD COLUMN IF NOT EXISTS cod_service_fee_rate numeric NOT NULL DEFAULT 0,\n' +
+  ' ADD COLUMN IF NOT EXISTS cod_service_fee_amount numeric NOT NULL DEFAULT 0,\n' +
+  " ADD COLUMN IF NOT EXISTS finance_pre_dispatch_status text NOT NULL DEFAULT 'NOT_REQUIRED';\n");
 console.log('CI-only declared item value shape restored before COD V1; no COD rows inserted.');
 
 
