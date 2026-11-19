@@ -142,20 +142,20 @@ export default function WarehousePendingParcelsPage(){
           ["Return attempt 2","return_scan_2_at"],["Return attempt 3","return_scan_3_at"],
           ["Last return","last_return_scan_at"]
         ];
-        timestamps.forEach(([event,key])=>{if(r[key])events.push({"Way ID":way,"Merchant":merchantName,"Event":event,"Myanmar time":fmt(r[key]),"UTC timestamp":txt(r[key])});});
+        timestamps.forEach(([event,key])=>{if(r[key])events.push({"Way ID":way,"Merchant":merchantName,"Event":event,"Myanmar time":fmt(r[key]),"UTC timestamp":excelText(r[key])});});
         return {
-          "Way ID":way,"Pickup":txt(r.pickup_id),"Merchant":merchantName,
-          "Merchant code":txt(r.merchant_code),"Recipient":txt(r.recipient_name),
-          "Recipient phone":txt(r.recipient_phone||r.phone_number),
-          "Township":txt(r.delivery_township),"Pending type":r._pendingType,
+          "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
+          "Merchant code":excelText(r.merchant_code),"Recipient":excelText(r.recipient_name),
+          "Recipient phone":excelText(r.recipient_phone||r.phone_number),
+          "Township":excelText(r.delivery_township),"Pending type":r._pendingType,
           "Overdue 48h":r._overdue?"YES":"NO","Age hours":Number(r._ageHours.toFixed(1)),
           "Inbound time":fmt(r.inbound_scan_at),"Last dispatch":fmt(r.last_dispatch_scan_at||r.dispatch_scan_at),
           "Last return":fmt(r.last_return_scan_at),
           "Return attempts":Number(r.return_attempt_count||r.physical_return_scan_count||0),
-          "Failure reason":txt(r.pending_return_reason_name||r.last_exception_reason),
-          "Delivery status":txt(r.delivery_status),
-          "Warehouse status":txt(r.warehouse_scan_status||r.warehouse_status),
-          "Wayplan":txt(r.active_wayplan_id)
+          "Failure reason":excelText(r.pending_return_reason_name||r.last_exception_reason),
+          "Delivery status":excelText(r.delivery_status),
+          "Warehouse status":excelText(r.warehouse_scan_status||r.warehouse_status),
+          "Wayplan":excelText(r.active_wayplan_id)
         };
       });
       const wb=XLSX.utils.book_new();
