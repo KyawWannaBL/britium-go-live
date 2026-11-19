@@ -413,6 +413,19 @@ END $uat308_mdy$;
 `);
 console.log('CI-only Mandalay owner-approved tariff data activation skipped with zero-stage fail-closed guard; original retained.');
 
+const warehouseV199Fixture=resolve('scripts/uat-audit/fixtures/ci_warehouse_v199_authentic_report_functions.sql');
+const warehouseV199Source=readFileSync(warehouseV199Fixture,'utf8');
+const warehouseBranchScopeMigration=readFileSync(resolve(root,'20261029213548_branch_warehouse_scoped_reports.sql'),'utf8');
+if (!warehouseV199Source.includes('be_warehouse_rto_report_v199(') ||
+    !warehouseV199Source.includes('be_warehouse_wayplan_view_v199(') ||
+    (warehouseV199Source.match(/BRANCH_WAREHOUSE_REPORT_V1/g)||[]).length<2 ||
+    !warehouseBranchScopeMigration.includes("foreach n in array array['be_warehouse_wayplan_view_v199','be_warehouse_rto_report_v199']")) {
+  throw new Error('Authentic V199 warehouse report contract or branch migration changed');
+}
+copyFileSync(warehouseV199Fixture,resolve(root,'20261029213547_uat308_original_warehouse_v199_reports_ci.sql'));
+console.log('CI-only authentic warehouse V199 reports restored with existing branch access scopes before October 29 reports migration.');
+
+
 
 
 
