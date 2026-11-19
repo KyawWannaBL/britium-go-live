@@ -265,8 +265,22 @@ if (!cutoverAuditSql.includes('private.be_golive_readiness_cutovers_v1') ||
   throw new Error('Original private go-live cutover audit schema or October isolation dependency changed');
 }
 copyFileSync(cutoverAuditFixture,
-  resolve(root,'20261019171657_uat308_private_cutover_audit_ci.sql'));
+  resolve(root,'20261019171656_uat308_private_cutover_audit_ci.sql'));
 console.log('CI-only private cutover audit ledger created empty before October isolation status; no cutoff records.');
+
+const readinessReportFixture=resolve('scripts/uat-audit/fixtures/golive_readiness_report_ci_bootstrap.sql');
+const readinessReportSql=readFileSync(readinessReportFixture,'utf8');
+if (!readinessReportSql.includes('CREATE OR REPLACE FUNCTION public.be_go_live_readiness_isolation_report_v1()') ||
+    !readinessReportSql.includes("'mode','READINESS_ONLY'") ||
+    !readinessReportSql.includes('private.be_golive_readiness_scope_v1') ||
+    !readinessReportSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !readinessReportSql.includes('REVOKE ALL ON FUNCTION public.be_go_live_readiness_isolation_report_v1()')) {
+  throw new Error('Production readiness-only report contract changed');
+}
+copyFileSync(readinessReportFixture,
+  resolve(root,'20261019171657_uat308_readiness_report_ci.sql'));
+console.log('CI-only original readiness report and private scope restored; no cutover or isolation operations.');
+
 
 
 
