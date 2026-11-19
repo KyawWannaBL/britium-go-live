@@ -1,10 +1,14 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, Download } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
 const txt = (v:any) => String(v ?? "").trim();
+const excelText=(v:any)=>{
+  const value=txt(v);
+  return /^[\s\u0000-\u001f]*[=+@-]/.test(value) ? String.fromCharCode(39)+value : value;
+};
 
 function hoursSince(raw:any){
   if(!raw) return 0;
@@ -61,6 +65,14 @@ export default function WarehousePendingParcelsPage(){
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
+  const [merchant,setMerchant]=useState("ALL");
+  const [type,setType]=useState("ALL");
+  const [age,setAge]=useState("ALL");
+  const [dateBasis,setDateBasis]=useState("INBOUND");
+  const [from,setFrom]=useState("");
+  const [to,setTo]=useState("");
+  const [exporting,setExporting]=useState(false);
+  const [exportError,setExportError]=useState("");
 
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
@@ -95,15 +107,81 @@ export default function WarehousePendingParcelsPage(){
   const inboundPending=useMemo(()=>pending.filter((r:any)=>r._pendingType==="NEW INBOUND"),[pending]);
   const failedPending=useMemo(()=>pending.filter((r:any)=>r._pendingType!=="NEW INBOUND"),[pending]);
 
+  const merchants=useMemo(()=>Array.from(new Set(pending.map((r:any)=>txt(r.merchant_name||r.merchant_code)).filter(Boolean))).sort(),[pending]);
   const visible=useMemo(()=>{
     const q=query.trim().toLowerCase();
-    if(!q) return pending;
-    return pending.filter((r:any)=>[
-      r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,
-      r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,
-      r.pending_return_reason_name,r.last_exception_reason
-    ].join(" ").toLowerCase().includes(q));
-  },[pending,query]);
+    return pending.filter((r:any)=>{
+      if(merchant!=="ALL" && txt(r.merchant_name||r.merchant_code)!==merchant) return false;
+      if(type!=="ALL" && r._pendingType!==type) return false;
+      if(age==="OVERDUE" && !r._overdue) return false;
+      if(age==="CURRENT" && r._overdue) return false;
+      if(from||to){
+        const d=new Date(dateBasis==="RETURN" ? (r.last_return_scan_at||r.return_scan_3_at||r.return_scan_2_at||r.return_scan_1_at) : r.inbound_scan_at);
+        if(!Number.isFinite(d.getTime()))return false;
+        const p=new Intl.DateTimeFormat("en-US",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).formatToParts(d);
+        const get=(k:string)=>p.find(x=>x.type===k)?.value||"";
+        const date=[get("year"),get("month"),get("day")].join("-");
+        if(from && date<from)return false;
+        if(to && date>to)return false;
+      }
+      return !q || [r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
+    });
+  },[pending,query,merchant,type,age,from,to,dateBasis]);
+
+  const exportExcel=async()=>{
+    if(exporting||!visible.length||Boolean(from&&to&&from>to))return;
+    setExporting(true);setExportError("");
+    try{
+      const XLSX=await import("xlsx");
+      const events:any[]=[];
+      const items=visible.map((r:any)=>{
+        const way=excelText(r.delivery_way_id||r.waybill_no);
+        const merchantName=excelText(r.merchant_name||r.merchant_code);
+        const timestamps:[string,string][]=[
+          ["Inbound scan","inbound_scan_at"],["Dispatch scan","dispatch_scan_at"],
+          ["Last dispatch","last_dispatch_scan_at"],["Return attempt 1","return_scan_1_at"],
+          ["Return attempt 2","return_scan_2_at"],["Return attempt 3","return_scan_3_at"],
+          ["Last return","last_return_scan_at"]
+        ];
+        const seen=new Set<string>();
+        timestamps.forEach(([event,key])=>{
+          if(!r[key])return;
+          const timestamp=txt(r[key]);
+          const eventGroup=event.toLowerCase().includes("return")?"return":event.toLowerCase().includes("dispatch")?"dispatch":event;
+          const signature=eventGroup+":"+timestamp;
+          if(seen.has(signature))return;
+          seen.add(signature);
+          events.push({"Way ID":way,"Merchant":merchantName,"Event":event,"Myanmar time":fmt(timestamp),"UTC timestamp":excelText(timestamp)});
+        });
+        return {
+          "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
+          "Merchant code":excelText(r.merchant_code),"Recipient":excelText(r.recipient_name),
+          "Recipient phone":excelText(r.recipient_phone||r.phone_number),
+          "Township":excelText(r.delivery_township),"Pending type":r._pendingType,
+          "Overdue 48h":r._overdue?"YES":"NO","Age hours":Number(r._ageHours.toFixed(1)),
+          "Inbound time":fmt(r.inbound_scan_at),"Last dispatch":fmt(r.last_dispatch_scan_at||r.dispatch_scan_at),
+          "Last return":fmt(r.last_return_scan_at),
+          "Return attempts":Number(r.return_attempt_count||r.physical_return_scan_count||0),
+          "Failure reason":excelText(r.pending_return_reason_name||r.last_exception_reason),
+          "Delivery status":excelText(r.delivery_status),
+          "Warehouse status":excelText(r.warehouse_scan_status||r.warehouse_status),
+          "Wayplan":excelText(r.active_wayplan_id)
+        };
+      });
+      const wb=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(items),"Pending Parcels");
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(events.length?events:[{"Way ID":"","Event":"No timestamp events available"}]),"Parcel Timeline");
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
+        ["Report","Warehouse pending parcels"],["Exported (Myanmar time)",fmt(new Date())],
+        ["Date basis",dateBasis==="RETURN"?"Last return scan":"Inbound scan"],["Date from",from||"All"],["Date to",to||"All"],
+        ["Merchant",excelText(merchant)],["Pending category",type],["Age",age],
+        ["Search",excelText(query)||"All"],["Number of parcels",items.length],
+        ["Timeline scope","Only event timestamps supplied by the warehouse snapshot"]
+      ]),"Filters");
+      XLSX.writeFile(wb,"Warehouse_Pending_"+new Date().toISOString().slice(0,10)+".xlsx");
+    }catch(e:any){setExportError(e?.message||"Could not export Excel");}
+    finally{setExporting(false);}
+  };
 
   return <main className="min-h-screen bg-[#07111e] p-6 text-slate-100">
     <div className="mx-auto max-w-[1800px]">
@@ -156,6 +234,18 @@ export default function WarehousePendingParcelsPage(){
           </div>
         </div>
 
+        <div className="mb-3 grid gap-3 md:grid-cols-2 xl:grid-cols-7">
+          <label className="text-xs text-slate-300">Date field<select aria-label="Date field" value={dateBasis} onChange={e=>setDateBasis(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="INBOUND">Inbound scan</option><option value="RETURN">Last return scan</option></select></label>
+          <label className="text-xs text-slate-300">From<input aria-label="Inbound from" type="date" value={from} max={to||undefined} onChange={e=>setFrom(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"/></label>
+          <label className="text-xs text-slate-300">To<input aria-label="Inbound to" type="date" value={to} min={from||undefined} onChange={e=>setTo(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"/></label>
+          <label className="text-xs text-slate-300">Merchant<select aria-label="Merchant" value={merchant} onChange={e=>setMerchant(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All merchants</option>{merchants.map(m=><option key={m} value={m}>{m}</option>)}</select></label>
+          <label className="text-xs text-slate-300">Pending category<select aria-label="Pending category" value={type} onChange={e=>setType(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All</option><option value="NEW INBOUND">New inbound</option><option value="FAILED RETURN / REPLAN">Failed return / replan</option></select></label>
+          <label className="text-xs text-slate-300">Pending age<select aria-label="Pending age" value={age} onChange={e=>setAge(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All</option><option value="OVERDUE">48+ hours</option><option value="CURRENT">Under 48 hours</option></select></label>
+          <div className="flex items-end gap-2"><button type="button" className="rounded border border-slate-400 p-2" onClick={()=>{setQuery("");setMerchant("ALL");setType("ALL");setAge("ALL");setDateBasis("INBOUND");setFrom("");setTo("");}}>Clear</button><button type="button" onClick={()=>void exportExcel()} disabled={loading||exporting||!visible.length||Boolean(from&&to&&from>to)} className="flex-1 rounded bg-emerald-600 p-2 font-bold disabled:opacity-50"><Download className="mr-1 inline h-4 w-4"/>{exporting?"Exporting":"Export Excel"}</button></div>
+        </div>
+        <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
+        {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
+        {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
         <div className="overflow-auto">
           <table className="w-full min-w-[1450px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
