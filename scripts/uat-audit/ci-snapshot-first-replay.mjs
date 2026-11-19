@@ -311,6 +311,19 @@ if (expectedOctober16.some(name =>
 copyFileSync(october16Fixture,resolve(root,'20261019171841_uat308_original_16_cutover_catalog_tables_ci.sql'));
 console.log('CI-only original definitions for all 16 missing October isolation tables restored before fail-closed audit.');
 
+const journalTypeFixture=resolve('scripts/uat-audit/fixtures/ci_accounting_journal_type_master_v1.sql');
+const journalTypeSql=readFileSync(journalTypeFixture,'utf8');
+if (!journalTypeSql.includes('journal_type text PRIMARY KEY') ||
+    !journalTypeSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !journalTypeSql.includes('REVOKE ALL ON TABLE public.be_accounting_journal_type_master_v1') ||
+    !october16Sql.includes('REFERENCES be_accounting_journal_type_master_v1(journal_type)')) {
+  throw new Error('Accounting journal-type FK parent changed');
+}
+copyFileSync(journalTypeFixture,
+  resolve(root,'20261019171840_uat308_accounting_journal_type_master_ci.sql'));
+console.log('CI-only original accounting journal-type master created before 16 child tables; no master seed.');
+
+
 
 
 
