@@ -323,6 +323,26 @@ copyFileSync(journalTypeFixture,
   resolve(root,'20261019171840_uat308_accounting_journal_type_master_ci.sql'));
 console.log('CI-only original accounting journal-type master created before 16 child tables; no master seed.');
 
+const reasonOnlyPhotoSkipV1=readFileSync(resolve(root,'20261020102950_reason_only_photo_skip.sql'),'utf8');
+if (!reasonOnlyPhotoSkipV1.includes("v.proof_check_status='APPROVED'") ||
+    !reasonOnlyPhotoSkipV1.includes("proof_check_status='PENDING_REVIEW'") ||
+    !reasonOnlyPhotoSkipV1.includes('public.be_pickup_parcel_verifications')) {
+  throw new Error('Reason-only photo skip proof status contract changed');
+}
+writeFileSync(resolve(root,'20261020102949_uat308_photo_review_proof_fields_ci.sql'),
+  `-- CI-only production-catalog-verified nullable proof-review fields; no photos or approvals created.
+ALTER TABLE public.be_pickup_parcel_verifications
+ ADD COLUMN IF NOT EXISTS proof_check_status text DEFAULT 'PENDING_REVIEW',
+ ADD COLUMN IF NOT EXISTS reviewed_by text,
+ ADD COLUMN IF NOT EXISTS reviewed_by_email text,
+ ADD COLUMN IF NOT EXISTS reviewed_at timestamptz,
+ ADD COLUMN IF NOT EXISTS review_note text,
+ ADD COLUMN IF NOT EXISTS verification_status text DEFAULT 'RIDER_VERIFIED',
+ ADD COLUMN IF NOT EXISTS raw_payload jsonb DEFAULT '{}'::jsonb;
+`);
+console.log('CI-only original proof review fields installed before reason-only photo skip V1; no waivers created.');
+
+
 
 
 
