@@ -26,7 +26,7 @@ begin
          with ordinality as t(e,ord)
   ), metadata as (
     select s.e, s.ord, s.way_id,
-      upper(coalesce(nullif(d.financial_quote->>'service_provider_code',''),'BRITIUM')) provider_code,
+      upper(coalesce(nullif(d.financial_quote->>'service_provider_code',''),'UNSET')) provider_code,
       upper(coalesce(nullif(d.delivery_region,''),'UNSET')) destination_region,
       upper(coalesce(nullif(d.delivery_route_mode,''),'UNSET')) route_mode,
       upper(coalesce(nullif(d.financial_validation_status,''),'UNSET')) financial_status
@@ -44,6 +44,7 @@ begin
     select *,
       case
         when provider_code='BRITIUM' then 'BRITIUM_LAST_MILE'
+        when provider_code='UNSET' then 'PROVIDER_REVIEW'
         when destination_region='OUTSIDE_CORE' then 'PROVIDER_TRANSFER_REQUIRED'
         when provider_code in ('ROYAL EXPRESS','DK DELIVERY','GRS','H.TERMINAL DROP-OFF')
           then 'PROVIDER_HANDOVER_WITHIN_CORE_REGION'
@@ -60,6 +61,8 @@ begin
         when upper(coalesce(e->>'warehouse_scan_status',e->>'warehouse_status','')) not in
           ('RECEIVED','WAREHOUSE_READY','RETURN_SCANNED')
           then 'WAREHOUSE_NOT_READY'
+        when provider_code='UNSET'
+          then 'PROVIDER_REVIEW_REQUIRED'
         when destination_region='OUTSIDE_CORE'
           then 'NEEDS_PROVIDER_TRANSFER_WAYPLAN'
         when financial_status not in ('OK','VALID')
