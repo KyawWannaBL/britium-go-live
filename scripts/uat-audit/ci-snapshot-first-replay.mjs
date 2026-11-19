@@ -917,7 +917,8 @@ console.log('CI-only historical warehouse receive-scan restored before return li
 const legacyWarehouseReturnScan = readFileSync(resolve(
   'scripts/uat-audit/fixtures/legacy_warehouse_return_scan_v39_ci.sql'),'utf8');
 if (!legacyWarehouseReturnScan.includes('be_warehouse_return_scan_v39_legacy_20260823(') ||
-    !legacyWarehouseReturnScan.includes('be_warehouse_assert_internal') ||
+    !legacyWarehouseReturnScan.includes('be_branch_warehouse_require_way_v1') ||
+    !legacyWarehouseReturnScan.includes('be_current_role') ||
     !legacyWarehouseReturnScan.includes('be_warehouse_actor_email') ||
     !warehouseReturnMigration.includes(
       'revoke all on function public.be_warehouse_return_scan_v39_legacy_20260823(')) {
