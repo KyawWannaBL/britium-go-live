@@ -360,6 +360,21 @@ const idempotentAllocatorGuard=`IF position(old_assignment in f)>0 THEN
 writeFileSync(allocatorMigrationPath,originalAllocatorMigration.replace(oldAllocatorGuard,idempotentAllocatorGuard));
 console.log('V216 allocator exact post-patch is idempotent in disposable CI only; noncanonical/unknown expressions still fail.');
 
+const octoberExternalManifestFixture=resolve('scripts/uat-audit/fixtures/ci_oct2026_external_settlement_manifest.sql');
+const octoberExternalManifestSql=readFileSync(octoberExternalManifestFixture,'utf8');
+const ownerHybridAttestation=readFileSync(resolve(root,
+  '20261024092930_oct2026_populate_owner_hybrid_attestation_v1.sql'),'utf8');
+if (!octoberExternalManifestSql.includes('PRIMARY KEY (source_sha256, delivery_way_id)') ||
+    !octoberExternalManifestSql.includes('be_oct2026_manifest_nonnegative') ||
+    !octoberExternalManifestSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !ownerHybridAttestation.includes('private.be_oct2026_external_settlement_manifest')) {
+  throw new Error('Original external settlement manifest structure or owner attestation dependency changed');
+}
+copyFileSync(octoberExternalManifestFixture,
+  resolve(root,'20261024092929_uat308_external_settlement_manifest_ci.sql'));
+console.log('CI-only empty external settlement manifest before owner hybrid attestation; no financial evidence fabricated.');
+
+
 
 
 
