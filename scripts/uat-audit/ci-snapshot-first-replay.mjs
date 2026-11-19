@@ -253,6 +253,22 @@ copyFileSync(partyPayoutFixture,
   resolve(root,'20261018070531_uat308_party_wallet_payouts_v193_ci.sql'));
 console.log('CI-only party payout ledger reconstructed before workforce Finance V210, with no payouts.');
 
+const cutoverAuditFixture = resolve('scripts/uat-audit/fixtures/golive_cutovers_private_ci_bootstrap.sql');
+const cutoverAuditSql = readFileSync(cutoverAuditFixture,'utf8');
+const octoberIsolationStatus = readFileSync(resolve(root,
+  '20261019171658_october_isolation_rehearsal_and_status.sql'),'utf8');
+if (!cutoverAuditSql.includes('private.be_golive_readiness_cutovers_v1') ||
+    !cutoverAuditSql.includes('cutover_code text NOT NULL UNIQUE') ||
+    !cutoverAuditSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !cutoverAuditSql.includes('REVOKE ALL ON TABLE private.be_golive_readiness_cutovers_v1') ||
+    !octoberIsolationStatus.includes('private.be_golive_readiness_cutovers_v1')) {
+  throw new Error('Original private go-live cutover audit schema or October isolation dependency changed');
+}
+copyFileSync(cutoverAuditFixture,
+  resolve(root,'20261019171657_uat308_private_cutover_audit_ci.sql'));
+console.log('CI-only private cutover audit ledger created empty before October isolation status; no cutoff records.');
+
+
 
 
 const codV48Fixture = resolve('scripts/uat-audit/fixtures/finance_cod_settlements_v48_ci_bootstrap.sql');
