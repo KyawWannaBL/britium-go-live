@@ -47,7 +47,7 @@ function isPendingForWayplan(row:any){
   const delivery=txt(row.delivery_status).toUpperCase();
   const stage=txt(row.dispatch_workflow_stage).toUpperCase();
   if(["OUT_FOR_DELIVERY","RIDER_ACCEPTED","DELIVERY_ACCEPTED","ACCEPTED_FOR_DELIVERY","ARRIVED_AT_CUSTOMER"].includes(delivery)) return false;
-  if(["OUT_FOR_DELIVERY","DISPATCHED_TO_FIELD"].includes(stage)) return false;
+  if(["OUT_FOR_DELIVERY","DISPATCHED_TO_FIELD","SCHEDULED_HOLD","AWAITING_RETURN_SCAN","DISPATCH_SCAN_REQUIRED","DISPATCH_SCANNED","SUPERVISOR_APPROVED_AWAITING_RELEASE","IN_WAYPLAN_AWAITING_SUPERVISOR"].includes(stage)) return false;
 
   const failedReturn = Boolean(row.next_attempt_priority)
     || Number(row.return_attempt_count || row.physical_return_scan_count || 0) > 0
@@ -81,7 +81,7 @@ export default function WarehousePendingParcelsPage(){
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
     try{
-      const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
+      const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
       setMessage("");
