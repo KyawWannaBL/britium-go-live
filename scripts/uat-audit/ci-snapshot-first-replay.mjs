@@ -136,6 +136,22 @@ copyFileSync(predisptachReviewsFixture,
   resolve(root,'20260930051923_uat308_finance_predispatch_reviews_ci.sql'));
 console.log('CI-only protected finance predispatch review ledger restored before V2; no finance decisions inserted.');
 
+const employeeCommissionFixture = resolve('scripts/uat-audit/fixtures/employee_commission_eligibility_ci_bootstrap.sql');
+const employeeCommissionSql = readFileSync(employeeCommissionFixture,'utf8');
+const commissionV1Source = readFileSync(resolve(root,
+  '20260930054451_commission_wallet_unification_20260930_v1.sql'),'utf8');
+if (!employeeCommissionSql.includes('be_employee_commission_eligibility_period_uidx') ||
+    !employeeCommissionSql.includes('be_employee_commission_eligibility_check') ||
+    !employeeCommissionSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !employeeCommissionSql.includes('REVOKE ALL ON TABLE public.be_employee_commission_eligibility') ||
+    !commissionV1Source.includes('public.be_employee_commission_eligibility')) {
+  throw new Error('Original employee commission eligibility ledger or V1 contract changed');
+}
+copyFileSync(employeeCommissionFixture,
+  resolve(root,'20260930054450_uat308_employee_commission_eligibility_ci.sql'));
+console.log('CI-only HR commission eligibility structure restored before V1; no eligibility decisions inserted.');
+
+
 
 
 
