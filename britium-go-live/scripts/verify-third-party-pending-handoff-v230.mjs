@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const pending=readFileSync("britium-go-live/src/pages/WarehousePendingParcelsPage.tsx","utf8");
-const command=readFileSync("britium-go-live/src/pages/WayplanCommandCenterPage.tsx","utf8");
-const warehouse=readFileSync("britium-go-live/src/pages/WarehousePage.tsx","utf8");
+const pending=readFileSync(new URL("../src/pages/WarehousePendingParcelsPage.tsx",import.meta.url),"utf8");
+const command=readFileSync(new URL("../src/pages/WayplanCommandCenterPage.tsx",import.meta.url),"utf8");
+const warehouse=readFileSync(new URL("../src/pages/WarehousePage.tsx",import.meta.url),"utf8");
 
 for(const term of [
   "be_warehouse_mark_delivery_ready_v150",
@@ -30,7 +30,7 @@ assert.match(command,/be_wayplan_handoff_ids_v150/);
 assert.match(command,/unmatched.length/);
 assert.match(command,/Outside-core third-party parcels require/);
 assert.match(warehouse,/be_warehouse_return_scan_v71/);
-const sql=readFileSync("britium-go-live/sql/candidates/warehouse_provider_transfer_preview_v1.sql","utf8");
+const sql=readFileSync(new URL("../sql/candidates/warehouse_provider_transfer_preview_v1.sql",import.meta.url),"utf8");
 assert.match(sql,/security definer/);
 assert.match(sql,/revoke all on function.*from public, anon/);
 assert.match(sql,/be_warehouse_assert_internal/);
