@@ -170,10 +170,16 @@ console.log('CI-only source key, merchant and referral descriptors restored befo
 
 const originalRiderV46 = readFileSync(resolve(
   'britium-go-live/britium-current-ui-fixed/rider_delivery_execution_v46.sql'),'utf8');
-const v46StateAndEvents = takeSection(originalRiderV46,
-  'create table if not exists public.be_rider_route_stop_state_v46 (',
-  'alter table public.be_rider_route_settings_v46 enable row level security;',
-  'Rider V46 stop state and route event ledgers');
+const v46StateAndEvents = (() => {
+  const beginMarker='create table if not exists public.be_rider_route_stop_state_v46 (';
+  const endMarker='alter table public.be_rider_route_settings_v46 enable row level security;';
+  const begin=originalRiderV46.indexOf(beginMarker);
+  const end=originalRiderV46.indexOf(endMarker,begin+beginMarker.length);
+  if (begin<0 || end<=begin || originalRiderV46.indexOf(beginMarker,begin+1)>=0) {
+    throw new Error('Original Rider V46 stop state source missing or ambiguous');
+  }
+  return originalRiderV46.slice(begin,end).trim() + String.fromCharCode(10);
+})();
 const v46ReturnMigration = readFileSync(resolve(root,
   '20261007082151_rto_after_three_failed_attempts.sql'),'utf8');
 if (!v46StateAndEvents.includes('be_rider_route_stop_state_v46_status_check') ||
