@@ -50,6 +50,24 @@ jobs:
         env:
           UAT_308_DISPOSABLE_ONLY: '1'
         run: node scripts/uat-audit/ci-snapshot-first-replay.mjs
+      - name: Configure isolated CI Postgres ports
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const file = 'supabase/config.toml';
+          let config = readFileSync(file, 'utf8');
+          const changes = [
+            [/^project_id = "branch_office_nav_fixes"$/m, 'project_id = "uat308_ci_replay"'],
+            [/^port = 54326$/m, 'port = 55326'],
+            [/^shadow_port = 54320$/m, 'shadow_port = 55320'],
+            [/^port = 54329$/m, 'port = 55329']
+          ];
+          for (const [pattern, replacement] of changes) {
+            if (!pattern.test(config)) throw new Error('Expected CI config baseline missing: ' + pattern);
+            config = config.replace(pattern, replacement);
+          }
+          writeFileSync(file, config);
+          NODE
       - name: Start disposable local Supabase database
         run: supabase start --debug
       - name: Replay all repository migrations locally
