@@ -62,3 +62,17 @@ ALTER TABLE public.be_finance_settlement_batch_items_v3 ENABLE ROW LEVEL SECURIT
 ALTER TABLE public.be_finance_settlement_payments_v3 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.be_finance_settlement_batch_items_v3,public.be_finance_settlement_payments_v3 FROM PUBLIC,anon,authenticated;
 -- V200 adds the later payment_group_reference and accounting_event_id columns.
+
+-- Production-catalog-verified finance parcel hold control (empty in CI).
+CREATE TABLE IF NOT EXISTS public.be_finance_settlement_parcel_control_v3 (
+ parcel_id uuid PRIMARY KEY,
+ delivery_way_id text,
+ financial_hold boolean NOT NULL DEFAULT false,
+ hold_reason text,
+ hold_by text,
+ hold_at timestamptz,
+ exact_collection_resolution jsonb,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.be_finance_settlement_parcel_control_v3 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.be_finance_settlement_parcel_control_v3 FROM PUBLIC,anon,authenticated;
