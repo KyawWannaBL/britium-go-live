@@ -143,7 +143,16 @@ export default function WarehousePendingParcelsPage(){
           ["Return attempt 2","return_scan_2_at"],["Return attempt 3","return_scan_3_at"],
           ["Last return","last_return_scan_at"]
         ];
-        timestamps.forEach(([event,key])=>{if(r[key])events.push({"Way ID":way,"Merchant":merchantName,"Event":event,"Myanmar time":fmt(r[key]),"UTC timestamp":excelText(r[key])});});
+        const seen=new Set<string>();
+        timestamps.forEach(([event,key])=>{
+          if(!r[key])return;
+          const timestamp=txt(r[key]);
+          const eventGroup=event.toLowerCase().includes("return")?"return":event.toLowerCase().includes("dispatch")?"dispatch":event;
+          const signature=eventGroup+":"+timestamp;
+          if(seen.has(signature))return;
+          seen.add(signature);
+          events.push({"Way ID":way,"Merchant":merchantName,"Event":event,"Myanmar time":fmt(timestamp),"UTC timestamp":excelText(timestamp)});
+        });
         return {
           "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
           "Merchant code":excelText(r.merchant_code),"Recipient":excelText(r.recipient_name),
