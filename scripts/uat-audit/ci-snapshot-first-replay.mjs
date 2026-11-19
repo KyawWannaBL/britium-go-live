@@ -911,6 +911,23 @@ writeFileSync(resolve(root,'20260925194040_uat308_original_warehouse_receive_sca
   legacyReceiveScan);
 console.log('CI-only historical warehouse receive-scan restored before return lifecycle.');
 
+// September 25 return snapshot also revokes legacy warehouse return-scan
+// privileges. Recover its authentic security-definer implementation from
+// the production catalog for disposable replay, preserving role assertions.
+const legacyWarehouseReturnScan = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/legacy_warehouse_return_scan_v39_ci.sql'),'utf8');
+if (!legacyWarehouseReturnScan.includes('be_warehouse_return_scan_v39_legacy_20260823(') ||
+    !legacyWarehouseReturnScan.includes('be_warehouse_assert_internal') ||
+    !legacyWarehouseReturnScan.includes('be_warehouse_actor_email') ||
+    !warehouseReturnMigration.includes(
+      'revoke all on function public.be_warehouse_return_scan_v39_legacy_20260823(')) {
+  throw new Error('Historical return-scan function or security checks changed');
+}
+writeFileSync(resolve(root,'20260925194040_uat309_original_warehouse_return_scan_ci.sql'),
+  legacyWarehouseReturnScan);
+console.log('CI-only original warehouse return-scan restored before V39 return snapshot.');
+
+
 
 
 
