@@ -875,6 +875,25 @@ writeFileSync(resolve(root,'20260924195908_uat309_original_pickup_action_ci.sql'
   legacyPickupAction);
 console.log('CI-only pre-V140 authenticated pickup collect action restored.');
 
+// V141 adds the orphan-record safeguard to the authentic legacy Rider proof
+// bridge. Restore the exact pre-guard function before V141 in disposable CI;
+// never skip proof validation or mutate production evidence.
+const preV141ProofSync = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/pre_v141_rider_proof_sync_ci.sql'), 'utf8');
+const v141Source = readFileSync(
+  resolve(root,'20260924200148_rider_proof_sync_orphan_guard_v141.sql'),'utf8');
+if (!preV141ProofSync.includes('be_sync_rider_proofs_to_data_entry()') ||
+    !preV141ProofSync.includes('be_portal_pickup_requests p') ||
+    !preV141ProofSync.includes('if v_pickup_id is null or v_proof_url is null then') ||
+    preV141ProofSync.includes('canonical_pickup.canonical_pickup_id') ||
+    !v141Source.includes("Expected Rider proof sync guard insertion point not found")) {
+  throw new Error('Original pre-V141 proof sync fixture validation failed');
+}
+writeFileSync(resolve(root,'20260924200147_uat308_original_proof_sync_ci.sql'),
+  preV141ProofSync);
+console.log('CI-only original Rider proof bridge restored before V141 orphan guard.');
+
+
 
 
 
