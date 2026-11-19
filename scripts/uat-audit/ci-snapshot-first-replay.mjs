@@ -966,6 +966,26 @@ writeFileSync(resolve(root,'20260925205229_uat308_original_delivery_failure_v39_
   '-- Authentic pre-patch V39 failure writer; disposable CI only.\n' + failureFnSql + '\n');
 console.log('CI-only historical failure event writer restored before recursive-callback repair.');
 
+// V136 rewrites a legacy Rider-only gate to canonical field-team verified
+// pickup status. Reconstruct the authentic pre-V136 version with exactly
+// that patch reversed, preserving Way ID, row validation and proof checks.
+const preV136Waybill = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/pre_v136_data_entry_create_waybill_ci.sql'),'utf8');
+const v136Source = readFileSync(resolve(root,
+  '20260925210810_field_team_waybill_gate_v136.sql'),'utf8');
+const legacyWaybillGate = "Pickup % must be Rider-verified and COLLECTED before Data Entry.";
+if (!preV136Waybill.includes('be_data_entry_create_waybill_from_rows(') ||
+    !preV136Waybill.includes(legacyWaybillGate) ||
+    !preV136Waybill.includes('pickup_proof_url') ||
+    !preV136Waybill.includes('pickup_collected_at') ||
+    !v136Source.includes("V136 safety stop: be_data_entry_create_waybill_from_rows is missing.")) {
+  throw new Error('Pre-V136 waybill generator or proof gating unexpected');
+}
+writeFileSync(resolve(root,'20260925210809_uat308_original_waybill_gate_ci.sql'),
+  preV136Waybill);
+console.log('CI-only pre-V136 Waybill generator restored with original proof safeguards.');
+
+
 
 
 
