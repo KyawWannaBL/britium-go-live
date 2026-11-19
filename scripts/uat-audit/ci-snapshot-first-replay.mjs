@@ -871,7 +871,7 @@ if (!legacyPickupAction.includes(expectedPickupOld) ||
     legacyPickupAction.includes("driver_status=case when v_role='driver' then 'COLLECTED'")) {
   throw new Error('Authentic pre-V140 pickup collect action fixture unexpectedly changed');
 }
-writeFileSync(resolve(root,'20260924195909_uat309_original_pickup_action_ci.sql'),
+writeFileSync(resolve(root,'20260924195908_uat309_original_pickup_action_ci.sql'),
   legacyPickupAction);
 console.log('CI-only pre-V140 authenticated pickup collect action restored.');
 
