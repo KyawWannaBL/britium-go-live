@@ -7,7 +7,7 @@ const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Ya
 const txt = (v:any) => String(v ?? "").trim();
 const excelText=(v:any)=>{
   const value=txt(v);
-  return /^[\\s\\u0000-\\u001f]*[=+@-]/.test(value) ? String.fromCharCode(39)+value : value;
+  return /^[\s\u0000-\u001f]*[=+@-]/.test(value) ? String.fromCharCode(39)+value : value;
 };
 
 function hoursSince(raw:any){
