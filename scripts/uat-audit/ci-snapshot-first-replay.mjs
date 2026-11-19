@@ -857,6 +857,25 @@ writeFileSync(resolve(root,'20260924195909_uat308_original_pickup_verifier_ci.sq
   legacyPartialPickupVerifier);
 console.log('CI-only original pickup proof verification restored before V140.');
 
+// The second V140 migration patch updates the historical pickup collect
+// action. Restore exactly that original function with its assignment and
+// verification guards unchanged, allowing V140 to apply the collected status
+// synchronization as designed.
+const legacyPickupAction = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/pre_v140_field_team_pickup_action_ci.sql'),'utf8');
+const expectedPickupOld = "set pickup_status='PICKUP_COLLECTED',workflow_stage='PICKUP_COLLECTED',rider_app_stage='COLLECTED_PICKUP',pickup_collected_at=coalesce(p.pickup_collected_at,now()),data_entry_status='READY_FOR_DATA_ENTRY'";
+if (!legacyPickupAction.includes(expectedPickupOld) ||
+    !legacyPickupAction.includes('be_field_team_assert_assigned_pickup') ||
+    !legacyPickupAction.includes('PICKUP_MUST_BE_VERIFIED_BEFORE_COLLECTION') ||
+    !legacyPickupAction.includes('auth.uid()') ||
+    legacyPickupAction.includes("driver_status=case when v_role='driver' then 'COLLECTED'")) {
+  throw new Error('Authentic pre-V140 pickup collect action fixture unexpectedly changed');
+}
+writeFileSync(resolve(root,'20260924195909_uat309_original_pickup_action_ci.sql'),
+  legacyPickupAction);
+console.log('CI-only pre-V140 authenticated pickup collect action restored.');
+
+
 
 
 
