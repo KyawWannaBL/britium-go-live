@@ -158,7 +158,7 @@ export default function WarehousePendingParcelsPage(){
       && Number(r.physical_return_scan_count||0)>0
       && Number(r.physical_return_scan_count||0)<3;
     return (freshInbound||returnedForReplan)
-      && txt(r.provider_planning_gate)!=="NEEDS_PROVIDER_TRANSFER_WAYPLAN"
+      && txt(r.provider_planning_gate)==="REGIONAL_WAYPLAN_REVIEW"
       && !r.active_wayplan_id
       && r.branch_receipt_current!==false;
   }),[visible,providerMetadataReady]);
@@ -326,7 +326,7 @@ export default function WarehousePendingParcelsPage(){
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
             <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
-            <div className="text-xs text-slate-300">Select verified inbound or physically returned replan parcels. Outside-core third-party transfers require a dedicated transfer Wayplan and cannot be forced into a standard region. Provider pickup or transfer is recorded through the approved Wayplan and a real dispatch scan, not by this action.</div>
+            <div className="text-xs text-slate-300">Select verified inbound or physically returned replan parcels. Third-party provider and branch handovers require dedicated transfer Wayplans and cannot be forced into standard last-mile routes. Provider pickup or transfer is recorded through the approved Wayplan and a real dispatch scan, not by this action.</div>
             <div className="mt-1 text-xs">{selectedIds.length} selected · {selectableReceived.length} eligible in this filtered view · maximum 100 per batch</div>
           </div>
           <button type="button" onClick={()=>setSelectedWays(prev=>{
