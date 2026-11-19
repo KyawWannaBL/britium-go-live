@@ -928,6 +928,23 @@ writeFileSync(resolve(root,'20260925194039_uat309_original_warehouse_return_scan
   legacyWarehouseReturnScan);
 console.log('CI-only original warehouse return-scan restored before V39 return snapshot.');
 
+// Sep 25 historical warehouse/dispatch snapshot also revokes its legacy
+// dispatch scanner. Preserve the actual Way ID lookup, dispatch guards,
+// and original behavior; never fabricate a permissive compatibility stub.
+const legacyDispatchScanner = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/legacy_dispatch_scan_parcel_v39_ci.sql'),'utf8');
+if (!legacyDispatchScanner.includes('be_dispatch_scan_parcel_v39_legacy_20260823(') ||
+    !legacyDispatchScanner.includes('be_data_entry_parcel_details') ||
+    !legacyDispatchScanner.includes('delivery_way_id = v_way_id') ||
+    !warehouseReturnMigration.includes(
+      'revoke all on function public.be_dispatch_scan_parcel_v39_legacy_20260823(')) {
+  throw new Error('Historical dispatch scan or canonical Way ID guard changed');
+}
+writeFileSync(resolve(root,'20260925194038_uat308_original_dispatch_scan_ci.sql'),
+  legacyDispatchScanner);
+console.log('CI-only catalog-authentic dispatch scan restored before return snapshot.');
+
+
 
 
 
