@@ -105,6 +105,18 @@ if (!fieldFinanceSql.includes('CONSTRAINT be_field_finance_settlements_v1_work_d
 copyFileSync(fieldFinanceFixture,resolve(root,'20260927234318_uat308_field_finance_settlements_ci.sql'));
 console.log('CI-only original field finance settlement ledger restored before V177; no settlement data.');
 
+const codPolicyV1 = readFileSync(resolve(root,
+  '20260930051110_cod_pickup_service_policy_20260930_v1.sql'),'utf8');
+if (!codPolicyV1.includes('coalesce(declared_item_value,0)') ||
+    !codPolicyV1.includes('update public.be_portal_pickup_requests')) {
+  throw new Error('Original COD policy V1 pickup declared-item-value dependency changed');
+}
+writeFileSync(resolve(root,'20260930051109_uat308_declared_item_value_ci.sql'),
+  '-- CI-only catalog verified pickup declared item amount; no price backfill.\n' +
+  'ALTER TABLE public.be_portal_pickup_requests ADD COLUMN IF NOT EXISTS declared_item_value numeric NOT NULL DEFAULT 0;\n');
+console.log('CI-only declared item value shape restored before COD V1; no COD rows inserted.');
+
+
 
 
 const financialColumnFixture = resolve('scripts/uat-audit/fixtures/data_entry_financial_validation_column_ci.sql');
