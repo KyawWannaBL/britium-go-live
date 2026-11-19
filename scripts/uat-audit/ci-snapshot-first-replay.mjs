@@ -1512,7 +1512,7 @@ const oct23ShapeOnly = [
   '-- DISPOSABLE CI ONLY: empty historical recovery-source shape, NOT authentic evidence.',
   '-- NEVER apply to production or use to certify recovery source completeness.',
   'CREATE TABLE IF NOT EXISTS private.be_oct23_missing_parcel_recovery_source_v1 (',
-  requiredRecoveryFields.map(field => '  ' + field + ' text').join(',\\n'),
+  requiredRecoveryFields.map(field => '  ' + field + ' text').join(',\n'),
   ');',
   'ALTER TABLE private.be_oct23_missing_parcel_recovery_source_v1 ENABLE ROW LEVEL SECURITY;',
   'REVOKE ALL ON TABLE private.be_oct23_missing_parcel_recovery_source_v1 FROM PUBLIC, anon, authenticated, service_role;',
@@ -1521,7 +1521,7 @@ const oct23ShapeOnly = [
   "  RAISE EXCEPTION 'CI historical recovery source unexpectedly contains rows';",
   ' END IF;',
   'END $ci$;'
-].join('\\n') + '\\n';
+].join('\n') + '\n';
 writeFileSync(resolve(root,'20261031095041_uat308_oct23_missing_recovery_source_ci.sql'),
   oct23ShapeOnly);
 console.log('CI-only empty historical Oct23 recovery source shape inserted; data recovery not certified.');
