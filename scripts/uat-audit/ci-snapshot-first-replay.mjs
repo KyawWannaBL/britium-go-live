@@ -226,6 +226,21 @@ copyFileSync(codV48Fixture,
   resolve(root,'20261007090833_uat308_finance_cod_v48_ci.sql'));
 console.log('CI-only original canonical COD settlement ledger restored before V200; no financial records.');
 
+const paymentItemsV3Fixture = resolve('scripts/uat-audit/fixtures/finance_settlement_payment_items_v3_ci_bootstrap.sql');
+const paymentItemsV3Sql = readFileSync(paymentItemsV3Fixture,'utf8');
+if (!paymentItemsV3Sql.includes('be_finance_settlement_batch_items_v3_active_uidx') ||
+    !paymentItemsV3Sql.includes('be_finance_settlement_payments_v3_amount_check') ||
+    !paymentItemsV3Sql.includes('be_finance_settlement_payments_v3_status_check') ||
+    !paymentItemsV3Sql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !paymentItemsV3Sql.includes('REVOKE ALL ON TABLE public.be_finance_settlement_batch_items_v3') ||
+    !v200SettlementSql.includes('alter table public.be_finance_settlement_payments_v3')) {
+  throw new Error('Original V3 settlement payment/items contract or V200 dependency changed');
+}
+copyFileSync(paymentItemsV3Fixture,
+  resolve(root,'20261007090832_uat308_finance_settlement_items_payments_ci.sql'));
+console.log('CI-only original Finance V3 settlement items and payments restored before V200; no settlements created.');
+
+
 
 const merchantSettlementFieldsV200 = readFileSync(resolve(root,
   '20261007090836_merchant_settlement_live_v200.sql'),'utf8');
