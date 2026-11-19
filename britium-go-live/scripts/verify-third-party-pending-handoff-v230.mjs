@@ -14,6 +14,8 @@ for(const term of [
   "be_warehouse_scan_lifecycle_snapshot_v211",
   "be_warehouse_provider_transfer_preview_v1",
   "provider_planning_gate",
+  "providerMetadataReady",
+  "Provider classification RPC is not installed",
   "NEEDS_PROVIDER_TRANSFER_WAYPLAN",
   "Service provider",
   "Select / clear eligible",
