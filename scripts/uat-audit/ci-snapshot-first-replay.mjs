@@ -121,6 +121,22 @@ writeFileSync(resolve(root,'20260930051109_uat308_declared_item_value_ci.sql'),
   " ADD COLUMN IF NOT EXISTS finance_pre_dispatch_status text NOT NULL DEFAULT 'NOT_REQUIRED';\n");
 console.log('CI-only declared item value shape restored before COD V1; no COD rows inserted.');
 
+const predisptachReviewsFixture = resolve('scripts/uat-audit/fixtures/finance_predispatch_reviews_ci_bootstrap.sql');
+const predispatchReviewsSql = readFileSync(predisptachReviewsFixture,'utf8');
+const v2CodFinance = readFileSync(resolve(root,
+  '20260930051924_cod_finance_predispatch_alignment_20260930_v2.sql'),'utf8');
+if (!predispatchReviewsSql.includes('delivery_way_id text PRIMARY KEY') ||
+    !predispatchReviewsSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !predispatchReviewsSql.includes("be_accounting_can_v1('finance_review')") ||
+    !predispatchReviewsSql.includes('REVOKE ALL ON TABLE public.be_finance_predispatch_reviews_v1') ||
+    !v2CodFinance.includes('update public.be_finance_predispatch_reviews_v1')) {
+  throw new Error('Finance predispatch review ledger or V2 dependency changed');
+}
+copyFileSync(predisptachReviewsFixture,
+  resolve(root,'20260930051923_uat308_finance_predispatch_reviews_ci.sql'));
+console.log('CI-only protected finance predispatch review ledger restored before V2; no finance decisions inserted.');
+
+
 
 
 
