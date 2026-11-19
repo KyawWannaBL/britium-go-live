@@ -238,6 +238,22 @@ END $uat308_v208$;
 `);
 console.log('Historical V208 September commission backfill skipped in disposable empty-schema CI only; original preserved, never fabricate finance data.');
 
+const partyPayoutFixture = resolve('scripts/uat-audit/fixtures/party_wallet_payouts_v193_ci_bootstrap.sql');
+const partyPayoutSql = readFileSync(partyPayoutFixture,'utf8');
+const workforceFinanceV210 = readFileSync(resolve(root,
+  '20261018070532_20261018190000_workforce_finance_review_and_payout_guard_v210.sql'),'utf8');
+if (!partyPayoutSql.includes('be_party_wallet_payouts_v193_amount_check') ||
+    !partyPayoutSql.includes('wallet_id uuid NOT NULL REFERENCES public.be_party_wallet_accounts(id)') ||
+    !partyPayoutSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !partyPayoutSql.includes('REVOKE ALL ON TABLE public.be_party_wallet_payouts_v193') ||
+    !workforceFinanceV210.includes('public.be_party_wallet_payouts_v193')) {
+  throw new Error('Party payout ledger or workforce Finance V210 dependency changed');
+}
+copyFileSync(partyPayoutFixture,
+  resolve(root,'20261018070531_uat308_party_wallet_payouts_v193_ci.sql'));
+console.log('CI-only party payout ledger reconstructed before workforce Finance V210, with no payouts.');
+
+
 
 const codV48Fixture = resolve('scripts/uat-audit/fixtures/finance_cod_settlements_v48_ci_bootstrap.sql');
 const codV48Sql = readFileSync(codV48Fixture,'utf8');
