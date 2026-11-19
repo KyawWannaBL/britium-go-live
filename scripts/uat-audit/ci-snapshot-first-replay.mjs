@@ -951,7 +951,7 @@ const deliveryFailureV39Archive = readFileSync(resolve(
   'britium-go-live/britium-current-ui-fixed/warehouse_dispatch_rto_alert_v39.sql'),'utf8');
 const failureFnStart = deliveryFailureV39Archive.indexOf(
   'create or replace function public.be_record_delivery_failure_v39(');
-const failureFnEnd = deliveryFailureV39Archive.indexOf('\n' + ';
+const failureFnEnd = deliveryFailureV39Archive.indexOf(String.fromCharCode(10,36,36,59),failureFnStart);
 if (failureFnStart < 0 || failureFnEnd <= failureFnStart) {
   throw new Error('Historical V39 delivery failure writer not found');
 }
