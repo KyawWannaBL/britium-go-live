@@ -76,3 +76,30 @@ CREATE TABLE IF NOT EXISTS public.be_finance_settlement_parcel_control_v3 (
 );
 ALTER TABLE public.be_finance_settlement_parcel_control_v3 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.be_finance_settlement_parcel_control_v3 FROM PUBLIC,anon,authenticated;
+
+-- Production-catalog-verified merchant dispute register; no dispute rows seeded.
+CREATE TABLE IF NOT EXISTS public.be_finance_settlement_disputes_v3 (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ batch_id uuid REFERENCES public.be_finance_settlement_batches_v3(id),
+ parcel_id uuid,
+ delivery_way_id text,
+ merchant_id text NOT NULL,
+ dispute_category text NOT NULL,
+ claimed_amount numeric(18,2),
+ merchant_explanation text NOT NULL,
+ attachment_url text,
+ status text NOT NULL DEFAULT 'OPEN'
+   CONSTRAINT be_finance_settlement_disputes_v3_status_check
+   CHECK (status IN ('OPEN','UNDER_REVIEW','MERCHANT_ACTION_REQUIRED','FINANCE_ACTION_REQUIRED','RESOLVED','REJECTED','CLOSED')),
+ submitted_by text,
+ submitted_at timestamptz NOT NULL DEFAULT now(),
+ assigned_finance_user text,
+ resolution_note text,
+ resolved_by text,
+ resolved_at timestamptz,
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS be_finance_settlement_disputes_v3_lookup_idx
+ ON public.be_finance_settlement_disputes_v3(merchant_id,status,submitted_at DESC);
+ALTER TABLE public.be_finance_settlement_disputes_v3 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.be_finance_settlement_disputes_v3 FROM PUBLIC,anon,authenticated;
