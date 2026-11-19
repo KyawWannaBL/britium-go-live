@@ -835,6 +835,29 @@ writeFileSync(resolve(root,
   String.fromCharCode(10) + approvedLookupWithAliases + String.fromCharCode(10));
 console.log('CI-only verified township-code compatibility installed before V122.');
 
+// V140 explicitly rewrites the pre-driver-synchronization pickup verifier.
+// Restore the authentic pre-V140 body (the original production function with
+// exactly V140's later driver_status patch removed) in disposable CI only.
+// Keep auth checks, rider proof gating and assignment checks intact.
+const legacyPartialPickupVerifier = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/pre_v140_partial_pickup_verification_ci.sql'),'utf8');
+const partialV140Source = readFileSync(
+  resolve(root,'20260924195910_field_team_verify_release_v140.sql'),'utf8');
+const oldPickupVerifierPatch =
+  "rider_status=case when v_role='rider' then 'VERIFIED' else p.rider_status end,pickup_verified_at=now()";
+if (!legacyPartialPickupVerifier.includes(oldPickupVerifierPatch) ||
+    !legacyPartialPickupVerifier.includes('be_field_team_assert_assigned_pickup') ||
+    !legacyPartialPickupVerifier.includes('auth.uid()') ||
+    legacyPartialPickupVerifier.includes(
+      "driver_status=case when v_role='driver' then 'VERIFIED' else p.driver_status end") ||
+    !partialV140Source.includes("be_field_team_submit_partial_pickup_verification")) {
+  throw new Error('Authentic pre-V140 pickup verifier fixture is invalid');
+}
+writeFileSync(resolve(root,'20260924195909_uat308_original_pickup_verifier_ci.sql'),
+  legacyPartialPickupVerifier);
+console.log('CI-only original pickup proof verification restored before V140.');
+
+
 
 
 
