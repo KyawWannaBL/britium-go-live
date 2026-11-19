@@ -151,6 +151,24 @@ copyFileSync(employeeCommissionFixture,
   resolve(root,'20260930054450_uat308_employee_commission_eligibility_ci.sql'));
 console.log('CI-only HR commission eligibility structure restored before V1; no eligibility decisions inserted.');
 
+const commissionV1Fields = [
+  'source_key text',
+  'merchant_id text',
+  'merchant_name text',
+  'referral_assignment_id uuid'
+];
+if (!commissionV1Source.includes('source_type,source_key,role_code,operation_type') ||
+    !commissionV1Source.includes('referral_assignment_id')) {
+  throw new Error('Original commission wallet V1 fields have changed');
+}
+writeFileSync(resolve(root,'20260930054449_uat308_commission_event_fields_ci.sql'),
+  '-- Disposable CI only: nullable commission marketing source descriptors.\n' +
+  'ALTER TABLE public.be_commission_events\n' +
+  commissionV1Fields.map(field => '  ADD COLUMN IF NOT EXISTS ' + field).join(',\n') +
+  ';\n');
+console.log('CI-only source key, merchant and referral descriptors restored before commission V1; no commission rows.');
+
+
 
 
 
