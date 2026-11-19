@@ -211,6 +211,20 @@ copyFileSync(settlementBatchFixture,
   resolve(root,'20261007090835_uat308_finance_settlement_batches_v3_ci.sql'));
 console.log('CI-only original Finance settlement batch ledger restored before V200; no payments or approvals created.');
 
+const merchantSettlementFieldsV200 = readFileSync(resolve(root,
+  '20261007090836_merchant_settlement_live_v200.sql'),'utf8');
+if (!merchantSettlementFieldsV200.includes('d.merchant_final_settlement_amount') ||
+    !merchantSettlementFieldsV200.includes('d.settlement_direction')) {
+  throw new Error('V200 canonical settlement field references changed');
+}
+writeFileSync(resolve(root,'20261007090835_uat308_settlement_fields_ci.sql'),
+  '-- CI-only original nullable Data Entry settlement projection columns.\n' +
+  'ALTER TABLE public.be_data_entry_parcel_details\n' +
+  ' ADD COLUMN IF NOT EXISTS merchant_final_settlement_amount bigint,\n' +
+  ' ADD COLUMN IF NOT EXISTS settlement_direction text;\n');
+console.log('CI-only original nullable settlement fields reconstructed before V200; no amounts backfilled.');
+
+
 
 
 
