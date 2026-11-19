@@ -134,19 +134,28 @@ export default function WarehousePendingParcelsPage(){
 
   // A Warehouse READY handoff is not a dispatch scan: Supervisor release and
   // physical dispatch scanning remain mandatory for every provider.
-  const selectableReceived=useMemo(()=>visible.filter((r:any)=>
-    txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase()==="RECEIVED"
-    && r._pendingType==="NEW INBOUND"
-    && !r.active_wayplan_id
-    && r.branch_receipt_current!==false
-  ),[visible]);
+  const selectableReceived=useMemo(()=>visible.filter((r:any)=>{
+    const status=txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase();
+    const stage=txt(r.dispatch_workflow_stage).toUpperCase();
+    const freshInbound=r._pendingType==="NEW INBOUND"
+      && ["RECEIVED","WAREHOUSE_READY","WAREHOUSE_RECEIVED"].includes(status);
+    // Replan only after a physical return scan; exclude future holds and RTO.
+    const returnedForReplan=r._pendingType==="FAILED RETURN / REPLAN"
+      && ["RETURN_SCANNED","WAREHOUSE_READY"].includes(status)
+      && stage==="RETURNED_WAITING_REPLAN"
+      && Number(r.physical_return_scan_count||0)>0
+      && Number(r.physical_return_scan_count||0)<3;
+    return (freshInbound||returnedForReplan)
+      && !r.active_wayplan_id
+      && r.branch_receipt_current!==false;
+  }),[visible]);
   const readyIds=useMemo(()=>new Set(selectableReceived.map((r:any)=>txt(r.delivery_way_id||r.waybill_no)).filter(Boolean)),[selectableReceived]);
   const selectedIds=useMemo(()=>Object.keys(selectedWays).filter(id=>selectedWays[id]&&readyIds.has(id)),[selectedWays,readyIds]);
 
   const handoffReceived=async()=>{
     if(handoffBusy || loading || !selectedIds.length) return;
     const ids=selectedIds.slice(0,100);
-    if(!window.confirm("Mark "+ids.length+" physically received parcel(s) WAREHOUSE_READY and send them to Wayplan Command? This does not dispatch or confirm third-party delivery. Existing authorization and scan gates remain enforced."))return;
+    if(!window.confirm("Mark "+ids.length+" received or returned parcel(s) WAREHOUSE_READY and send them to Wayplan Command? This does not dispatch or confirm third-party delivery. Existing authorization and scan gates remain enforced."))return;
     setHandoffBusy(true);
     setHandoffErrors([]);
     setHandoffNotice("");
@@ -302,7 +311,7 @@ export default function WarehousePendingParcelsPage(){
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
             <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
-            <div className="text-xs text-slate-300">Select physically received parcels only. Return/replan cases require the correct return workflow. Provider pickup or transfer is recorded through the approved Wayplan and a real dispatch scan, not by this action.</div>
+            <div className="text-xs text-slate-300">Select physically received inbound parcels or physically return-scanned parcels eligible for replan. Scheduled holds and missing return scans remain excluded. Provider pickup or transfer is recorded through the approved Wayplan and a real dispatch scan, not by this action.</div>
             <div className="mt-1 text-xs">{selectedIds.length} selected · {selectableReceived.length} eligible in this filtered view · maximum 100 per batch</div>
           </div>
           <button type="button" onClick={()=>setSelectedWays(prev=>{
