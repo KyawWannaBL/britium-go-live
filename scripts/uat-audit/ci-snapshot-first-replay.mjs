@@ -281,6 +281,17 @@ copyFileSync(readinessReportFixture,
   resolve(root,'20261019171657_uat308_readiness_report_ci.sql'));
 console.log('CI-only original readiness report and private scope restored; no cutover or isolation operations.');
 
+const octoberScopeAudit=resolve('scripts/uat-audit/fixtures/ci_october_scope_full_dependency_audit.sql');
+const octoberScopeAuditSql=readFileSync(octoberScopeAudit,'utf8');
+if (!octoberScopeAuditSql.includes('FROM private.be_oct2026_scope s') ||
+    !octoberScopeAuditSql.includes('RAISE EXCEPTION') ||
+    !octoberScopeAuditSql.includes('to_regclass')) {
+  throw new Error('October cutover full dependency audit unexpectedly changed');
+}
+copyFileSync(octoberScopeAudit, resolve(root,'20261019171842_uat308_october_scope_gap_audit_ci.sql'));
+console.log('CI-only fail-closed full October cutover table-gap audit inserted before guard bindings.');
+
+
 
 
 
