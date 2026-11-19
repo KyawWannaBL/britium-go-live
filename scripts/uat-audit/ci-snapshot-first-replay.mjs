@@ -1494,6 +1494,38 @@ console.log('CI-only original Financial V2 waybill generator restored before V13
 
 
 
+// October 31 views require missing historical evidence. This is an EMPTY,
+// access-denied shape fixture for disposable CI schema compilation only.
+// It is NOT a production migration and NOT proof that historical data exists.
+const oct23RecoveryConsumer = readFileSync(resolve(root,
+  '20261031095042_cs_pickup_and_private_source_isolation.sql'),'utf8');
+const requiredRecoveryFields = [
+  'delivery_way_id', 'source_seq', 'merchant_name', 'recipient_name',
+  'recipient_township', 'recipient_address', 'recipient_phone',
+  'final_cod_raw', 'item_price_raw', 'delivery_fee_raw'
+];
+if (requiredRecoveryFields.some(field => !oct23RecoveryConsumer.includes('s.' + field)) ||
+    !oct23RecoveryConsumer.includes('private.be_oct23_missing_parcel_recovery_source_v1')) {
+  throw new Error('Oct23 historical recovery source consumer contract changed');
+}
+const oct23ShapeOnly = [
+  '-- DISPOSABLE CI ONLY: empty historical recovery-source shape, NOT authentic evidence.',
+  '-- NEVER apply to production or use to certify recovery source completeness.',
+  'CREATE TABLE IF NOT EXISTS private.be_oct23_missing_parcel_recovery_source_v1 (',
+  requiredRecoveryFields.map(field => '  ' + field + ' text').join(',\\n'),
+  ');',
+  'ALTER TABLE private.be_oct23_missing_parcel_recovery_source_v1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE private.be_oct23_missing_parcel_recovery_source_v1 FROM PUBLIC, anon, authenticated, service_role;',
+  'DO $ci$ BEGIN',
+  ' IF EXISTS (SELECT 1 FROM private.be_oct23_missing_parcel_recovery_source_v1) THEN',
+  "  RAISE EXCEPTION 'CI historical recovery source unexpectedly contains rows';",
+  ' END IF;',
+  'END $ci$;'
+].join('\\n') + '\\n';
+writeFileSync(resolve(root,'20261031095041_uat308_oct23_missing_recovery_source_ci.sql'),
+  oct23ShapeOnly);
+console.log('CI-only empty historical Oct23 recovery source shape inserted; data recovery not certified.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
