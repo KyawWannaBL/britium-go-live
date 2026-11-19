@@ -208,7 +208,7 @@ if (!settlementBatchSql.includes('be_finance_settlement_batches_v3_status_check'
   throw new Error('Merchant settlement batch schema or V200 FK contract changed');
 }
 copyFileSync(settlementBatchFixture,
-  resolve(root,'20261007090835_uat308_finance_settlement_batches_v3_ci.sql'));
+  resolve(root,'20261007090830_uat308_finance_settlement_batches_v3_ci.sql'));
 console.log('CI-only original Finance settlement batch ledger restored before V200; no payments or approvals created.');
 
 const codV48Fixture = resolve('scripts/uat-audit/fixtures/finance_cod_settlements_v48_ci_bootstrap.sql');
