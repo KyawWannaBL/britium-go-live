@@ -222,14 +222,20 @@ if (!v208HistoricalOriginal.includes('Historical September pickup reconciliation
     v208Pickups.some(id => !v208HistoricalOriginal.includes("'"+id+"'"))) {
   throw new Error('Historic V208 nine-pickup financial reconciliation contract changed');
 }
-writeFileSync(v208HistoricalMigrationFile,
-  '-- Disposable CI only: no historical business records can be fabricated. Original V208 untouched in Git.\n' +
-  'DO $uat308_v208$ DECLARE v_count integer; BEGIN\n' +
-  ' IF to_regclass(\\'public.be_portal_pickup_requests\\') IS NULL THEN RAISE EXCEPTION \\'Required pickup table absent\\'; END IF;\n' +
-  ' SELECT count(*) INTO v_count FROM public.be_portal_pickup_requests;\n' +
-  ' IF v_count <> 0 THEN RAISE EXCEPTION \\'Refusing to skip historical backfill: CI contains % pickup rows\\',v_count; END IF;\n' +
-  ' RAISE NOTICE \\'Historical V208 September nine-pickup data backfill intentionally excluded from EMPTY-SCHEMA CI replay; must run in genuine data-bearing environment after Finance reconciliation\\';\n' +
-  'END $uat308_v208$;\n');
+writeFileSync(v208HistoricalMigrationFile, `-- Disposable CI only: original nine-pickup V208 financial backfill remains unchanged in Git.
+DO $uat308_v208$
+DECLARE v_count integer;
+BEGIN
+  IF to_regclass('public.be_portal_pickup_requests') IS NULL THEN
+    RAISE EXCEPTION 'Required pickup table absent';
+  END IF;
+  SELECT count(*) INTO v_count FROM public.be_portal_pickup_requests;
+  IF v_count <> 0 THEN
+    RAISE EXCEPTION 'Refusing to skip historical backfill: CI contains % pickup rows',v_count;
+  END IF;
+  RAISE NOTICE 'V208 historical pickup backfill intentionally excluded from EMPTY CI replay; apply original only in a verified data-bearing environment';
+END $uat308_v208$;
+`);
 console.log('Historical V208 September commission backfill skipped in disposable empty-schema CI only; original preserved, never fabricate finance data.');
 
 
