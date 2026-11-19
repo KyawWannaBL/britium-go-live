@@ -291,6 +291,27 @@ if (!octoberScopeAuditSql.includes('FROM private.be_oct2026_scope s') ||
 copyFileSync(octoberScopeAudit, resolve(root,'20261019171842_uat308_october_scope_gap_audit_ci.sql'));
 console.log('CI-only fail-closed full October cutover table-gap audit inserted before guard bindings.');
 
+const october16Fixture = resolve('scripts/uat-audit/fixtures/ci_october_scope_16_catalog_tables.sql');
+const october16Sql = readFileSync(october16Fixture,'utf8');
+const expectedOctober16 = [
+  'be_accounting_evidence_v1','be_accounting_manual_journal_drafts_v1',
+  'be_accounting_open_items_v1','be_cs_closure_v49','be_cs_messages',
+  'be_data_entry_financial_v2_runtime_v58','be_data_entry_needs_fix_v25',
+  'be_delivery_team_confirmations_v176','be_final_sync_cases_v50',
+  'be_final_sync_variances_v50','be_finance_settlement_batches_v2',
+  'be_merchant_support_messages','be_parcel_import_batches',
+  'be_parcel_settlement_ledger_v2','be_rider_route_runs_v46','upload_batches'
+];
+if (expectedOctober16.some(name =>
+    !october16Sql.includes('CREATE TABLE public."' + name + '"') ||
+    !october16Sql.includes('ALTER TABLE public."' + name + '" ENABLE ROW LEVEL SECURITY;') ||
+    !october16Sql.includes('REVOKE ALL ON TABLE public."' + name + '"'))) {
+  throw new Error('One of the 16 original October isolation catalog tables is missing or not access-restricted');
+}
+copyFileSync(october16Fixture,resolve(root,'20261019171841_uat308_original_16_cutover_catalog_tables_ci.sql'));
+console.log('CI-only original definitions for all 16 missing October isolation tables restored before fail-closed audit.');
+
+
 
 
 
