@@ -92,6 +92,20 @@ writeFileSync(resolve(root,'20260927213537_uat308_amount_entry_type_ci.sql'),
   'ALTER TABLE public.be_data_entry_parcel_details ADD COLUMN IF NOT EXISTS amount_entry_type text;\n');
 console.log('CI-only nullable Data Entry amount entry type restored before Rider V165; no financial values inserted.');
 
+const fieldFinanceFixture = resolve('scripts/uat-audit/fixtures/field_finance_settlements_ci_bootstrap.sql');
+const fieldFinanceSql = readFileSync(fieldFinanceFixture,'utf8');
+const v177FinanceMigration = readFileSync(
+  resolve(root,'20260927234319_field_financial_settlement_and_master_sync_v177.sql'),'utf8');
+if (!fieldFinanceSql.includes('CONSTRAINT be_field_finance_settlements_v1_work_date_wayplan_id_key UNIQUE') ||
+    !fieldFinanceSql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !fieldFinanceSql.includes('REVOKE ALL ON TABLE public.be_field_finance_settlements_v1') ||
+    !v177FinanceMigration.includes('alter table public.be_field_finance_settlements_v1')) {
+  throw new Error('Original Field Finance settlement ledger or V177 dependency changed');
+}
+copyFileSync(fieldFinanceFixture,resolve(root,'20260927234318_uat308_field_finance_settlements_ci.sql'));
+console.log('CI-only original field finance settlement ledger restored before V177; no settlement data.');
+
+
 
 const financialColumnFixture = resolve('scripts/uat-audit/fixtures/data_entry_financial_validation_column_ci.sql');
 const financialSql = readFileSync(financialColumnFixture,'utf8');
