@@ -65,6 +65,22 @@ if (!scanSql.includes('CREATE TABLE IF NOT EXISTS public.be_dispatch_scans_v39')
 }
 copyFileSync(scanFixture, resolve(root,'20260901111808_uat308_dispatch_scans_v39_reconstruction.sql'));
 console.log('CI-only dispatch scan table reconstructed before health v12_10c; no remote writes.');
+
+const deliveryWayRegistryFixture = resolve('scripts/uat-audit/fixtures/delivery_way_id_registry_ci_bootstrap.sql');
+const deliveryWayRegistrySql = readFileSync(deliveryWayRegistryFixture, 'utf8');
+const deliveryWayV134Migration = readFileSync(
+  resolve(root,'20260926204710_canonical_delivery_way_registry_seed_and_backfill_v134.sql'), 'utf8');
+if (!deliveryWayRegistrySql.includes('CONSTRAINT uq_be_delivery_way_pickup_sequence UNIQUE') ||
+    !deliveryWayRegistrySql.includes('CHECK (parcel_sequence > 0)') ||
+    !deliveryWayRegistrySql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !deliveryWayRegistrySql.includes('REVOKE ALL ON TABLE public.be_delivery_way_id_registry') ||
+    !deliveryWayV134Migration.includes('insert into public.be_delivery_way_id_registry')) {
+  throw new Error('Way ID registry production constraints or V134 dependency changed');
+}
+copyFileSync(deliveryWayRegistryFixture,
+  resolve(root,'20260926204709_uat308_canonical_way_id_registry_ci.sql'));
+console.log('CI-only canonical Way ID registry with original uniqueness and RLS restored before V134; no way IDs seeded.');
+
 const financialColumnFixture = resolve('scripts/uat-audit/fixtures/data_entry_financial_validation_column_ci.sql');
 const financialSql = readFileSync(financialColumnFixture,'utf8');
 if (!financialSql.includes('ADD COLUMN IF NOT EXISTS financial_validation_status text') ||
