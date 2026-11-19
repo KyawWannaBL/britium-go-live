@@ -81,6 +81,18 @@ copyFileSync(deliveryWayRegistryFixture,
   resolve(root,'20260926204709_uat308_canonical_way_id_registry_ci.sql'));
 console.log('CI-only canonical Way ID registry with original uniqueness and RLS restored before V134; no way IDs seeded.');
 
+const riderCodV165Source = readFileSync(resolve(root,
+  '20260927213538_rider_cod_from_data_entry_v165a.sql'),'utf8');
+if (!riderCodV165Source.includes('de.amount_entry_type') ||
+    !riderCodV165Source.includes('public.be_data_entry_parcel_details')) {
+  throw new Error('V165 Data Entry amount entry type projection changed');
+}
+writeFileSync(resolve(root,'20260927213537_uat308_amount_entry_type_ci.sql'),
+  '-- CI-only production-catalog-verified nullable metadata column; no COD or parcel changes.\\n' +
+  'ALTER TABLE public.be_data_entry_parcel_details ADD COLUMN IF NOT EXISTS amount_entry_type text;\\n');
+console.log('CI-only nullable Data Entry amount entry type restored before Rider V165; no financial values inserted.');
+
+
 const financialColumnFixture = resolve('scripts/uat-audit/fixtures/data_entry_financial_validation_column_ci.sql');
 const financialSql = readFileSync(financialColumnFixture,'utf8');
 if (!financialSql.includes('ADD COLUMN IF NOT EXISTS financial_validation_status text') ||
