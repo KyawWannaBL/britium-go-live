@@ -76,6 +76,7 @@ export default function WarehousePendingParcelsPage(){
   const [exportError,setExportError]=useState("");
   const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
   const [handoffBusy,setHandoffBusy]=useState(false);
+  const [providerMetadataReady,setProviderMetadataReady]=useState(false);
   const [handoffNotice,setHandoffNotice]=useState("");
   const [handoffErrors,setHandoffErrors]=useState<string[]>([]);
 
@@ -89,6 +90,7 @@ export default function WarehousePendingParcelsPage(){
         result=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
       }
       const {data,error}=result;
+      setProviderMetadataReady(!error && data?.provider_transfer_preview===true);
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
       setMessage("");
@@ -144,6 +146,7 @@ export default function WarehousePendingParcelsPage(){
   // A Warehouse READY handoff is not a dispatch scan: Supervisor release and
   // physical dispatch scanning remain mandatory for every provider.
   const selectableReceived=useMemo(()=>visible.filter((r:any)=>{
+    if(!providerMetadataReady)return false;
     const status=txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase();
     const stage=txt(r.dispatch_workflow_stage).toUpperCase();
     const freshInbound=r._pendingType==="NEW INBOUND"
@@ -158,7 +161,7 @@ export default function WarehousePendingParcelsPage(){
       && txt(r.provider_planning_gate)!=="NEEDS_PROVIDER_TRANSFER_WAYPLAN"
       && !r.active_wayplan_id
       && r.branch_receipt_current!==false;
-  }),[visible]);
+  }),[visible,providerMetadataReady]);
   const readyIds=useMemo(()=>new Set(selectableReceived.map((r:any)=>txt(r.delivery_way_id||r.waybill_no)).filter(Boolean)),[selectableReceived]);
   const selectedIds=useMemo(()=>Object.keys(selectedWays).filter(id=>selectedWays[id]&&readyIds.has(id)),[selectedWays,readyIds]);
 
@@ -319,6 +322,7 @@ export default function WarehousePendingParcelsPage(){
         <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
         {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
+        {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
             <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
