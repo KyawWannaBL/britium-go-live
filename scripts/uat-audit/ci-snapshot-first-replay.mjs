@@ -736,6 +736,44 @@ writeFileSync(resolve(root,'20260919163522_uat308_delivery_charges_ci.sql'),[
 ].join('\n'));
 console.log('CI-only catalog-verified delivery_charges column restored before V63.');
 
+// V92 Warehouse exception-close trigger depends on the omitted historical
+// return-scan ledger. Restore catalog-confirmed columns and unique attempt
+// numbering, without creating any return-scans or bypassing the trigger.
+const v92Source = readFileSync(resolve(root,
+  '20260920194701_department_exception_visibility_v92.sql'), 'utf8');
+if (!v92Source.includes(
+    'on public.be_warehouse_return_scans_v39;') ||
+    !v92Source.includes('be_warehouse_return_exception_close_v92()')) {
+  throw new Error('Expected V92 warehouse return trigger source missing');
+}
+writeFileSync(resolve(root, '20260920194700_uat308_warehouse_return_scans_v39_ci.sql'), [
+  '-- Disposable CI only: catalog verified V39 warehouse return scan ledger.',
+  'CREATE TABLE IF NOT EXISTS public.be_warehouse_return_scans_v39 (',
+  '  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,',
+  '  delivery_way_id text NOT NULL,',
+  '  pickup_id text,',
+  '  attempt_number integer NOT NULL,',
+  '  reason_code text NOT NULL,',
+  '  reason_name text,',
+  '  remark text,',
+  '  actor_email text NOT NULL,',
+  '  warehouse_code text,',
+  '  scanned_at timestamptz NOT NULL DEFAULT now(),',
+  '  created_at timestamptz NOT NULL DEFAULT now(),',
+  '  updated_at timestamptz NOT NULL DEFAULT now(),',
+  '  UNIQUE (delivery_way_id,attempt_number)',
+  ');',
+  'CREATE INDEX IF NOT EXISTS be_warehouse_return_scans_v39_pickup_idx',
+  '  ON public.be_warehouse_return_scans_v39(pickup_id);',
+  'CREATE INDEX IF NOT EXISTS be_warehouse_return_scans_v39_scanned_idx',
+  '  ON public.be_warehouse_return_scans_v39(scanned_at DESC);',
+  'ALTER TABLE public.be_warehouse_return_scans_v39 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_warehouse_return_scans_v39 FROM PUBLIC, anon, authenticated;',
+  ''
+].join('\n'));
+console.log('CI-only catalog-verified V39 warehouse return ledger restored before V92.');
+
+
 
 
 
