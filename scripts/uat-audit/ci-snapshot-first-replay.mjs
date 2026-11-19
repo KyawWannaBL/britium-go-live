@@ -893,6 +893,25 @@ writeFileSync(resolve(root,'20260924200147_uat308_original_proof_sync_ci.sql'),
   preV141ProofSync);
 console.log('CI-only original Rider proof bridge restored before V141 orphan guard.');
 
+// September 25 warehouse return history requires the original authenticated
+// receive-scan function. Restore its catalog-verified definition in CI only;
+// do not replace the return lifecycle or bypass warehouse staff checks.
+const legacyReceiveScan = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/legacy_warehouse_receive_scan_v39_ci.sql'),'utf8');
+const warehouseReturnMigration = readFileSync(resolve(root,
+  '20260925194041_warehouse_return_history_and_canonical_snapshot.sql'),'utf8');
+if (!legacyReceiveScan.includes('be_warehouse_receive_scan_v39_legacy_20260823(') ||
+    !legacyReceiveScan.includes('be_branch_warehouse_require_way_v1') ||
+    !legacyReceiveScan.includes('be_warehouse_receive_scan_v36') ||
+    !warehouseReturnMigration.includes(
+      'revoke all on function public.be_warehouse_receive_scan_v39_legacy_20260823(')) {
+  throw new Error('Historical warehouse receive-scan fixture or permission gate changed');
+}
+writeFileSync(resolve(root,'20260925194040_uat308_original_warehouse_receive_scan_ci.sql'),
+  legacyReceiveScan);
+console.log('CI-only historical warehouse receive-scan restored before return lifecycle.');
+
+
 
 
 
