@@ -9,7 +9,14 @@ import { Capacitor } from "@capacitor/core";
 const DEFAULT_SUPABASE_URL = "https://dltavabvjwocknkyvwgz.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExMTMxOTQsImV4cCI6MjA4NjY4OTE5NH0.7-9BK6L9dpCYIB-pp1WOeQxCI1DVxnSykoTRXNUHYIo";
 
-const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+const isUatWebHost = typeof window !== "undefined" &&
+  window.location.hostname === "britium-uat-mdy-insein.vercel.app";
+const uatSupabaseUrl = "https://hgijdyfwmvskchsruknp.supabase.co";
+const configuredSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
+// UAT must never inherit the production Supabase URL or production anon key.
+const directSupabaseUrl = isUatWebHost
+  ? (configuredSupabaseUrl || uatSupabaseUrl)
+  : (configuredSupabaseUrl || DEFAULT_SUPABASE_URL);
 const isNativeApp = Capacitor.isNativePlatform();
 // The native WebView's origin is capacitor://localhost, so it cannot use a
 // relative /supabase URL. Route native API calls through the public Britium
@@ -20,13 +27,37 @@ const isNativeApp = Capacitor.isNativePlatform();
 const nativeProxyUrl = String(
   import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
 ).trim().replace(/\/+$/, "");
-const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
+const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" &&
+  !isNativeApp && !isUatWebHost;
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
   : shouldUseWebProxy
     ? `${window.location.origin}/supabase`
     : directSupabaseUrl;
-const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const suppliedAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+const supabaseAnonKey = isUatWebHost ? suppliedAnonKey : (suppliedAnonKey || DEFAULT_SUPABASE_ANON_KEY);
+
+// The same-origin /supabase rewrite intentionally points to production.
+// UAT uses its own Supabase endpoint directly; never allow an accidental
+// production fallback or mismatched JWT key at the UAT hostname.
+if (isUatWebHost) {
+  if (directSupabaseUrl !== uatSupabaseUrl || !suppliedAnonKey) {
+    throw new Error("UAT_SUPABASE_CONFIG_REQUIRED: set VITE_SUPABASE_URL to the isolated UAT project and VITE_SUPABASE_ANON_KEY to its publishable/anon key.");
+  }
+  if (suppliedAnonKey.startsWith("eyJ")) {
+    try {
+      const payloadPart = suppliedAnonKey.split(".")[1];
+      const payload = JSON.parse(atob(payloadPart.replace(/-/g, "+").replace(/_/g, "/")));
+      if (payload.ref !== "hgijdyfwmvskchsruknp" || payload.role !== "anon") {
+        throw new Error("JWT project/role does not match UAT");
+      }
+    } catch {
+      throw new Error("UAT_SUPABASE_KEY_MISMATCH: replace the browser key with the isolated project's anon key.");
+    }
+  } else if (!suppliedAnonKey.startsWith("sb_publishable_")) {
+    throw new Error("UAT_SUPABASE_KEY_INVALID: use a valid Supabase publishable or anon key.");
+  }
+}
 
 if (isNativeApp) {
   console.info("[Britium Supabase] Native app using Britium HTTPS API gateway.");
