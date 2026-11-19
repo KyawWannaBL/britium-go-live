@@ -6,24 +6,24 @@ Provision by Supabase Auth Admin **Invite user**, enforce email verification/pas
 
 | UAT email | Branch | Role |
 |---|---|---|
-| `branch_mgr_mdy_001@britiumventures.com` | Mandalay | Branch Manager |
-| `rider_mdy_001@britiumventures.com` | Mandalay | Rider |
-| `rider_mdy_002@britiumventures.com` | Mandalay | Rider |
-| `rider_mdy_003@britiumventures.com` | Mandalay | Rider |
-| `warehouse_mdy_001@britiumventures.com` | Mandalay | Warehouse |
-| `cashier_mdy_001@britiumventures.com` | Mandalay | Cashier |
-| `driver_mdy_001@britiumventures.com` | Mandalay | Driver |
-| `helper_mdy_001@britiumventures.com` | Mandalay | Helper |
-| `branch_mgr_isn_001@britiumventures.com` | Insein | Branch Manager |
-| `rider_isn_001@britiumventures.com` | Insein | Rider |
-| `rider_isn_002@britiumventures.com` | Insein | Rider |
-| `rider_isn_003@britiumventures.com` | Insein | Rider |
-| `warehouse_isn_001@britiumventures.com` | Insein | Warehouse |
-| `cashier_isn_001@britiumventures.com` | Insein | Cashier |
-| `driver_isn_001@britiumventures.com` | Insein | Driver |
-| `helper_isn_001@britiumventures.com` | Insein | Helper |
+| `branch_mgr_mdy_001_uat@britiumventures.com` | Mandalay | Branch Manager |
+| `rider_mdy_001_uat@britiumventures.com` | Mandalay | Rider |
+| `rider_mdy_002_uat@britiumventures.com` | Mandalay | Rider |
+| `rider_mdy_003_uat@britiumventures.com` | Mandalay | Rider |
+| `warehouse_mdy_001_uat@britiumventures.com` | Mandalay | Warehouse |
+| `cashier_mdy_001_uat@britiumventures.com` | Mandalay | Cashier |
+| `driver_mdy_001_uat@britiumventures.com` | Mandalay | Driver |
+| `helper_mdy_001_uat@britiumventures.com` | Mandalay | Helper |
+| `branch_mgr_isn_001_uat@britiumventures.com` | Insein | Branch Manager |
+| `rider_isn_001_uat@britiumventures.com` | Insein | Rider |
+| `rider_isn_002_uat@britiumventures.com` | Insein | Rider |
+| `rider_isn_003_uat@britiumventures.com` | Insein | Rider |
+| `warehouse_isn_001_uat@britiumventures.com` | Insein | Warehouse |
+| `cashier_isn_001_uat@britiumventures.com` | Insein | Cashier |
+| `driver_isn_001_uat@britiumventures.com` | Insein | Driver |
+| `helper_isn_001_uat@britiumventures.com` | Insein | Helper |
 
-The existing operational Mandalay manager address `branch_mgr_mdy@britiumventures.com` is a **separate existing identity**; do not silently replace it with the `_001` UAT identity.
+These 16 emails were confirmed by the user as created in production Supabase, NOT isolated UAT. They must be invited separately into isolated UAT before tests. The existing operational Mandalay manager address `branch_mgr_mdy@britiumventures.com` is a **separate existing identity**; do not silently replace it with the `_001` UAT identity.
 
 ## Release gates
 
