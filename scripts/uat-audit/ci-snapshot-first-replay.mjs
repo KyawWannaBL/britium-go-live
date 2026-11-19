@@ -435,8 +435,22 @@ if (!groundSettlementSql.includes('CONSTRAINT be_gsc_finance_proof_ck') ||
     !novemberPrivateIsolation.includes('private.be_ground_settlement_confirmations_v1')) {
   throw new Error('Original private ground settlement confirmation guard or November dependency changed');
 }
-copyFileSync(groundSettlementFixture,resolve(root,'20261031095041_uat308_ground_settlement_confirmations_ci.sql'));
+copyFileSync(groundSettlementFixture,resolve(root,'20261031095040_uat308_ground_settlement_confirmations_ci.sql'));
 console.log('CI-only original private settlement confirmations with mandatory finance evidence, no records seeded.');
+
+const oct23GroundFixture=resolve('scripts/uat-audit/fixtures/ci_oct23_outbound_ground_failures.sql');
+const oct23GroundSql=readFileSync(oct23GroundFixture,'utf8');
+if (!oct23GroundSql.includes('private.be_oct23_outbound_manifest_v1') ||
+    !oct23GroundSql.includes('private.be_oct23_ground_failures_v1') ||
+    !oct23GroundSql.includes('be_oct23_status_ck') ||
+    (oct23GroundSql.match(/ENABLE ROW LEVEL SECURITY/g)||[]).length!==2 ||
+    !novemberPrivateIsolation.includes('private.be_oct23_outbound_manifest_v1') ||
+    !novemberPrivateIsolation.includes('private.be_oct23_ground_failures_v1')) {
+  throw new Error('Original October 23 ground reconciliation relations or November migration changed');
+}
+copyFileSync(oct23GroundFixture,resolve(root,'20261031095041_uat308_oct23_outbound_ground_failure_tables_ci.sql'));
+console.log('CI-only exact October 23 outbound/failure record structures created empty before November source isolation.');
+
 
 
 
