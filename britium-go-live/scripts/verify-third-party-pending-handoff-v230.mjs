@@ -9,6 +9,9 @@ for(const term of [
   "be_warehouse_mark_delivery_ready_v150",
   "WAREHOUSE_READY",
   "NEW INBOUND",
+  "RETURNED_WAITING_REPLAN",
+  "physical_return_scan_count",
+  "be_warehouse_scan_lifecycle_snapshot_v211",
   "Select / clear eligible",
   "handoffBusy",
   "selectedIds.slice(0,100)",
@@ -20,8 +23,10 @@ for(const term of [
 assert.match(command,/be_wayplan_visible_queue_v124/);
 assert.match(command,/be_warehouse_ack_wayplan_handoff_v150/);
 assert.match(command,/be_wayplan_handoff_ids_v150/);
+assert.match(command,/unmatched.length/);
+assert.match(command,/Outside-core third-party parcels require/);
 assert.match(warehouse,/be_warehouse_return_scan_v71/);
 assert.match(warehouse,/DISPATCH_SCAN_REQUIRED/);
 assert.doesNotMatch(pending,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(pending,/be_warehouse_return_scan_v71\s*\(/);
-console.log("PASS: pending handoff keeps dispatch/return scans in warehouse and only stages physically received parcels");
+console.log("PASS: pending handoff keeps dispatch/return scans in warehouse and only stages received or verified returned parcels");
