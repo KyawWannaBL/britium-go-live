@@ -11,6 +11,16 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+type PickupCountChange = {
+  id: string;
+  pickup_id: string;
+  original_count: number;
+  requested_count: number;
+  reason: string;
+  status: string;
+  requested_by: string;
+};
+
 type Pair = [string, string];
 
 type RosterOption = {
@@ -134,6 +144,8 @@ export default function SupervisorPickupAssignmentGoLivePage() {
   const [fleet, setFleet] = useState<Pair[]>([]);
   const [choice, setChoice] = useState<Record<string, any>>({});
   const [msg, setMsg] = useState("");
+  const [countRequests, setCountRequests] = useState<PickupCountChange[]>([]);
+  const [countReviewBusy, setCountReviewBusy] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const pendingCount = useMemo(
@@ -260,6 +272,46 @@ export default function SupervisorPickupAssignmentGoLivePage() {
     setFleet(fleetRows);
   }
 
+  async function loadCountRequests() {
+    const { data, error } = await (supabase as any)
+      .rpc("be_superadmin_pending_pickup_count_reviews_v1");
+    if (error) {
+      // RLS may prohibit non-superadmins. Do not relax database access.
+      console.warn("Pickup-count reviews are unavailable to this account", error.message);
+      setCountRequests([]);
+      return;
+    }
+    setCountRequests((data || []) as PickupCountChange[]);
+  }
+
+  async function reviewCountChange(request: PickupCountChange, approve: boolean) {
+    const confirmation = window.confirm(
+      `${approve ? "Approve" : "Reject"} parcel count change for ${request.pickup_id}: ${request.original_count} → ${request.requested_count}?\n\nReason: ${request.reason}\n\nPickup ID must remain unchanged and all physical parcels must be verified.`
+    );
+    if (!confirmation) return;
+    const note = window.prompt("Enter a review note (required for audit).", approve
+      ? "Verified merchant's actual parcel quantity and checked no pickup verification has begun."
+      : "Count evidence is insufficient; verify with merchant and rider.");
+    if (!note?.trim()) { setMsg("Review cancelled: an audit note is required."); return; }
+    setCountReviewBusy(request.id);
+    setMsg("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_superadmin_review_pickup_count_v1", {
+        p_request_id: request.id,
+        p_approve: approve,
+        p_note: note.trim(),
+      });
+      if (error) throw error;
+      if (data?.ok !== true) throw new Error(data?.message || "Review was not confirmed by backend.");
+      setMsg(`Count change ${approve ? "approved" : "rejected"} for ${request.pickup_id}. Reloaded current pickup count.`);
+      await Promise.all([loadPickups(),loadCountRequests()]);
+    } catch (error: any) {
+      setMsg(error?.message || "Count review failed. No quantity was changed.");
+    } finally {
+      setCountReviewBusy(null);
+    }
+  }
+
   async function loadPickups() {
     setLoading(true);
     setMsg("");
@@ -382,9 +434,11 @@ export default function SupervisorPickupAssignmentGoLivePage() {
   useEffect(() => {
     void loadMasterData();
     void loadPickups();
+    void loadCountRequests();
 
     const refresh = () => {
       void loadPickups();
+      void loadCountRequests();
     };
 
     const channel = supabase
@@ -446,6 +500,27 @@ export default function SupervisorPickupAssignmentGoLivePage() {
           Team Ready: {teamReadyCount}
         </span>
       </div>
+
+      <section className="mb-5 rounded-2xl border border-amber-400/30 bg-amber-950/20 p-5">
+        <h2 className="text-sm font-black text-amber-100">Pickup parcel-count corrections</h2>
+        <p className="mt-2 text-xs text-[#9cc2d9]">The assigned rider must submit a count-change request first. A different Super Admin approves it. Never alter an assigned pickup ID or create missing parcels automatically.</p>
+        {countRequests.length === 0 ? (
+          <p className="mt-3 text-xs text-[#9cc2d9]">No pending requests visible to this account. For Royal Poe P1104-RYP-003, the current server quantity is 3; the reported 11 remains unapproved.</p>
+        ) : (
+          <div className="mt-4 space-y-3">
+            {countRequests.map((request) => (
+              <div key={request.id} className="rounded-xl border border-amber-400/20 bg-[#081928] p-4">
+                <div className="text-sm font-bold text-white">{request.pickup_id}: {request.original_count} → {request.requested_count} parcels</div>
+                <div className="mt-1 text-xs text-[#9cc2d9]">Reason: {request.reason}</div>
+                <div className="mt-3 flex gap-2">
+                  <button disabled={!!countReviewBusy || loading} onClick={() => void reviewCountChange(request,true)} className="rounded-lg bg-emerald-700 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">Approve (Super Admin)</button>
+                  <button disabled={!!countReviewBusy || loading} onClick={() => void reviewCountChange(request,false)} className="rounded-lg border border-rose-400/40 px-4 py-2 text-xs font-bold text-rose-200 disabled:opacity-40">Reject</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-5">
         {pickups.map((p) => (
