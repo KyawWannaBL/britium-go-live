@@ -211,6 +211,22 @@ copyFileSync(settlementBatchFixture,
   resolve(root,'20261007090835_uat308_finance_settlement_batches_v3_ci.sql'));
 console.log('CI-only original Finance settlement batch ledger restored before V200; no payments or approvals created.');
 
+const codV48Fixture = resolve('scripts/uat-audit/fixtures/finance_cod_settlements_v48_ci_bootstrap.sql');
+const codV48Sql = readFileSync(codV48Fixture,'utf8');
+const v200SettlementSql = readFileSync(resolve(root,
+  '20261007090836_merchant_settlement_live_v200.sql'),'utf8');
+if (!codV48Sql.includes('be_finance_cod_settlements_v48_status_check') ||
+    !codV48Sql.includes('be_finance_cod_settlements_v48_variance_check') ||
+    !codV48Sql.includes('ENABLE ROW LEVEL SECURITY') ||
+    !codV48Sql.includes('REVOKE ALL ON TABLE public.be_finance_cod_settlements_v48') ||
+    !v200SettlementSql.includes('be_finance_cod_settlements_v48')) {
+  throw new Error('COD V48 original settlement ledger or V200 dependency changed');
+}
+copyFileSync(codV48Fixture,
+  resolve(root,'20261007090833_uat308_finance_cod_v48_ci.sql'));
+console.log('CI-only original canonical COD settlement ledger restored before V200; no financial records.');
+
+
 const merchantSettlementFieldsV200 = readFileSync(resolve(root,
   '20261007090836_merchant_settlement_live_v200.sql'),'utf8');
 if (!merchantSettlementFieldsV200.includes('d.merchant_final_settlement_amount') ||
