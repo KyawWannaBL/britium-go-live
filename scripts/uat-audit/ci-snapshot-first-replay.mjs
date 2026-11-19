@@ -88,8 +88,8 @@ if (!riderCodV165Source.includes('de.amount_entry_type') ||
   throw new Error('V165 Data Entry amount entry type projection changed');
 }
 writeFileSync(resolve(root,'20260927213537_uat308_amount_entry_type_ci.sql'),
-  '-- CI-only production-catalog-verified nullable metadata column; no COD or parcel changes.\\n' +
-  'ALTER TABLE public.be_data_entry_parcel_details ADD COLUMN IF NOT EXISTS amount_entry_type text;\\n');
+  '-- CI-only production-catalog-verified nullable metadata column; no COD or parcel changes.\n' +
+  'ALTER TABLE public.be_data_entry_parcel_details ADD COLUMN IF NOT EXISTS amount_entry_type text;\n');
 console.log('CI-only nullable Data Entry amount entry type restored before Rider V165; no financial values inserted.');
 
 
