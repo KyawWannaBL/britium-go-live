@@ -162,6 +162,14 @@ export default function FinanceCodCenterPage() {
   );
 
   const selectedTotal = selectedRows.reduce((sum, r) => sum + Number(r.cod_collected || 0), 0);
+  const isSettled = (r: Row) =>
+    String(r.settlement_status || "").toUpperCase() === "SETTLED" || Boolean(r.settled_at);
+  const needsReview = (r: Row) => {
+    const state = String(r.metadata?.reconciliation_review_state || "").toUpperCase();
+    const review = String(r.metadata?.finance_review_status || "").toUpperCase();
+    return ["REVIEW_HOLD", "FINANCE_REVIEW_QUEUE"].includes(state) ||
+      ["REVIEW_REQUIRED", "PENDING", "REJECTED", "ADJUSTED"].includes(review);
+  };
 
   async function loadData() {
     setLoading(true);
@@ -182,11 +190,13 @@ export default function FinanceCodCenterPage() {
       if (data?.ok === false) throw new Error(data?.error || "Finance COD load failed.");
 
       setRows(Array.isArray(data?.rows) ? data.rows : []);
+      // Query the actual Finance review queue, not a fixed list of historical Way IDs.
       const review = await (supabase as any).from("be_wayplan_cod_settlements")
-        .select("delivery_way_id,wayplan_id,recipient_name,cod_expected,cod_collected,settlement_status,metadata")
-        .in("delivery_way_id",["D1023-KSC-026","D1023-KSC-033","D1023-KSC-042","D1023-KSC-128","D1023-KSC-129","D1021-BBW-067","D1021-RYP-009","D1023-KSC-021","D1023-KSC-024","D1023-KSC-052","D1023-KSC-058"]);
-      setReviewError(review.error ? review.error.message : "");
-      setReviewRows((review.data || []).filter((r: Row) => ["REVIEW_HOLD","FINANCE_REVIEW_QUEUE"].includes(r.metadata?.reconciliation_review_state)));
+        .select("delivery_way_id,wayplan_id,recipient_name,cod_expected,cod_collected,settlement_status,settled_at,metadata")
+        .order("updated_at", { ascending: false })
+        .limit(1000);
+      setReviewError(review.error ? review.error.message : (review.data || []).length === 1000 ? "Review lookup reached 1,000 records; narrow the query or increase pagination." : "");
+      setReviewRows((review.data || []).filter(needsReview));
       setSummary(data?.summary || {});
       setExceptionHolds(Array.isArray(data?.exception_holds) ? data.exception_holds : []);
       if (!activeRow && Array.isArray(data?.rows) && data.rows.length) {
@@ -214,14 +224,27 @@ export default function FinanceCodCenterPage() {
     }
 
     const next: Record<string, boolean> = {};
-    visibleRows.forEach((r) => {
+    visibleRows.filter(r => !isSettled(r)).forEach((r) => {
       next[`${r.wayplan_id}|${r.delivery_way_id}`] = true;
     });
     setSelected(next);
   }
 
   async function settleSelected() {
-    const targets = selectedRows.length ? selectedRows : activeRow ? [activeRow] : [];
+    const targets = selectedRows;
+    if (!targets.length) {
+      setError("Select one or more unsettled COD rows first.");
+      return;
+    }
+    if (targets.every(isSettled)) {
+      setMessage("ALREADY_SETTLED: Every selected record is already settled. No duplicate settlement was attempted.");
+      setError("");
+      return;
+    }
+    if (targets.some(isSettled)) {
+      setError("Selection includes already-settled records. Clear those records before settling the pending items.");
+      return;
+    }
 
     if (targets.some(r => reviewRows.some(v => v.delivery_way_id === r.delivery_way_id))) {
       setError("Finance reconciliation review required. Verify Way ID, actual COD, and payment evidence before settlement.");
@@ -269,6 +292,11 @@ export default function FinanceCodCenterPage() {
   }
 
   async function settleWholeWayplan() {
+    if (activeRow?.wayplan_id && rows.filter(r => r.wayplan_id === activeRow.wayplan_id).every(isSettled)) {
+      setMessage("ALREADY_SETTLED: All visible records for this wayplan have been settled. No changes made.");
+      setError("");
+      return;
+    }
     if (reviewRows.some(r => r.wayplan_id === activeRow?.wayplan_id)) {
       setError("Wayplan contains Finance review or hold records. Whole-wayplan settlement is blocked.");
       return;
@@ -365,10 +393,10 @@ export default function FinanceCodCenterPage() {
               <button onClick={loadData} disabled={loading} style={btn("plain")}>
                 <RefreshCw size={16} /> Refresh
               </button>
-              <button onClick={settleSelected} disabled={loading} style={btn("green")}>
+              <button onClick={settleSelected} disabled={loading || !selectedRows.length || selectedRows.every(isSettled)} style={btn("green")}>
                 <CheckCircle2 size={16} /> Settle Selected
               </button>
-              <button onClick={settleWholeWayplan} disabled={loading || !activeRow} style={btn("gold")}>
+              <button onClick={settleWholeWayplan} disabled={loading || !activeRow || rows.filter(r => r.wayplan_id === activeRow?.wayplan_id).every(isSettled)} style={btn("gold")}>
                 <Banknote size={16} /> Settle Whole Wayplan
               </button>
               <button onClick={exportCsv} style={btn("blue")}>
@@ -399,8 +427,8 @@ export default function FinanceCodCenterPage() {
           <tbody>{reviewRows.map(r=><tr key={r.delivery_way_id}>
           <td>{r.delivery_way_id}</td><td>{r.recipient_name || "—"}</td><td>{money(r.cod_expected)}</td>
           <td>{r.cod_collected == null ? "Not recorded" : money(r.cod_collected)}</td>
-          <td style={{color:r.metadata?.reconciliation_review_state==="REVIEW_HOLD"?C.red:C.gold}}>{r.metadata?.reconciliation_review_state}</td>
-          <td>{r.metadata?.reconciliation_review_comment}</td></tr>)}</tbody></table></div>
+          <td style={{color:r.metadata?.reconciliation_review_state==="REVIEW_HOLD"?C.red:C.gold}}>{r.metadata?.reconciliation_review_state || r.metadata?.finance_review_status || "Review required"}</td>
+          <td>{r.metadata?.reconciliation_review_comment || r.metadata?.rejection_reason || r.metadata?.adjustment_reason || (isSettled(r) ? "Already settled; investigate outstanding review flag" : "Finance review pending")}</td></tr>)}</tbody></table></div>
           {!reviewRows.length && !reviewError && <p>No review items visible to this Finance session; this does not indicate clearance.</p>}
         </Card>
         {exceptionHolds.length > 0 && (
@@ -489,7 +517,7 @@ export default function FinanceCodCenterPage() {
                       }}
                     >
                       <td style={{ padding: 10 }}>
-                        <input type="checkbox" checked={Boolean(selected[key])} onChange={() => toggleRow(r)} onClick={(e) => e.stopPropagation()} />
+                        <input type="checkbox" disabled={isSettled(r)} title={isSettled(r) ? "Already settled" : "Select for settlement"} checked={Boolean(selected[key]) && !isSettled(r)} onChange={() => toggleRow(r)} onClick={(e) => e.stopPropagation()} />
                       </td>
                       <td style={{ padding: 10 }}>
                         <div style={{ color: C.gold, fontWeight: 900 }}>{r.wayplan_id}</div>
