@@ -12,6 +12,10 @@ for(const term of [
   "RETURNED_WAITING_REPLAN",
   "physical_return_scan_count",
   "be_warehouse_scan_lifecycle_snapshot_v211",
+  "be_warehouse_provider_transfer_preview_v1",
+  "provider_planning_gate",
+  "NEEDS_PROVIDER_TRANSFER_WAYPLAN",
+  "Service provider",
   "Select / clear eligible",
   "handoffBusy",
   "selectedIds.slice(0,100)",
@@ -26,6 +30,12 @@ assert.match(command,/be_wayplan_handoff_ids_v150/);
 assert.match(command,/unmatched.length/);
 assert.match(command,/Outside-core third-party parcels require/);
 assert.match(warehouse,/be_warehouse_return_scan_v71/);
+const sql=readFileSync("britium-go-live/sql/candidates/warehouse_provider_transfer_preview_v1.sql","utf8");
+assert.match(sql,/security definer/);
+assert.match(sql,/revoke all on function.*from public, anon/);
+assert.match(sql,/be_warehouse_assert_internal/);
+assert.match(sql,/NEEDS_PROVIDER_TRANSFER_WAYPLAN/);
+assert.match(sql,/PROVIDER_TRANSFER_REQUIRED/);
 assert.match(warehouse,/DISPATCH_SCAN_REQUIRED/);
 assert.doesNotMatch(pending,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(pending,/be_warehouse_return_scan_v71\s*\(/);
