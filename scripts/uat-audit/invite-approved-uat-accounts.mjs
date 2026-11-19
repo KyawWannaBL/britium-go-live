@@ -21,7 +21,7 @@ for (const [code, branch] of [['mdy', 'Mandalay'], ['isn', 'Insein']]) {
   for (const [prefix, role, count] of roles) {
     for (let n = 1; n <= count; n++) {
       roster.push({
-        email: prefix + '_' + code + '_' + String(n).padStart(3, '0') + '@britiumventures.com',
+        email: prefix + '_' + code + '_' + String(n).padStart(3, '0') + '_uat@britiumventures.com',
         branch, role,
       });
     }
