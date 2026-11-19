@@ -103,3 +103,24 @@ CREATE INDEX IF NOT EXISTS be_finance_settlement_disputes_v3_lookup_idx
  ON public.be_finance_settlement_disputes_v3(merchant_id,status,submitted_at DESC);
 ALTER TABLE public.be_finance_settlement_disputes_v3 ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.be_finance_settlement_disputes_v3 FROM PUBLIC,anon,authenticated;
+
+-- Production-catalog-verified settlement adjustment register; no requests or approvals seeded.
+CREATE TABLE IF NOT EXISTS public.be_finance_settlement_adjustments_v3 (
+ id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+ original_batch_id uuid REFERENCES public.be_finance_settlement_batches_v3(id),
+ original_parcel_id uuid,
+ adjustment_type text NOT NULL,
+ previous_amount numeric(18,2),
+ corrected_amount numeric(18,2),
+ difference numeric(18,2),
+ reason text NOT NULL,
+ supporting_document_url text,
+ requested_by text,
+ approved_by text,
+ status text NOT NULL DEFAULT 'PENDING_APPROVAL',
+ adjustment_batch_number text,
+ created_at timestamptz NOT NULL DEFAULT now(),
+ updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.be_finance_settlement_adjustments_v3 ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.be_finance_settlement_adjustments_v3 FROM PUBLIC,anon,authenticated;
