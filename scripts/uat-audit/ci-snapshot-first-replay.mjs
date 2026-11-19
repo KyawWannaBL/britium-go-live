@@ -985,6 +985,24 @@ writeFileSync(resolve(root,'20260925210809_uat308_original_waybill_gate_ci.sql')
   preV136Waybill);
 console.log('CI-only pre-V136 Waybill generator restored with original proof safeguards.');
 
+// V136.1 applies the same canonical pickup gate to the Financial V2 wrapper.
+// Use the catalog-verified pre-patch routine, preserving financial pricing,
+// row calculation, proof gating and error envelopes.
+const preV1361Financial = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/pre_v136_1_financial_waybill_ci.sql'),'utf8');
+const financialGateV1361 = readFileSync(resolve(root,
+  '20260925210905_field_team_waybill_gate_financial_v2_v136_1.sql'),'utf8');
+if (!preV1361Financial.includes('be_data_entry_financial_v2_create_waybill(') ||
+    !preV1361Financial.includes('RIDER_COLLECTION_NOT_VERIFIED') ||
+    !preV1361Financial.includes("pickup_collected_at") ||
+    !financialGateV1361.includes("V136.1 safety stop: legacy Rider-only Financial V2 gate was not found exactly.")) {
+  throw new Error('Original Financial V2 pickup gate validation failed');
+}
+writeFileSync(resolve(root,'20260925210904_uat308_original_financial_v2_gate_ci.sql'),
+  preV1361Financial);
+console.log('CI-only original Financial V2 waybill generator restored before V136.1.');
+
+
 
 
 
