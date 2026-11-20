@@ -17,6 +17,32 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0);
  const providerCustodyEnabled=typeof window!=='undefined' && (window as any).__BRITIUM_FEATURES?.providerCustody===true;
+ const mixedTripEnabled=typeof window!=='undefined' && (window as any).__BRITIUM_FEATURES?.providerMixedTrips===true;
+ const [mixedPlan,setMixedPlan]=useState(''),[mixedPickupJson,setMixedPickupJson]=useState('');
+ const [mixedRouteJson,setMixedRouteJson]=useState(''),[mixedEvidence,setMixedEvidence]=useState('');
+ const [mixedReason,setMixedReason]=useState(''),[mixedSource,setMixedSource]=useState('OPERATOR_VERIFIED');
+ const [mixedBusy,setMixedBusy]=useState(false),[mixedResult,setMixedResult]=useState('');
+ async function updateMixedTrip(action:'pickups'|'route'){
+  if(!mixedTripEnabled||mixedBusy||!mixedPlan.trim())return;
+  setMixedBusy(true);setMixedResult('');
+  try{
+   const raw=JSON.parse(action==='pickups'?mixedPickupJson:mixedRouteJson);
+   if(!Array.isArray(raw)||!raw.length)throw new Error('Enter a nonempty JSON array of verified stops.');
+   const {data,error}=await (supabase as any).rpc(
+    action==='pickups'?'be_provider_transfer_add_pickups_v1':'be_provider_transfer_review_mixed_route_v1',
+    action==='pickups'?{
+     p_wayplan_id:mixedPlan.trim(),p_pickup_stops:raw,p_reason:mixedReason.trim()
+    }:{
+     p_wayplan_id:mixedPlan.trim(),p_ordered_stops:raw,p_route_source:mixedSource,p_evidence_ref:mixedEvidence.trim()
+    }
+   );
+   if(error||data?.ok!==true)throw new Error(error?.message||data?.error||'Mixed-trip validation rejected');
+   setMixedResult(action==='pickups'?'Pickup stops staged; no pickup scan created. Verify the full itinerary before Supervisor release.':
+     'Mixed itinerary verified; Supervisor approval and physical scans still required.');
+  }catch(err:any){setMixedResult('Not saved: '+(err?.message||'Invalid JSON or server rejection'));}
+  finally{setMixedBusy(false);}
+ }
+
  const [custodyInput,setCustodyInput]=useState({way:'',plan:'',provider:'',site:'',manifest:'',receiver:'',receipt:'',proof:''});
  const [custodyBusy,setCustodyBusy]=useState(false),[custodyResult,setCustodyResult]=useState('');
  const setCustodyField=(key:keyof typeof custodyInput,value:string)=>setCustodyInput(old=>({...old,[key]:value}));
@@ -94,6 +120,27 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  return <div style={{color:'#e2e8f0',padding:12,maxWidth:1500,margin:'auto'}}>
   <h1 style={{fontSize:23,fontWeight:700}}>Third-party Delivery Confirmation / ပြင်ပပို့ဆောင်မှု အတည်ပြုခြင်း</h1>
   <p style={{color:'#fbbf24'}}>The schedule is not proof of delivery. CS confirmations create dedicated merchant-account Finance reviews, never automatic cash receipts or settled payments.</p>
+  <section aria-label="Combined pickup and provider-transfer trip" style={{border:'1px solid #486a88',borderRadius:8,padding:12,margin:'12px 0'}}>
+   <h2 style={{fontSize:17,fontWeight:700}}>Combined Pickup + Provider Transfer Trip</h2>
+   {!mixedTripEnabled ? <p style={{color:'#fbbf24',marginTop:6}}>Mixed-trip creation remains disabled until the pickup and transfer route SQL, approved site, authenticated crew and Supervisor/scan UAT are verified.</p> : <>
+    <p style={{color:'#fcd58c',fontSize:13}}>Stage existing live pickup IDs on the same transfer vehicle plan. Pickup and provider handover keep separate evidence. Stops must use verified coordinates, not recipient pins or invented locations.</p>
+    <label style={{display:'block',marginTop:8,fontSize:12}}>Draft transfer Wayplan ID<input aria-label="Mixed trip Wayplan ID" value={mixedPlan} onChange={e=>setMixedPlan(e.target.value)} style={{...input,marginTop:4}}/></label>
+    <label style={{display:'block',marginTop:8,fontSize:12}}>Pickup staging reason<input aria-label="Mixed trip planning reason" value={mixedReason} onChange={e=>setMixedReason(e.target.value)} style={{...input,marginTop:4}}/></label>
+    <label style={{display:'block',marginTop:8,fontSize:12}}>Verified pickup stops JSON (pickup_id, sequence, latitude, longitude, location_evidence_ref)
+     <textarea aria-label="Pickup stops JSON" rows={4} value={mixedPickupJson} onChange={e=>setMixedPickupJson(e.target.value)} style={{...input,marginTop:4,fontFamily:'monospace'}} placeholder={'[{"pickup_id":"P...", "sequence":1, "latitude":16.8, "longitude":96.1, "location_evidence_ref":"APPROVED-PIN-REF"}]'}/>
+    </label>
+    <button type="button" disabled={mixedBusy} onClick={()=>void updateMixedTrip('pickups')} style={{background:'#0369a1',color:'#fff',padding:'9px 14px',borderRadius:6,marginTop:7}}>Attach verified pickup stops</button>
+    <label style={{display:'block',marginTop:12,fontSize:12}}>Physical itinerary JSON in exact visit order (kind, reference_id, sequence, latitude, longitude)
+     <textarea aria-label="Combined physical itinerary JSON" rows={4} value={mixedRouteJson} onChange={e=>setMixedRouteJson(e.target.value)} style={{...input,marginTop:4,fontFamily:'monospace'}} placeholder={'[{"kind":"PICKUP","reference_id":"P...", "sequence":1,"latitude":16.8,"longitude":96.1},{"kind":"PROVIDER_HANDOVER","reference_id":"SITE-CODE","sequence":2,"latitude":16.9,"longitude":96.2}]'}/>
+    </label>
+    <div style={{display:'flex',gap:9,flexWrap:'wrap',marginTop:9}}>
+     <select aria-label="Route evidence source" value={mixedSource} onChange={e=>setMixedSource(e.target.value)} style={{...input,maxWidth:220}}><option value="OPERATOR_VERIFIED">Operator verified route</option><option value="GOOGLE_ROUTES">Google Routes evidence</option></select>
+     <input aria-label="Reviewed route evidence reference" value={mixedEvidence} onChange={e=>setMixedEvidence(e.target.value)} placeholder="Reviewed route evidence reference" style={{...input,maxWidth:340}}/>
+     <button type="button" disabled={mixedBusy} onClick={()=>void updateMixedTrip('route')} style={{background:'#0e7490',color:'#fff',padding:'9px 14px',borderRadius:6}}>Verify complete mixed itinerary</button>
+    </div>
+    {mixedResult&&<p role="status" style={{color:'#fcd58c',marginTop:8}}>{mixedResult}</p>}
+   </>}
+  </section>
   <section aria-label="Physical provider custody verification" style={{border:'1px solid #486a88',borderRadius:8,padding:12,margin:'12px 0'}}>
    <h2 style={{fontSize:17,fontWeight:700}}>Provider physical handover / ပြင်ပပို့ဆောင်ရေး လက်ခံလွှဲပြောင်းမှု</h2>
    {!providerCustodyEnabled ? <p style={{color:'#fbbf24',marginTop:6}}>Physical custody confirmation is disabled until the approved backend migration, site verification, and dispatch-scan UAT pass. Existing CS delivery confirmation remains separate.</p> : <>
