@@ -77,6 +77,14 @@ export default function WarehousePendingParcelsPage(){
   const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
   const [handoffBusy,setHandoffBusy]=useState(false);
   const [providerMetadataReady,setProviderMetadataReady]=useState(false);
+  const draftTransferFeatureEnabled=import.meta.env.VITE_BE_PROVIDER_TRANSFER_CREATOR_ENABLED==="true";
+  const [transferGroup,setTransferGroup]=useState("");
+  const [transferSelection,setTransferSelection]=useState<Record<string,boolean>>({});
+  const [transferVehicle,setTransferVehicle]=useState("");
+  const [transferDriver,setTransferDriver]=useState("");
+  const [transferDraftBusy,setTransferDraftBusy]=useState(false);
+  const [transferDraftResult,setTransferDraftResult]=useState("");
+
   const [handoffNotice,setHandoffNotice]=useState("");
   const [handoffErrors,setHandoffErrors]=useState<string[]>([]);
 
@@ -220,6 +228,47 @@ export default function WarehousePendingParcelsPage(){
     });
     return Array.from(groups.values()).sort((a,b)=>b.count-a.count||a.provider.localeCompare(b.provider));
   },[transferCandidates]);
+
+  const draftTransferCandidates=useMemo(()=>transferCandidates.filter((r:any)=>
+    r.handover_location_verified===true
+    && ["PROVIDER_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN","BRANCH_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN"].includes(txt(r.provider_planning_gate))
+    && txt(r.authoritative_receipt_status)==="WAREHOUSE_READY"
+    && !r.active_wayplan_id
+  ),[transferCandidates]);
+  const transferGroups=useMemo(()=>{
+    const m=new Map<string,{key:string;label:string;rows:any[]}>();
+    draftTransferCandidates.forEach((r:any)=>{
+      const key=[txt(r.service_provider_code),txt(r.handover_origin_branch),txt(r.handover_location_code)].join("|");
+      const group=m.get(key)||{key,label:txt(r.service_provider_code)+" / "+txt(r.handover_origin_branch)+" / "+txt(r.handover_location_name),rows:[]};
+      group.rows.push(r);
+      m.set(key,group);
+    });
+    return Array.from(m.values());
+  },[draftTransferCandidates]);
+  const selectedTransferGroup=transferGroups.find(x=>x.key===transferGroup);
+  const transferSelectedIds=(selectedTransferGroup?.rows||[])
+    .map((r:any)=>txt(r.delivery_way_id||r.waybill_no))
+    .filter((id:string)=>Boolean(id&&transferSelection[id]))
+    .slice(0,75);
+  const createTransferDraft=async()=>{
+    if(!draftTransferFeatureEnabled || !providerMetadataReady || !selectedTransferGroup
+       || !transferSelectedIds.length || transferDraftBusy || !transferVehicle.trim() || !transferDriver.trim())return;
+    const [providerCode,originBranch,siteCode]=selectedTransferGroup.key.split("|");
+    if(!window.confirm("Create a DRAFT transfer Wayplan for "+transferSelectedIds.length+" parcel(s) with "+providerCode+" at "+siteCode+"? This does not scan, dispatch or confirm custody."))return;
+    setTransferDraftBusy(true);setTransferDraftResult("");
+    try{
+      const requestId=window.crypto.randomUUID();
+      const {data,error}=await (supabase as any).rpc("be_provider_transfer_wayplan_draft_v1",{
+        p_request_id:requestId,p_provider_code:providerCode,p_origin_branch_code:originBranch,
+        p_handover_location_code:siteCode,p_delivery_way_ids:transferSelectedIds,
+        p_vehicle_code:transferVehicle.trim(),p_driver_code:transferDriver.trim()
+      });
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Transfer draft was rejected");
+      setTransferDraftResult("Draft "+txt(data.wayplan_id)+" created for "+transferSelectedIds.length+" ways. Supervisor approval and actual Warehouse dispatch scans are still required.");
+      setTransferSelection({});await load(false);
+    }catch(e:any){setTransferDraftResult("Transfer draft not created: "+(e?.message||"Unknown error"));}
+    finally{setTransferDraftBusy(false);}
+  };
 
   const exportTransferManifest=async()=>{
     if(!transferCandidates.length || !providerMetadataReady)return;
@@ -387,6 +436,27 @@ export default function WarehousePendingParcelsPage(){
           {transferBreakdown.length>0&&<div className="mt-2 flex flex-wrap gap-2">
             {transferBreakdown.map(g=><span key={g.provider+"|"+g.site} className="rounded border border-slate-600 px-2 py-1 text-xs">{g.provider}: {g.count} · {g.verified?g.site:"Handover site not verified"}</span>)}
           </div>}
+        </div>}
+        {providerMetadataReady&&<div className="mb-3 rounded-lg border border-slate-600 p-3">
+          <strong>Verified-site transfer Wayplan draft</strong>
+          <p className="mt-1 text-xs text-slate-300">Draft-only. Only finance-validated, warehouse-ready parcels whose provider and physical handover site match may be grouped. Actual dispatch scan, custody receipt and delivery confirmation must follow separately.</p>
+          {!draftTransferFeatureEnabled ? <p className="mt-2 text-sm text-amber-300">Transfer creator is not enabled for this environment until database UAT and approval are complete.</p> : <>
+            <div className="mt-3 grid gap-2 md:grid-cols-3">
+              <select aria-label="Verified provider group" value={transferGroup} onChange={e=>{setTransferGroup(e.target.value);setTransferSelection({});}} className="rounded bg-white p-2 text-black">
+                <option value="">Select verified provider/site group</option>{transferGroups.map(g=><option key={g.key} value={g.key}>{g.label} ({g.rows.length})</option>)}
+              </select>
+              <input aria-label="Delivery or transfer vehicle code" value={transferVehicle} onChange={e=>setTransferVehicle(e.target.value)} placeholder="Approved vehicle code" className="rounded bg-white p-2 text-black"/>
+              <input aria-label="Authenticated driver code" value={transferDriver} onChange={e=>setTransferDriver(e.target.value)} placeholder="Active driver code" className="rounded bg-white p-2 text-black"/>
+            </div>
+            {selectedTransferGroup&&<>
+              <p className="mt-2 text-xs text-slate-300">Select up to 75 ways. {transferSelectedIds.length} selected.</p>
+              <div className="mt-2 max-h-36 overflow-auto rounded border border-slate-700 p-2">
+                {selectedTransferGroup.rows.slice(0,200).map((r:any)=>{const id=txt(r.delivery_way_id||r.waybill_no);return <label key={id} className="mr-4 inline-flex items-center gap-2 text-xs"><input type="checkbox" checked={Boolean(transferSelection[id])} disabled={!transferSelection[id]&&transferSelectedIds.length>=75} onChange={e=>setTransferSelection(old=>({...old,[id]:e.target.checked}))}/>{id}</label>})}
+              </div>
+            </>}
+            <button type="button" disabled={transferDraftBusy||!transferSelectedIds.length||!transferVehicle.trim()||!transferDriver.trim()} onClick={()=>void createTransferDraft()} className="mt-3 rounded bg-cyan-700 px-4 py-2 text-sm font-bold disabled:opacity-50">{transferDraftBusy?"Creating draft...":"Create DRAFT Transfer Wayplan"}</button>
+          </>}
+          {transferDraftResult&&<div role="status" className="mt-2 text-sm text-cyan-200">{transferDraftResult}</div>}
         </div>}
         {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
