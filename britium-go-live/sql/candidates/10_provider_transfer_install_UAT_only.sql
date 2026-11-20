@@ -1,10 +1,7 @@
--- BRITIUM EXPRESS PROVIDER TRANSFER / MIXED TRIP SCHEMA INSTALL
--- RELEASE CANDIDATE ONLY: FIRST apply on a complete isolated UAT schema.
--- This script creates restricted tables and authorized functions only.
--- It DOES NOT create any parcel movement, Wayplan, dispatch, handover,
--- delivery confirmation, RTO or settlement.
--- It DOES NOT seed or approve any provider handover location.
--- STOP if required operational tables, authorization review, or UAT are missing.
+-- BRITIUM EXPRESS CONTROLLED PROVIDER TRANSFER / MIXED-TRIP SCHEMA INSTALL
+-- Run ONLY on an isolated complete UAT environment first, after backup and review.
+-- No parcel status, dispatch scan, pickup collection, custody or delivery mutations.
+-- All new workflow capabilities install DEFAULT OFF.
 BEGIN;
 SET LOCAL lock_timeout='3s';
 SET LOCAL statement_timeout='120s';
@@ -21,9 +18,9 @@ DO $check$ BEGIN
  THEN RAISE EXCEPTION 'UAT operational schema incomplete; refusing installation'; END IF;
 END $check$;
 
--- ============================================================
--- COMPONENT 1: provider_handover_sites_v1.sql
--- ============================================================
+-- =====================================
+-- 1: provider_handover_sites_v1.sql
+-- =====================================
 -- Candidate only. Do NOT execute on production until UAT schema replay and review pass.
 -- Provider handover locations must be physically verified and explicitly linked.
 -- No implicit Royal Express site and no fabricated latitude/longitude.
@@ -58,9 +55,9 @@ revoke all on table public.be_provider_handover_sites_v1 from public, anon, auth
 -- require an Operations-approved location before any transfer Wayplan can be created.
 
 
--- ============================================================
--- COMPONENT 2: provider_handover_site_approve_v1.sql
--- ============================================================
+-- =====================================
+-- 2: provider_handover_site_approve_v1.sql
+-- =====================================
 -- UAT CANDIDATE ONLY. Requires provider_handover_sites_v1.sql to be installed first.
 -- Manual administrative approval of an existing mapped physical handover location.
 -- This is NOT a dispatch scan, provider custody acceptance, or delivery confirmation.
@@ -152,9 +149,104 @@ revoke all on function public.be_provider_handover_site_approve_v1(text,text,tex
 grant execute on function public.be_provider_handover_site_approve_v1(text,text,text,text) to authenticated;
 
 
--- ============================================================
--- COMPONENT 3: warehouse_provider_transfer_preview_v1.sql
--- ============================================================
+-- =====================================
+-- 3: provider_transfer_release_control_v1.sql
+-- =====================================
+-- Provider transfer go-live capability switch.
+-- Install on isolated UAT first; all features default to FALSE.
+create table if not exists public.be_provider_transfer_release_control_v1 (
+  control_key text primary key check (control_key='PROVIDER_TRANSFER_V1'),
+  draft_enabled boolean not null default false,
+  custody_enabled boolean not null default false,
+  mixed_trip_enabled boolean not null default false,
+  last_approval_evidence text,
+  approved_by uuid,
+  approved_at timestamptz,
+  updated_at timestamptz not null default now(),
+  constraint provider_release_approval_required check (
+    not (draft_enabled or custody_enabled or mixed_trip_enabled)
+    or (approved_by is not null and approved_at is not null
+      and length(btrim(coalesce(last_approval_evidence,'')))>=20)
+  )
+);
+alter table public.be_provider_transfer_release_control_v1 enable row level security;
+revoke all on table public.be_provider_transfer_release_control_v1 from public,anon,authenticated;
+insert into public.be_provider_transfer_release_control_v1(control_key)
+values ('PROVIDER_TRANSFER_V1') on conflict do nothing;
+
+create or replace function public.be_provider_transfer_capabilities_v1()
+returns jsonb language plpgsql stable security definer
+set search_path=public,auth,pg_temp as $body$
+declare
+  v_control record;
+  v_authenticated boolean:=auth.uid() is not null;
+begin
+  -- No role details, personal data or privileged metadata are returned.
+  if not v_authenticated then
+    return jsonb_build_object('ok',false,'draft_enabled',false,
+      'custody_enabled',false,'mixed_trip_enabled',false);
+  end if;
+  select * into v_control from public.be_provider_transfer_release_control_v1
+    where control_key='PROVIDER_TRANSFER_V1';
+  return jsonb_build_object('ok',true,
+    'draft_enabled',coalesce(v_control.draft_enabled,false),
+    'custody_enabled',coalesce(v_control.custody_enabled,false),
+    'mixed_trip_enabled',coalesce(v_control.mixed_trip_enabled,false),
+    'build','PROVIDER_TRANSFER_CAPABILITIES_V1');
+end;
+$body$;
+revoke all on function public.be_provider_transfer_capabilities_v1() from public,anon;
+grant execute on function public.be_provider_transfer_capabilities_v1() to authenticated;
+
+create or replace function public.be_provider_transfer_approve_release_v1(
+  p_draft boolean,p_custody boolean,p_mixed boolean,p_evidence_ref text
+) returns jsonb language plpgsql security definer
+set search_path=public,auth,pg_temp as $body$
+declare
+  v_actor uuid:=auth.uid();
+  v_role text:=lower(replace(coalesce(public.be_current_role(),''),'-','_'));
+  v_evidence text:=btrim(coalesce(p_evidence_ref,''));
+begin
+  if v_actor is null or v_role not in ('superadmin','super_admin')
+    then raise exception 'Super Admin approval required to change provider release capability'; end if;
+  if coalesce(p_mixed,false) and not coalesce(p_draft,false) then
+    raise exception 'Mixed trips require transfer draft capability'; end if;
+  if (coalesce(p_draft,false) or coalesce(p_custody,false) or coalesce(p_mixed,false)) then
+    if length(v_evidence)<20
+      then raise exception 'Reference reviewed end-to-end UAT, handover and rollback evidence'; end if;
+    if not exists(
+      select 1 from public.be_provider_handover_sites_v1 h
+      join public.be_wayplan_service_locations loc on loc.location_code=h.location_code
+      where h.active and h.verified_at is not null and h.verified_by is not null
+      and loc.active
+    ) then raise exception 'At least one verified active provider handover site is required'; end if;
+  end if;
+  update public.be_provider_transfer_release_control_v1
+  set draft_enabled=coalesce(p_draft,false),custody_enabled=coalesce(p_custody,false),
+      mixed_trip_enabled=coalesce(p_mixed,false),
+      last_approval_evidence=nullif(v_evidence,''),
+      approved_by=case when coalesce(p_draft,false) or coalesce(p_custody,false) or coalesce(p_mixed,false)
+        then v_actor else null end,
+      approved_at=case when coalesce(p_draft,false) or coalesce(p_custody,false) or coalesce(p_mixed,false)
+        then now() else null end,
+      updated_at=now()
+  where control_key='PROVIDER_TRANSFER_V1';
+  insert into public.be_audit_events(
+    actor_id,actor_email,actor_role,action,resource_type,resource_id,details
+  ) values (v_actor,coalesce(auth.jwt()->>'email',''),public.be_current_user_role(),
+    'PROVIDER_TRANSFER_RELEASE_CONTROL_V1','SYSTEM_CAPABILITY','PROVIDER_TRANSFER_V1',
+    jsonb_build_object('draft_enabled',p_draft,'custody_enabled',p_custody,
+      'mixed_trip_enabled',p_mixed,'uat_evidence_ref',v_evidence));
+  return public.be_provider_transfer_capabilities_v1();
+end;
+$body$;
+revoke all on function public.be_provider_transfer_approve_release_v1(boolean,boolean,boolean,text) from public,anon;
+grant execute on function public.be_provider_transfer_approve_release_v1(boolean,boolean,boolean,text) to authenticated;
+
+
+-- =====================================
+-- 4: warehouse_provider_transfer_preview_v1.sql
+-- =====================================
 -- Candidate only. REVIEW + APPLY TO ISOLATED UAT FIRST.
 -- Read-only; do not replace the authoritative Wayplan creator or Warehouse scan RPCs.
 -- Canonical provider metadata attached only to already-authorized Warehouse snapshot rows.
@@ -300,9 +392,9 @@ revoke all on function public.be_warehouse_provider_transfer_preview_v1() from p
 grant execute on function public.be_warehouse_provider_transfer_preview_v1() to authenticated;
 
 
--- ============================================================
--- COMPONENT 4: provider_transfer_wayplan_draft_v1.sql
--- ============================================================
+-- =====================================
+-- 5: provider_transfer_wayplan_draft_v1.sql
+-- =====================================
 -- CONTROLLED UAT CANDIDATE - NOT AUTHORIZED FOR PRODUCTION UNTIL UAT.
 -- Depends on provider_handover_sites_v1.sql and reviewed approval.
 -- Creates DRAFT transfer Wayplans only. Does not dispatch, hand over,
@@ -345,6 +437,7 @@ declare
   v_dest_region text;
   v_provider_actual text;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and draft_enabled) then raise exception 'Provider transfer draft creation not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager')
     then raise exception 'Management authorization required';
@@ -576,9 +669,9 @@ grant execute on function public.be_provider_transfer_wayplan_draft_v1(
   uuid,text,text,text,text[],text,text) to authenticated;
 
 
--- ============================================================
--- COMPONENT 5: provider_transfer_custody_v1.sql
--- ============================================================
+-- =====================================
+-- 6: provider_transfer_custody_v1.sql
+-- =====================================
 -- ISOLATED UAT ONLY. Requires provider_transfer_wayplan_draft_v1.sql.
 -- Custody is independent of delivery. It requires an actual Warehouse dispatch
 -- scan AND the partner's physical signed receipt reference.
@@ -623,6 +716,7 @@ declare
   v_last_scan timestamptz;
   v_branch text;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and custody_enabled) then raise exception 'Provider custody confirmation not yet enabled'; end if;
   if v_actor is null or v_role not in
      ('superadmin','super_admin','operation_manager','operations_manager',
       'warehouse','warehouse_staff','warehouse_lead','warehouse_manager',
@@ -718,9 +812,9 @@ grant execute on function public.be_provider_transfer_confirm_handover_v1(
   text,text,text,text,text,text,text,text) to authenticated;
 
 
--- ============================================================
--- COMPONENT 6: provider_transfer_mixed_pickups_v1.sql
--- ============================================================
+-- =====================================
+-- 7: provider_transfer_mixed_pickups_v1.sql
+-- =====================================
 -- Britium Express: draft mixed pickup + third-party transfer trip planning
 -- UAT CANDIDATE. Install AFTER provider_transfer_wayplan_draft_v1.sql.
 -- This attaches pickup stops to the SAME physical vehicle trip/transfer Wayplan.
@@ -769,6 +863,7 @@ declare
   v_count int:=0;
   v_requested int;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and mixed_trip_enabled) then raise exception 'Mixed provider trips not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager') then
     raise exception 'Management authority required for mixed trip planning';
@@ -872,9 +967,9 @@ revoke all on function public.be_provider_transfer_add_pickups_v1(text,jsonb,tex
 grant execute on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) to authenticated;
 
 
--- ============================================================
--- COMPONENT 7: provider_transfer_mixed_route_gate_v1.sql
--- ============================================================
+-- =====================================
+-- 8: provider_transfer_mixed_route_gate_v1.sql
+-- =====================================
 -- UAT ONLY: reviewed mixed pickup + provider-transfer vehicle itinerary.
 -- Dependency: provider_transfer_mixed_pickups_v1.sql and transfer draft functions.
 -- This is a separate physical itinerary and NEVER changes the delivery-way
@@ -915,6 +1010,7 @@ declare
   v_site text;
   v_length int;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and mixed_trip_enabled) then raise exception 'Mixed route verification not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager')
     then raise exception 'Operations management approval required';
@@ -1049,12 +1145,12 @@ for each row execute function public.be_provider_transfer_mixed_release_gate_v1(
 
 revoke all on function public.be_provider_transfer_mixed_release_gate_v1() from public,anon,authenticated;
 
--- Installation audit (no parcel data changed)
 DO $check$ BEGIN
  IF to_regprocedure('public.be_provider_transfer_wayplan_draft_v1(uuid,text,text,text,text[],text,text)') is null OR
     to_regprocedure('public.be_provider_transfer_confirm_handover_v1(text,text,text,text,text,text,text,text)') is null OR
     to_regprocedure('public.be_provider_transfer_add_pickups_v1(text,jsonb,text)') is null OR
-    to_regprocedure('public.be_provider_transfer_review_mixed_route_v1(text,jsonb,text,text)') is null
+    to_regprocedure('public.be_provider_transfer_review_mixed_route_v1(text,jsonb,text,text)') is null OR
+    to_regprocedure('public.be_provider_transfer_capabilities_v1()') is null
  THEN RAISE EXCEPTION 'Provider transfer installation incomplete'; END IF;
 END $check$;
 COMMIT;
