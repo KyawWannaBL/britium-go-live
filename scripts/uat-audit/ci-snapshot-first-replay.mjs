@@ -1760,6 +1760,36 @@ console.log('CI-only Royal sync retains original trigger, backfill and checks; o
 
 
 
+
+// November 6 migration rewrites a missing pre-Nov6 finance dashboard function.
+// Recover the catalog-authentic authenticated post-patch function and reverse
+// JUST its date predicate so the historical migration can apply its own patch.
+// Disposable CI ONLY. The full security and finance permission checks remain.
+const nov6FinanceMigration = readFileSync(resolve(root,
+  '20261106103355_finance_live_dashboard_include_today_deliveries.sql'),'utf8');
+const catalogFinanceDashboard = readFileSync(resolve(
+  'scripts/uat-audit/fixtures/finance_live_dashboard_post_nov6_catalog_ci.sql'),'utf8');
+const oldDateMatch = nov6FinanceMigration.match(/declare v_old text := '((?:''|[^'])*)';/i);
+const newDateMatch = nov6FinanceMigration.match(/declare v_new text := '((?:''|[^'])*)';/i);
+if (!oldDateMatch || !newDateMatch) throw new Error('Nov6 finance predicate contract changed');
+const unescapeSqlString = value => value.replace(/''/g,"'");
+const oldFinanceDate = unescapeSqlString(oldDateMatch[1]);
+const newFinanceDate = unescapeSqlString(newDateMatch[1]);
+if (!catalogFinanceDashboard.includes('be_accounting_can_v1') ||
+    !catalogFinanceDashboard.includes('UNAUTHORIZED') ||
+    !catalogFinanceDashboard.includes('be_finance_live_wayplan_dashboard_v1(') ||
+    !catalogFinanceDashboard.includes('STABLE SECURITY DEFINER') ||
+    !catalogFinanceDashboard.includes(newFinanceDate) ||
+    catalogFinanceDashboard.split(newFinanceDate).length!==2) {
+  throw new Error('Original finance dashboard catalog authentication or date patch changed');
+}
+const preNov6FinanceDashboard = catalogFinanceDashboard.replace(
+  newFinanceDate,oldFinanceDate);
+writeFileSync(resolve(root,'20261106103354_uat308_pre_nov6_finance_dashboard_ci.sql'),
+  preNov6FinanceDashboard +
+  '\nREVOKE ALL ON FUNCTION public.be_finance_live_wayplan_dashboard_v1(date,text,text,text) FROM PUBLIC, anon;\n');
+console.log('CI-only catalog finance dashboard restored to its authenticated pre-Nov6 date filter.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
