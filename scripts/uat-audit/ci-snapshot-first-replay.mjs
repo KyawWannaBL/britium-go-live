@@ -1713,6 +1713,42 @@ writeFileSync(resolve(root,'20261103205503_uat308_verified_financial_fields_ci.s
   financeFields.map(x=>' ADD COLUMN IF NOT EXISTS '+x).join(',\n')+';\n');
 console.log('CI-only verified financial columns restored without backfilling parcel amounts.');
 
+
+// The Nov 4 Royal tariff migration sets up a trigger and also backfills a
+// production-approved destination. There are no approved catalog rows in the
+// disposable empty-schema replay. Keep the trigger exactly as-is; skip ONLY
+// the data-bearing backfill with explicit EMPTY-catalog/finance assertions.
+// The production migration remains unchanged in the repository.
+const royalSyncPath = resolve(root,
+  '20261103223139_royal_catalog_finance_sync_guard_20261104.sql');
+const royalSyncOriginal = readFileSync(royalSyncPath,'utf8');
+const royalBackfillMarker = '-- Repair only the explicitly approved missing destination.';
+const royalMarkerIndex = royalSyncOriginal.indexOf(royalBackfillMarker);
+if (royalMarkerIndex < 0 ||
+    royalSyncOriginal.indexOf(royalBackfillMarker,royalMarkerIndex+1)>=0 ||
+    !royalSyncOriginal.includes('create trigger be_royal_tariff_finance_sync_trigger_v1') ||
+    !royalSyncOriginal.includes("destination_name='ထန်းတပင်'") ||
+    !royalSyncOriginal.includes("'EXPECTED_APPROVED_ROYAL_DESTINATION_MISSING'") ||
+    !royalSyncOriginal.includes("raise exception 'EXISTING_TARIFF_CONFLICT'")) {
+  throw new Error('Royal trigger or approved destination backfill contract changed');
+}
+const royalEmptyOnly = [
+  '-- Disposable empty-schema CI only: retain authentic tariff-sync trigger above.',
+  '-- Never seed fictional destination approval or any payable tariff rates.',
+  'DO $uat308_royal_catalog_empty_guard$ BEGIN',
+  ' IF EXISTS (SELECT 1 FROM public.be_data_entry_tariff_catalog) THEN',
+  "  RAISE EXCEPTION 'Refusing to skip Royal backfill: tariff catalog has rows';",
+  ' END IF;',
+  ' IF EXISTS (SELECT 1 FROM public.be_parcel_tariffs_v2) THEN',
+  "  RAISE EXCEPTION 'Refusing to skip Royal backfill: finance tariffs have rows';",
+  ' END IF;',
+  " RAISE NOTICE 'Approved Royal destination backfill is production-data-dependent and excluded from EMPTY CI only';",
+  'END $uat308_royal_catalog_empty_guard$;'
+].join('\n')+'\n';
+writeFileSync(royalSyncPath,
+  royalSyncOriginal.slice(0,royalMarkerIndex) + royalEmptyOnly);
+console.log('CI-only Royal approved-destination data backfill excluded under empty catalog and tariff guards.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
