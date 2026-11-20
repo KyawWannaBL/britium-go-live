@@ -1583,6 +1583,49 @@ writeFileSync(resolve(root,'20261103173656_uat308_tariff_write_rights_ci.sql'),
   tariffRightsFixture);
 console.log('CI-only authentic tariff rights table created empty with primary key and RLS.');
 
+
+const corporateCompareMigration = readFileSync(resolve(root,
+  '20261103184837_corporate_finance_parcel_and_thirdparty_comparison_v1.sql'),'utf8');
+if (!corporateCompareMigration.includes('v_cs public.be_thirdparty_cs_current_v1%rowtype;') ||
+    !corporateCompareMigration.includes('v_third public.be_thirdparty_finance_review_v1%rowtype;') ||
+    !corporateCompareMigration.includes("'automatic_settlement_posting',false")) {
+  throw new Error('Third-party finance comparison contract changed');
+}
+const thirdpartyReviewCatalogCi = [
+  '-- CI only: empty production-catalog-verified third-party CS and finance review tables.',
+  '-- No outcomes, approvals, receipts or settlement records copied or fabricated.',
+  'CREATE TABLE IF NOT EXISTS public.be_thirdparty_cs_current_v1 (',
+  'delivery_way_id text PRIMARY KEY, merchant_code text, provider_code text NOT NULL,',
+  'outcome text NOT NULL CONSTRAINT be_thirdparty_cs_current_v1_outcome_check',
+  "CHECK (outcome IN ('DELIVERED','RTO','FAILED','POSTPONED','NO_ATTEMPT','UNREACHABLE','REFUSED','ADDRESS_ISSUE','LOST','DAMAGED','HANDED_TO_PARTNER','OTHER')),",
+  'reason_code text, notes text NOT NULL, evidence_ref text, confirmed_by uuid NOT NULL,',
+  'updated_at timestamptz NOT NULL DEFAULT now(), revision integer NOT NULL DEFAULT 1',
+  ');',
+  'ALTER TABLE public.be_thirdparty_cs_current_v1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_thirdparty_cs_current_v1 FROM PUBLIC, anon, authenticated;',
+  'CREATE TABLE IF NOT EXISTS public.be_thirdparty_finance_review_v1 (',
+  'delivery_way_id text PRIMARY KEY, merchant_code text, provider_code text NOT NULL,',
+  'cs_outcome text NOT NULL, cs_revision integer NOT NULL,',
+  'finance_review_status text NOT NULL CONSTRAINT be_thirdparty_finance_review_v1_finance_review_status_check',
+  "CHECK (finance_review_status IN ('ACCOUNT_RESOLUTION_REQUIRED','DELIVERED_RECEIPT_AND_CHARGES_REVIEW','RTO_FEES_AND_RETURN_REVIEW','DELIVERY_EXCEPTION_FOLLOWUP','PARTNER_HANDOVER_REVIEW')),",
+  'expected_cod_mmk numeric, verified_cash_received_mmk numeric,',
+  'actual_settlement_posted boolean NOT NULL DEFAULT false,',
+  "finance_note text NOT NULL DEFAULT 'CS status confirmation only; Finance must verify receipts and merchant/provider fees before posting',",
+  'cs_confirmed_at timestamptz NOT NULL, updated_at timestamptz NOT NULL DEFAULT now()',
+  ');',
+  'ALTER TABLE public.be_thirdparty_finance_review_v1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_thirdparty_finance_review_v1 FROM PUBLIC, anon, authenticated;',
+  'DO $ci$ BEGIN',
+  'IF EXISTS (SELECT 1 FROM public.be_thirdparty_cs_current_v1) OR',
+  'EXISTS (SELECT 1 FROM public.be_thirdparty_finance_review_v1) THEN',
+  "RAISE EXCEPTION 'CI third-party review fixture contains data';",
+  'END IF;',
+  'END $ci$;'
+].join('\n') + '\n';
+writeFileSync(resolve(root,
+  '20261103184836_uat308_thirdparty_review_catalog_ci.sql'),thirdpartyReviewCatalogCi);
+console.log('CI-only third-party CS and finance review ledgers reconstructed empty, fail-closed.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
