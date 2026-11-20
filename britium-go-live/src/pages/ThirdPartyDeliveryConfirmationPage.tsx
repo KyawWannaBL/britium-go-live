@@ -16,8 +16,20 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [uploadedInventory,setUploadedInventory]=useState<Record<string,LocalInventory>>({}),[uploadNotice,setUploadNotice]=useState('');
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0);
- const providerCustodyEnabled=typeof window!=='undefined' && (window as any).__BRITIUM_FEATURES?.providerCustody===true;
- const mixedTripEnabled=typeof window!=='undefined' && (window as any).__BRITIUM_FEATURES?.providerMixedTrips===true;
+ const [providerCustodyEnabled,setProviderCustodyEnabled]=useState(false);
+ const [mixedTripEnabled,setMixedTripEnabled]=useState(false);
+ useEffect(()=>{
+  let active=true;
+  void (async()=>{
+   try{
+    const {data,error}=await (supabase as any).rpc('be_provider_transfer_capabilities_v1');
+    if(!active)return;
+    setProviderCustodyEnabled(!error && data?.ok===true && data?.custody_enabled===true);
+    setMixedTripEnabled(!error && data?.ok===true && data?.mixed_trip_enabled===true);
+   }catch{if(active){setProviderCustodyEnabled(false);setMixedTripEnabled(false);}}
+  })();
+  return()=>{active=false;};
+ },[]);
  const [mixedPlan,setMixedPlan]=useState(''),[mixedPickupJson,setMixedPickupJson]=useState('');
  const [mixedRouteJson,setMixedRouteJson]=useState(''),[mixedEvidence,setMixedEvidence]=useState('');
  const [mixedReason,setMixedReason]=useState(''),[mixedSource,setMixedSource]=useState('OPERATOR_VERIFIED');
