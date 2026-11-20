@@ -1786,7 +1786,7 @@ if (!catalogFinanceDashboard.includes('be_accounting_can_v1') ||
 const preNov6FinanceDashboard = catalogFinanceDashboard.replace(
   newFinanceDate,oldFinanceDate);
 writeFileSync(resolve(root,'20261106103354_uat308_pre_nov6_finance_dashboard_ci.sql'),
-  preNov6FinanceDashboard +
+  preNov6FinanceDashboard.replace(/\$function\$\s*;?\s*$/, '$function$;') +
   '\nREVOKE ALL ON FUNCTION public.be_finance_live_wayplan_dashboard_v1(date,text,text,text) FROM PUBLIC, anon;\n');
 console.log('CI-only catalog finance dashboard restored to its authenticated pre-Nov6 date filter.');
 
