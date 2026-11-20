@@ -18,6 +18,9 @@ for(const term of [
   "Provider classification RPC is not installed",
   "REGIONAL_WAYPLAN_REVIEW",
   "Service provider",
+  "exportTransferManifest",
+  "Transfer Candidates",
+  "Handover Verified",
   "Select / clear eligible",
   "handoffBusy",
   "selectedIds.slice(0,100)",
@@ -39,6 +42,8 @@ assert.match(sql,/be_warehouse_assert_internal/);
 assert.match(sql,/NEEDS_PROVIDER_TRANSFER_WAYPLAN/);
 assert.match(sql,/NEEDS_BRANCH_TRANSFER_WAYPLAN/);
 assert.match(sql,/PROVIDER_TRANSFER_REQUIRED/);
+assert.match(sql,/handover_location_verified/);
+assert.match(sql,/be_provider_handover_sites_v1/);
 const siteSql=readFileSync(new URL("../sql/candidates/provider_handover_sites_v1.sql",import.meta.url),"utf8");
 assert.match(siteSql,/enable row level security/);
 assert.match(siteSql,/revoke all on table.*from public, anon, authenticated/);
