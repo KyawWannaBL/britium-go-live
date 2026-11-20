@@ -94,6 +94,11 @@ begin
       and upper(coalesce(d.parcel_status,'')) not in
         ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED')
   ) then raise exception 'Way no longer belongs to an active parcel'; end if;
+  if exists (
+    select 1 from public.be_thirdparty_cs_current_v1 cs
+    where upper(cs.delivery_way_id)=v_way
+      and upper(coalesce(cs.outcome,'')) in ('DELIVERED','RTO')
+  ) then raise exception 'CS has already recorded a terminal third-party outcome'; end if;
   perform pg_advisory_xact_lock(hashtextextended('provider-custody:'||v_way,0));
   if exists(select 1 from public.be_provider_transfer_custody_v1 where delivery_way_id=v_way)
     then raise exception 'Provider custody already confirmed for this Way ID'; end if;
