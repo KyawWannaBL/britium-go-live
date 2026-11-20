@@ -2,7 +2,10 @@
 -- Custody is independent of delivery. It requires an actual Warehouse dispatch
 -- scan AND the partner's physical signed receipt reference.
 create table if not exists public.be_provider_transfer_custody_v1 (
-  delivery_way_id text primary key,
+  id bigint generated always as identity primary key,
+  delivery_way_id text not null,
+  attempt_number integer not null default 1,
+  unique (delivery_way_id,wayplan_id),
   wayplan_id text not null references public.be_wayplan_dispatches(wayplan_id),
   provider_code text not null references public.be_data_entry_service_providers(provider_code),
   handover_location_code text not null references public.be_wayplan_service_locations(location_code),
@@ -106,14 +109,27 @@ begin
       and upper(coalesce(cs.outcome,'')) in ('DELIVERED','RTO')
   ) then raise exception 'CS has already recorded a terminal third-party outcome'; end if;
   perform pg_advisory_xact_lock(hashtextextended('provider-custody:'||v_way,0));
-  if exists(select 1 from public.be_provider_transfer_custody_v1 where delivery_way_id=v_way)
-    then raise exception 'Provider custody already confirmed for this Way ID'; end if;
+  if exists (
+    select 1 from public.be_provider_transfer_custody_v1 h
+    where h.delivery_way_id=v_way and h.wayplan_id=v_plan
+  ) then raise exception 'Custody already confirmed for this Wayplan and Way ID'; end if;
+  if exists (
+    select 1 from public.be_provider_transfer_custody_v1 old
+    where old.delivery_way_id=v_way
+      and not exists (
+        select 1 from public.be_warehouse_return_scans_v39 rs
+        where upper(rs.delivery_way_id)=v_way
+          and rs.scanned_at>old.physically_handed_over_at
+      )
+  ) then raise exception 'Earlier provider custody requires a newer actual Warehouse Return Scan before replan'; end if;
   insert into public.be_provider_transfer_custody_v1(
     delivery_way_id,wayplan_id,provider_code,handover_location_code,
-    handover_manifest_ref,provider_receiver_name,provider_receipt_ref,
+    attempt_number,handover_manifest_ref,provider_receiver_name,provider_receipt_ref,
     proof_reference,dispatch_scanned_at,confirmed_by
   ) values (
-    v_way,v_plan,v_provider,v_location,btrim(p_manifest_ref),btrim(p_receiver_name),
+    v_way,v_plan,v_provider,v_location,
+    1+(select count(*) from public.be_provider_transfer_custody_v1 h where h.delivery_way_id=v_way),
+    btrim(p_manifest_ref),btrim(p_receiver_name),
     btrim(p_provider_receipt_ref),btrim(p_proof_reference),v_last_scan,v_actor
   );
   insert into public.be_audit_events(
