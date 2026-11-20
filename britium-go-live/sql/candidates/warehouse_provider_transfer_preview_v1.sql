@@ -30,7 +30,8 @@ begin
       upper(coalesce(nullif(d.delivery_region,''),'UNSET')) destination_region,
       upper(coalesce(nullif(d.delivery_route_mode,''),'UNSET')) route_mode,
       upper(coalesce(nullif(d.financial_validation_status,''),'UNSET')) financial_status,
-      coalesce(nullif(split_part(upper(r.warehouse_code),'-',1),''),'UNSET') origin_branch_code
+      coalesce(nullif(split_part(upper(r.warehouse_code),'-',1),''),'UNSET') origin_branch_code,
+      upper(coalesce(nullif(r.warehouse_status,''),'UNSET')) authoritative_receipt_status
     from src s
     left join lateral (
       select d.financial_quote,d.delivery_region,d.delivery_route_mode,
@@ -42,7 +43,7 @@ begin
       limit 1
     ) d on true
     left join lateral (
-      select wr.warehouse_code
+      select wr.warehouse_code,wr.warehouse_status
       from public.be_warehouse_receipts_v36 wr
       where upper(wr.delivery_way_id)=s.way_id
       order by wr.updated_at desc nulls last limit 1
@@ -105,6 +106,9 @@ begin
     from sites
   )
   select coalesce(jsonb_agg(e || jsonb_build_object(
+      'reported_warehouse_status',coalesce(e->>'warehouse_scan_status',e->>'warehouse_status'),
+      'authoritative_receipt_status',authoritative_receipt_status,
+      'warehouse_scan_status',case when authoritative_receipt_status='UNSET' then e->>'warehouse_scan_status' else authoritative_receipt_status end,
       'service_provider_code',provider_code,
       'delivery_region',destination_region,
       'delivery_route_mode',route_mode,
