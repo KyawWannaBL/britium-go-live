@@ -1790,6 +1790,30 @@ writeFileSync(resolve(root,'20261106103354_uat308_pre_nov6_finance_dashboard_ci.
   '\nREVOKE ALL ON FUNCTION public.be_finance_live_wayplan_dashboard_v1(date,text,text,text) FROM PUBLIC, anon;\n');
 console.log('CI-only catalog finance dashboard restored to its authenticated pre-Nov6 date filter.');
 
+
+// The Nov 7 rider-to-finance outbox migration schedules a REAL cron worker.
+// Supabase Production has pg_cron 1.6.4; install the genuine extension in
+// disposable CI before the schedule migration. Never stub cron.schedule.
+const riderFinanceCron = readFileSync(resolve(root,
+  '20261106191447_rider_delivery_finance_outbox_v1_20261107.sql'),'utf8');
+if (!riderFinanceCron.includes("select cron.schedule(") ||
+    !riderFinanceCron.includes("'be-delivery-finance-outbox-v1'") ||
+    !riderFinanceCron.includes('be_delivery_finance_outbox_process_v1();')) {
+  throw new Error('Rider Finance cron scheduler contract changed');
+}
+writeFileSync(resolve(root,'20261106191446_uat308_enable_pg_cron_ci.sql'),[
+  '-- Disposable CI only; enable genuine pg_cron (never a fake schedule function).',
+  '-- The original production migration is unchanged.',
+  'CREATE EXTENSION IF NOT EXISTS pg_cron WITH SCHEMA pg_catalog;',
+  'DO $ci$ BEGIN',
+  " IF to_regnamespace('cron') IS NULL OR",
+  "    to_regprocedure('cron.schedule(text,text,text)') IS NULL THEN",
+  "    RAISE EXCEPTION 'Real pg_cron extension and scheduling function required';",
+  ' END IF;',
+  'END $ci$;'
+].join('\n')+'\n');
+console.log('Actual pg_cron extension required for disposable rider-finance outbox replay.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
