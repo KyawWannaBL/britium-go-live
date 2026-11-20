@@ -24,6 +24,7 @@ declare
   v_vehicle text := upper(btrim(coalesce(p_vehicle_code,'')));
   v_driver text := upper(btrim(coalesce(p_driver_code,'')));
   v_site record;
+  v_origin record;
   v_plan_id text;
   v_way text;
   v_rows integer;
@@ -73,6 +74,11 @@ begin
   ) then raise exception 'Vehicle or Driver is busy on another active Wayplan'; end if;
   if v_branch not in ('YGN','MDY','NPT') then raise exception 'Invalid origin branch'; end if;
   perform public.be_branch_scope_v1(v_branch);
+  select branch_code,branch_name,lat,lng into v_origin
+  from public.be_branch_offices
+  where branch_code=v_branch and coalesce(active,true)
+    and lat between 9 and 29 and lng between 92 and 102;
+  if not found then raise exception 'Active origin branch coordinates must be verified'; end if;
   if v_provider='' or v_location='' or v_vehicle='' or v_driver=''
     then raise exception 'Provider, verified site, vehicle and driver are mandatory'; end if;
   v_requested := coalesce(array_length(p_delivery_way_ids,1),0);
@@ -233,7 +239,9 @@ begin
   v_saved := public.be_save_operational_route_version_v1(
     v_plan_id,'GENERATED',jsonb_build_object(
       'source','DEFERRED_PROVIDER','route_source','DEFERRED_PROVIDER',
-      'route_mode','PROVIDER_HANDOVER','origin',jsonb_build_object('branch_code',v_branch),
+      'route_mode','PROVIDER_HANDOVER','origin',jsonb_build_object(
+        'branch_code',v_branch,'label',v_origin.branch_name,
+        'latitude',v_origin.lat,'longitude',v_origin.lng),
       'ordered_stops',v_ordered,
       'handover_location_code',v_site.location_code),'Provider handover site route awaiting review'
   );
