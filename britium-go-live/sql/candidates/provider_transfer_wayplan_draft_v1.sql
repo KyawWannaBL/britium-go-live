@@ -116,6 +116,21 @@ begin
       where upper(rs.delivery_way_id)=v_way and rs.status='ACTIVE'
         and rs.requested_delivery_date>(now() at time zone 'Asia/Yangon')::date
     ) then raise exception 'Way % is on a future-date hold',v_way; end if;
+    -- A parcel previously scanned out must have a newer physical return scan
+    -- before it can be scheduled into another route. Never infer a return.
+    if exists (
+      select 1 from public.be_dispatch_scans_v39 ds
+      where upper(ds.delivery_way_id)=v_way and ds.scan_status='SCANNED'
+        and not exists (
+          select 1 from public.be_warehouse_return_scans_v39 rs
+          where upper(rs.delivery_way_id)=v_way and rs.scanned_at>ds.scanned_at
+        )
+    ) then raise exception 'Way % requires a physical return scan after dispatch',v_way; end if;
+    if exists (
+      select 1 from public.be_thirdparty_cs_current_v1 cs
+      where upper(cs.delivery_way_id)=v_way
+        and upper(cs.outcome) in ('DELIVERED','RTO','HANDED_TO_PARTNER')
+    ) then raise exception 'Way % already has a terminal or custody event',v_way; end if;
     if exists (
       select 1 from public.be_delivery_attempt_state_v39 a
       where upper(a.delivery_way_id)=v_way and upper(coalesce(a.last_status,''))='RTO'
