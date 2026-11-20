@@ -101,7 +101,33 @@ jobs:
             echo "::error::Disposable Supabase PostgreSQL container not found"
             exit 1
           fi
-          docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 < scripts/uat-audit/uat_restore_authentic_8_rpcs_after_schema.sql
+          echo "Post-replay operational RPC inventory (read-only):"
+          docker exec "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 -c "
+            SELECT r.name,
+                   count(p.oid) AS overload_count,
+                   coalesce(bool_or(has_function_privilege('authenticated',p.oid,'EXECUTE')),false) AS authenticated_can_execute
+            FROM (VALUES
+              ('be_role_dashboard_v1'),
+              ('be_cs_parcel_support_queue'),
+              ('be_cs_thirdparty_queue_v1'),
+              ('be_get_merchants_dropdown'),
+              ('be_data_entry_financial_v2_schema'),
+              ('be_warehouse_scan_lifecycle_snapshot_v211'),
+              ('be_warehouse_scan_lifecycle_snapshot_v164'),
+              ('be_branch_intake_snapshot_v1')
+            ) AS r(name)
+            LEFT JOIN pg_proc p ON p.pronamespace='public'::regnamespace AND p.proname=r.name
+            GROUP BY r.name ORDER BY r.name;"
+          DASHBOARD_PRESENT="$(docker exec "$DB_CONTAINER" psql -U postgres -d postgres -X -At -v ON_ERROR_STOP=1 -c "SELECT to_regprocedure('public.be_role_dashboard_v1()') IS NOT NULL;")"
+          if [ "$DASHBOARD_PRESENT" = "t" ]; then
+            echo "::notice::Existing operational Dashboard RPC preserved; standalone 8-RPC replacement is unsafe and intentionally skipped."
+            echo "::notice::The next step asserts the existing application RPCs and will fail on missing functions or grants."
+          elif [ "$DASHBOARD_PRESENT" = "f" ]; then
+            docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 < scripts/uat-audit/uat_restore_authentic_8_rpcs_after_schema.sql
+          else
+            echo "::error::Could not determine Dashboard RPC state safely"
+            exit 1
+          fi
       - name: Assert required app RPCs and operational schema in disposable database
         run: |
           DB_CONTAINER="$(docker ps --filter name=supabase_db --format '{{.ID}}' | head -n 1)"
