@@ -128,6 +128,15 @@ jobs:
             echo "::error::Could not determine Dashboard RPC state safely"
             exit 1
           fi
+      - name: Restore only the two confirmed absent operational RPCs
+        run: |
+          node scripts/uat-audit/ci-restore-missing-two-rpcs.mjs
+          DB_CONTAINER="$(docker ps --filter name=supabase_db --format '{{.ID}}' | head -n 1)"
+          if [ -z "$DB_CONTAINER" ]; then
+            echo "::error::Disposable Supabase PostgreSQL container not found"
+            exit 1
+          fi
+          docker exec -i "$DB_CONTAINER" psql -U postgres -d postgres -X -v ON_ERROR_STOP=1 < /tmp/uat308_missing_two_rpcs.sql
       - name: Assert required app RPCs and operational schema in disposable database
         run: |
           DB_CONTAINER="$(docker ps --filter name=supabase_db --format '{{.ID}}' | head -n 1)"
