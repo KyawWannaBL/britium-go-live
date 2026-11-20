@@ -1552,6 +1552,37 @@ writeFileSync(resolve(root,'20261031095038_uat308_oct23_unresolved_identity_ci.s
 console.log('CI-only unresolved historical identity review structure inserted empty and restricted.');
 
 
+// The November tariff-management migration needs the authentic catalog
+// structure of the existing production rights registry. Disposable CI only:
+// restore EMPTY table shape with the verified primary key and RLS. Never copy
+// role authorization values from production or grant public read/write access.
+const tariffRightsConsumer = readFileSync(resolve(root,
+  '20261103173657_enable_revocable_data_entry_tariff_management.sql'), 'utf8');
+if (!tariffRightsConsumer.includes('insert into public.be_tariff_write_rights_v1(role_code,can_manage,updated_by,updated_at)') ||
+    !tariffRightsConsumer.includes("values('data_entry',true,now())") ||
+    !tariffRightsConsumer.includes("SUPERADMIN_REQUIRED")) {
+  throw new Error('Original tariff rights migration contract changed');
+}
+const tariffRightsFixture = [
+  '-- Disposable UAT replay only: catalog-verified production structure; no permission rows copied.',
+  'CREATE TABLE IF NOT EXISTS public.be_tariff_write_rights_v1 (',
+  ' role_code text PRIMARY KEY,',
+  ' can_manage boolean NOT NULL DEFAULT false,',
+  ' updated_at timestamptz NOT NULL DEFAULT now(),',
+  ' updated_by uuid',
+  ');',
+  'ALTER TABLE public.be_tariff_write_rights_v1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_tariff_write_rights_v1 FROM PUBLIC, anon, authenticated;',
+  'DO $ci$ BEGIN',
+  ' IF EXISTS (SELECT 1 FROM public.be_tariff_write_rights_v1) THEN',
+  "  RAISE EXCEPTION 'CI tariff rights fixture unexpectedly has rows';",
+  ' END IF;',
+  'END $ci$;'
+].join('\\n') + '\\n';
+writeFileSync(resolve(root,'20261103173656_uat308_tariff_write_rights_ci.sql'),
+  tariffRightsFixture);
+console.log('CI-only authentic tariff rights table created empty with primary key and RLS.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
