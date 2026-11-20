@@ -16,6 +16,30 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  const [uploadedInventory,setUploadedInventory]=useState<Record<string,LocalInventory>>({}),[uploadNotice,setUploadNotice]=useState('');
  const [reconciliation,setReconciliation]=useState<Record<string,Reconcile>>({}),[reconcileError,setReconcileError]=useState(''),[reviewOnly,setReviewOnly]=useState(false);
  const [busy,setBusy]=useState(false),[message,setMessage]=useState(''),[modalError,setModalError]=useState(''),[total,setTotal]=useState(0);
+ const providerCustodyEnabled=typeof window!=='undefined' && (window as any).__BRITIUM_FEATURES?.providerCustody===true;
+ const [custodyInput,setCustodyInput]=useState({way:'',plan:'',provider:'',site:'',manifest:'',receiver:'',receipt:'',proof:''});
+ const [custodyBusy,setCustodyBusy]=useState(false),[custodyResult,setCustodyResult]=useState('');
+ const setCustodyField=(key:keyof typeof custodyInput,value:string)=>setCustodyInput(old=>({...old,[key]:value}));
+ async function confirmProviderCustody(){
+  if(!providerCustodyEnabled||custodyBusy)return;
+  if(Object.values(custodyInput).some(v=>!v.trim())){setCustodyResult('All physical handover fields and evidence are mandatory.');return;}
+  if(!window.confirm('Confirm actual physical provider receipt for '+custodyInput.way+'? This records custody, NOT customer delivery.'))return;
+  setCustodyBusy(true);setCustodyResult('');
+  try{
+   const {data,error}=await (supabase as any).rpc('be_provider_transfer_confirm_handover_v1',{
+     p_way_id:custodyInput.way,p_wayplan_id:custodyInput.plan,
+     p_provider_code:custodyInput.provider,p_location_code:custodyInput.site,
+     p_manifest_ref:custodyInput.manifest,p_receiver_name:custodyInput.receiver,
+     p_provider_receipt_ref:custodyInput.receipt,p_proof_reference:custodyInput.proof
+   });
+   if(error||data?.ok!==true)throw new Error(error?.message||data?.error||'Custody confirmation rejected');
+   setCustodyResult('Provider custody recorded for '+data.delivery_way_id+
+      '. Customer delivery and COD settlement remain separate.');
+   setCustodyInput({way:'',plan:'',provider:'',site:'',manifest:'',receiver:'',receipt:'',proof:''});
+  }catch(err:any){setCustodyResult('Custody was NOT recorded: '+(err?.message||'Unexpected error'));}
+  finally{setCustodyBusy(false);}
+ }
+
  async function refresh(){setBusy(true);try{
   const {data,error}=await (supabase as any).rpc('be_cs_thirdparty_queue_v1',{p_search:search||null,p_outcome:filter,p_limit:300});
   if(error||!data?.ok)throw new Error(error?.message||data?.error||'Queue unavailable');
@@ -70,6 +94,28 @@ export default function ThirdPartyDeliveryConfirmationPage(){
  return <div style={{color:'#e2e8f0',padding:12,maxWidth:1500,margin:'auto'}}>
   <h1 style={{fontSize:23,fontWeight:700}}>Third-party Delivery Confirmation / ပြင်ပပို့ဆောင်မှု အတည်ပြုခြင်း</h1>
   <p style={{color:'#fbbf24'}}>The schedule is not proof of delivery. CS confirmations create dedicated merchant-account Finance reviews, never automatic cash receipts or settled payments.</p>
+  <section aria-label="Physical provider custody verification" style={{border:'1px solid #486a88',borderRadius:8,padding:12,margin:'12px 0'}}>
+   <h2 style={{fontSize:17,fontWeight:700}}>Provider physical handover / ပြင်ပပို့ဆောင်ရေး လက်ခံလွှဲပြောင်းမှု</h2>
+   {!providerCustodyEnabled ? <p style={{color:'#fbbf24',marginTop:6}}>Physical custody confirmation is disabled until the approved backend migration, site verification, and dispatch-scan UAT pass. Existing CS delivery confirmation remains separate.</p> : <>
+    <p style={{color:'#fcd58c',fontSize:13}}>Record only after Supervisor DISPATCH_READY, a genuine Way ID dispatch scan, and a signed provider receipt. This does NOT mark customer delivery or settle COD.</p>
+    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(190px,1fr))',gap:8,marginTop:9}}>
+     {([
+       ['way','Delivery Way ID'],['plan','Transfer Wayplan ID'],
+       ['provider','Provider Code'],['site','Approved Site Code'],
+       ['manifest','Manifest Reference'],['receiver','Physical Receiver Name'],
+       ['receipt','Signed Provider Receipt Reference'],['proof','Evidence / Photo Reference']
+      ] as [keyof typeof custodyInput,string][]).map(([key,label])=>
+       <label key={key} style={{fontSize:12}}>{label}
+        <input value={custodyInput[key]} onChange={e=>setCustodyField(key,e.target.value)} aria-label={label} style={{...input,marginTop:4}}/>
+       </label>)}
+    </div>
+    <button type="button" disabled={custodyBusy} onClick={()=>void confirmProviderCustody()} style={{background:'#0e7490',color:'#fff',padding:'9px 14px',borderRadius:6,marginTop:10}}>
+      {custodyBusy?'Confirming...':'Confirm physical provider custody'}
+    </button>
+    {custodyResult&&<p role="status" style={{color:'#fcd58c',marginTop:8}}>{custodyResult}</p>}
+   </>}
+  </section>
+
   <div style={{display:'flex',gap:9,flexWrap:'wrap',margin:'14px 0'}}>
    <input aria-label="Search Way ID or merchant" placeholder="Search Way ID or merchant" value={search} onChange={e=>setSearch(e.target.value)} style={{...input,maxWidth:310}}/>
    <select aria-label="Filter outcome" value={filter} onChange={e=>setFilter(e.target.value)} style={{...input,maxWidth:180}}>{['ALL','UNCONFIRMED',...OUTCOMES].map(x=><option key={x}>{x}</option>)}</select>
