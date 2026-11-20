@@ -54,7 +54,7 @@ begin
     provider_code,origin_branch_code,location_code,active,
     verified_at,verified_by,verification_note,updated_at
   ) values (
-    v_provider,v_branch,v_location,true,
+    v_provider,v_branch,v_site.location_code,true,
     now(),v_user,v_note,now()
   )
   on conflict (provider_code,origin_branch_code,location_code)
