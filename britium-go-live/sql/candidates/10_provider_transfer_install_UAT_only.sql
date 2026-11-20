@@ -1,7 +1,6 @@
--- BRITIUM EXPRESS CONTROLLED PROVIDER TRANSFER / MIXED-TRIP SCHEMA INSTALL
--- Run ONLY on an isolated complete UAT environment first, after backup and review.
--- No parcel status, dispatch scan, pickup collection, custody or delivery mutations.
--- All new workflow capabilities install DEFAULT OFF.
+-- BRITIUM EXPRESS PROVIDER TRANSFER / MIXED TRIP UAT INSTALLATION
+-- Run only on a COMPLETE isolated UAT schema, after backup and security review.
+-- Every capability remains OFF. This never creates or closes parcel movements.
 BEGIN;
 SET LOCAL lock_timeout='3s';
 SET LOCAL statement_timeout='120s';
@@ -15,12 +14,10 @@ DO $check$ BEGIN
     to_regclass('public.be_dispatch_scans_v39') is null OR
     to_regclass('public.be_warehouse_return_scans_v39') is null OR
     to_regclass('public.be_portal_pickup_requests') is null
- THEN RAISE EXCEPTION 'UAT operational schema incomplete; refusing installation'; END IF;
+ THEN RAISE EXCEPTION 'Operational UAT schema incomplete; refusing installation'; END IF;
 END $check$;
 
--- =====================================
--- 1: provider_handover_sites_v1.sql
--- =====================================
+-- ===== 1. provider_handover_sites_v1.sql =====
 -- Candidate only. Do NOT execute on production until UAT schema replay and review pass.
 -- Provider handover locations must be physically verified and explicitly linked.
 -- No implicit Royal Express site and no fabricated latitude/longitude.
@@ -55,9 +52,7 @@ revoke all on table public.be_provider_handover_sites_v1 from public, anon, auth
 -- require an Operations-approved location before any transfer Wayplan can be created.
 
 
--- =====================================
--- 2: provider_handover_site_approve_v1.sql
--- =====================================
+-- ===== 2. provider_handover_site_approve_v1.sql =====
 -- UAT CANDIDATE ONLY. Requires provider_handover_sites_v1.sql to be installed first.
 -- Manual administrative approval of an existing mapped physical handover location.
 -- This is NOT a dispatch scan, provider custody acceptance, or delivery confirmation.
@@ -149,9 +144,7 @@ revoke all on function public.be_provider_handover_site_approve_v1(text,text,tex
 grant execute on function public.be_provider_handover_site_approve_v1(text,text,text,text) to authenticated;
 
 
--- =====================================
--- 3: provider_transfer_release_control_v1.sql
--- =====================================
+-- ===== 3. provider_transfer_release_control_v1.sql =====
 -- Provider transfer go-live capability switch.
 -- Install on isolated UAT first; all features default to FALSE.
 create table if not exists public.be_provider_transfer_release_control_v1 (
@@ -244,9 +237,7 @@ revoke all on function public.be_provider_transfer_approve_release_v1(boolean,bo
 grant execute on function public.be_provider_transfer_approve_release_v1(boolean,boolean,boolean,text) to authenticated;
 
 
--- =====================================
--- 4: warehouse_provider_transfer_preview_v1.sql
--- =====================================
+-- ===== 4. warehouse_provider_transfer_preview_v1.sql =====
 -- Candidate only. REVIEW + APPLY TO ISOLATED UAT FIRST.
 -- Read-only; do not replace the authoritative Wayplan creator or Warehouse scan RPCs.
 -- Canonical provider metadata attached only to already-authorized Warehouse snapshot rows.
@@ -392,9 +383,7 @@ revoke all on function public.be_warehouse_provider_transfer_preview_v1() from p
 grant execute on function public.be_warehouse_provider_transfer_preview_v1() to authenticated;
 
 
--- =====================================
--- 5: provider_transfer_wayplan_draft_v1.sql
--- =====================================
+-- ===== 5. provider_transfer_wayplan_draft_v1.sql =====
 -- CONTROLLED UAT CANDIDATE - NOT AUTHORIZED FOR PRODUCTION UNTIL UAT.
 -- Depends on provider_handover_sites_v1.sql and reviewed approval.
 -- Creates DRAFT transfer Wayplans only. Does not dispatch, hand over,
@@ -669,14 +658,15 @@ grant execute on function public.be_provider_transfer_wayplan_draft_v1(
   uuid,text,text,text,text[],text,text) to authenticated;
 
 
--- =====================================
--- 6: provider_transfer_custody_v1.sql
--- =====================================
+-- ===== 6. provider_transfer_custody_v1.sql =====
 -- ISOLATED UAT ONLY. Requires provider_transfer_wayplan_draft_v1.sql.
 -- Custody is independent of delivery. It requires an actual Warehouse dispatch
 -- scan AND the partner's physical signed receipt reference.
 create table if not exists public.be_provider_transfer_custody_v1 (
-  delivery_way_id text primary key,
+  id bigint generated always as identity primary key,
+  delivery_way_id text not null,
+  attempt_number integer not null default 1,
+  unique (delivery_way_id,wayplan_id),
   wayplan_id text not null references public.be_wayplan_dispatches(wayplan_id),
   provider_code text not null references public.be_data_entry_service_providers(provider_code),
   handover_location_code text not null references public.be_wayplan_service_locations(location_code),
@@ -780,14 +770,27 @@ begin
       and upper(coalesce(cs.outcome,'')) in ('DELIVERED','RTO')
   ) then raise exception 'CS has already recorded a terminal third-party outcome'; end if;
   perform pg_advisory_xact_lock(hashtextextended('provider-custody:'||v_way,0));
-  if exists(select 1 from public.be_provider_transfer_custody_v1 where delivery_way_id=v_way)
-    then raise exception 'Provider custody already confirmed for this Way ID'; end if;
+  if exists (
+    select 1 from public.be_provider_transfer_custody_v1 h
+    where h.delivery_way_id=v_way and h.wayplan_id=v_plan
+  ) then raise exception 'Custody already confirmed for this Wayplan and Way ID'; end if;
+  if exists (
+    select 1 from public.be_provider_transfer_custody_v1 old
+    where old.delivery_way_id=v_way
+      and not exists (
+        select 1 from public.be_warehouse_return_scans_v39 rs
+        where upper(rs.delivery_way_id)=v_way
+          and rs.scanned_at>old.physically_handed_over_at
+      )
+  ) then raise exception 'Earlier provider custody requires a newer actual Warehouse Return Scan before replan'; end if;
   insert into public.be_provider_transfer_custody_v1(
     delivery_way_id,wayplan_id,provider_code,handover_location_code,
-    handover_manifest_ref,provider_receiver_name,provider_receipt_ref,
+    attempt_number,handover_manifest_ref,provider_receiver_name,provider_receipt_ref,
     proof_reference,dispatch_scanned_at,confirmed_by
   ) values (
-    v_way,v_plan,v_provider,v_location,btrim(p_manifest_ref),btrim(p_receiver_name),
+    v_way,v_plan,v_provider,v_location,
+    1+(select count(*) from public.be_provider_transfer_custody_v1 h where h.delivery_way_id=v_way),
+    btrim(p_manifest_ref),btrim(p_receiver_name),
     btrim(p_provider_receipt_ref),btrim(p_proof_reference),v_last_scan,v_actor
   );
   insert into public.be_audit_events(
@@ -812,9 +815,7 @@ grant execute on function public.be_provider_transfer_confirm_handover_v1(
   text,text,text,text,text,text,text,text) to authenticated;
 
 
--- =====================================
--- 7: provider_transfer_mixed_pickups_v1.sql
--- =====================================
+-- ===== 7. provider_transfer_mixed_pickups_v1.sql =====
 -- Britium Express: draft mixed pickup + third-party transfer trip planning
 -- UAT CANDIDATE. Install AFTER provider_transfer_wayplan_draft_v1.sql.
 -- This attaches pickup stops to the SAME physical vehicle trip/transfer Wayplan.
@@ -967,9 +968,7 @@ revoke all on function public.be_provider_transfer_add_pickups_v1(text,jsonb,tex
 grant execute on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) to authenticated;
 
 
--- =====================================
--- 8: provider_transfer_mixed_route_gate_v1.sql
--- =====================================
+-- ===== 8. provider_transfer_mixed_route_gate_v1.sql =====
 -- UAT ONLY: reviewed mixed pickup + provider-transfer vehicle itinerary.
 -- Dependency: provider_transfer_mixed_pickups_v1.sql and transfer draft functions.
 -- This is a separate physical itinerary and NEVER changes the delivery-way
