@@ -77,7 +77,7 @@ export default function WarehousePendingParcelsPage(){
   const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
   const [handoffBusy,setHandoffBusy]=useState(false);
   const [providerMetadataReady,setProviderMetadataReady]=useState(false);
-  const draftTransferFeatureEnabled=typeof window!=="undefined" && (window as any).__BRITIUM_FEATURES?.providerTransferDraft===true;
+  const [draftTransferFeatureEnabled,setDraftTransferFeatureEnabled]=useState(false);
   const [transferGroup,setTransferGroup]=useState("");
   const [transferSelection,setTransferSelection]=useState<Record<string,boolean>>({});
   const [transferVehicle,setTransferVehicle]=useState("");
@@ -91,6 +91,8 @@ export default function WarehousePendingParcelsPage(){
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
     try{
+      const {data:flags,error:flagError}=await (supabase as any).rpc("be_provider_transfer_capabilities_v1");
+      setDraftTransferFeatureEnabled(!flagError && flags?.ok===true && flags?.draft_enabled===true);
       // Enriched provider data is optional during phased UAT rollout. The old
       // authorized Warehouse snapshot remains the read-only fallback.
       let result=await (supabase as any).rpc("be_warehouse_provider_transfer_preview_v1");
