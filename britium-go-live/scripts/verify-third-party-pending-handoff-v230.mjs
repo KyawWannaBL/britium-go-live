@@ -66,6 +66,23 @@ assert.match(approvalSql,/dispatch_created',false/);
 assert.match(approvalSql,/custody_transfer_created',false/);
 assert.match(approvalSql,/revoke all on function.*from public,anon/);
 assert.doesNotMatch(siteSql,/insert into public\.be_provider_handover_sites_v1/i);
+const draftSql=readFileSync(new URL("../sql/candidates/provider_transfer_wayplan_draft_v1.sql",import.meta.url),"utf8");
+for(const term of [
+  "be_provider_transfer_wayplan_draft_v1",
+  "verified_at is not null",
+  "WAREHOUSE_READY",
+  "financial_validation_status",
+  "be_warehouse_return_scans_v39",
+  "be_dispatch_scans_v39",
+  "be_wayplan_membership_v40",
+  "be_wayplan_review_v43",
+  "DEFERRED_PROVIDER",
+  "dispatch_created',false",
+  "handover_recorded',false",
+  "customer_delivery_confirmed',false"
+])assert.ok(draftSql.includes(term),"Draft Wayplan guard missing: "+term);
+assert.doesNotMatch(draftSql,/be_warehouse_dispatch_scan\s*\(/);
+assert.doesNotMatch(draftSql,/be_cs_thirdparty_confirm_v1\s*\(/);
 assert.match(warehouse,/DISPATCH_SCAN_REQUIRED/);
 assert.doesNotMatch(pending,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(pending,/be_warehouse_return_scan_v71\s*\(/);
