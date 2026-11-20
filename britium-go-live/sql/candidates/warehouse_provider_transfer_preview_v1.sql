@@ -101,11 +101,14 @@ begin
         when financial_status not in ('OK','VALID')
           then 'FINANCIAL_VALIDATION_PENDING'
         when destination_region='OUTSIDE_CORE'
-          then 'NEEDS_PROVIDER_TRANSFER_WAYPLAN'
-        when provider_code in ('ROYAL EXPRESS','DK DELIVERY','GRS','H.TERMINAL DROP-OFF')
-          then 'NEEDS_PROVIDER_TRANSFER_WAYPLAN'
+          or provider_code in ('ROYAL EXPRESS','DK DELIVERY','GRS','H.TERMINAL DROP-OFF')
+          then case when handover_location_code is not null
+            then 'PROVIDER_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN'
+            else 'NEEDS_PROVIDER_TRANSFER_WAYPLAN' end
         when provider_code like '%BRANCH%'
-          then 'NEEDS_BRANCH_TRANSFER_WAYPLAN'
+          then case when handover_location_code is not null
+            then 'BRANCH_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN'
+            else 'NEEDS_BRANCH_TRANSFER_WAYPLAN' end
         else 'REGIONAL_WAYPLAN_REVIEW'
       end as planning_gate
     from sites
