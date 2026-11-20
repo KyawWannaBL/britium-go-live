@@ -46,6 +46,7 @@ declare
   v_count int:=0;
   v_requested int;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and mixed_trip_enabled) then raise exception 'Mixed provider trips not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager') then
     raise exception 'Management authority required for mixed trip planning';
