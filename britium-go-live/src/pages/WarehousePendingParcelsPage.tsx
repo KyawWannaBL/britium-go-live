@@ -64,6 +64,8 @@ export default function WarehousePendingParcelsPage(){
   const [rows,setRows]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
+  const [hasLoaded,setHasLoaded]=useState(false);
+  const [providerPreviewState,setProviderPreviewState]=useState<"unknown"|"missing"|"timeout"|"fallback"|"ready">("unknown");
   const [query,setQuery]=useState("");
   const [merchant,setMerchant]=useState("ALL");
   const [provider,setProvider]=useState("ALL");
@@ -109,16 +111,24 @@ export default function WarehousePendingParcelsPage(){
       // Enriched provider data is optional during phased UAT rollout. The old
       // authorized Warehouse snapshot remains the read-only fallback.
       let result=await (supabase as any).rpc("be_warehouse_provider_transfer_preview_v1");
-      if(["PGRST202","42883","42P01"].includes(String(result.error?.code||""))){
+      const previewCode=String(result.error?.code||"");
+      const previewMissing=["PGRST202","42883","42P01"].includes(previewCode);
+      const previewTimedOut=previewCode==="57014" || /statement timeout|timed out/i.test(String(result.error?.message||""));
+      if(previewMissing || previewTimedOut){
+        // The read-only Warehouse fallback may show parcels; it never authorizes provider handoff.
+        setProviderPreviewState(previewMissing?"missing":"timeout");
         result=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
       }
       const {data,error}=result;
-      setProviderMetadataReady(!error && data?.provider_transfer_preview===true);
+      const previewReady=!error && data?.provider_transfer_preview===true;
+      setProviderMetadataReady(previewReady);
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
-      setMessage("");
+      setHasLoaded(true);
+      setProviderPreviewState(previewReady?"ready":previewMissing?"missing":"fallback");
+      setMessage(previewTimedOut?"Provider preview timed out. Showing read-only Warehouse records; provider handoff remains disabled until verified metadata loads.":"");
     }catch(e:any){
-      setMessage(e?.message || "Could not load pending Warehouse parcels.");
+      setMessage("Warehouse snapshot unavailable: "+(e?.message || "Database request failed")+". Previously loaded records, if any, may be stale. Refresh to retry.");
     }finally{
       if(!quiet) setLoading(false);
     }
@@ -447,7 +457,7 @@ export default function WarehousePendingParcelsPage(){
           ["FAILED RETURN / REPLAN",failedPending.length,"text-violet-300"],
           ["OVER 48 HOURS",overdue.length,overdue.length?"text-red-300":"text-emerald-300"],
         ].map(([label,value,color]:any)=><div key={label} className="rounded-xl border border-slate-800 bg-[#0B2133] p-4">
-          <div className={"text-2xl font-black "+color}>{value}</div>
+          <div className={"text-2xl font-black "+color}>{!hasLoaded?"—":value}</div>
           <div className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{label}</div>
         </div>)}
       </section>
@@ -474,7 +484,7 @@ export default function WarehousePendingParcelsPage(){
           <label className="text-xs text-slate-300">Pending age<select aria-label="Pending age" value={age} onChange={e=>setAge(e.target.value)} className="mt-1 w-full rounded bg-white p-2 text-black"><option value="ALL">All</option><option value="OVERDUE">48+ hours</option><option value="CURRENT">Under 48 hours</option></select></label>
           <div className="flex items-end gap-2"><button type="button" className="rounded border border-slate-400 p-2" onClick={()=>{setQuery("");setMerchant("ALL");setProvider("ALL");setType("ALL");setAge("ALL");setDateBasis("INBOUND");setFrom("");setTo("");}}>Clear</button><button type="button" onClick={()=>void exportExcel()} disabled={loading||exporting||!visible.length||Boolean(from&&to&&from>to)} className="flex-1 rounded bg-emerald-600 p-2 font-bold disabled:opacity-50"><Download className="mr-1 inline h-4 w-4"/>{exporting?"Exporting":"Export Excel"}</button></div>
         </div>
-        <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
+        <p className="mb-2 text-xs text-slate-300">{hasLoaded?("Showing "+visible.length+" of "+pending.length+" parcels."):"Pending parcel counts unavailable until the first successful load."} Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
         {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
         {providerMetadataReady&&<div className="mb-3 rounded-lg border border-slate-700 p-3 text-xs text-slate-300">Provider transfers and branch handovers require a verified physical receiving site and a separate transfer Wayplan. “Not verified” means the handover site is not authorized; it does not mean customer delivery failed. No dispatch, receipt or delivery event is created by this report.</div>}
@@ -534,7 +544,7 @@ export default function WarehousePendingParcelsPage(){
             {releaseResult&&<p role="status" className="mt-1 text-xs text-amber-200">{releaseResult}</p>}
           </div>
         </details>}
-                {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
+                {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">{providerPreviewState==="missing"?"Provider classification RPC is not installed.":providerPreviewState==="timeout"?"Provider preview timed out; the read-only Warehouse fallback is being used if available.":"Provider classification is temporarily unavailable or not verified."} Provider-dependent handoff stays disabled until the authorized preview successfully loads. No Wayplan, dispatch scan or custody record will be created.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
             <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
