@@ -232,7 +232,7 @@ export default function WarehousePendingParcelsPage(){
         "Provider":excelText(r.service_provider_code),
         "Destination Region":excelText(r.delivery_region),
         "Original Recipient Township":excelText(r.delivery_township),
-        "Warehouse Status":excelText(r.warehouse_scan_status||r.warehouse_status),
+        "Warehouse Status":excelText(r.warehouse_scan_status||r.warehouse_status),"Snapshot Warehouse Status":excelText(r.reported_warehouse_status),
         "Approved Handover Site":excelText(r.handover_location_name),
         "Handover Location Code":excelText(r.handover_location_code),
         "Handover Verified":r.handover_location_verified===true?"YES":"NO",
@@ -281,7 +281,7 @@ export default function WarehousePendingParcelsPage(){
         });
         return {
           "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
-          "Merchant code":excelText(r.merchant_code),"Service provider":excelText(r.service_provider_code),"Provider lane":excelText(r.service_lane),"Planning gate":excelText(r.provider_planning_gate),"Handover origin":excelText(r.handover_origin_branch),"Approved handover":excelText(r.handover_location_name),"Handover location code":excelText(r.handover_location_code),"Handover verified":r.handover_location_verified===true?"YES":"NO","Recipient":excelText(r.recipient_name),
+          "Merchant code":excelText(r.merchant_code),"Service provider":excelText(r.service_provider_code),"Provider lane":excelText(r.service_lane),"Planning gate":excelText(r.provider_planning_gate),"Handover origin":excelText(r.handover_origin_branch),"Approved handover":excelText(r.handover_location_name),"Handover location code":excelText(r.handover_location_code),"Current Warehouse Status":excelText(r.authoritative_receipt_status),"Handover verified":r.handover_location_verified===true?"YES":"NO","Recipient":excelText(r.recipient_name),
           "Recipient phone":excelText(r.recipient_phone||r.phone_number),
           "Township":excelText(r.delivery_township),"Pending type":r._pendingType,
           "Overdue 48h":r._overdue?"YES":"NO","Age hours":Number(r._ageHours.toFixed(1)),
@@ -290,7 +290,7 @@ export default function WarehousePendingParcelsPage(){
           "Return attempts":Number(r.return_attempt_count||r.physical_return_scan_count||0),
           "Failure reason":excelText(r.pending_return_reason_name||r.last_exception_reason),
           "Delivery status":excelText(r.delivery_status),
-          "Warehouse status":excelText(r.warehouse_scan_status||r.warehouse_status),
+          "Warehouse status":excelText(r.warehouse_scan_status||r.warehouse_status),"Snapshot Warehouse Status":excelText(r.reported_warehouse_status),
           "Wayplan":excelText(r.active_wayplan_id)
         };
       });
