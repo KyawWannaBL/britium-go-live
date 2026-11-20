@@ -40,6 +40,7 @@ declare
   v_dest_region text;
   v_provider_actual text;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and draft_enabled) then raise exception 'Provider transfer draft creation not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager')
     then raise exception 'Management authorization required';
