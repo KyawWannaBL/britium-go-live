@@ -82,8 +82,139 @@ begin
     end if;
     v_seq:=(v_pickup->>'sequence')::integer;
     if v_seq<=0 then raise exception 'Invalid pickup sequence'; end if;
-    if (v_pickup->>'latitude') !~ '^-?[0-9]+(\\.[0-9]+)?$'
+    if (v_pickup->>'latitude') !~ '^[0-9]+([.][0-9]+)?
       or (v_pickup->>'longitude') !~ '^-?[0-9]+(\\.[0-9]+)?$'
+      then raise exception 'Pickup % needs verified coordinates',v_id; end if;
+    v_lat:=(v_pickup->>'latitude')::numeric;
+    v_lon:=(v_pickup->>'longitude')::numeric;
+    if v_lat not between 9 and 29 or v_lon not between 92 and 102 then
+      raise exception 'Pickup % coordinate outside supported Myanmar boundary',v_id;
+    end if;
+    v_evidence:=btrim(coalesce(v_pickup->>'location_evidence_ref',''));
+    if length(v_evidence)<8 then
+      raise exception 'Pickup % requires an approved Google pin/evidence reference',v_id;
+    end if;
+    select * into v_row from public.be_portal_pickup_requests
+    where upper(pickup_id)=v_id
+      and upper(coalesce(branch_code,assigned_branch,''))=upper(v_plan.branch_code)
+    for update;
+    if not found then raise exception 'Pickup % not found in origin branch',v_id; end if;
+    if upper(coalesce(v_row.pickup_status,v_row.status,'')) in
+      ('CANCELLED','COLLECTED','DELIVERED_TO_WAREHOUSE','COMPLETED','CLOSED')
+      then raise exception 'Pickup % is already closed or collected',v_id; end if;
+    if upper(coalesce(v_row.workflow_stage,'')) in
+      ('TO_WAREHOUSE','PICKUP_COMPLETED','CANCELLED')
+      then raise exception 'Pickup % is already beyond collection',v_id; end if;
+    if nullif(btrim(coalesce(v_row.assigned_driver_code,'')),'') is not null
+      and upper(v_row.assigned_driver_code)<>upper(v_plan.driver_code)
+      then raise exception 'Pickup % is assigned to a different Driver',v_id; end if;
+    if nullif(btrim(coalesce(v_row.assigned_vehicle_code,'')),'') is not null
+      and upper(v_row.assigned_vehicle_code)<>upper(v_plan.vehicle_code)
+      then raise exception 'Pickup % is assigned to a different vehicle',v_id; end if;
+    v_address:=btrim(coalesce(v_row.pickup_address,''));
+    if length(v_address)<8 then raise exception 'Pickup % needs a complete pickup address',v_id; end if;
+
+    insert into public.be_provider_transfer_pickup_stops_v1(
+      wayplan_id,pickup_id,pickup_way_id,stop_sequence,latitude,longitude,
+      address,location_evidence_ref,verified_by
+    ) values(p_wayplan_id,v_id,coalesce(nullif(v_row.pickup_way_id,''),v_id),
+      v_seq,v_lat,v_lon,v_address,v_evidence,v_actor);
+    v_count:=v_count+1;
+  end loop;
+
+  update public.be_wayplan_dispatches set
+    metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+      'physical_trip_type','MIXED_PICKUP_AND_PROVIDER_TRANSFER',
+      'pickup_stop_count',v_count,
+      'pickup_manifest_separate_from_parcel_membership',true,
+      'mixed_trip_route_optimization_pending',true,
+      'pickup_scan_required',true
+    ),updated_at=now()
+  where wayplan_id=p_wayplan_id;
+
+  insert into public.be_audit_events(
+    actor_id,actor_email,actor_role,action,resource_type,resource_id,details
+  ) values(v_actor,coalesce(auth.jwt()->>'email',''),public.be_current_user_role(),
+    'MIXED_TRIP_PICKUPS_STAGED_V1','WAYPLAN',p_wayplan_id,
+    jsonb_build_object('pickup_count',v_count,'reason',p_reason,
+      'pickup_scans_created',false,'dispatch_scans_created',false,
+      'provider_handover_confirmed',false));
+
+  return jsonb_build_object('ok',true,'wayplan_id',p_wayplan_id,
+    'pickup_stop_count',v_count,'physical_trip_type','MIXED_PICKUP_AND_PROVIDER_TRANSFER',
+    'pickup_collection_confirmed',false,'provider_transfer_confirmed',false,
+    'route_optimization_pending',true);
+end
+$body$;
+revoke all on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) from public,anon;
+grant execute on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) to authenticated;
+
+      or (v_pickup->>'longitude') !~ '^[0-9]+([.][0-9]+)?
+      then raise exception 'Pickup % needs verified coordinates',v_id; end if;
+    v_lat:=(v_pickup->>'latitude')::numeric;
+    v_lon:=(v_pickup->>'longitude')::numeric;
+    if v_lat not between 9 and 29 or v_lon not between 92 and 102 then
+      raise exception 'Pickup % coordinate outside supported Myanmar boundary',v_id;
+    end if;
+    v_evidence:=btrim(coalesce(v_pickup->>'location_evidence_ref',''));
+    if length(v_evidence)<8 then
+      raise exception 'Pickup % requires an approved Google pin/evidence reference',v_id;
+    end if;
+    select * into v_row from public.be_portal_pickup_requests
+    where upper(pickup_id)=v_id
+      and upper(coalesce(branch_code,assigned_branch,''))=upper(v_plan.branch_code)
+    for update;
+    if not found then raise exception 'Pickup % not found in origin branch',v_id; end if;
+    if upper(coalesce(v_row.pickup_status,v_row.status,'')) in
+      ('CANCELLED','COLLECTED','DELIVERED_TO_WAREHOUSE','COMPLETED','CLOSED')
+      then raise exception 'Pickup % is already closed or collected',v_id; end if;
+    if upper(coalesce(v_row.workflow_stage,'')) in
+      ('TO_WAREHOUSE','PICKUP_COMPLETED','CANCELLED')
+      then raise exception 'Pickup % is already beyond collection',v_id; end if;
+    if nullif(btrim(coalesce(v_row.assigned_driver_code,'')),'') is not null
+      and upper(v_row.assigned_driver_code)<>upper(v_plan.driver_code)
+      then raise exception 'Pickup % is assigned to a different Driver',v_id; end if;
+    if nullif(btrim(coalesce(v_row.assigned_vehicle_code,'')),'') is not null
+      and upper(v_row.assigned_vehicle_code)<>upper(v_plan.vehicle_code)
+      then raise exception 'Pickup % is assigned to a different vehicle',v_id; end if;
+    v_address:=btrim(coalesce(v_row.pickup_address,''));
+    if length(v_address)<8 then raise exception 'Pickup % needs a complete pickup address',v_id; end if;
+
+    insert into public.be_provider_transfer_pickup_stops_v1(
+      wayplan_id,pickup_id,pickup_way_id,stop_sequence,latitude,longitude,
+      address,location_evidence_ref,verified_by
+    ) values(p_wayplan_id,v_id,coalesce(nullif(v_row.pickup_way_id,''),v_id),
+      v_seq,v_lat,v_lon,v_address,v_evidence,v_actor);
+    v_count:=v_count+1;
+  end loop;
+
+  update public.be_wayplan_dispatches set
+    metadata=coalesce(metadata,'{}'::jsonb)||jsonb_build_object(
+      'physical_trip_type','MIXED_PICKUP_AND_PROVIDER_TRANSFER',
+      'pickup_stop_count',v_count,
+      'pickup_manifest_separate_from_parcel_membership',true,
+      'mixed_trip_route_optimization_pending',true,
+      'pickup_scan_required',true
+    ),updated_at=now()
+  where wayplan_id=p_wayplan_id;
+
+  insert into public.be_audit_events(
+    actor_id,actor_email,actor_role,action,resource_type,resource_id,details
+  ) values(v_actor,coalesce(auth.jwt()->>'email',''),public.be_current_user_role(),
+    'MIXED_TRIP_PICKUPS_STAGED_V1','WAYPLAN',p_wayplan_id,
+    jsonb_build_object('pickup_count',v_count,'reason',p_reason,
+      'pickup_scans_created',false,'dispatch_scans_created',false,
+      'provider_handover_confirmed',false));
+
+  return jsonb_build_object('ok',true,'wayplan_id',p_wayplan_id,
+    'pickup_stop_count',v_count,'physical_trip_type','MIXED_PICKUP_AND_PROVIDER_TRANSFER',
+    'pickup_collection_confirmed',false,'provider_transfer_confirmed',false,
+    'route_optimization_pending',true);
+end
+$body$;
+revoke all on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) from public,anon;
+grant execute on function public.be_provider_transfer_add_pickups_v1(text,jsonb,text) to authenticated;
+
       then raise exception 'Pickup % needs verified coordinates',v_id; end if;
     v_lat:=(v_pickup->>'latitude')::numeric;
     v_lon:=(v_pickup->>'longitude')::numeric;
