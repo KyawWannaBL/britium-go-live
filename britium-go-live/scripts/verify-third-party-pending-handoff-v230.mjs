@@ -22,7 +22,7 @@ for(const term of [
   "Transfer Candidates",
   "Handover Verified",
   "Snapshot Warehouse Status",
-  "VITE_BE_PROVIDER_TRANSFER_CREATOR_ENABLED",
+  "__BRITIUM_FEATURES",
   "createTransferDraft",
   "be_provider_transfer_wayplan_draft_v1",
   "Create DRAFT Transfer Wayplan",
