@@ -22,7 +22,7 @@ for(const term of [
   "Transfer Candidates",
   "Handover Verified",
   "Snapshot Warehouse Status",
-  "__BRITIUM_FEATURES",
+  "be_provider_transfer_capabilities_v1",
   "createTransferDraft",
   "be_provider_transfer_wayplan_draft_v1",
   "Create DRAFT Transfer Wayplan",
@@ -92,6 +92,8 @@ for(const term of [
 ])assert.ok(draftSql.includes(term),"Draft Wayplan guard missing: "+term);
 assert.doesNotMatch(draftSql,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(draftSql,/be_cs_thirdparty_confirm_v1\s*\(/);
+const releaseSql=readFileSync(new URL("../sql/candidates/provider_transfer_release_control_v1.sql",import.meta.url),"utf8");
+for(const term of ["draft_enabled boolean not null default false","custody_enabled boolean not null default false","mixed_trip_enabled boolean not null default false","Super Admin approval required","be_provider_transfer_capabilities_v1"])assert.ok(releaseSql.includes(term),"Missing server release control "+term);
 const custodySql=readFileSync(new URL("../sql/candidates/provider_transfer_custody_v1.sql",import.meta.url),"utf8");
 for(const term of [
   "be_provider_transfer_confirm_handover_v1",
@@ -118,7 +120,7 @@ for(const term of [
  "PROVIDER_HANDOVER","PICKUP","DISPATCH_READY","verified physical pickup and provider itinerary"
 ])assert.ok(mixedGateSql.includes(term),"Mixed itinerary guard missing "+term);
 for(const term of [
- "__BRITIUM_FEATURES","be_provider_transfer_confirm_handover_v1",
+ "be_provider_transfer_capabilities_v1","be_provider_transfer_confirm_handover_v1",
  "be_provider_transfer_add_pickups_v1","be_provider_transfer_review_mixed_route_v1",
  "Confirm physical provider custody","Verify complete mixed itinerary"
 ])assert.ok(csPage.includes(term),"Third party screen missing "+term);
