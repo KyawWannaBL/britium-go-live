@@ -86,7 +86,7 @@ export default function WarehousePendingParcelsPage(){
       // Enriched provider data is optional during phased UAT rollout. The old
       // authorized Warehouse snapshot remains the read-only fallback.
       let result=await (supabase as any).rpc("be_warehouse_provider_transfer_preview_v1");
-      if(result.error?.code==="PGRST202" || result.error?.code==="42883"){
+      if(["PGRST202","42883","42P01"].includes(String(result.error?.code||""))){
         result=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v211");
       }
       const {data,error}=result;
