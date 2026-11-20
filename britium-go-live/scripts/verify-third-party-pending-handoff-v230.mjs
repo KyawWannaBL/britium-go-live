@@ -106,6 +106,24 @@ for(const term of [
   "enable row level security",
   "revoke all on table"
 ])assert.ok(custodySql.includes(term),"Custody safety contract missing: "+term);
+const mixedPickupSql=readFileSync(new URL("../sql/candidates/provider_transfer_mixed_pickups_v1.sql",import.meta.url),"utf8");
+const mixedGateSql=readFileSync(new URL("../sql/candidates/provider_transfer_mixed_route_gate_v1.sql",import.meta.url),"utf8");
+const csPage=readFileSync(new URL("../src/pages/ThirdPartyDeliveryConfirmationPage.tsx",import.meta.url),"utf8");
+for(const term of [
+ "be_provider_transfer_add_pickups_v1","be_provider_transfer_pickup_stops_v1",
+ "MIXED_PICKUP_AND_PROVIDER_TRANSFER","pickup_scans_created',false"
+])assert.ok(mixedPickupSql.includes(term),"Mixed pickup guard missing "+term);
+for(const term of [
+ "be_provider_transfer_review_mixed_route_v1","be_provider_transfer_mixed_release_gate_v1",
+ "PROVIDER_HANDOVER","PICKUP","DISPATCH_READY","verified physical pickup and provider itinerary"
+])assert.ok(mixedGateSql.includes(term),"Mixed itinerary guard missing "+term);
+for(const term of [
+ "__BRITIUM_FEATURES","be_provider_transfer_confirm_handover_v1",
+ "be_provider_transfer_add_pickups_v1","be_provider_transfer_review_mixed_route_v1",
+ "Confirm physical provider custody","Verify complete mixed itinerary"
+])assert.ok(csPage.includes(term),"Third party screen missing "+term);
+assert.doesNotMatch(mixedPickupSql,/be_warehouse_dispatch_scan\s*\(/);
+assert.doesNotMatch(mixedGateSql,/be_cs_thirdparty_confirm_v1\s*\(/);
 assert.match(warehouse,/DISPATCH_SCAN_REQUIRED/);
 assert.doesNotMatch(pending,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(pending,/be_warehouse_return_scan_v71\s*\(/);
