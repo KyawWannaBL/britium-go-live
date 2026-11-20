@@ -38,6 +38,7 @@ declare
   v_site text;
   v_length int;
 begin
+  if not exists(select 1 from public.be_provider_transfer_release_control_v1 where control_key='PROVIDER_TRANSFER_V1' and mixed_trip_enabled) then raise exception 'Mixed route verification not yet enabled'; end if;
   if v_actor is null or v_role not in
     ('superadmin','super_admin','operation_manager','operations_manager')
     then raise exception 'Operations management approval required';
