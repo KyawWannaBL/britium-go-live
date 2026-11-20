@@ -203,6 +203,57 @@ export default function WarehousePendingParcelsPage(){
     }finally{setHandoffBusy(false);}
   };
 
+  const transferCandidates=useMemo(()=>visible.filter((r:any)=>[
+    "NEEDS_PROVIDER_TRANSFER_WAYPLAN","NEEDS_BRANCH_TRANSFER_WAYPLAN"
+  ].includes(txt(r.provider_planning_gate))),[visible]);
+  const transferBreakdown=useMemo(()=>{
+    const groups=new Map<string,{provider:string;site:string;count:number;verified:boolean}>();
+    transferCandidates.forEach((r:any)=>{
+      const provider=txt(r.service_provider_code)||"UNSET";
+      const site=txt(r.handover_location_name)||"SITE NOT VERIFIED";
+      const key=provider+"|"+site;
+      const entry=groups.get(key)||{provider,site,count:0,verified:r.handover_location_verified===true};
+      entry.count+=1;
+      groups.set(key,entry);
+    });
+    return Array.from(groups.values()).sort((a,b)=>b.count-a.count||a.provider.localeCompare(b.provider));
+  },[transferCandidates]);
+
+  const exportTransferManifest=async()=>{
+    if(!transferCandidates.length || !providerMetadataReady)return;
+    setExportError("");
+    try{
+      const XLSX=await import("xlsx");
+      const rows=transferCandidates.map((r:any)=>({
+        "Delivery Way ID":excelText(r.delivery_way_id||r.waybill_no),
+        "Pickup ID":excelText(r.pickup_id),
+        "Original Merchant":excelText(r.merchant_name||r.merchant_code),
+        "Merchant Code":excelText(r.merchant_code),
+        "Provider":excelText(r.service_provider_code),
+        "Destination Region":excelText(r.delivery_region),
+        "Original Recipient Township":excelText(r.delivery_township),
+        "Warehouse Status":excelText(r.warehouse_scan_status||r.warehouse_status),
+        "Approved Handover Site":excelText(r.handover_location_name),
+        "Handover Location Code":excelText(r.handover_location_code),
+        "Handover Verified":r.handover_location_verified===true?"YES":"NO",
+        "Planning Gate":excelText(r.provider_planning_gate),
+        "Inbound Scan":fmt(r.inbound_scan_at),
+        "Last Return Scan":fmt(r.last_return_scan_at)
+      }));
+      const book=XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(book,XLSX.utils.json_to_sheet(rows),"Transfer Candidates");
+      XLSX.utils.book_append_sheet(book,XLSX.utils.aoa_to_sheet([
+        ["Report","Third-party handover candidates - planning only"],
+        ["Generated in Myanmar time",fmt(new Date())],
+        ["Important","NOT a Wayplan, dispatch scan, provider custody receipt or delivery confirmation."],
+        ["Service provider",excelText(provider)||"ALL"],["Merchant",excelText(merchant)||"ALL"],
+        ["Date from",from||"ALL"],["Date to",to||"ALL"],
+        ["Candidate count",rows.length]
+      ]),"Manifest Notes");
+      XLSX.writeFile(book,"Provider_Transfer_Candidates_"+new Date().toISOString().slice(0,10)+".xlsx");
+    }catch(err:any){setExportError(err?.message||"Could not export provider transfer manifest.");}
+  };
+
   const exportExcel=async()=>{
     if(exporting||!visible.length||Boolean(from&&to&&from>to))return;
     setExporting(true);setExportError("");
@@ -323,6 +374,18 @@ export default function WarehousePendingParcelsPage(){
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
         {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
         {providerMetadataReady&&<div className="mb-3 rounded-lg border border-slate-700 p-3 text-xs text-slate-300">Provider transfers and branch handovers require a verified physical receiving site and a separate transfer Wayplan. “Not verified” means the handover site is not authorized; it does not mean customer delivery failed. No dispatch, receipt or delivery event is created by this report.</div>}
+        {providerMetadataReady&&<div className="mb-3 rounded-lg border border-slate-700 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <strong className="text-amber-300">Third-party transfer planning</strong>
+              <div className="text-xs text-slate-300">{transferCandidates.length} transfer candidate(s) in current filters. This is a planning list, not a dispatch or custody event.</div>
+            </div>
+            <button type="button" onClick={()=>void exportTransferManifest()} disabled={!transferCandidates.length} className="rounded-lg bg-teal-700 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">Export transfer candidates (Excel)</button>
+          </div>
+          {transferBreakdown.length>0&&<div className="mt-2 flex flex-wrap gap-2">
+            {transferBreakdown.map(g=><span key={g.provider+"|"+g.site} className="rounded border border-slate-600 px-2 py-1 text-xs">{g.provider}: {g.count} · {g.verified?g.site:"Handover site not verified"}</span>)}
+          </div>}
+        </div>}
         {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
