@@ -44,8 +44,10 @@ declare
 begin
   if v_actor is null or v_role not in
      ('superadmin','super_admin','operation_manager','operations_manager',
-      'warehouse_lead','warehouse_manager')
+      'warehouse','warehouse_staff','warehouse_lead','warehouse_manager',
+      'operations','operations_admin','supervisor','admin')
     then raise exception 'Authorized Warehouse or Operations staff required'; end if;
+  perform public.be_warehouse_assert_internal();
   if length(btrim(coalesce(p_manifest_ref,'')))<5
     or length(btrim(coalesce(p_receiver_name,'')))<3
     or length(btrim(coalesce(p_provider_receipt_ref,'')))<5
