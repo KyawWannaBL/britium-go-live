@@ -2,8 +2,7 @@
 -- Custody is independent of delivery. It requires an actual Warehouse dispatch
 -- scan AND the partner's physical signed receipt reference.
 create table if not exists public.be_provider_transfer_custody_v1 (
-  delivery_way_id text primary key
-    references public.be_data_entry_parcel_details(delivery_way_id),
+  delivery_way_id text primary key,
   wayplan_id text not null references public.be_wayplan_dispatches(wayplan_id),
   provider_code text not null references public.be_data_entry_service_providers(provider_code),
   handover_location_code text not null references public.be_wayplan_service_locations(location_code),
@@ -87,6 +86,12 @@ begin
     select 1 from public.be_warehouse_return_scans_v39 rs
     where upper(rs.delivery_way_id)=v_way and rs.scanned_at>=v_last_scan
   ) then raise exception 'Parcel already physically returned after dispatch'; end if;
+  if not exists (
+    select 1 from public.be_data_entry_parcel_details d
+    where upper(d.delivery_way_id)=v_way
+      and upper(coalesce(d.parcel_status,'')) not in
+        ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED')
+  ) then raise exception 'Way no longer belongs to an active parcel'; end if;
   perform pg_advisory_xact_lock(hashtextextended('provider-custody:'||v_way,0));
   if exists(select 1 from public.be_provider_transfer_custody_v1 where delivery_way_id=v_way)
     then raise exception 'Provider custody already confirmed for this Way ID'; end if;
