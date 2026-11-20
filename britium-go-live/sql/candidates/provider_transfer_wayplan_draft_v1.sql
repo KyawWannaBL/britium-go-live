@@ -44,6 +44,25 @@ begin
     then raise exception 'Management authorization required';
   end if;
   if p_request_id is null then raise exception 'Stable request ID required'; end if;
+  if not exists (
+    select 1 from public.be_wayplan_roster_allowlist_v68 roster
+    where roster.workforce_code=v_driver and roster.role_code='DRIVER'
+      and upper(roster.branch_code)=v_branch and roster.active=true
+  ) then raise exception 'Active authenticated branch Driver is required'; end if;
+  if not exists (
+    select 1 from public.be_master_data_rows fleet
+    where fleet.dataset_key='fleet_master' and upper(fleet.record_key)=v_vehicle
+      and fleet.deleted_at is null
+      and upper(coalesce(fleet.status,'ACTIVE'))='ACTIVE'
+      and upper(coalesce(fleet.payload->>'status','ACTIVE')) in ('ACTIVE','ASSIGNED')
+      and upper(coalesce(fleet.payload->>'branch_code',''))=v_branch
+      and fleet.payload->>'operation_type' in ('DELIVERY','PICKUP_HIGHWAY')
+  ) then raise exception 'Choose an active delivery or highway-transfer vehicle in the origin branch'; end if;
+  if exists(
+    select 1 from public.be_wayplan_dispatches w
+    where upper(coalesce(w.wayplan_status,'')) in ('DISPATCHED','ON_HOLD')
+      and (upper(coalesce(w.vehicle_code,''))=v_vehicle or upper(coalesce(w.driver_code,''))=v_driver)
+  ) then raise exception 'Vehicle or Driver is busy on another active Wayplan'; end if;
   if v_branch not in ('YGN','MDY','NPT') then raise exception 'Invalid origin branch'; end if;
   perform public.be_branch_scope_v1(v_branch);
   if v_provider='' or v_location='' or v_vehicle='' or v_driver=''
