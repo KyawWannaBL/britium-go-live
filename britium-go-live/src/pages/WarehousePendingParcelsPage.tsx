@@ -77,7 +77,7 @@ export default function WarehousePendingParcelsPage(){
   const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
   const [handoffBusy,setHandoffBusy]=useState(false);
   const [providerMetadataReady,setProviderMetadataReady]=useState(false);
-  const draftTransferFeatureEnabled=import.meta.env.VITE_BE_PROVIDER_TRANSFER_CREATOR_ENABLED==="true";
+  const draftTransferFeatureEnabled=typeof window!=="undefined" && (window as any).__BRITIUM_FEATURES?.providerTransferDraft===true;
   const [transferGroup,setTransferGroup]=useState("");
   const [transferSelection,setTransferSelection]=useState<Record<string,boolean>>({});
   const [transferVehicle,setTransferVehicle]=useState("");
