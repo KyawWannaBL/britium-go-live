@@ -50,6 +50,14 @@ begin
       and upper(roster.branch_code)=v_branch and roster.active=true
   ) then raise exception 'Active authenticated branch Driver is required'; end if;
   if not exists (
+    select 1 from public.be_mobile_workforce_accounts mobile
+    where upper(coalesce(nullif(mobile.worker_code,''),nullif(mobile.workforce_code,''),
+      nullif(mobile.account_code,''),nullif(mobile.driver_code,'')))=v_driver
+      and upper(coalesce(mobile.role,''))='DRIVER'
+      and mobile.auth_user_id is not null
+      and coalesce(mobile.active,true) and coalesce(mobile.is_active,true)
+  ) then raise exception 'Driver must have an active mobile authentication mapping'; end if;
+  if not exists (
     select 1 from public.be_master_data_rows fleet
     where fleet.dataset_key='fleet_master' and upper(fleet.record_key)=v_vehicle
       and fleet.deleted_at is null
