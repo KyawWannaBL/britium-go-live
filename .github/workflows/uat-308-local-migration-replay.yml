@@ -58,9 +58,26 @@ jobs:
           let config = readFileSync(file, 'utf8');
           const runId = Number(process.env.GITHUB_RUN_ID);
           if (!Number.isSafeInteger(runId) || runId <= 0) throw new Error('GITHUB_RUN_ID missing');
-          const databasePort = 40000 + runId % 7000;
-          const shadowPort = databasePort + 8000;
-          const poolerPort = databasePort + 16000;
+          import { createServer } from 'node:net';
+          async function isAvailable(port) {
+            return await new Promise(resolve => {
+              const server = createServer();
+              server.once('error', () => resolve(false));
+              server.listen({ host: '0.0.0.0', port, exclusive: true }, () =>
+                server.close(() => resolve(true)));
+            });
+          }
+          let databasePort, shadowPort, poolerPort;
+          for (let attempt = 0; attempt < 100; attempt++) {
+            const candidate = 31000 + ((runId + attempt * 97) % 9000);
+            const ports = [candidate, candidate + 10000, candidate + 20000];
+            if ((await Promise.all(ports.map(isAvailable))).every(Boolean)) {
+              [databasePort, shadowPort, poolerPort] = ports;
+              break;
+            }
+          }
+          if (!databasePort) throw new Error('No free isolated CI database port set found');
+          console.log('Selected free CI database, shadow and pooler ports:', databasePort, shadowPort, poolerPort);
           const changes = [
             [/^project_id = "branch_office_nav_fixes"$/m, 'project_id = "uat308_ci_replay"'],
             [/^port = 54326$/m, 'port = ' + databasePort],
