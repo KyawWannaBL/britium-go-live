@@ -29,7 +29,8 @@ begin
       upper(coalesce(nullif(d.financial_quote->>'service_provider_code',''),'UNSET')) provider_code,
       upper(coalesce(nullif(d.delivery_region,''),'UNSET')) destination_region,
       upper(coalesce(nullif(d.delivery_route_mode,''),'UNSET')) route_mode,
-      upper(coalesce(nullif(d.financial_validation_status,''),'UNSET')) financial_status
+      upper(coalesce(nullif(d.financial_validation_status,''),'UNSET')) financial_status,
+      coalesce(nullif(split_part(upper(r.warehouse_code),'-',1),''),'UNSET') origin_branch_code
     from src s
     left join lateral (
       select d.financial_quote,d.delivery_region,d.delivery_route_mode,
@@ -40,6 +41,34 @@ begin
       order by d.updated_at desc nulls last
       limit 1
     ) d on true
+    left join lateral (
+      select wr.warehouse_code
+      from public.be_warehouse_receipts_v36 wr
+      where upper(wr.delivery_way_id)=s.way_id
+      order by wr.updated_at desc nulls last limit 1
+    ) r on true
+  ), sites as (
+    select m.*, site.location_code as handover_location_code,
+      site.location_name as handover_location_name,
+      site.latitude as handover_latitude,
+      site.longitude as handover_longitude
+    from metadata m
+    left join lateral (
+      select loc.location_code,loc.location_name,loc.latitude,loc.longitude
+      from public.be_provider_handover_sites_v1 approval
+      join public.be_wayplan_service_locations loc
+        on loc.location_code=approval.location_code
+      where approval.provider_code=m.provider_code
+        and approval.origin_branch_code=m.origin_branch_code
+        and approval.active=true
+        and approval.verified_at is not null
+        and approval.verified_by is not null
+        and loc.active=true
+        and loc.latitude between 9 and 29
+        and loc.longitude between 92 and 102
+      order by approval.verified_at desc,loc.location_code
+      limit 1
+    ) site on true
   ), flagged as (
     select *,
       case
@@ -73,7 +102,7 @@ begin
           then 'NEEDS_BRANCH_TRANSFER_WAYPLAN'
         else 'REGIONAL_WAYPLAN_REVIEW'
       end as planning_gate
-    from metadata
+    from sites
   )
   select coalesce(jsonb_agg(e || jsonb_build_object(
       'service_provider_code',provider_code,
@@ -81,7 +110,11 @@ begin
       'delivery_route_mode',route_mode,
       'financial_validation_status',financial_status,
       'service_lane',service_lane,
-      'provider_planning_gate',planning_gate
+      'provider_planning_gate',planning_gate,
+      'handover_origin_branch',origin_branch_code,
+      'handover_location_code',handover_location_code,
+      'handover_location_name',handover_location_name,
+      'handover_location_verified',handover_location_code is not null
     ) order by ord),'[]'::jsonb) into v_rows
   from flagged;
 
@@ -89,7 +122,7 @@ begin
     'rows',v_rows,
     'provider_transfer_preview',true,
     'build','WAREHOUSE_PROVIDER_TRANSFER_PREVIEW_V1',
-    'note','Outside-core provider parcels require an approved handover-stop Wayplan. No dispatch or custody events created.'
+    'note','Provider transfers require an approved physical site and a dedicated transfer Wayplan. No dispatch or custody events created.'
   );
 end;
 $function$;
