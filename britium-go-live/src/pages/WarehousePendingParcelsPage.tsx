@@ -204,7 +204,9 @@ export default function WarehousePendingParcelsPage(){
   };
 
   const transferCandidates=useMemo(()=>visible.filter((r:any)=>[
-    "NEEDS_PROVIDER_TRANSFER_WAYPLAN","NEEDS_BRANCH_TRANSFER_WAYPLAN"
+    "NEEDS_PROVIDER_TRANSFER_WAYPLAN","NEEDS_BRANCH_TRANSFER_WAYPLAN",
+    "PROVIDER_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN",
+    "BRANCH_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN"
   ].includes(txt(r.provider_planning_gate))),[visible]);
   const transferBreakdown=useMemo(()=>{
     const groups=new Map<string,{provider:string;site:string;count:number;verified:boolean}>();
