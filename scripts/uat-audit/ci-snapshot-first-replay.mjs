@@ -1814,6 +1814,27 @@ writeFileSync(resolve(root,'20261106191446_uat308_enable_pg_cron_ci.sql'),[
 ].join('\n')+'\n');
 console.log('Actual pg_cron extension required for disposable rider-finance outbox replay.');
 
+
+// Nov 11 source migration has two PL/pgSQL function definitions without
+// terminating semicolons; both are followed by SQL statements. Apply only
+// lexical separators for disposable replay; leave historical source untouched.
+// This is a SOURCE defect to fix separately before actual full-history replay.
+const mandalayBranchMigrationPath = resolve(root,
+  '20261111053420_mandalay_branch_team_directory_and_account_requests_v1.sql');
+const mandalayBranchOriginal = readFileSync(mandalayBranchMigrationPath,'utf8');
+const mandalayBranchSourceMissingTerminators =
+  (mandalayBranchOriginal.match(/\$function\$\s*\n\s*(?=CREATE OR REPLACE FUNCTION|REVOKE ALL ON FUNCTION)/g)||[]).length;
+if (mandalayBranchSourceMissingTerminators!==2 ||
+    !mandalayBranchOriginal.includes('BRANCH_ACCOUNT_REQUEST_DENIED') ||
+    !mandalayBranchOriginal.includes('BRANCH_TEAM_READ_DENIED')) {
+  throw new Error('Unexpected Mandalay branch migration syntax or access-control contract');
+}
+writeFileSync(mandalayBranchMigrationPath,
+  mandalayBranchOriginal.replace(
+    /\$function\$(\s*\n\s*)(?=CREATE OR REPLACE FUNCTION|REVOKE ALL ON FUNCTION)/g,
+    '$function$;$1'));
+console.log('CI only: fixed two missing PL/pgSQL delimiters in Nov 11 branch migration source.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
