@@ -1732,22 +1732,33 @@ if (royalMarkerIndex < 0 ||
     !royalSyncOriginal.includes("raise exception 'EXISTING_TARIFF_CONFLICT'")) {
   throw new Error('Royal trigger or approved destination backfill contract changed');
 }
-const royalEmptyOnly = [
-  '-- Disposable empty-schema CI only: retain authentic tariff-sync trigger above.',
-  '-- Never seed fictional destination approval or any payable tariff rates.',
-  'DO $uat308_royal_catalog_empty_guard$ BEGIN',
-  ' IF EXISTS (SELECT 1 FROM public.be_data_entry_tariff_catalog) THEN',
-  "  RAISE EXCEPTION 'Refusing to skip Royal backfill: tariff catalog has rows';",
-  ' END IF;',
-  ' IF EXISTS (SELECT 1 FROM public.be_parcel_tariffs_v2) THEN',
-  "  RAISE EXCEPTION 'Refusing to skip Royal backfill: finance tariffs have rows';",
-  ' END IF;',
-  " RAISE NOTICE 'Approved Royal destination backfill is production-data-dependent and excluded from EMPTY CI only';",
-  'END $uat308_royal_catalog_empty_guard$;'
-].join('\n')+'\n';
+const royalMissingApprovalLine =
+  "if not found then raise exception 'EXPECTED_APPROVED_ROYAL_DESTINATION_MISSING'; end if;";
+if (royalSyncOriginal.split(royalMissingApprovalLine).length !== 2) {
+  throw new Error('Royal approved destination missing-row check changed');
+}
+// Only relax the historical-data assumption for a disposable schema-only test.
+// Keep authentic, full destination-specific backfill if the approved catalog row
+// is present. Never bypass a missing approval when any live parcels or a
+// pre-existing active Finance tariff reference this same destination.
+const royalGuardedApprovalLine = [
+  'if not found then',
+  '  IF EXISTS (SELECT 1 FROM public.be_data_entry_parcel_details) OR',
+  '     EXISTS (SELECT 1 FROM public.be_parcel_tariffs_v2 t',
+  "       WHERE t.customer_tier='STANDARD' AND t.status='ACTIVE'",
+  "       AND public.be_approved_tariff_lookup_key(t.township)='MMR007014') THEN",
+  "    RAISE EXCEPTION 'EXPECTED_APPROVED_ROYAL_DESTINATION_MISSING';",
+  '  END IF;',
+  "  RAISE NOTICE 'Empty CI has no Royal Thantabin approval row; historical backfill not applicable';",
+  '  RETURN;',
+  'end if;'
+].join('\n');
 writeFileSync(royalSyncPath,
-  royalSyncOriginal.slice(0,royalMarkerIndex) + royalEmptyOnly);
-console.log('CI-only Royal approved-destination data backfill excluded under empty catalog and tariff guards.');
+  '-- Disposable CI only: guard production-data-specific Royal approval expectation.\n' +
+  royalSyncOriginal.replace(royalMissingApprovalLine,royalGuardedApprovalLine));
+console.log('CI-only Royal sync retains original trigger, backfill and checks; only missing approval is guarded by empty operational data.');
+
+
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
