@@ -1546,7 +1546,7 @@ const identityShapeOnly = [
   "  RAISE EXCEPTION 'CI historical identity source unexpectedly has rows';",
   ' END IF;',
   'END $ci$;'
-].join('\\n') + '\\n';
+].join('\n') + '\n';
 writeFileSync(resolve(root,'20261031095038_uat308_oct23_unresolved_identity_ci.sql'),
   identityShapeOnly);
 console.log('CI-only unresolved historical identity review structure inserted empty and restricted.');
