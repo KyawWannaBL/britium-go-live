@@ -1578,7 +1578,7 @@ const tariffRightsFixture = [
   "  RAISE EXCEPTION 'CI tariff rights fixture unexpectedly has rows';",
   ' END IF;',
   'END $ci$;'
-].join('\\n') + '\\n';
+].join('\n') + '\n';
 writeFileSync(resolve(root,'20261103173656_uat308_tariff_write_rights_ci.sql'),
   tariffRightsFixture);
 console.log('CI-only authentic tariff rights table created empty with primary key and RLS.');
