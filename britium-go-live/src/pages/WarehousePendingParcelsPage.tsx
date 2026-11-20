@@ -230,7 +230,7 @@ export default function WarehousePendingParcelsPage(){
         });
         return {
           "Way ID":way,"Pickup":excelText(r.pickup_id),"Merchant":merchantName,
-          "Merchant code":excelText(r.merchant_code),"Service provider":excelText(r.service_provider_code),"Provider lane":excelText(r.service_lane),"Planning gate":excelText(r.provider_planning_gate),"Recipient":excelText(r.recipient_name),
+          "Merchant code":excelText(r.merchant_code),"Service provider":excelText(r.service_provider_code),"Provider lane":excelText(r.service_lane),"Planning gate":excelText(r.provider_planning_gate),"Handover origin":excelText(r.handover_origin_branch),"Approved handover":excelText(r.handover_location_name),"Handover location code":excelText(r.handover_location_code),"Handover verified":r.handover_location_verified===true?"YES":"NO","Recipient":excelText(r.recipient_name),
           "Recipient phone":excelText(r.recipient_phone||r.phone_number),
           "Township":excelText(r.delivery_township),"Pending type":r._pendingType,
           "Overdue 48h":r._overdue?"YES":"NO","Age hours":Number(r._ageHours.toFixed(1)),
@@ -322,6 +322,7 @@ export default function WarehousePendingParcelsPage(){
         <p className="mb-2 text-xs text-slate-300">Showing {visible.length} of {pending.length} parcels. Dates use Myanmar time. Export reflects current filters and includes only available scan timestamps.</p>
         {from&&to&&from>to&&<p role="alert" className="text-red-300">Start date must be before end date.</p>}
         {exportError&&<p role="alert" className="text-red-300">{exportError}</p>}
+        {providerMetadataReady&&<div className="mb-3 rounded-lg border border-slate-700 p-3 text-xs text-slate-300">Provider transfers and branch handovers require a verified physical receiving site and a separate transfer Wayplan. “Not verified” means the handover site is not authorized; it does not mean customer delivery failed. No dispatch, receipt or delivery event is created by this report.</div>}
         {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
@@ -344,7 +345,7 @@ export default function WarehousePendingParcelsPage(){
         <div className="overflow-auto">
           <table className="w-full min-w-[1450px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
-              {["Select","Alert","Delivery Way","Pickup","Type","Merchant","Provider","Planning gate","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
+              {["Select","Alert","Delivery Way","Pickup","Type","Merchant","Provider","Planning gate","Approved handover","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
               {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
@@ -356,6 +357,7 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
                 <td className="p-2">{txt(r.service_provider_code)||"Not enriched"}</td>
                 <td className="max-w-[200px] p-2 text-xs">{txt(r.provider_planning_gate)||"Provider review"}</td>
+                <td className="max-w-[200px] p-2 text-xs">{txt(r.handover_location_name)||"Not verified"}</td>
                 <td className="p-2">{txt(r.recipient_name)}<div className="text-xs text-slate-400">{txt(r.recipient_phone || r.phone_number)}</div></td>
                 <td className="p-2">{txt(r.delivery_township)}</td>
                 <td className="p-2">{fmt(r.inbound_scan_at)}</td>
@@ -364,7 +366,7 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
               </tr>)}
-              {!visible.length && <tr><td colSpan={15} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
+              {!visible.length && <tr><td colSpan={16} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
