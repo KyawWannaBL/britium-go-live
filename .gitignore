@@ -119,3 +119,9 @@ enterprise_portal/.env.*
 .env.*
 enterprise_portal/.env
 enterprise_portal/.env.*
+
+# Sensitive hosted UAT recovery backups and schema exports (NEVER COMMIT)
+local-recovery/
+*.dump
+*.backup
+*.pgdump
