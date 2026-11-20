@@ -10,7 +10,7 @@ Warehouse-ready ways belonging to Royal Express, DK Delivery, MDY/NPT branch tra
 - Schema-only rollback rehearsal compiles five candidate SQL files on production database and rolls back all changes. It is **not** end-to-end validation.
 - Existing isolated Mandalay/Insein UAT project reports missing parcel, warehouse receipt and wayplan tables. It cannot validate real Wayplan creation.
 - No approved Royal Express handover site has been installed, seeded or verified.
-- The feature flag `VITE_BE_PROVIDER_TRANSFER_CREATOR_ENABLED` defaults OFF.
+- The runtime gate `window.__BRITIUM_FEATURES?.providerTransferDraft === true` defaults OFF and must not be enabled until database UAT and approval. Server-side role and parcel validation remain mandatory independently of this client-side flag.
 - Production shipment statuses, dispatch scans, custody evidence and finance are unchanged.
 
 ## Candidate SQL execution order on rebuilt isolated UAT only
