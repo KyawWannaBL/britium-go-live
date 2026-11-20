@@ -52,8 +52,12 @@ begin
   ) then raise exception 'Active authenticated branch Driver is required'; end if;
   if not exists (
     select 1 from public.be_mobile_workforce_accounts mobile
-    where upper(coalesce(nullif(mobile.worker_code,''),nullif(mobile.workforce_code,''),
-      nullif(mobile.account_code,''),nullif(mobile.driver_code,'')))=v_driver
+    where v_driver=any(array[
+        upper(coalesce(mobile.worker_code,'')),
+        upper(coalesce(mobile.workforce_code,'')),
+        upper(coalesce(mobile.account_code,'')),
+        upper(coalesce(mobile.driver_code,''))
+      ])
       and upper(coalesce(mobile.role,''))='DRIVER'
       and mobile.auth_user_id is not null
       and coalesce(mobile.active,true) and coalesce(mobile.is_active,true)
