@@ -1513,6 +1513,7 @@ const oct23ShapeOnly = [
   '-- NEVER apply to production or use to certify recovery source completeness.',
   'CREATE TABLE IF NOT EXISTS private.be_oct23_missing_parcel_recovery_source_v1 (',
   requiredRecoveryFields.map(field => '  ' + field + ' text').join(',\n'),
+  '  ,source_row jsonb',
   ');',
   'ALTER TABLE private.be_oct23_missing_parcel_recovery_source_v1 ENABLE ROW LEVEL SECURITY;',
   'REVOKE ALL ON TABLE private.be_oct23_missing_parcel_recovery_source_v1 FROM PUBLIC, anon, authenticated, service_role;',
@@ -1525,6 +1526,31 @@ const oct23ShapeOnly = [
 writeFileSync(resolve(root,'20261031095039_uat308_oct23_missing_recovery_source_ci.sql'),
   oct23ShapeOnly);
 console.log('CI-only empty historical Oct23 recovery source shape inserted; data recovery not certified.');
+
+const unresolvedIdentityView = 'private.be_oct23_unresolved_identity_review_v1';
+if (!oct23RecoveryConsumer.includes('FROM (((private.be_oct23_unresolved_identity_review_v1 u') ||
+    !oct23RecoveryConsumer.includes('u.source_way_id') ||
+    !oct23RecoveryConsumer.includes('u.candidate_way_id') ||
+    !oct23RecoveryConsumer.includes('u.review_state')) {
+  throw new Error('Oct23 unresolved identity review consumer contract changed');
+}
+const identityShapeOnly = [
+  '-- DISPOSABLE CI ONLY: no historical identity review conclusions or evidence.',
+  'CREATE TABLE IF NOT EXISTS ' + unresolvedIdentityView + ' (',
+  '  source_way_id text, candidate_way_id text, review_state text',
+  ');',
+  'ALTER TABLE ' + unresolvedIdentityView + ' ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE ' + unresolvedIdentityView + ' FROM PUBLIC, anon, authenticated, service_role;',
+  'DO $ci$ BEGIN',
+  ' IF EXISTS (SELECT 1 FROM ' + unresolvedIdentityView + ') THEN',
+  "  RAISE EXCEPTION 'CI historical identity source unexpectedly has rows';",
+  ' END IF;',
+  'END $ci$;'
+].join('\\n') + '\\n';
+writeFileSync(resolve(root,'20261031095038_uat308_oct23_unresolved_identity_ci.sql'),
+  identityShapeOnly);
+console.log('CI-only unresolved historical identity review structure inserted empty and restricted.');
+
 
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
