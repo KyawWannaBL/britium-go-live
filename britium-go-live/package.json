@@ -72,7 +72,7 @@
     "verify:helper-parcel-save-v142": "node scripts/verify-helper-parcel-save-v142.mjs",
     "verify:rider-pickup-save-submit-v143": "node scripts/verify-rider-pickup-save-submit-v143.mjs",
     "verify:accounting-portal-v1": "node scripts/verify-accounting-portal-ui-v1.mjs",
-    "prebuild": "node scripts/verify-warehouse-snapshot-timeout-v212.mjs && node scripts/verify-branch-intake-hq-shuttle-v1.mjs && node scripts/test-royal-reconciliation-readonly.mjs && node scripts/verify-rider-cs-schedule-reasons-v218.mjs && npm run test:recoverable-cutover && npm run test:mandalay && npm run test:enterprise-regressions && npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
+    "prebuild": "npm run verify:thirdparty-pending-handoff-v230 && node scripts/verify-warehouse-snapshot-timeout-v212.mjs && node scripts/verify-branch-intake-hq-shuttle-v1.mjs && node scripts/test-royal-reconciliation-readonly.mjs && node scripts/verify-rider-cs-schedule-reasons-v218.mjs && npm run test:recoverable-cutover && npm run test:mandalay && npm run test:enterprise-regressions && npm run verify:accounting-portal-v1 && npm run verify:merchant-settlement-v200 && npm run verify:merchant-receipt-upload && npm run verify:learned-location-alias && npm run verify:created-wayplan-revision-flow && npm run verify:wayplan-revision-policy && npm run verify:wayplan-revision-transaction && npm run verify:go-live-preview && npm run verify:go-live-ready-ui",
     "verify:merchant-settlement-v200": "node scripts/verify-merchant-settlement-v200.cjs",
     "verify:merchant-receipt-upload": "node scripts/verify-merchant-receipt-upload.cjs",
     "verify:learned-location-alias": "node scripts/verify-learned-location-alias.mjs",
@@ -91,7 +91,8 @@
     "test:account-registration-management": "node scripts/test-admin-accounts-server.mjs && node scripts/test-workforce-account-ui.cjs && node scripts/test-account-access-ui.cjs && node scripts/test-merchant-account-management.cjs && node scripts/test-merchant-profile-db.mjs && node scripts/test-workforce-management.mjs && node scripts/test-workforce-management-db.mjs && node scripts/test-hr-employee-db.mjs && node scripts/test-data-entry-registration-management.mjs && node scripts/test-prepublication-registration.mjs",
     "test:mandalay": "node scripts/test-branch-warehouse.mjs && node scripts/test-mandalay-access.mjs && node scripts/test-mandalay-branch.mjs && node scripts/test-mandalay-area-routing.mjs && node scripts/test-mandalay-area-db.mjs && node scripts/test-branch-finance-oversight.mjs && node scripts/test-branch-finance-oversight-ui.mjs && node scripts/test-branch-workforce-process.mjs && node scripts/test-branch-workforce-ui.mjs && node scripts/test-branch-waybill-ui.mjs && node scripts/test-branch-departments.mjs && node scripts/test-branch-departments-ui.mjs && node scripts/test-mandalay-branch-team-ui.mjs && node scripts/test-mandalay-data-entry-ui.mjs",
     "test:recoverable-cutover": "node scripts/test-recoverable-cutover.mjs && node scripts/test-cutover-status-ui.cjs",
-    "postbuild": "node scripts/verify-data-entry-cod-regex-runtime.mjs"
+    "postbuild": "node scripts/verify-data-entry-cod-regex-runtime.mjs",
+    "verify:thirdparty-pending-handoff-v230": "node scripts/verify-third-party-pending-handoff-v230.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.0",
