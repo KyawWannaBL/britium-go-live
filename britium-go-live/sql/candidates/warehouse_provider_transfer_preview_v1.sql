@@ -84,11 +84,16 @@ begin
       case
         when nullif(e->>'active_wayplan_id','') is not null
           then 'ALREADY_ASSIGNED'
+        when upper(coalesce(e->>'delivery_status','')) in
+          ('DELIVERED','RTO','CANCELLED','CLOSED','SETTLED')
+          then 'TERMINAL_PARCEL'
         when upper(coalesce(e->>'dispatch_workflow_stage','')) in
           ('SCHEDULED_HOLD','AWAITING_RETURN_SCAN','DISPATCH_SCAN_REQUIRED',
            'DISPATCH_SCANNED','IN_WAYPLAN_AWAITING_SUPERVISOR')
           then 'WORKFLOW_HOLD'
-        when upper(coalesce(e->>'warehouse_scan_status',e->>'warehouse_status','')) not in
+        when (case when authoritative_receipt_status='UNSET'
+                    then upper(coalesce(e->>'warehouse_scan_status',e->>'warehouse_status',''))
+                    else authoritative_receipt_status end) not in
           ('RECEIVED','WAREHOUSE_READY','RETURN_SCANNED')
           then 'WAREHOUSE_NOT_READY'
         when provider_code='UNSET'
