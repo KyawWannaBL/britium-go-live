@@ -1664,6 +1664,55 @@ writeFileSync(resolve(root,
   '20261103200046_uat308_field_weight_review_ci.sql'), fieldWeightFixture);
 console.log('Empty, RLS-protected production field-weight review table restored in disposable CI.');
 
+
+// November 4 weight-band patch embeds TWO live historical COD row assertions.
+// Reproduce the actual price-band function patch and static weight assertions,
+// while suppressing the data-bearing COD checks ONLY on a proven empty CI DB.
+// Original repository migration stays unchanged. No made-up COD rows permitted.
+const weightBandPath = resolve(root,
+  '20261103205504_fix_progressive_standard_weight_bands_20261104.sql');
+const weightBandOriginal = readFileSync(weightBandPath,'utf8');
+const rowTestStart = ' SELECT public.be_calculate_parcel_financial_v2(';
+const rowTestEnd = '\nEND $migration$;';
+const firstDataAssertion = weightBandOriginal.indexOf(rowTestStart);
+const endDataAssertion = weightBandOriginal.lastIndexOf(rowTestEnd);
+if (firstDataAssertion < 0 || endDataAssertion <= firstDataAssertion ||
+    weightBandOriginal.indexOf(rowTestStart,firstDataAssertion+1) < 0 ||
+    !weightBandOriginal.includes('D1031-YDC-006') ||
+    !weightBandOriginal.includes('D1031-YDC-008') ||
+    !weightBandOriginal.includes('Weight band regression') ||
+    !weightBandOriginal.includes('IF q006 IS NULL OR q008 IS NULL') ||
+    !weightBandOriginal.includes('COD regression: 006 %, 008 %')) {
+  throw new Error('Original November 4 weight regression assertions changed');
+}
+const emptyOnlyTestGuard = [
+  ' -- Disposable empty-schema CI: data-specific COD cases require actual October 31 parcel records.',
+  ' -- Preserve live weight band tests above, never invent financial records.',
+  ' IF EXISTS (SELECT 1 FROM public.be_data_entry_parcel_details) THEN',
+  "  RAISE EXCEPTION 'Refusing empty-CI COD test bypass when parcel rows exist';",
+  ' END IF;',
+  " RAISE NOTICE 'Historical two-way COD assertions excluded ONLY from EMPTY CI replay';"
+].join('\n');
+writeFileSync(weightBandPath,
+  '-- CI-only guarded exclusion of data-bearing historical COD assertions; original stays in Git.\n' +
+  weightBandOriginal.slice(0,firstDataAssertion) + emptyOnlyTestGuard +
+  weightBandOriginal.slice(endDataAssertion));
+console.log('CI-only weight-band function and static assertions preserved; historical COD rows never fabricated.');
+const financeFields = [
+  'merchant_stated_total_amount bigint',
+  'additional_customer_charge bigint NOT NULL DEFAULT 0',
+  'cbm_surcharge bigint NOT NULL DEFAULT 0',
+  'other_surcharge bigint NOT NULL DEFAULT 0',
+  'merchant_payable_charges bigint NOT NULL DEFAULT 0',
+  'other_merchant_credits bigint NOT NULL DEFAULT 0',
+  "financial_quote jsonb NOT NULL DEFAULT '{}'::jsonb"
+];
+writeFileSync(resolve(root,'20261103205503_uat308_verified_financial_fields_ci.sql'),
+  '-- CI-only production-catalog-verified financial columns; no values backfilled.\n' +
+  'ALTER TABLE public.be_data_entry_parcel_details\n' +
+  financeFields.map(x=>' ADD COLUMN IF NOT EXISTS '+x).join(',\n')+';\n');
+console.log('CI-only verified financial columns restored without backfilling parcel amounts.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
