@@ -46,6 +46,8 @@ assert.match(sql,/PROVIDER_TRANSFER_REQUIRED/);
 assert.match(sql,/handover_location_verified/);
 assert.match(sql,/authoritative_receipt_status/);
 assert.match(sql,/reported_warehouse_status/);
+assert.match(sql,/authoritative_receipt_status=\x27UNSET\x27/);
+assert.match(sql,/TERMINAL_PARCEL/);
 assert.match(sql,/be_provider_handover_sites_v1/);
 const siteSql=readFileSync(new URL("../sql/candidates/provider_handover_sites_v1.sql",import.meta.url),"utf8");
 assert.match(siteSql,/enable row level security/);
