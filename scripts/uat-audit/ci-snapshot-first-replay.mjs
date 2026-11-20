@@ -1626,6 +1626,44 @@ writeFileSync(resolve(root,
   '20261103184836_uat308_thirdparty_review_catalog_ci.sql'),thirdpartyReviewCatalogCi);
 console.log('CI-only third-party CS and finance review ledgers reconstructed empty, fail-closed.');
 
+
+// Original production catalog field-weight request table, restored ONLY in
+// disposable replay before Finance V2's foreign key dependency.
+// No weight approvals, staff identities, or financial decisions are invented.
+const weightFinanceV2 = readFileSync(resolve(root,
+  '20261103200047_finance_weight_recalculate_cod_policy_and_audit_v2.sql'),'utf8');
+if (!weightFinanceV2.includes('references public.be_field_weight_review_requests_v1(id)') ||
+    !weightFinanceV2.includes('public.be_weight_finance_decisions_v2')) {
+  throw new Error('Finance weight-decision foreign key contract changed');
+}
+const fieldWeightFixture = [
+  '-- Disposable CI only; exact production catalog shape and constraints, empty.',
+  'CREATE TABLE IF NOT EXISTS public.be_field_weight_review_requests_v1 (',
+  ' id uuid PRIMARY KEY DEFAULT gen_random_uuid(),',
+  ' wayplan_id text NOT NULL, delivery_way_id text NOT NULL,',
+  ' requested_weight_kg numeric(10,3) NOT NULL',
+  ' CONSTRAINT be_field_weight_review_requests_v1_requested_weight_kg_check',
+  ' CHECK (requested_weight_kg > 0 AND requested_weight_kg <= 5000),',
+  ' original_weight_kg numeric(10,3), reason text NOT NULL,',
+  ' requested_by uuid NOT NULL, requested_worker_code text NOT NULL,',
+  " status text NOT NULL DEFAULT 'PENDING_FINANCE_REVIEW'",
+  ' CONSTRAINT be_field_weight_review_requests_v1_status_check',
+  " CHECK (status IN ('PENDING_FINANCE_REVIEW','APPROVED','REJECTED')),",
+  ' created_at timestamptz NOT NULL DEFAULT now(),',
+  ' reviewed_by uuid, reviewed_at timestamptz, decision_note text',
+  ');',
+  'ALTER TABLE public.be_field_weight_review_requests_v1 ENABLE ROW LEVEL SECURITY;',
+  'REVOKE ALL ON TABLE public.be_field_weight_review_requests_v1 FROM PUBLIC, anon, authenticated;',
+  'DO $ci$ BEGIN',
+  ' IF EXISTS (SELECT 1 FROM public.be_field_weight_review_requests_v1) THEN',
+  "  RAISE EXCEPTION 'CI field weight review source unexpectedly contains rows';",
+  ' END IF;',
+  'END $ci$;'
+].join('\n') + '\n';
+writeFileSync(resolve(root,
+  '20261103200046_uat308_field_weight_review_ci.sql'), fieldWeightFixture);
+console.log('Empty, RLS-protected production field-weight review table restored in disposable CI.');
+
 console.log('CI-only finance legacy bootstrap inserted before the August patch; committed migration history unchanged.');
 
 console.log(JSON.stringify({mode:'disposable-snapshot-first',replacedHistoricalMigrations:replaced,snapshotSizeBytes:Buffer.byteLength(sql),remainingMigrations:files.length-replaced,productionWrites:false}));
