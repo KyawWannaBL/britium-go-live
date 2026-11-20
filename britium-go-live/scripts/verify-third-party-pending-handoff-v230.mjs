@@ -22,6 +22,7 @@ for(const term of [
   "Transfer Candidates",
   "Handover Verified",
   "Snapshot Warehouse Status",
+  "PROVIDER_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN",
   "Select / clear eligible",
   "handoffBusy",
   "selectedIds.slice(0,100)",
@@ -42,6 +43,8 @@ assert.match(sql,/revoke all on function.*from public, anon/);
 assert.match(sql,/be_warehouse_assert_internal/);
 assert.match(sql,/NEEDS_PROVIDER_TRANSFER_WAYPLAN/);
 assert.match(sql,/NEEDS_BRANCH_TRANSFER_WAYPLAN/);
+assert.match(sql,/PROVIDER_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN/);
+assert.match(sql,/BRANCH_TRANSFER_SITE_VERIFIED_AWAITING_WAYPLAN/);
 assert.match(sql,/PROVIDER_TRANSFER_REQUIRED/);
 assert.match(sql,/handover_location_verified/);
 assert.match(sql,/authoritative_receipt_status/);
