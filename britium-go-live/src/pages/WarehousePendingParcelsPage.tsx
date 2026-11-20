@@ -77,6 +77,19 @@ export default function WarehousePendingParcelsPage(){
   const [selectedWays,setSelectedWays]=useState<Record<string,boolean>>({});
   const [handoffBusy,setHandoffBusy]=useState(false);
   const [providerMetadataReady,setProviderMetadataReady]=useState(false);
+  const [siteProvider,setSiteProvider]=useState("");
+  const [siteBranch,setSiteBranch]=useState("YGN");
+  const [siteCode,setSiteCode]=useState("");
+  const [siteNote,setSiteNote]=useState("");
+  const [siteBusy,setSiteBusy]=useState(false);
+  const [siteResult,setSiteResult]=useState("");
+  const [releaseDraft,setReleaseDraft]=useState(false);
+  const [releaseCustody,setReleaseCustody]=useState(false);
+  const [releaseMixed,setReleaseMixed]=useState(false);
+  const [releaseEvidence,setReleaseEvidence]=useState("");
+  const [releaseBusy,setReleaseBusy]=useState(false);
+  const [releaseResult,setReleaseResult]=useState("");
+
   const [draftTransferFeatureEnabled,setDraftTransferFeatureEnabled]=useState(false);
   const [transferGroup,setTransferGroup]=useState("");
   const [transferSelection,setTransferSelection]=useState<Record<string,boolean>>({});
@@ -272,6 +285,44 @@ export default function WarehousePendingParcelsPage(){
     finally{setTransferDraftBusy(false);}
   };
 
+  const approveProviderSite=async()=>{
+    if(siteBusy)return;
+    if(!siteProvider.trim()||!siteCode.trim()||siteNote.trim().length<8){
+      setSiteResult("Provider, active service-location code and physical verification note are required.");return;
+    }
+    if(!window.confirm("Approve this physical provider handover site after verifying location and receiving staff?"))return;
+    setSiteBusy(true);setSiteResult("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_provider_handover_site_approve_v1",{
+        p_provider_code:siteProvider.trim(),p_origin_branch_code:siteBranch,
+        p_location_code:siteCode.trim(),p_verification_note:siteNote.trim()
+      });
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Site approval rejected");
+      setSiteResult("Verified site "+txt(data.location_code)+" approved; refreshed provider transfer candidates.");
+      await load(false);
+    }catch(e:any){setSiteResult("Site NOT approved: "+(e?.message||"Authorization or verification failed"));}
+    finally{setSiteBusy(false);}
+  };
+  const approveProviderRelease=async()=>{
+    if(releaseBusy)return;
+    if((releaseDraft||releaseCustody||releaseMixed) && releaseEvidence.trim().length<20){
+      setReleaseResult("Enter the reviewed end-to-end UAT evidence reference (20+ characters).");return;
+    }
+    if(!window.confirm("Change LIVE provider-transfer capabilities? Super Admin approval, verified site, and documented UAT signoff are required. This action is audited."))return;
+    setReleaseBusy(true);setReleaseResult("");
+    try{
+      const {data,error}=await (supabase as any).rpc("be_provider_transfer_approve_release_v1",{
+        p_draft:releaseDraft,p_custody:releaseCustody,p_mixed:releaseMixed,
+        p_evidence_ref:releaseEvidence.trim()
+      });
+      if(error||data?.ok!==true)throw new Error(error?.message||data?.error||"Release approval rejected");
+      setReleaseResult("Server release controls updated: Draft "+Boolean(data.draft_enabled)+
+        ", custody "+Boolean(data.custody_enabled)+", mixed routes "+Boolean(data.mixed_trip_enabled));
+      await load(false);
+    }catch(e:any){setReleaseResult("Release NOT changed: "+(e?.message||"Authorization or evidence rejected"));}
+    finally{setReleaseBusy(false);}
+  };
+  
   const exportTransferManifest=async()=>{
     if(!transferCandidates.length || !providerMetadataReady)return;
     setExportError("");
@@ -460,7 +511,30 @@ export default function WarehousePendingParcelsPage(){
           </>}
           {transferDraftResult&&<div role="status" className="mt-2 text-sm text-cyan-200">{transferDraftResult}</div>}
         </div>}
-        {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
+        {providerMetadataReady&&<details className="mb-3 rounded-lg border border-slate-600 p-3">
+          <summary className="cursor-pointer font-bold text-slate-200">Management: verified provider handover sites and release controls</summary>
+          <p className="mt-2 text-xs text-amber-200">Site approval requires physical verification and a real active service location. Changing production capability requires Super Admin authority and passed end-to-end UAT; no parcel status is changed by either action.</p>
+          <div className="mt-3 grid gap-2 md:grid-cols-4">
+            <input aria-label="Provider code for physical handover" value={siteProvider} onChange={e=>setSiteProvider(e.target.value)} placeholder="Exact provider code" className="rounded bg-white p-2 text-black"/>
+            <select aria-label="Provider origin branch" value={siteBranch} onChange={e=>setSiteBranch(e.target.value)} className="rounded bg-white p-2 text-black"><option value="YGN">YGN</option><option value="MDY">MDY</option><option value="NPT">NPT</option></select>
+            <input aria-label="Active physical site location code" value={siteCode} onChange={e=>setSiteCode(e.target.value)} placeholder="Approved site code" className="rounded bg-white p-2 text-black"/>
+            <input aria-label="Physical verification explanation" value={siteNote} onChange={e=>setSiteNote(e.target.value)} placeholder="Physical site verification details" className="rounded bg-white p-2 text-black"/>
+          </div>
+          <button type="button" disabled={siteBusy} onClick={()=>void approveProviderSite()} className="mt-2 rounded bg-slate-600 px-4 py-2 text-sm font-bold disabled:opacity-50">{siteBusy?"Approving...":"Approve verified handover site"}</button>
+          {siteResult&&<p role="status" className="mt-1 text-xs text-amber-200">{siteResult}</p>}
+          <div className="mt-3 border-t border-slate-700 pt-3">
+            <strong className="text-sm">Super Admin UAT release approval</strong>
+            <div className="my-2 flex flex-wrap gap-4 text-xs">
+              <label><input type="checkbox" checked={releaseDraft} onChange={e=>setReleaseDraft(e.target.checked)} /> Draft transfer Wayplans</label>
+              <label><input type="checkbox" checked={releaseCustody} onChange={e=>setReleaseCustody(e.target.checked)} /> Physical provider custody</label>
+              <label><input type="checkbox" checked={releaseMixed} onChange={e=>setReleaseMixed(e.target.checked)} /> Mixed pickup and transfer trips</label>
+            </div>
+            <input aria-label="Provider transfer UAT release approval evidence" value={releaseEvidence} onChange={e=>setReleaseEvidence(e.target.value)} placeholder="Reviewed end-to-end UAT signoff / rollback reference" className="w-full rounded bg-white p-2 text-black"/>
+            <button type="button" disabled={releaseBusy} onClick={()=>void approveProviderRelease()} className="mt-2 rounded bg-amber-600 px-4 py-2 text-sm font-bold text-black disabled:opacity-50">{releaseBusy?"Updating...":"Apply audited release controls"}</button>
+            {releaseResult&&<p role="status" className="mt-1 text-xs text-amber-200">{releaseResult}</p>}
+          </div>
+        </details>}
+                {!providerMetadataReady&&<div role="alert" className="mb-3 rounded-lg border border-amber-700 p-3 text-sm text-amber-200">Provider classification RPC is not installed. View and export remain available, but Warehouse → Wayplan handoff is disabled until the authorized provider-transfer preview is deployed. No wayplan or scan will be created without a verified service lane.</div>}
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-amber-500/40 bg-amber-950/20 p-3">
           <div className="flex-1 text-sm text-slate-200">
             <strong className="text-amber-300">Warehouse → Wayplan handoff</strong>
