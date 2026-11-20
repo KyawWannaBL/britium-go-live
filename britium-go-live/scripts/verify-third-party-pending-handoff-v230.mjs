@@ -83,6 +83,20 @@ for(const term of [
 ])assert.ok(draftSql.includes(term),"Draft Wayplan guard missing: "+term);
 assert.doesNotMatch(draftSql,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(draftSql,/be_cs_thirdparty_confirm_v1\s*\(/);
+const custodySql=readFileSync(new URL("../sql/candidates/provider_transfer_custody_v1.sql",import.meta.url),"utf8");
+for(const term of [
+  "be_provider_transfer_confirm_handover_v1",
+  "be_dispatch_scans_v39",
+  "scan_status='SCANNED'",
+  "be_warehouse_return_scans_v39",
+  "DISPATCH_READY",
+  "provider_receipt_ref",
+  "proof_reference",
+  "customer_delivery_confirmed',false",
+  "settlement_posted',false",
+  "enable row level security",
+  "revoke all on table"
+])assert.ok(custodySql.includes(term),"Custody safety contract missing: "+term);
 assert.match(warehouse,/DISPATCH_SCAN_REQUIRED/);
 assert.doesNotMatch(pending,/be_warehouse_dispatch_scan\s*\(/);
 assert.doesNotMatch(pending,/be_warehouse_return_scan_v71\s*\(/);
