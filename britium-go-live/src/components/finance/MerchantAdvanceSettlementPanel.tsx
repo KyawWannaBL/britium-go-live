@@ -22,6 +22,7 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
  const [postingGateUnavailable,setPostingGateUnavailable]=useState("");
  const [offsetReason,setOffsetReason]=useState("");
  const [offsetReviewNote,setOffsetReviewNote]=useState("");
+ const [offsetStageNote,setOffsetStageNote]=useState("");
  const [selected,setSelected] = useState<string[]>([]);
  const [draftNote,setDraftNote] = useState("");
  const [decisionNote,setDecisionNote] = useState("");
@@ -90,6 +91,13 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
   await action(()=>call("be_finance_advance_final_offset_review_v1",{
    p_review_id:r.id,p_decision:decision,p_note:offsetReviewNote.trim()
   }),"Final offset reviewed. No bank transfer, COD, wallet or journal posting was performed.");
+ }
+ async function stageFinalOffsetEvent(review:Entry){
+  if(offsetStageNote.trim().length<12)return;
+  if(!window.confirm("Stage this approved merchant advance offset as a REVIEW_PENDING accounting event? This does not post a journal, transfer money or finalize COD."))return;
+  await action(()=>call("be_finance_advance_final_offset_stage_event_v1",{
+   p_review_id:review.id,p_note:offsetStageNote.trim()
+  }),"Balanced Dr Merchant Payable / Cr Merchant Advances event staged for independent Accounting review. No cash movement or journal posting.");
  }
  async function policySave(){
   if(!merchant||!policy.contract.trim()||policy.contract.trim().length<8||!policy.rate||Number(policy.rate)<=0)return;
@@ -242,9 +250,18 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
         </div>
       )}
     </div>
+    <label className="mt-2 block text-xs">Accounting offset evidence (12+ characters, reviewed independently)
+     <input aria-label="Stage final offset accounting evidence" className={input}
+      value={offsetStageNote} onChange={e=>setOffsetStageNote(e.target.value)}
+      placeholder="Verified posted merchant payable accrual reference"/>
+    </label>
     <div className="mt-2 max-h-52 space-y-2 overflow-auto">
       {offsetReviews.map((r:Entry)=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 p-2 text-xs">
         <div><b>{r.delivery_way_id}</b> · {r.state} · Offset {money(r.applied_offset_snapshot)} · Remaining {money(r.remaining_merchant_payable)} · Due from merchant {money(Number(r.overadvance_recovery_due||0)+Number(r.other_merchant_receivable||0))}</div>
+        {r.offset_accounting_event_id&&<span className="text-emerald-300">Accounting event staged: {String(r.offset_accounting_event_id).slice(0,12)}… (posting pending)</span>}
+        {r.state==="APPROVED_REVIEW"&&!r.offset_accounting_event_id&&(postingReadiness.rows||[]).some((g:Entry)=>g.review_id===r.id&&g.posting_gate==="POSTING_PREREQUISITES_SATISFIED_REVIEW_ONLY")&&
+         <button className={btn} disabled={!available||busy||!!postingGateUnavailable||offsetStageNote.trim().length<12||!financeCreators.includes(roleKey)}
+          onClick={()=>void stageFinalOffsetEvent(r)}>Stage offset accounting event</button>}
         {r.state==="REVIEW_PENDING"&&financeApprovers.includes(roleKey)&&<div className="flex gap-2">
           <button className={btn} disabled={busy||offsetReviewNote.trim().length<12} onClick={()=>void reviewFinalOffset(r,"APPROVE")}>Review approve</button>
           <button className={btn} disabled={busy||offsetReviewNote.trim().length<12} onClick={()=>void reviewFinalOffset(r,"REJECT")}>Review reject</button>
