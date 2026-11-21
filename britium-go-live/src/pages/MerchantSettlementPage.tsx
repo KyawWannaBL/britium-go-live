@@ -10,6 +10,7 @@ const button="rounded-xl border border-sky-700 px-4 py-2 font-bold disabled:opac
 const methods=["CASH","BANK_TRANSFER","KBZ_PAY","WAVE_PAY","AYA_PAY","CB_PAY","CHEQUE","OTHER"];
 export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
+ const [canonicalMerchantNames,setCanonicalMerchantNames]=useState<Record<string,string>>({});
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [activeTab,setActiveTab]=useState<"parcels"|"batches"|"payments"|"adjustments"|"history">("parcels");
  const [statusFilter,setStatusFilter]=useState<"ALL_UNSETTLED"|"READY"|"RTO"|"IN_TRANSIT">("ALL_UNSETTLED");
@@ -36,7 +37,23 @@ export default function MerchantSettlementPage(){
  async function rpc(name:string,args:Row){ const r=await (supabase as any).rpc(name,args); if(r.error||r.data?.ok===false) throw new Error(r.error?.message||r.data?.error||r.data?.code||"Request failed"); return r.data; }
  async function load(){
    setLoading(true); setError("");
-   try { const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}); setData(next); setMerchant((current:string)=>current||String(next.rows?.find((r:Row)=>r.merchant_id)?.merchant_id||"")); }
+   try {
+     // Resolve the actual merchant display name from merchant masters, not from
+     // the queue's sometimes code-only merchant_name field.
+     const [master,profiles]=await Promise.all([
+       (supabase as any).from("be_merchant_master").select("merchant_code,merchant_name").limit(2000),
+       (supabase as any).from("be_merchant_financial_profiles_v2").select("merchant_id,merchant_name").limit(2000),
+     ]);
+     const names:Record<string,string>={};
+     for(const r of [...(profiles.data||[]),...(master.data||[])]){
+       const code=String(r.merchant_code||r.merchant_id||"").trim().toUpperCase();
+       const name=String(r.merchant_name||"").trim();
+       if(code&&name&&name.toUpperCase()!==code)names[code]=name;
+     }
+     setCanonicalMerchantNames(names);
+     const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000});
+     setData(next);setMerchant((current:string)=>current||String(next.rows?.find((r:Row)=>r.merchant_id)?.merchant_id||""));
+   }
    catch(e:any){setError(e.message);} finally{setLoading(false);}
  }
  async function loadRequests(){try{const x=await rpc("be_finance_post_payment_adjustments_list_v1",{});setRequests(Array.isArray(x)?x:[]);}catch(e:any){setError(e.message);}}
@@ -67,11 +84,12 @@ export default function MerchantSettlementPage(){
    for(const r of [...(data.rows||[]),...(data.batches||[]),...(data.payments||[])]){
      const id=String(r.merchant_id||"").trim();
      const name=String(r.merchant_name||"").trim();
-     if(id&&name&&name.toLowerCase()!==id.toLowerCase()) names[id]=name;
+     if(id&&name&&name.toLowerCase()!==id.toLowerCase()) names[id.toUpperCase()]=name;
    }
-   return names;
- },[data.rows,data.batches,data.payments]);
- const merchantName=(id:unknown)=>merchantNames[String(id||"")]||String(id||"Unknown merchant");
+   // Canonical active merchant master wins over code-only / stale snapshot labels.
+   return {...names,...canonicalMerchantNames};
+ },[data.rows,data.batches,data.payments,canonicalMerchantNames]);
+ const merchantName=(id:unknown)=>merchantNames[String(id||"").trim().toUpperCase()]||String(id||"Unknown merchant");
  const merchantLabel=(id:unknown)=>{const code=String(id||"");const name=merchantName(code);return name===code?code:`${name} (${code})`;};
  const merchants=useMemo(()=>Array.from(new Set<string>((data.rows||[]).map((r:Row)=>String(r.merchant_id)).filter(Boolean))).sort((a,b)=>(merchantNames[a]||a).localeCompare(merchantNames[b]||b)),[data.rows,merchantNames]);
  const batches=(data.batches||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
