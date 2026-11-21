@@ -72,3 +72,36 @@ Supabase security advisors still report wider-project WARN/INFO findings includi
 - Previously: `uat-data-entry-acl-schema-shadow-20261121.sql`, `uat-data-entry-limited-tariff-options-20261121.sql`, plus Wayplan/Dispatch read-only stages.
 
 **Status:** Pickup reads and the original UAT-gated **Calculate** path pass isolated synthetic role/pricing tests. **Save, Save All, Print Waybill and wider operational write workflows are still blocked** by missing dependencies. No production changes.
+
+---
+
+## 2026-11-21 — Save/Waybill foundation follow-on (latest)
+
+**Applied on hosted UAT only** after rollback rehearsals:
+
+- `scripts/uat-audit/uat-save-waybill-foundation-20261121.sql`: restored **11 closed-RLS tables / 250 columns** for financial request idempotency, registration batches/rows, Way ID registry and aliases, location registry, pickup proof, audit events, branch offices and canonical waybill ledger. No historical data. Provisioned two labeled synthetic branch profiles (ISN and MDY). Neither `anon` nor `authenticated` has direct table SELECT/INSERT privileges. Production triggers / nonconstraint indexes still require targeted review.
+- `scripts/uat-audit/uat-save-pickup-territory-guards-20261121.sql`: restored four original internal role/territory/pickup-guard helpers. Hardened pickup guard to reject unauthenticated users before role checks. Direct application EXECUTE revoked. Rollback tests showed Mandalay branch manager could read MDY synthetic pickup, was denied ISN pickup and create access; UAT Super Admin could access both.
+- `scripts/uat-audit/uat-waybill-readiness-registration-state-20261121.sql`: restored original read-only `be_data_entry_financial_v2_ready_sequences_v137(text)` and `be_data_entry_registration_state_v1(text)`. Super Admin sees two registered synthetic parcel details and **zero ready-to-print waybill sequences**; unauthorized branch manager denied.
+- `scripts/uat-audit/uat-data-entry-merchant-tier-options-20261121.sql`: restored original merchant-tier lookup with V57 Data Entry role check for the synthetic `UAT-QA` merchant. Branch manager receives `ok=false`, not profile data.
+- `scripts/uat-audit/uat-data-entry-staff-progress-20261121.sql`: restored original V98 staff progress report with an added V57 Data Entry view gate. Test output includes the two synthetic pickups; branch manager denied.
+- `scripts/uat-audit/uat-data-entry-phone-history-guarded-20261121.sql`: restored phone-history read function with added V57 role gate. A temporary synthetic phone lookup matched only for the authorized Data Entry actor and returned zero rows for branch manager. Temporary phone edit was rolled back.
+
+**Post-apply proof:** actual `authenticated` PostgreSQL role can call registration state, readiness, merchant tier and staff progress; anonymous EXECUTE is denied for all five newly exposed read-only Data Entry functions. The temporary synthetic phone value is not stored.
+
+### Updated static RPC-name availability
+
+| Source screen | Required | Present | Missing |
+|---|---:|---:|---:|
+| Data Entry Financial V2 | 20 | **11** | **9** |
+| Wayplan Command Center | 10 | 1 | 9 |
+| Dispatch Command Center | 3 | 1 | 2 |
+| **Total** | **33** | **13** | **20** |
+
+Nine Data Entry RPC names still absent:
+`be_data_entry_financial_v2_save`, `be_data_entry_financial_v2_save_batch_v22`, `be_data_entry_financial_v2_create_ready_waybill`, `be_data_entry_financial_v2_add_registrations`, `be_data_entry_photo_waiver_v54`, `be_data_entry_registration_delete_v1`, `be_delivery_location_batch_v10`, `be_delivery_location_review_batch_v23`, `be_review_parcel_photo`.
+
+### Release blocker
+
+**Save / Save All / Create Waybill are not yet functional or enabled.** The original write chain still needs the dependent operational schemas and functions, mandatory triggers, RLS/permissions, delivery-way ID allocation, audit semantics, canonical parcel validation, photo/location review and waybill publication rules, followed by transaction-rollback tests with synthetic UAT data. The writer should not be replaced with a success-returning placeholder, and `MUTATION_SHADOW` must stay set until validation and end-to-end browser tests pass.
+
+**No production changes. No production deployment.** Vercel UAT configuration/login/browser operation not yet verified during this stage.
