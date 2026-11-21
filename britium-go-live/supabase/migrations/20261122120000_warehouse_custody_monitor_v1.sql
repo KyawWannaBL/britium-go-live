@@ -137,7 +137,7 @@ begin
      else 'WAREHOUSE_OR_ROUTE_PENDING' end category
     from wh left join cod using(way_id) left join tp using(way_id) left join proof using(way_id)
   )
-  select count(*),coalesce(jsonb_object_agg(category,n),'{}'::jsonb)
+  select coalesce(sum(n),0),coalesce(jsonb_object_agg(category,n),'{}'::jsonb)
   into v_total,v_grouped
   from (select category,count(*) n from classified
     where (nullif(btrim(coalesce(p_category,'')),'') is null or category=p_category)
