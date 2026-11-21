@@ -125,7 +125,7 @@ export default function WarehouseRtoReportPage(){
   const printDate=generatedAt||new Date().toISOString();
   const controls="min-h-11 w-full rounded-xl border border-slate-400 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-500";
   return <main data-rto-report="true" className="min-h-screen min-w-0 bg-[#061524] p-3 text-slate-100 md:p-5">
-    <style>{String.raw\`
+    <style>{String.raw`
       .rto-screen-scroll { scrollbar-width: thin; scrollbar-color: #5a8aaf #092037; }
       .rto-print-document {display:none;}
       @media print {
@@ -144,7 +144,7 @@ export default function WarehouseRtoReportPage(){
         #rto-print-document .print-attempts td { min-height:20px; }
         #rto-print-document .print-subhead { font-weight:700; margin:4mm 0 2mm; }
       }
-    \`}</style>
+    `}</style>
     <section className="mb-4 rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4 md:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
