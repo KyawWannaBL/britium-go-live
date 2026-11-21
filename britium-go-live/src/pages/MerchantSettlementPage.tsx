@@ -22,7 +22,7 @@ function rtoStage(row:Row):"warehouse"|"return"|"pending"|null {
  const warehouseStates=new Set(["RTO_RETURNED_TO_HUB","RTO_AT_WAREHOUSE","RTO_WAREHOUSE","RETURNED_TO_WAREHOUSE","RTO_WAREHOUSE_RECEIVED","RTO_RECEIVED_AT_HUB"]);
  if(returnStates.has(status))return "return";
  if(warehouseStates.has(status))return "warehouse";
- if(status.startsWith("RTO")||status.includes("RETURN_TO_ORIGIN")||status.includes("RETURN_PENDING"))return "pending";
+ if(status.startsWith("RTO")||status.includes("RETURN_TO_ORIGIN")||status.includes("RETURN_PENDING")||status==="RETURN_SCANNED")return "pending";
  return null;
 }
 const rtoName=(stage:ReturnType<typeof rtoStage>)=>stage==="warehouse"?"RTO Warehouse":stage==="return"?"RTO Return":stage==="pending"?"RTO Pending":"—";
@@ -344,22 +344,59 @@ export default function MerchantSettlementPage(){
 
  
   {activeTab==="queue"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 shadow-lg md:p-5">
-   <div className="space-y-3" aria-label="Settlement search and date filters">
-     <input aria-label="Search settlements" className={filterField+" w-full"} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/>
-     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">From<input aria-label="From" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
-      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">To<input aria-label="To" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={to} onChange={e=>setTo(e.target.value)}/></label>
-     </div>
-   </div>
-   <p className="mt-3 text-sm text-slate-400">Choose reconciled delivered parcels for a single merchant. Search and dates affect only this parcel table.</p>
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Select","Way ID / merchant","Collection type","Delivery","Expected COD","Reported","Received by Finance","Britium entitlement","Merchant payable","State"].map(h=><th scope="col" key={h} className="px-3 py-5 font-extrabold">{h}</th>)}</tr></thead><tbody>{rows.map((r:Row)=><tr key={r.parcel_id} className="border-t border-slate-800 bg-[#090d1c] hover:bg-slate-800/60"><td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!r.settlement_eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td><td className="p-3 font-semibold">{r.delivery_way_id}<br/>{r.merchant_name||r.merchant_id}</td><td className="max-w-xs break-words p-3 text-slate-200">{r.amount_entry_type}</td><td className="p-3">{r.status}</td>{["customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount"].map(k=><td key={k} className="p-3">{money(r[k])}</td>)}<td className="p-3">{r.settlement_state}{r.validation_status!=="OK"&&<p>{r.validation_message}</p>}</td></tr>)}</tbody></table>{!loading&&!rows.length&&<p className="p-5">No settlement parcels match these filters.</p>}</div>
-   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
-    <p className="text-sm text-slate-200"><strong className="text-amber-300">{selected.length}</strong> parcels selected · <strong>{money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</strong></p>
-    <button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950 hover:bg-amber-300 disabled:opacity-40"} disabled={!selected.length} onClick={()=>setActiveTab("draft")}>Continue to Draft Settlement</button>
-   </div>
-  </section>}
+ <div className="flex flex-wrap items-center justify-between gap-2">
+  <div><h3 className="text-xl font-black">Merchant Parcel Settlement Queue</h3><p className="text-sm text-slate-300">Only server-verified eligible parcels can be settled. RTO stages are shown for operational review.</p></div>
+  <div className="flex gap-2">
+   <button className={button+" border-amber-500"} onClick={selectAllReady} disabled={!canCreate||busy||!queueRows.some((r:Row)=>r.settlement_eligible)}>Select All Delivered / Ready</button>
+   <button className={button} onClick={()=>setSelected([])}>Clear selection</button>
+  </div>
+ </div>
+ <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Settlement status and RTO filters">
+  {([["ALL","All Unsettled"],["READY","Ready"],["RTO_WAREHOUSE","RTO Warehouse"],["RTO_RETURN","RTO Return"],["RTO_PENDING","RTO Pending"],["IN_TRANSIT","In Transit"]] as const).map(([key,label])=>
+   <button key={key} aria-pressed={queueStatus===key} className={"rounded-lg border px-3 py-2 text-xs font-bold "+(queueStatus===key?"border-amber-400 bg-amber-400 text-slate-950":"border-slate-700 bg-[#121c30] text-slate-200")} onClick={()=>setQueueStatus(key)}>{label} ({queueCounts[key]})</button>)}
+ </div>
+ <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Settlement search and date filters">
+  <label className="text-xs text-slate-300">Search Way ID / recipient<input aria-label="Search settlements" className={filterField+" mt-1 h-11 w-full text-sm"} placeholder="Way ID, merchant…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">Collection type<select aria-label="Collection type filter" className={field+" mt-1 w-full"} value={collectionFilter} onChange={e=>setCollectionFilter(e.target.value)}><option value="">All collection types</option>{uniqueOptions(rows,"amount_entry_type").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">Delivery state<select aria-label="Delivery state filter" className={field+" mt-1 w-full"} value={deliveryFilter} onChange={e=>setDeliveryFilter(e.target.value)}><option value="">All delivery states</option>{uniqueOptions(rows,"status").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">Settlement method<select aria-label="Settlement method filter" className={field+" mt-1 w-full"} value={paymentFilter} onChange={e=>setPaymentFilter(e.target.value)}><option value="">All settlement methods</option>{uniqueOptions(rows,"settlement_method").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">From<input aria-label="From" type="date" className={filterField+" mt-1 h-11 w-full text-sm"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">To<input aria-label="To" type="date" min={from||undefined} className={filterField+" mt-1 h-11 w-full text-sm"} value={to} onChange={e=>setTo(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">Additional details<input aria-label="Search RTO notes" className={filterField+" mt-1 h-11 w-full text-sm"} placeholder="Search any available data" value={rtoSearch} onChange={e=>setRtoSearch(e.target.value)}/></label>
+  <div className="flex items-end"><button className={button+" h-11 w-full"} onClick={()=>{setSearch("");setFrom("");setTo("");setCollectionFilter("");setDeliveryFilter("");setPaymentFilter("");setRtoSearch("");setQueueStatus("ALL");}}>Clear filters</button></div>
+ </div>
+ <p className="mt-3 text-xs text-slate-400">Showing {queueRows.length} of {rows.length} parcels. Scroll horizontally or vertically inside the table; no rows are silently omitted by the display.</p>
+ <div className="mt-3 max-h-[540px] overflow-auto rounded-xl border border-slate-700" aria-label="Scrollable merchant parcel settlement table" style={{scrollbarWidth:"auto",scrollbarColor:"#fbbf24 #111827"}}>
+  <table className="w-full min-w-[1520px] text-left text-xs">
+   <thead className="sticky top-0 z-10 bg-amber-400 text-slate-950"><tr>{["Select","Way ID / Date","Merchant","Collection type","Delivery state","Expected COD","COD received","Britium fee","Net merchant payable","RTO stage / reason","Settlement state"].map(h=><th key={h} scope="col" className="whitespace-nowrap px-3 py-4 font-extrabold">{h}</th>)}</tr></thead>
+   <tbody>{queueRows.map((r:Row)=>{const stage=rtoStage(r);const eligible=Boolean(r.settlement_eligible);
+    return <tr key={r.parcel_id} className={"border-t border-slate-800 "+(stage?"bg-rose-950/30":eligible?"bg-amber-950/10":"bg-[#0a1222]")+" hover:bg-slate-800/50"}>
+     <td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td>
+     <td className="whitespace-nowrap p-3 font-bold text-sky-300">{r.delivery_way_id}<div className="font-normal text-slate-400">{String(r.created_at||"").slice(0,10)}</div></td>
+     <td className="p-3">{r.merchant_name||r.merchant_id}<div className="text-slate-400">{r.merchant_id}</div></td>
+     <td className="p-3">{r.amount_entry_type||"—"}</td>
+     <td className="p-3"><span className={"rounded-full px-2 py-1 font-bold "+(stage?"bg-rose-900/60 text-rose-200":eligible?"bg-emerald-900/60 text-emerald-200":"bg-slate-700 text-slate-100")}>{stage?rtoName(stage):r.status||"Unknown"}</span><div className="mt-1 text-slate-400">{stage?String(r.status||""):""}</div></td>
+     <td className="whitespace-nowrap p-3 text-right">{money(r.customer_total_collection)}</td>
+     <td className="whitespace-nowrap p-3 text-right">{money(r.cod_received)}</td>
+     <td className="whitespace-nowrap p-3 text-right text-sky-300">{money(r.net_system_delivery_charge)}</td>
+     <td className={"whitespace-nowrap p-3 text-right font-bold "+(Number(r.merchant_final_settlement_amount)<0?"text-rose-300":"text-emerald-300")}>{money(r.merchant_final_settlement_amount)}</td>
+     <td className="min-w-64 p-3">{stage?<><strong className="text-rose-300">{rtoName(stage)}</strong><p className="mt-1 text-slate-300">{RTO_EXPLANATIONS[stage]}</p></>:<span className="text-slate-500">—</span>}</td>
+     <td className="p-3">{r.settlement_state||"—"}{r.validation_status!=="OK"&&<p className="text-rose-300">{r.validation_message||"Validation required"}</p>}</td>
+    </tr>;})}</tbody>
+  </table>
+  {!loading&&!queueRows.length&&<p className="p-5 text-sm text-slate-300">No parcels match these filters.</p>}
+ </div>
+ <div className="mt-3 grid gap-3 rounded-xl border border-slate-700 bg-[#0b1527] p-3 text-xs text-slate-300 md:grid-cols-3">
+  <p><strong className="block text-amber-300">Settlement rule</strong>Only backend-verified eligible parcels can enter normal settlement; RTO records are not automatically payable.</p>
+  <p><strong className="block text-rose-300">RTO Warehouse</strong>{RTO_EXPLANATIONS.warehouse}</p>
+  <p><strong className="block text-rose-300">RTO Return</strong>{RTO_EXPLANATIONS.return} Generic RTO and RETURN_SCANNED remain pending until confirmed.</p>
+ </div>
+ <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-900 bg-slate-950/70 p-4">
+  <p className="text-sm text-slate-200"><strong className="text-amber-300">{selected.length}</strong> parcels selected · <strong>{money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</strong></p>
+  <button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950"} disabled={!selected.length} onClick={()=>setActiveTab("draft")}>Continue to Draft Settlement</button>
+ </div>
+</section>}
 
- 
  {activeTab==="draft"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 md:p-5">
   <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
    <div><p className="text-xs uppercase tracking-widest text-sky-300">Selected parcels</p><p className="mt-1 text-xl font-extrabold">{selected.length} · {money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</p>{chosen.length>0&&<p className="mt-1 text-sm text-slate-300">Merchant: {chosen[0].merchant_id} · {chosen.slice(0,4).map((r:Row)=>r.delivery_way_id).join(", ")}{chosen.length>4?"…":""}</p>}</div>
