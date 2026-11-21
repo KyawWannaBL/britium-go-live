@@ -321,54 +321,13 @@ REVOKE ALL ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
  public.be_finance_advance_confirm_refund_v1(uuid,text,text,text)
 FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
+ public.be_finance_advance_set_policy_v1(text,boolean,numeric,numeric,text[],text),
  public.be_finance_advance_create_draft_v1(uuid[],text),
  public.be_finance_advance_transition_v1(uuid,text,text),
  public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
  public.be_finance_advance_flag_rto_v1(uuid,numeric,text),
  public.be_finance_advance_review_rto_v1(uuid,text,text),
  public.be_finance_advance_confirm_refund_v1(uuid,text,text,text)
-TO authenticated,service_role;
-REVOKE ALL ON FUNCTION public.be_finance_advance_legacy_batch_guard_v1() FROM PUBLIC,anon,authenticated;
-COMMIT;
- THEN RAISE EXCEPTION 'Actual verified refund receipt and reference required'; END IF;
- UPDATE public.be_finance_advance_rto_recoveries_v1
- SET status='REFUND_RECEIVED',received_by=auth.uid(),received_at=now(),
- receipt_method=p_method,receipt_reference=p_reference,receipt_evidence_url=p_evidence_url
- WHERE id=p_recovery_id;
- RETURN jsonb_build_object('ok',true,'recovery_id',p_recovery_id,'status','REFUND_RECEIVED',
- 'amount',r.amount,'note','Actual refund receipt recorded separately; original advance remains immutable');
-END $fn$;
-
--- Cross-ledger gate: a disbursed advance cannot silently be paid a second time
--- through the old delivered-only batch creator. Dedicated offset reconciliation
--- is REQUIRED before normal final settlement can include the advanced parcel.
-CREATE OR REPLACE FUNCTION public.be_finance_advance_legacy_batch_guard_v1()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','pg_temp' AS $fn$
-BEGIN
- IF EXISTS (SELECT 1 FROM public.be_finance_advance_items_v1 i
-            JOIN public.be_finance_advance_batches_v1 b ON b.id=i.batch_id
-            WHERE i.parcel_id=NEW.parcel_id AND b.status IN ('DRAFT','PENDING_APPROVAL','APPROVED','DISBURSED')) THEN
-   RAISE EXCEPTION 'ADVANCE_SETTLEMENT_RECONCILIATION_REQUIRED: parcel % already has an advance entry',NEW.delivery_way_id;
- END IF;
- RETURN NEW;
-END $fn$;
-DROP TRIGGER IF EXISTS be_finance_advance_legacy_batch_guard_v1 ON public.be_finance_settlement_batch_items_v3;
-CREATE TRIGGER be_finance_advance_legacy_batch_guard_v1
-BEFORE INSERT ON public.be_finance_settlement_batch_items_v3
-FOR EACH ROW EXECUTE FUNCTION public.be_finance_advance_legacy_batch_guard_v1();
-
-REVOKE ALL ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
- public.be_finance_advance_set_policy_v1(text,boolean,numeric,numeric,text[],text),
- public.be_finance_advance_create_draft_v1(uuid[],text),
- public.be_finance_advance_transition_v1(uuid,text,text),
- public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
- public.be_finance_advance_flag_rto_v1(uuid,numeric,text)
-FROM PUBLIC,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
- public.be_finance_advance_create_draft_v1(uuid[],text),
- public.be_finance_advance_transition_v1(uuid,text,text),
- public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
- public.be_finance_advance_flag_rto_v1(uuid,numeric,text)
 TO authenticated,service_role;
 REVOKE ALL ON FUNCTION public.be_finance_advance_legacy_batch_guard_v1() FROM PUBLIC,anon,authenticated;
 COMMIT;
