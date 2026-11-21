@@ -106,6 +106,7 @@ BEGIN
     (receipt_at IS NOT NULL AND (now() AT TIME ZONE 'Asia/Yangon')::date > (receipt_at AT TIME ZONE 'Asia/Yangon')::date) AS next_day,
     round(item_price*coalesce(rate_pct,0)/100-coalesce(flat_deduction,0),2) AS proposed_advance,
     CASE WHEN NOT coalesce(policy_enabled,false) THEN 'MERCHANT_POLICY_NOT_APPROVED'
+     WHEN upper(coalesce(merchant_id,'')) IN ('BLK','BBB') THEN 'CONSOLIDATED_MERCHANT_MAPPING_REQUIRED'
      WHEN validation_status<>'OK' THEN 'FINANCIAL_VALIDATION_PENDING'
      WHEN held OR disputed THEN 'FINANCIAL_HOLD_OR_DISPUTE'
      WHEN advanced THEN 'ALREADY_ADVANCED'
