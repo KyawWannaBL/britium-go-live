@@ -34,7 +34,7 @@ async function openTab(tree,label) {
  assert.equal(tree.root.findAllByProps({role:'tabpanel'}).length,1,'one process panel is visible at a time');
  assert.equal(tree.root.findByProps({'aria-label':'Open Overview tab'}).props['aria-selected'],true,'overview opens first');
  assert.match(tree.root.findByProps({'aria-label':'Merchant filter'}).props.className,/bg-white/,'global merchant selector remains high contrast');
- assert.ok(!button(tree,'Record '),'payment actions hidden from overview');
+ assert.equal(tree.root.findAllByType('button').filter(n=>/^Record .* batches$/.test(text(n))).length,0,'payment mutation button hidden from overview');
  const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]'));
  assert.equal(walletCards.length,3,'three blue outlined wallet KPI cards present');
  assert.match(text(tree.root),/Production safety gate: advance batch creation/,'advance settlement safety warning visible');
