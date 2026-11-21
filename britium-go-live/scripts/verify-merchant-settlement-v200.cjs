@@ -24,6 +24,15 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
 async function openPayments(tree) { await act(async()=>button(tree,'03 · Record payment').props.onClick()); }
 (async()=>{
  let tree=await render();
+ const toolbar=()=>tree.root.findByProps({'data-settlement-action-toolbar':'true'});
+ assert.ok(toolbar(),'visible action toolbar must exist on parcel stage');
+ assert.ok(tree.root.findAllByProps({'data-action':'create-draft'}).length===1,'create-draft shortcut must be visible');
+ for(const [tab,action] of [['02 · Review & approval',null],['03 · Record payment','record-payment'],['04 · Adjustments','request-adjustment'],['05 · Payment history','export-payment-history']]){
+   await act(async()=>button(tree,tab).props.onClick());
+   assert.ok(toolbar(),'action toolbar missing after switching to '+tab);
+   if(action)assert.equal(tree.root.findAllByProps({'data-action':action}).length,1,'missing visible '+action+' button');
+ }
+ await act(async()=>button(tree,'01 · Merchant settlement').props.onClick());
  const merchantOption=tree.root.findAllByType('option').find(n=>n.props.value==='TSW');
  assert.ok(text(merchantOption).includes('Three & Six Online Store (TSW)'),'merchant selector must show full merchant name');
  assert.ok(tree.root.findAllByType('h2').some(n=>text(n).includes('Three & Six Online Store (TSW)')),'cashier payout title must show merchant full name');
