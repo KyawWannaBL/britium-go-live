@@ -40,9 +40,10 @@ export default function MerchantSettlementPage(){
    try {
      // Resolve the actual merchant display name from merchant masters, not from
      // the queue's sometimes code-only merchant_name field.
-     const [master,profiles]=await Promise.all([
+     const [master,profiles,next]=await Promise.all([
        (supabase as any).from("be_merchant_master").select("merchant_code,merchant_name").limit(2000),
        (supabase as any).from("be_merchant_financial_profiles_v2").select("merchant_id,merchant_name").limit(2000),
+       rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}),
      ]);
      const names:Record<string,string>={};
      for(const r of [...(profiles.data||[]),...(master.data||[])]){
@@ -51,7 +52,6 @@ export default function MerchantSettlementPage(){
        if(code&&name&&name.toUpperCase()!==code)names[code]=name;
      }
      setCanonicalMerchantNames(names);
-     const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000});
      setData(next);setMerchant((current:string)=>current||String(next.rows?.find((r:Row)=>r.merchant_id)?.merchant_id||""));
    }
    catch(e:any){setError(e.message);} finally{setLoading(false);}
