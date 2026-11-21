@@ -1108,13 +1108,13 @@ GRANT ALL ON TABLE public.be_finance_settlement_adjustments_v3 TO service_role;
 GRANT ALL ON TABLE public.be_finance_settlement_audit_v3 TO service_role;
 -- Revoke default PUBLIC EXECUTE on all installed SECURITY DEFINER + helper functions.
 DO $revoke$
-DECLARE p record;
+DECLARE fn_sig record;
 BEGIN
- FOR p IN SELECT p.oid::regprocedure AS signature
-  FROM pg_proc p JOIN pg_namespace ns ON ns.oid=p.pronamespace
-  WHERE ns.nspname='public' AND p.proname=ANY(ARRAY['be_finance_claim_v3','be_finance_actor_email_v3','be_finance_actor_access_v3','be_finance_assert_internal_v3','be_finance_json_number_v3','be_finance_json_date_v3','be_finance_audit_v3','be_finance_settlement_snapshot_v3','be_finance_create_settlement_batch_v3','be_finance_transition_batch_v3','be_finance_record_payment_v3','be_finance_set_parcel_hold_v3','be_finance_raise_dispute_v3','be_finance_resolve_dispute_v3','be_finance_settlement_statement_v3'])
+ FOR fn_sig IN SELECT pr.oid::regprocedure AS signature
+  FROM pg_proc pr JOIN pg_namespace ns ON ns.oid=pr.pronamespace
+  WHERE ns.nspname='public' AND pr.proname=ANY(ARRAY['be_finance_claim_v3','be_finance_actor_email_v3','be_finance_actor_access_v3','be_finance_assert_internal_v3','be_finance_json_number_v3','be_finance_json_date_v3','be_finance_audit_v3','be_finance_settlement_snapshot_v3','be_finance_create_settlement_batch_v3','be_finance_transition_batch_v3','be_finance_record_payment_v3','be_finance_set_parcel_hold_v3','be_finance_raise_dispute_v3','be_finance_resolve_dispute_v3','be_finance_settlement_statement_v3'])
  LOOP
-  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated',p.signature);
+  EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated',fn_sig.signature);
  END LOOP;
 END $revoke$;
 -- Only user-facing V3 Finance RPCs may be invoked, each enforcing its own role checks.
