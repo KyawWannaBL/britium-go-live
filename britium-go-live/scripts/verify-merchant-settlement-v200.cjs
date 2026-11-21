@@ -35,7 +35,7 @@ async function openTab(tree,label) {
  assert.equal(tree.root.findByProps({'aria-label':'Open Overview tab'}).props['aria-selected'],true,'overview opens first');
  assert.match(tree.root.findByProps({'aria-label':'Merchant filter'}).props.className,/bg-white/,'global merchant selector remains high contrast');
  assert.equal(tree.root.findAllByType('button').filter(n=>/^Record .* batches$/.test(text(n))).length,0,'payment mutation button hidden from overview');
- const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]'));
+ const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]')&&String(n.props.className||'').includes('min-h-40'));
  assert.equal(walletCards.length,3,'three blue outlined wallet KPI cards present');
  assert.match(text(tree.root),/Production safety gate: advance batch creation/,'advance settlement safety warning visible');
  assert.ok(!calls.some(c=>c.name.startsWith('be_finance_advance_')),'advance backend is not invoked by overview');
