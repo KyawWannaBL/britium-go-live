@@ -85,7 +85,14 @@ BEGIN
    coalesce(q.validation_status,'') AS validation_status,
    coalesce(c.financial_hold,false) AS held,
    exists(select 1 from public.be_finance_settlement_disputes_v3 z where z.parcel_id=d.id and z.status not in ('RESOLVED','REJECTED','CLOSED')) AS disputed,
-   exists(select 1 from public.be_finance_settlement_batch_items_v3 z where z.parcel_id=d.id AND z.active) AS regular_batch,
+   exists(
+     select 1 from public.be_finance_settlement_batch_items_v3 z
+     join public.be_finance_settlement_batches_v3 b ON b.id=z.batch_id
+     where z.parcel_id=d.id AND (z.active
+       OR b.status IN ('PAID','PARTIALLY_PAID','PAYMENT_PROCESSING')
+       OR b.payment_status IN ('PAID','PARTIALLY_PAID','PROCESSING'))
+   ) AS regular_batch,
+   (q.financial_settled_at IS NOT NULL OR q.settlement_state='SETTLED') AS already_final_settled,
    exists(select 1 from public.be_finance_advance_items_v1 i where i.parcel_id=d.id) AS advanced,
    p.enabled AS policy_enabled,p.rate_pct,p.flat_deduction,p.allowed_providers,p.approval_reference
   FROM public.be_v_finance_merchant_settlement_queue_v2 q
@@ -118,7 +125,7 @@ BEGIN
      WHEN validation_status<>'OK' THEN 'FINANCIAL_VALIDATION_PENDING'
      WHEN held OR disputed THEN 'FINANCIAL_HOLD_OR_DISPUTE'
      WHEN advanced THEN 'ALREADY_ADVANCED'
-     WHEN regular_batch THEN 'ALREADY_IN_NORMAL_SETTLEMENT'
+     WHEN regular_batch OR already_final_settled THEN 'ALREADY_IN_NORMAL_SETTLEMENT'
      WHEN receipt_at IS NULL THEN 'PICKUP_RECEIPT_NOT_VERIFIED'
      WHEN (now() AT TIME ZONE 'Asia/Yangon')::date <= (receipt_at AT TIME ZONE 'Asia/Yangon')::date THEN 'NEXT_DAY_NOT_REACHED'
      WHEN NOT (provider_code=ANY(coalesce(allowed_providers,ARRAY[]::text[]))) THEN 'PROVIDER_NOT_AUTHORIZED'
@@ -267,7 +274,11 @@ BEGIN
       OR EXISTS (SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
         WHERE d.parcel_id=i.parcel_id AND d.status NOT IN ('RESOLVED','REJECTED','CLOSED'))
       OR EXISTS (SELECT 1 FROM public.be_finance_settlement_batch_items_v3 z
-        WHERE z.parcel_id=i.parcel_id AND z.active)
+        JOIN public.be_finance_settlement_batches_v3 sb ON sb.id=z.batch_id
+        WHERE z.parcel_id=i.parcel_id
+          AND (z.active OR sb.status IN ('PAID','PARTIALLY_PAID','PAYMENT_PROCESSING')
+            OR sb.payment_status IN ('PAID','PARTIALLY_PAID','PROCESSING')))
+      OR q.financial_settled_at IS NOT NULL OR q.settlement_state='SETTLED'
    )
  ) THEN RAISE EXCEPTION 'Parcel eligibility, hold, delivery, or normal settlement state changed before advance payout'; END IF;
  UPDATE public.be_finance_advance_batches_v1 SET status='DISBURSED',payment_by=auth.uid(),paid_at=now(),
