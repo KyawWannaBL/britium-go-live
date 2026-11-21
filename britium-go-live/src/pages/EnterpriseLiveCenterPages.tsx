@@ -6,6 +6,7 @@ import FinanceCollectionTotals from '@/components/finance/FinanceCollectionTotal
 import FieldSettlementAmounts from '@/components/finance/FieldSettlementAmounts';
 import CodQueueFilters from '@/components/finance/CodQueueFilters';
 import {filterCodRows,codDuration} from '@/lib/financeCodFilters';
+import {exportFinanceExcel,printFinancePdf,type FinanceReport} from '@/lib/financeReportExports';
 import {Link} from 'react-router-dom';
 import {useAuth} from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
@@ -46,6 +47,66 @@ function dateText(v: any) {
   if (!v) return "-";
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? String(v) : d.toLocaleString();
+}
+
+function codQueueExportReport(rows:any[],filters:any,title="Way-Level COD Settlement Queue"):FinanceReport {
+ const numberOrUnknown=(value:any)=>value===null||value===undefined||value===""?"Not recorded":Number(value);
+ return {
+  title,fileStem:"Britium_Way_Level_COD_Settlement",
+  generatedAt:new Date(),
+  filters:{
+   "Service date from":filters?.from||"All",
+   "Service date to":filters?.to||"All",
+   "Settlement status":filters?.status||"All",
+   "Payment type":filters?.payment||"All",
+   "Rider / Driver / Helper":filters?.worker||"All",
+   "Van":filters?.van||"All",
+   "Merchant":filters?.merchant||"All",
+   "Duration":filters?.duration||"All",
+   "Search":filters?.query||"All",
+  },
+  note:"Read-only filtered report of currently loaded, authorized ways; not necessarily the entire Finance ledger. Expected collection is amount due, not proof of receipt. 'Not recorded' requires Finance evidence reconciliation. Exporting does not approve or settle any way.",
+  columns:[
+   {key:"duration",label:"Settlement duration"},
+   {key:"status",label:"Settlement status"},
+   {key:"way",label:"Waybill"},
+   {key:"review",label:"Finance review"},
+   {key:"payment",label:"Payment type"},
+   {key:"rider",label:"Rider"},
+   {key:"driver",label:"Driver"},
+   {key:"helper",label:"Helper"},
+   {key:"van",label:"Van"},
+   {key:"merchant",label:"Merchant"},
+   {key:"recipient",label:"Recipient"},
+   {key:"service_date",label:"Service date"},
+   {key:"original",label:"Original amount (MMK)",kind:"number"},
+   {key:"adjustment",label:"Adjustment (MMK)",kind:"number"},
+   {key:"revised",label:"Revised expected (MMK)",kind:"number"},
+   {key:"recorded",label:"Recorded collection (MMK)",kind:"number"},
+   {key:"fee",label:"Delivery fee (MMK)",kind:"number"},
+   {key:"reference",label:"Settlement reference"},
+   {key:"settled_at",label:"Settled at"}
+  ],
+  rows:rows.map(r=>({
+   duration:codDuration(r),status:r.settlement_status||"Unknown",way:r.delivery_way_id||"",
+   review:r.finance_review_status||r.metadata?.finance_review_status||r.metadata?.collection_review_state||"See Finance workflow",
+   payment:paymentAllocationLabel(r),
+   rider:[r.rider_name,r.rider_code].filter(Boolean).join(" / ")||"—",
+   driver:[r.driver_name||r.metadata?.driver_name,r.driver_code||r.metadata?.driver_code].filter(Boolean).join(" / ")||"—",
+   helper:[r.helper_name||r.metadata?.helper_name,r.helper_code||r.metadata?.helper_code].filter(Boolean).join(" / ")||"—",
+   van:[r.vehicle_name||r.metadata?.vehicle_name,r.vehicle_plate||r.metadata?.vehicle_plate,r.vehicle_code].filter(Boolean).join(" / ")||"—",
+   merchant:r.merchant_name||r.merchant_code||r.merchant_id||String(r.delivery_way_id||"").split("-")[1]||"—",
+   recipient:r.recipient_name||"—",
+   service_date:r.metadata?.source_business_date||dateText(r.delivered_at),
+   original:numberOrUnknown(r.metadata?.original_expected_collection??r.cod_expected),
+   adjustment:Number(r.metadata?.collection_adjustment_mmk||0),
+   revised:numberOrUnknown(r.cod_expected),
+   recorded:numberOrUnknown(r.cod_collected),
+   fee:numberOrUnknown(r.delivery_fee),
+   reference:r.settlement_reference||"—",
+   settled_at:r.settled_at?dateText(r.settled_at):"—"
+  }))
+ };
 }
 
 function input() {
@@ -400,6 +461,11 @@ export function FinancePortalLivePage() {
 
   const [codFilters,setCodFilters]=useState({});
   const filteredCod=useMemo(()=>filterCodRows(state.rows,codFilters),[state.rows,codFilters]);
+  const [reportError,setReportError]=useState("");
+  const report=useMemo(()=>codQueueExportReport(filteredCod,codFilters),[filteredCod,codFilters]);
+  async function downloadCodExcel(){try{setReportError("");await exportFinanceExcel(report);}catch(e:any){setReportError(e?.message||"Excel export unavailable.");}}
+  function printCodPdf(){try{setReportError("");printFinancePdf(report);}catch(e:any){setReportError(e?.message||"PDF preview unavailable.");}}
+
   const [settlements,setSettlements] = useState<any[]>([]);
   const [settlementDate,setSettlementDate] = useState(() => new Date(Date.now()+23400000).toISOString().slice(0,10));
   const [settlementBusy,setSettlementBusy] = useState("");
@@ -554,7 +620,15 @@ export function FinancePortalLivePage() {
         </Card>
 
         <Card>
-          <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
+          <div data-cod-report-actions="true" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+           <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
+           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+             <button type="button" disabled={!filteredCod.length||state.loading} onClick={()=>void downloadCodExcel()} style={{padding:"10px 14px",border:0,borderRadius:9,background:"#f6b84b",color:"#071729",fontWeight:900,opacity:!filteredCod.length?0.5:1}}>Export filtered Excel (.xlsx)</button>
+             <button type="button" disabled={!filteredCod.length||state.loading} onClick={printCodPdf} style={{padding:"10px 14px",border:0,borderRadius:9,background:"#38bdf8",color:"#071729",fontWeight:900,opacity:!filteredCod.length?0.5:1}}>PDF / Print report</button>
+           </div>
+          </div>
+          {reportError&&<p role="alert" style={{color:"#fb7185",fontSize:12}}>{reportError}</p>}
+          <p style={{color:C.sub,fontSize:12}}>Exports include {filteredCod.length} filtered ways currently loaded on this page. PDF opens a printable document; choose Save as PDF.</p>
           <CodQueueFilters value={codFilters} onChange={setCodFilters} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filteredCod.length} total={state.rows.length}/>
           <p style={{ color: C.sub }}>Expected collection is the amount due. Historical rows marked “Not recorded” require collection reconciliation before Finance can settle them.</p>
           <LiveTable
@@ -602,6 +676,11 @@ export function CodSettlementLivePage() {
 
   const [codFilters,setCodFilters]=useState({});
   const filtered=useMemo(()=>filterCodRows(state.rows,{...codFilters,query:state.query}),[state.rows,codFilters,state.query]);
+  const [reportError,setReportError]=useState("");
+  const report=useMemo(()=>codQueueExportReport(filtered,{...codFilters,query:state.query},"COD Settlement Center — Way-Level Report"),[filtered,codFilters,state.query]);
+  async function downloadCodExcel(){try{setReportError("");await exportFinanceExcel(report);}catch(e:any){setReportError(e?.message||"Excel export unavailable.");}}
+  function printCodPdf(){try{setReportError("");printFinancePdf(report);}catch(e:any){setReportError(e?.message||"PDF preview unavailable.");}}
+
 
   const s = state.data?.summary || {};
 
@@ -625,7 +704,14 @@ export function CodSettlementLivePage() {
           { label: "Delivered COD", value: s.delivered_cod_count || 0, color: C.gold },
         ]} />
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
-        <Card><CodQueueFilters value={{...codFilters,query:state.query}} onChange={next=>{setCodFilters(next);state.setQuery(next.query||"");}} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filtered.length} total={state.rows.length}/><Link to="/rider-settlement" style={{color:C.gold}}>Open Financial Settlement signatures</Link></Card>
+        <Card>
+          <div data-cod-report-actions="true" style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+            <button type="button" disabled={!filtered.length||state.loading} onClick={()=>void downloadCodExcel()} style={{padding:"10px 14px",borderRadius:9,background:"#f6b84b",color:"#061524",fontWeight:900}}>Export filtered Excel (.xlsx)</button>
+            <button type="button" disabled={!filtered.length||state.loading} onClick={printCodPdf} style={{padding:"10px 14px",borderRadius:9,background:"#38bdf8",color:"#061524",fontWeight:900}}>PDF / Print report</button>
+            <span style={{fontSize:12,color:C.sub}}>{filtered.length} loaded filtered ways</span>
+          </div>
+          {reportError&&<p role="alert" style={{color:C.red}}>{reportError}</p>}
+          <CodQueueFilters value={{...codFilters,query:state.query}} onChange={next=>{setCodFilters(next);state.setQuery(next.query||"");}} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filtered.length} total={state.rows.length}/><Link to="/rider-settlement" style={{color:C.gold}}>Open Financial Settlement signatures</Link></Card>
         <Card>
           <LiveTable
             rows={filtered}
