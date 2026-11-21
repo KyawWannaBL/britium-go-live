@@ -44,6 +44,8 @@ BEGIN
       q.merchant_final_settlement_amount AS current_final_entitlement,
       q.financial_settled_at,
       coalesce(c.financial_hold,false) AS held,
+      EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+        WHERE r.advance_item_id=v.advance_item_id) AS rto_case_exists,
       EXISTS (
         SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
         WHERE d.parcel_id=v.parcel_id
@@ -92,6 +94,7 @@ BEGIN
         WHEN current_final_entitlement IS DISTINCT FROM final_entitlement_snapshot
           THEN 'MERCHANT_PAYABLE_CHANGED'
         WHEN financial_settled_at IS NOT NULL THEN 'ALREADY_FINAL_SETTLED'
+        WHEN rto_case_exists THEN 'RTO_REFUND_OR_RECOVERY_REQUIRES_MANUAL_REVIEW'
         WHEN held OR disputed OR standard_settlement_present THEN 'HOLD_DISPUTE_OR_STANDARD_SETTLEMENT'
         WHEN posted_accrual_events<>1 THEN 'POSTED_WAY_LEVEL_PAYABLE_ACCRUAL_REQUIRED'
         WHEN posted_payable_credit<>greatest(final_entitlement_snapshot,0)
