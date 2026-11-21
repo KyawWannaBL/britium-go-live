@@ -3626,6 +3626,17 @@ export default function DataEntryFinancialV2Page() {
           </div>
         </header>
 
+        <section data-registration-export-inline-timeline="true" aria-label="Data Entry Excel download date range" className="rounded-xl border border-cyan-300/30 bg-[#071b2b] px-3 py-3 text-slate-100">
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[150px] flex-1"><label htmlFor="registration-export-from" className="mb-1 block text-[10px] font-bold text-cyan-200">Excel from · saved time</label><input id="registration-export-from" aria-label="Excel export from date and time" type="datetime-local" value={downloadFrom} onChange={e=>setDownloadFrom(e.target.value)} className="w-full rounded-lg border border-[#31506a] bg-white px-2 py-2 text-xs text-slate-950"/></div>
+            <div className="min-w-[150px] flex-1"><label htmlFor="registration-export-to" className="mb-1 block text-[10px] font-bold text-cyan-200">Excel to · saved time</label><input id="registration-export-to" aria-label="Excel export to date and time" type="datetime-local" min={downloadFrom||undefined} value={downloadTo} onChange={e=>setDownloadTo(e.target.value)} className="w-full rounded-lg border border-[#31506a] bg-white px-2 py-2 text-xs text-slate-950"/></div>
+            <div className="flex flex-wrap gap-1.5">{[["TODAY","Today"],["THIS_WEEK","This week"],["THIS_MONTH","This month"],["ALL","All time"]] .map(([range,label])=><button key={range} type="button" onClick={()=>applyDownloadRange(range)} className="rounded-lg border border-cyan-500/40 bg-[#12314a] px-2.5 py-2 text-[10px] font-bold text-cyan-100">{label}</button>)}</div>
+            <button type="button" data-registration-export-inline-download="true" disabled={downloadBusy||Boolean(downloadFrom&&downloadTo&&new Date(downloadFrom)>new Date(downloadTo))} onClick={()=>void downloadDataEntryRegistration()} className="rounded-lg bg-cyan-400 px-3 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-40">{downloadBusy?"PREPARING EXCEL...":"DOWNLOAD FILTERED EXCEL"}</button>
+          </div>
+          <p className="mt-1 text-[10px] text-slate-400">Filters apply to registration saved time. Scope: {downloadScope==="ALL"?"All accessible registrations":"Current pickup only"}. Change scope or include hours/minutes under Download Registration Excel.</p>
+          {downloadMessage?<p role="status" className="mt-2 text-xs text-cyan-200">{downloadMessage}</p>:null}
+        </section>
+
         {message?<div className="rounded-xl border border-[#ff6b6b]/35 bg-[#3a1e28] p-3 text-[12px] text-[#ff9aa2]"><AlertTriangle size={15} className="mr-2 inline"/>{message}</div>:null}
 
         {waybillMessage?
