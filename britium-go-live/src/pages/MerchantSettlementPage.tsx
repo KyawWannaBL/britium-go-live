@@ -17,6 +17,9 @@ const RTO_EXPLANATIONS = {
  pending:"RTO initiated or pending; warehouse receipt or return completion is not yet verified."
 } as const;
 function rtoStage(row:Row):"warehouse"|"return"|"pending"|null {
+ if(row.finance_rto_stage==="RTO_WAREHOUSE")return "warehouse";
+ if(row.finance_rto_stage==="RTO_RETURN")return "return";
+ if(row.finance_rto_stage==="RTO_PENDING")return "pending";
  const status=String(row.status||"").trim().toUpperCase().replace(/[\\s-]+/g,"_");
  const returnStates=new Set(["RTO_RETURNED_TO_ORIGIN","RTO_RETURN_COMPLETED","RTO_RETURNED_TO_SENDER","RETURNED_TO_ORIGIN","RETURNED_TO_SENDER","RETURN_TO_ORIGIN_COMPLETED","RTO_DELIVERED_BACK"]);
  const warehouseStates=new Set(["RTO_RETURNED_TO_HUB","RTO_AT_WAREHOUSE","RTO_WAREHOUSE","RETURNED_TO_WAREHOUSE","RTO_WAREHOUSE_RECEIVED","RTO_RECEIVED_AT_HUB"]);
@@ -42,6 +45,8 @@ type SettlementTab = typeof settlementTabs[number]["key"];
 
 export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
+ const [rtoEvidence,setRtoEvidence]=useState<Record<string,Row>>({});
+ const [rtoEvidenceWarning,setRtoEvidenceWarning]=useState("");
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
  const [queueStatus,setQueueStatus]=useState("ALL");
@@ -81,7 +86,22 @@ export default function MerchantSettlementPage(){
  async function rpc(name:string,args:Row){ const r=await (supabase as any).rpc(name,args); if(r.error||r.data?.ok===false) throw new Error(r.error?.message||r.data?.error||r.data?.code||"Request failed"); return r.data; }
  async function load(){
    setLoading(true); setError("");
-   try { const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}); setData(next); }
+   try {
+    const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000});
+    setData(next);
+    try{
+      const evidence=await rpc("be_finance_rto_evidence_snapshot_v1",{p_merchant_id:null});
+      const mapped:Record<string,Row>={};
+      for(const entry of (Array.isArray(evidence?.rows)?evidence.rows:[])){
+        const key=String(entry.delivery_way_id||"").trim().toUpperCase();
+        if(key)mapped[key]=entry;
+      }
+      setRtoEvidence(mapped);setRtoEvidenceWarning("");
+    }catch(e:any){
+      setRtoEvidence({});
+      setRtoEvidenceWarning("Warehouse RTO evidence unavailable: "+(e.message||"Lookup failed")+". Generic RTO items remain pending; no warehouse/return completion is inferred.");
+    }
+   }
    catch(e:any){setError(e.message);} finally{setLoading(false);}
  }
  async function loadRequests(){try{const x=await rpc("be_finance_post_payment_adjustments_list_v1",{});setRequests(Array.isArray(x)?x:[]);}catch(e:any){setError(e.message);}}
@@ -117,10 +137,10 @@ export default function MerchantSettlementPage(){
  const walletReady=!merchant ? !loading&&!error : scopedWallet.merchant===merchant&&!scopedWallet.loading&&!scopedWallet.error&&scopedWallet.wallet!==null;
  const walletValues=merchant?scopedWallet.wallet:data.wallet;
  const walletMoney=(v:unknown)=>walletReady?money(v):"—";
- const rows=useMemo(()=>(data.rows||[]).filter((r:Row)=>{
+ const rows=useMemo(()=>(data.rows||[]).map((r:Row)=>({...r,...(rtoEvidence[String(r.delivery_way_id||"").trim().toUpperCase()]||{})})).filter((r:Row)=>{
    const day=String(r.created_at||"").slice(0,10);
    return (!merchant||r.merchant_id===merchant)&&(!from||day>=from)&&(!to||day<=to)&&(!search||JSON.stringify(r).toLowerCase().includes(search.toLowerCase()));
- }),[data.rows,search,merchant,from,to]);
+ }),[data.rows,rtoEvidence,search,merchant,from,to]);
  const merchants=useMemo(()=>Array.from(new Set<string>((data.rows||[]).map((r:Row)=>String(r.merchant_id)).filter(Boolean))).sort(),[data.rows]);
  const batches=(data.batches||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
  const payments=(data.payments||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
@@ -366,6 +386,7 @@ export default function MerchantSettlementPage(){
   <label className="text-xs text-slate-300">Additional details<input aria-label="Search RTO notes" className={filterField+" mt-1 h-11 w-full text-sm"} placeholder="Search any available data" value={rtoSearch} onChange={e=>setRtoSearch(e.target.value)}/></label>
   <div className="flex items-end"><button className={button+" h-11 w-full"} onClick={()=>{setSearch("");setFrom("");setTo("");setCollectionFilter("");setDeliveryFilter("");setPaymentFilter("");setRtoSearch("");setQueueStatus("ALL");}}>Clear filters</button></div>
  </div>
+ {rtoEvidenceWarning&&<p role="alert" className="mt-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">{rtoEvidenceWarning}</p>}
  <p className="mt-3 text-xs text-slate-400">Showing {queueRows.length} of {rows.length} parcels. Scroll horizontally or vertically inside the table; no rows are silently omitted by the display.</p>
  <div className="mt-3 max-h-[540px] overflow-auto rounded-xl border border-slate-700" aria-label="Scrollable merchant parcel settlement table" style={{scrollbarWidth:"auto",scrollbarColor:"#fbbf24 #111827"}}>
   <table className="w-full min-w-[1520px] text-left text-xs">
@@ -381,7 +402,7 @@ export default function MerchantSettlementPage(){
      <td className="whitespace-nowrap p-3 text-right">{money(r.cod_received)}</td>
      <td className="whitespace-nowrap p-3 text-right text-sky-300">{money(r.net_system_delivery_charge)}</td>
      <td className={"whitespace-nowrap p-3 text-right font-bold "+(Number(r.merchant_final_settlement_amount)<0?"text-rose-300":"text-emerald-300")}>{money(r.merchant_final_settlement_amount)}</td>
-     <td className="min-w-64 p-3">{stage?<><strong className="text-rose-300">{rtoName(stage)}</strong><p className="mt-1 text-slate-300">{RTO_EXPLANATIONS[stage]}</p></>:<span className="text-slate-500">—</span>}</td>
+     <td className="min-w-64 p-3">{stage?<><strong className="text-rose-300">{rtoName(stage)}</strong><p className="mt-1 text-slate-300">{RTO_EXPLANATIONS[stage]}</p>{r.warehouse_return_scanned_at&&<p className="mt-1 text-xs text-rose-200">Warehouse scan: {new Date(r.warehouse_return_scanned_at).toLocaleString("en-GB",{timeZone:"Asia/Yangon"})} · {r.warehouse_code||"warehouse"} · {r.reason_name||r.reason_code||""}</p>}</>:<span className="text-slate-500">—</span>}</td>
      <td className="p-3">{r.settlement_state||"—"}{r.validation_status!=="OK"&&<p className="text-rose-300">{r.validation_message||"Validation required"}</p>}</td>
     </tr>;})}</tbody>
   </table>
