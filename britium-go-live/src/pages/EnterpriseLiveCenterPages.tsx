@@ -157,6 +157,9 @@ function Card({ children, style }: any) {
         borderRadius: 20,
         padding: 16,
         boxShadow: "0 12px 34px rgba(0,0,0,0.18)",
+        minWidth: 0,
+        maxWidth: "100%",
+        boxSizing: "border-box",
         ...style,
       }}
     >
@@ -253,7 +256,7 @@ function SearchBar({ query, setQuery, placeholder }: any) {
 
 function LiveTable({ rows, activeRow, setActiveRow, columns, emptyText }: any) {
   return (
-    <div style={{ overflowX: "auto", border: `1px solid ${C.border}`, borderRadius: 14 }}>
+    <div data-finance-table-scroll="true" tabIndex={0} aria-label="Scrollable finance table" style={{ width:"100%",maxWidth:"100%", overflowX: "auto", overflowY:"auto",maxHeight:"65vh",scrollbarWidth:"thin",border: `1px solid ${C.border}`, borderRadius: 14 }}>
       <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 1200 }}>
         <thead>
           <tr style={{ background: C.gold, color: C.bg, textTransform: "uppercase", fontSize: 11 }}>
@@ -620,9 +623,9 @@ export function FinancePortalLivePage() {
         </Card>
 
         <Card>
-          <div data-cod-report-actions="true" style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+          <div data-cod-report-actions="true" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",width:"100%",maxWidth:"100%",minWidth:0,gap:10,marginBottom:12}}>
            <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
-           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+           <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",width:"100%",maxWidth:"100%"}}>
              <button type="button" disabled={!filteredCod.length||state.loading} onClick={()=>void downloadCodExcel()} style={{padding:"10px 14px",border:0,borderRadius:9,background:"#f6b84b",color:"#071729",fontWeight:900,opacity:!filteredCod.length?0.5:1}}>Export filtered Excel (.xlsx)</button>
              <button type="button" disabled={!filteredCod.length||state.loading} onClick={printCodPdf} style={{padding:"10px 14px",border:0,borderRadius:9,background:"#38bdf8",color:"#071729",fontWeight:900,opacity:!filteredCod.length?0.5:1}}>PDF / Print report</button>
            </div>
@@ -705,7 +708,7 @@ export function CodSettlementLivePage() {
         ]} />
         <FinanceCollectionTotals refreshKey={collectionRefresh}/>
         <Card>
-          <div data-cod-report-actions="true" style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          <div data-cod-report-actions="true" style={{display:"flex",alignItems:"flex-start",gap:8,flexWrap:"wrap",marginBottom:12,maxWidth:"100%",minWidth:0}}>
             <button type="button" disabled={!filtered.length||state.loading} onClick={()=>void downloadCodExcel()} style={{padding:"10px 14px",borderRadius:9,background:"#f6b84b",color:"#061524",fontWeight:900}}>Export filtered Excel (.xlsx)</button>
             <button type="button" disabled={!filtered.length||state.loading} onClick={printCodPdf} style={{padding:"10px 14px",borderRadius:9,background:"#38bdf8",color:"#061524",fontWeight:900}}>PDF / Print report</button>
             <span style={{fontSize:12,color:C.sub}}>{filtered.length} loaded filtered ways</span>
