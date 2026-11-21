@@ -131,7 +131,7 @@ export default function WarehouseRtoReportPage(){
     frame.setAttribute("title","Britium RTO printable report");
     frame.setAttribute("aria-hidden","true");
     frame.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
-    const css=String.raw\`@page{size:A4 portrait;margin:12mm}
+    const css=String.raw`@page{size:A4 portrait;margin:12mm}
       *,*::before,*::after{box-sizing:border-box}
       html,body{width:100%;height:auto;overflow:visible;margin:0;padding:0;background:#fff;color:#111827;
         font:10pt Arial,"Noto Sans Myanmar",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
@@ -152,7 +152,7 @@ export default function WarehouseRtoReportPage(){
       tr{break-inside:avoid;page-break-inside:avoid}
       @media screen{body{padding:12mm;max-width:210mm;margin:auto}}
       @media print{body{padding:0!important;margin:0!important} .rto-print-card{box-shadow:none}}
-    \`;
+    `;
     const documentHtml='<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Britium Express RTO Report</title><style>'+css+'</style></head><body>'+report.outerHTML+'</body></html>';
     let cleaned=false;
     const cleanup=()=>{if(cleaned)return;cleaned=true;frame.remove();};
