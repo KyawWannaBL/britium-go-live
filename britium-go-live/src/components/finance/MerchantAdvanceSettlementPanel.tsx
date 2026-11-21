@@ -14,6 +14,8 @@ const providerOptions = ["BRITIUM","ROYAL EXPRESS","DK DELIVERY","MDY BRANCH","N
 export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{role:string;merchantOptions:string[]}){
  const [merchant,setMerchant] = useState("");
  const [data,setData] = useState<Entry>({rows:[],batches:[],recoveries:[],items:[],policies:[]});
+ const [finalReconciliation,setFinalReconciliation]=useState<Entry>({rows:[],kpis:{}});
+ const [finalUnavailable,setFinalUnavailable]=useState("");
  const [selected,setSelected] = useState<string[]>([]);
  const [draftNote,setDraftNote] = useState("");
  const [decisionNote,setDecisionNote] = useState("");
@@ -39,6 +41,8 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
    const response=await call("be_finance_advance_preview_v1",{p_merchant_id:merchant||null,p_limit:3000});
    setData(response||{});
    setAvailable(true);
+   try{const final=await call("be_finance_advance_final_reconciliation_preview_v1",{p_merchant_id:merchant||null,p_limit:3000});setFinalReconciliation(final||{rows:[],kpis:{}});setFinalUnavailable("");}
+   catch(e:any){setFinalReconciliation({rows:[],kpis:{}});setFinalUnavailable(e.message||"Final reconciliation preview not installed");}
    const existing=response.policies?.find((p:Entry)=>p.merchant_id===merchant);
    if(existing)setPolicy({
      rate:String(existing.rate_pct),deduction:String(existing.flat_deduction),
@@ -137,7 +141,7 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
     <td className="p-2"><input type="checkbox" aria-label={"Advance "+r.delivery_way_id} disabled={!available||busy||!financeCreators.includes(roleKey)||r.advance_gate!=="ELIGIBLE_FOR_ADVANCE_REVIEW"||Boolean(selected.length&&chosen[0]?.merchant_id!==r.merchant_id)} checked={selected.includes(r.parcel_id)}
      onChange={e=>setSelected(old=>e.target.checked?[...old,r.parcel_id]:old.filter(x=>x!==r.parcel_id))}/></td>
     <td className="p-2 font-semibold">{r.delivery_way_id}<div className="text-slate-400">{r.merchant_id}</div></td><td className="p-2">{r.provider_code}</td>
-    <td className="p-2">{r.receipt_at?new Date(r.receipt_at).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}):"Unverified"}</td>
+    <td className="p-2">{r.receipt_at?new Date(r.receipt_at).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}):"Unverified"}<div className="text-slate-400">{r.pickup_proof_source||""}</div></td>
     <td className="p-2">{r.delivery_state}</td><td className="p-2">{money(r.item_price)}</td>
     <td className="p-2 text-emerald-300">{money(r.proposed_advance)}</td><td className="p-2">{r.advance_gate}</td>
    </tr>)}</tbody></table>
@@ -180,6 +184,25 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
     </div>
    </div>)}</div>
    {!batches.length&&<p className="mt-2 text-sm text-slate-400">No advance batches yet.</p>}
+  </div>
+  <div className="mt-4 rounded-lg border border-sky-700/60 p-3">
+   <h3 className="font-bold text-sky-300">Final delivery/COD reconciliation · Advance offset (review only)</h3>
+   <p className="mt-1 text-xs text-slate-400">Delivery outcome remains separate from advance payment. This preview subtracts the confirmed advance from the normal final merchant entitlement, or shows RTO refund risk. It does not post to COD, merchant wallet or bank.</p>
+   {finalUnavailable&&<p role="status" className="mt-2 text-sm text-amber-300">Reconciliation preview not installed: {finalUnavailable}</p>}
+   <div className="mt-2 grid gap-2 sm:grid-cols-3">
+     <div className="rounded-lg bg-slate-950 p-3"><p className="text-xs text-slate-400">Advance already disbursed</p><b>{money(finalReconciliation.kpis?.total_advance_disbursed)}</b></div>
+     <div className="rounded-lg bg-slate-950 p-3"><p className="text-xs text-slate-400">Remaining delivered payable (review)</p><b>{money(finalReconciliation.kpis?.delivered_net_due_to_merchant)}</b></div>
+     <div className="rounded-lg bg-slate-950 p-3"><p className="text-xs text-slate-400">RTO advance at risk</p><b className="text-rose-300">{money(finalReconciliation.kpis?.rto_advance_at_risk)}</b></div>
+   </div>
+   <div className="mt-3 max-h-60 overflow-auto"><table className="w-full min-w-[900px] text-left text-xs"><thead className="bg-slate-800"><tr>{["Way ID","Merchant","Delivery state","Final merchant entitlement","Advance paid","Final +/-","Reconciliation status"].map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead><tbody>
+    {(finalReconciliation.rows||[]).map((r:Entry)=><tr key={r.advance_item_id} className="border-t border-slate-700">
+     <td className="p-2">{r.delivery_way_id}</td><td className="p-2">{r.merchant_id}</td><td className="p-2">{r.delivery_status}</td>
+     <td className="p-2">{r.normal_final_entitlement==null?"—":money(r.normal_final_entitlement)}</td>
+     <td className="p-2">{money(r.advance_amount)}</td><td className="p-2">{r.net_final_delta==null?"Pending":money(r.net_final_delta)}</td><td className="p-2">{r.reconciliation_state}</td>
+    </tr>)}
+   </tbody></table></div>
+   {!(finalReconciliation.rows||[]).length&&!finalUnavailable&&<p className="mt-2 text-sm text-slate-400">No advanced items with confirmed disbursements yet.</p>}
+   <p className="mt-2 text-xs font-semibold text-amber-200">Posting is intentionally blocked until approved final ledger-offset and UAT accounting tests are completed.</p>
   </div>
   <div className="mt-4 rounded-lg border border-rose-700/50 p-3">
    <h3 className="font-bold text-rose-300">Post-payment RTO · Refund / Recovery</h3>
