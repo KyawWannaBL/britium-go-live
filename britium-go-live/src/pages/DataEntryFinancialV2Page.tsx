@@ -763,8 +763,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
       </div>
 
       <fieldset disabled={row.waybillPublished || busy || row.skipped || row.checking} className="min-w-0">
-        <div className="space-y-4 p-4">
-          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
+        <div className="flex flex-col gap-3 p-3">
+          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"":"order-last"} ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -1097,7 +1097,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </div>}
 
-          <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
+          <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"":"order-last"} ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Location & Address History · {locationReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -1128,7 +1128,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </details>
 
-          {!fullMode?<details className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+          {!fullMode?<details className="order-last rounded-xl border border-[#31506a] bg-[#071b2b]">
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Backend Settlement Details · {text(c.validation_status)||"NOT CALCULATED"}
             </summary>
