@@ -1,7 +1,7 @@
 const assert=require("node:assert/strict");
 const fs=require("node:fs");
 const ts=require("typescript");
-function source(file){const s=fs.readFileSync(file,"utf8");const compiled=ts.transpileModule(s,{fileName:file,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}});const errors=(compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error);assert.equal(errors.length,0,file+" must be parsable TSX");return s;}
+function source(file){const s=fs.readFileSync(file,"utf8");const compiled=ts.transpileModule(s,{fileName:file,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}});const errors=(compiled.diagnostics||[]).filter(d=>d.category===ts.DiagnosticCategory.Error);assert.equal(errors.length,0,file+" must be parsable TSX: "+errors.map(d=>{const loc=d.file?.getLineAndCharacterOfPosition(d.start||0);return ts.flattenDiagnosticMessageText(d.messageText," ")+" at "+(loc?loc.line+1:0)+":"+(loc?loc.character+1:0);}).join("; "));return s;}
 const ui=source("src/pages/EnterpriseLiveCenterPages.tsx");
 const totals=source("src/components/finance/FinanceCollectionTotals.tsx");
 const exporterSource=source("src/lib/financeReportExports.ts");
