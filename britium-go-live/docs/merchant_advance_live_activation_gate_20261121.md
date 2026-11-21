@@ -36,6 +36,16 @@ Production UI is preview-only. PR #328 is draft. Production advance tables and R
 - Candidate RPC compiled with all preceding SQL candidates inside `BEGIN/ROLLBACK`; no production object persisted. End-to-end UAT and signed merchant policy still missing.
 - Finance feature preview displays a per-way `posting_gate` reason for transparent back-office reconciliation.
 
+## Final offset journal staging candidate (21 Nov 2026)
+
+- Added `sql/candidates/merchant_advance_offset_accounting_event_v1_UAT_ONLY.sql` to the single-transaction UAT installer `10_merchant_advance_install_UAT_only.sql` (six modules total).
+- Requires an independently approved final offset, disbursed advance, **POSTED** advance asset journal, and exactly one **POSTED** way-level merchant payable accrual matching the final entitled amount. Denies any parcel having an RTO refund/recovery case, financial hold, dispute, changed delivery state, or other normal settlement.
+- Stages only a **REVIEW_PENDING** accounting event with exactly two proposed accounting lines: **Dr 212002 Merchant Settlement Payable** / **Cr 114004 Merchant Advances**, both for the approved offset amount.
+- Every transition of this special event to `POSTED` is revalidated by a database trigger. Accounting event creator, accounting reviewer, and posting operator must be three different authenticated people; standard one-step approve-and-post does not qualify for this type.
+- This journal stage does NOT pay out the remaining merchant entitlement, settle the COD, recognize any negative merchant receivable, close the advance, or modify Wallet balances. Separate end-to-end posting/statement integration is still required.
+- Reviewer UI displays a staging button only when posted-accrual readiness is satisfied and shows an accounting event reference instead of claiming payment.
+- Compiled the six-module installer inside `BEGIN/ROLLBACK` on production; RLS/direct access and unauthenticated mutation negative tests passed. **No production schema change.**
+
 ## Rehearsal status
 - Syntax/dependency compile of all three candidate SQL files in a **single BEGIN/ROLLBACK transaction against production**: passed. No objects persisted.
 - This is NOT a payout functional test.
