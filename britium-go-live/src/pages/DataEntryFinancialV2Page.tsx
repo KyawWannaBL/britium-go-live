@@ -1450,6 +1450,21 @@ export default function DataEntryFinancialV2Page() {
   const [pickups,setPickups]=useState<Pickup[]>([]);
   const [selectedPickupId,setSelectedPickupId]=useState("");
   const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS"|"RECONCILIATION"|"DATA_TOOLS">("ENTRY");
+  const [dataEntryDrawer,setDataEntryDrawer]=useState<"BATCH"|"CONTRACT"|null>(null);
+  const [merchantDirectory,setMerchantDirectory]=useState<Record<string,string>>({});
+  useEffect(()=>{let current=true;(async()=>{
+    const result=await (supabase as any).from("be_merchant_master").select("merchant_code,merchant_name").limit(2000);
+    if(!current||result.error)return;
+    const names:Record<string,string>={};
+    for(const m of result.data||[]){const code=text(m.merchant_code).trim().toUpperCase();const name=text(m.merchant_name).trim();if(code&&name&&code!==name.toUpperCase())names[code]=name;}
+    setMerchantDirectory(names);
+  })().catch(()=>{});return()=>{current=false;};},[]);
+  const merchantDisplay=(code:unknown,name?:unknown)=>{
+    const id=text(code).trim();
+    const actual=text(name).trim();
+    const full=merchantDirectory[id.toUpperCase()]||(actual&&actual.toUpperCase()!==id.toUpperCase()?actual:"");
+    return full?(id&&id.toUpperCase()!==full.toUpperCase()?`${full} (${id})`:full):(actual||id||"Merchant");
+  };
   const [rows,setRows]=useState<ParcelRow[]>([]);
   const [rowsPickupId,setRowsPickupId]=useState("");
   const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
@@ -3542,7 +3557,7 @@ export default function DataEntryFinancialV2Page() {
                   >
                     <td className="px-3 py-2 font-black text-slate-500">{row.parcel_sequence}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-black text-sky-800">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
-                    <td className="max-w-[160px] truncate px-3 py-2">{row.sourceMerchantName||selectedPickup?.merchant_name||selectedPickup?.merchant_id||"—"}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2">{merchantDisplay(row.sourceMerchantName||selectedPickup?.merchant_id,row.sourceMerchantName||selectedPickup?.merchant_name)}</td>
                     <td className="max-w-[160px] truncate px-3 py-2 font-semibold">{row.recipient_name||"—"}</td>
                     <td className="whitespace-nowrap px-3 py-2">{row.recipient_phone||"—"}</td>
                     <td className="max-w-[150px] truncate px-3 py-2">{row.township||"—"}</td>
@@ -3693,7 +3708,7 @@ export default function DataEntryFinancialV2Page() {
            <div className="rounded-xl border border-slate-700 p-4"><p className="text-xs text-slate-400">Pending / draft rows</p><p className="mt-2 text-2xl font-black text-sky-300">{rows.filter(r=>!r.saved).length}</p></div>
           </div>
           <p className="mt-4 text-xs text-amber-200">Amounts above are sourced from saved Data Entry calculations and are not proof that COD cash was received by Finance.</p>
-          <div className="mt-4 max-h-[52vh] overflow-auto rounded-lg border border-slate-700"><table className="w-full min-w-[850px] text-left text-xs"><thead className="sticky top-0 bg-[#fbbf24] text-[#06101e]"><tr>{["Way ID","Merchant","Recipient","Calculated COD","State"].map(h=><th key={h} className="px-3 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-200 bg-white text-slate-900">{rows.map((r,i)=><tr key={r.pickup_id+":"+r.parcel_sequence} className="cursor-pointer hover:bg-amber-50" onClick={()=>{setPageIndex(i);setDataEntryTab("ENTRY");}}><td className="p-3 font-bold">{r.delivery_way_id||canonicalWayId(r.pickup_id,r.parcel_sequence)}</td><td className="p-3">{r.sourceMerchantName||selectedPickup?.merchant_name||selectedPickup?.merchant_id}</td><td className="p-3">{r.recipient_name}</td><td className="p-3 font-bold">{r.calculation?.cod_amount==null?"Not calculated":money(r.calculation.cod_amount)}</td><td className="p-3">{r.saved?"REGISTERED":r.skipped?"PENDING":"DRAFT"}</td></tr>)}</tbody></table></div>
+          <div className="mt-4 max-h-[52vh] overflow-auto rounded-lg border border-slate-700"><table className="w-full min-w-[850px] text-left text-xs"><thead className="sticky top-0 bg-[#fbbf24] text-[#06101e]"><tr>{["Way ID","Merchant","Recipient","Calculated COD","State"].map(h=><th key={h} className="px-3 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-200 bg-white text-slate-900">{rows.map((r,i)=><tr key={r.pickup_id+":"+r.parcel_sequence} className="cursor-pointer hover:bg-amber-50" onClick={()=>{setPageIndex(i);setDataEntryTab("ENTRY");}}><td className="p-3 font-bold">{r.delivery_way_id||canonicalWayId(r.pickup_id,r.parcel_sequence)}</td><td className="p-3">{merchantDisplay(r.sourceMerchantName||selectedPickup?.merchant_id,r.sourceMerchantName||selectedPickup?.merchant_name)}</td><td className="p-3">{r.recipient_name}</td><td className="p-3 font-bold">{r.calculation?.cod_amount==null?"Not calculated":money(r.calculation.cod_amount)}</td><td className="p-3">{r.saved?"REGISTERED":r.skipped?"PENDING":"DRAFT"}</td></tr>)}</tbody></table></div>
          </section>:null}
         {dataEntryTab==="DATA_TOOLS"?<section role="tabpanel" aria-label="Data Tools" className="min-h-[60vh] rounded-xl border border-[#1a3a5c] bg-[#0a192f] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black">System Data Tools & Audit Operations</h2><p className="mt-1 text-xs text-slate-400">All tools call the existing guarded workflows. Original tools remain accessible in Parcel Registration.</p></div><button className="rounded-lg bg-[#fbbf24] px-4 py-2 text-xs font-black text-[#06101e]" onClick={()=>setDataEntryTab("ENTRY")}>Back to Parcel Registration</button></div>
@@ -3715,7 +3730,7 @@ export default function DataEntryFinancialV2Page() {
                   const authorized=authorizedParcelCount(p);
                   const registered=positiveInt(p.registered_parcels);
                   const remaining=Math.max(authorized-registered,0);
-                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_name||p.merchant_id||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
+                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {merchantDisplay(p.merchant_id,p.merchant_name)} · {registered}/{authorized} registered · {remaining} remaining</option>;
                 })}
               </select>
             </div>
@@ -3759,7 +3774,7 @@ export default function DataEntryFinancialV2Page() {
           </div>:null}
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
-            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_name||selectedPickup.merchant_id||"—"}</b></div>
+            <div className={serverClass}>Merchant: <b>{merchantDisplay(selectedPickup.merchant_id,selectedPickup.merchant_name)}</b></div>
             <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
