@@ -19,6 +19,14 @@ Production UI is preview-only. PR #328 is draft. Production advance tables and R
 5. Independent creator, approver and payout recorder, and secure payment evidence. Missing policy defaults to ineligible. Genuine pickup approval / warehouse scan and next MMT day required.
 6. Existing paid or inactive normal settlements block new advances; BBB/BLK consolidated-merchant mappings are blocked.
 
+## Final offset review added (21 Nov)
+- Candidate `sql/candidates/merchant_advance_final_offset_review_v1_UAT_ONLY.sql` maintains one per-way review record after a verified Delivered+COD eligible parcel was already advanced and disbursed.
+- Stores delivered entitlement, advance asset paid, offset amount, remaining merchant payable, overadvance recovery, and separate negative merchant receivable. CHECK constraint conserves amounts.
+- Requires authenticated Finance creator and an independent Finance approver. Rechecks live delivery, validation, merchant identity, holds, disputes, normal batch and settlement status. No journal posting or cash movement.
+- `src/components/finance/MerchantAdvanceSettlementPanel.tsx` now displays the maker/checker offset review in the feature preview only.
+- Read-only five-case financial conservation checks passed on both production and incomplete UAT. Anonymous EXECUTE denial and RLS isolation passed during BEGIN/ROLLBACK compilation. These tests do not substitute for authenticated UAT.
+- **Accounting uncertainty:** production COD_COLLECTED events show both debits and credits against account 111004 in aggregate, and 212002 Merchant Payable has debit entries in observed settled events but payable accrual source was not established. Do not post Dr Payable/Cr Advance until an authorized Finance accountant confirms accrual and COD clearing mechanics, including existing event deduplication.
+
 ## Rehearsal status
 - Syntax/dependency compile of all three candidate SQL files in a **single BEGIN/ROLLBACK transaction against production**: passed. No objects persisted.
 - This is NOT a payout functional test.
@@ -29,7 +37,8 @@ Production UI is preview-only. PR #328 is draft. Production advance tables and R
 ## Release prerequisites (all mandatory)
 - [ ] Restore actual UAT dependencies from reviewed schema baseline without overwriting branch auth data.
 - [ ] Obtain signed per-merchant advance policy (merchant IDs, rates, per-way deductions, providers, effective dates, verified beneficiary).
-- [ ] Implement + independently audit final-delivery advance-to-payable offset and approved accounting journal posting, including wallet/report impact.
+- [x] Implement review-only final-delivery advance-to-payable offset proposal and independent reviewer controls (not posting).
+- [ ] Independently audit payable accrual, COD journal source, approved final offset posting, wallet/report impact and recovery of negative final balances.
 - [ ] Test maker/checker/payment officer segregation and RLS / direct RPC invocation; revoked users denied.
 - [ ] End-to-end test YGN/MDY/NPT/Royal/DK, cross-branch and pickup proof next-day logic.
 - [ ] Test idempotent transfers, reference collisions, parallel duplicate attempts, fraud controls, partial payout and all RTO/refund outcomes.
