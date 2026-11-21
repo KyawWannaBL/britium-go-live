@@ -23,7 +23,7 @@ const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).sta
 async function change(node,value) { await act(async()=>node.props.onChange({target:{value}})); }
 (async()=>{
  let tree=await render();
- assert.match(tree.root.findByType('main').props.className,/bg-\\\[#060913\\\]/,'navy settlement canvas preserved');
+ assert.ok(String(tree.root.findByType('main').props.className).includes('bg-[#060913]'),'navy settlement canvas preserved');
  for(const label of ['Search settlements','Merchant filter','From','To']){
   assert.match(tree.root.findByProps({'aria-label':label}).props.className,/bg-white/,'screenshot uses white '+label+' control');
  }
