@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 function text(v:any,fallback=""){ const s=String(v??"").trim(); return s||fallback; }
 function dt(v:any){ if(!v) return ""; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString("en-GB",{timeZone:"Asia/Yangon"}); }
-function csvCell(v:any){ return '"' + String(v??"").replace(/^[=+@-]/,"'function csvCell(v:any){ return '"' + String(v??"").replace(/"/g,'""') + '"'; }").replace(/"/g,'""') + '"'; }
+function csvCell(v:any){ return '"' + String(v??"").replace(/^[=+@-]/,"'$&").replace(/"/g,'""') + '"'; }
 
 export default function WarehouseRtoReportPage(){
   const {profile}=useAuth();
