@@ -1,61 +1,74 @@
-# Britium Express — Data Entry UAT recovery, 2026-11-21
+# Britium Express — Data Entry hosted UAT recovery status
+**As of 2026-11-21.** Target Supabase: `hgijdyfwmvskchsruknp` (hosted isolated UAT). Production: `dltavabvjwocknkyvwgz` (read-only inspections; no production mutation).
 
-## Scope
-Connected hosted UAT project: `hgijdyfwmvskchsruknp`.
-Production project `dltavabvjwocknkyvwgz` was queried read-only for source definitions and four tariff configuration values. Production was not modified.
-Historical customer/parcel import is **out of scope**; only synthetic QA records remain.
+## Functional scope and preservation
+- Historical customer, parcel and wayplan data have **not** been copied into UAT.
+- 18 Supabase Auth identities, 18 linked staff registry entries, 16 branch roster entries preserved.
+- Two synthetic, non-deliverable pickup requests: `P2026-ISN-901` and `P2026-MDY-901`, linked to 4 synthetic Data Entry parcel rows, 4 dispatch stops and 4 wayplan membership rows.
+- Two corresponding wayplan headers have supervisor review **DRAFT**, no dispatch scans, and zero COD; not approved for field delivery.
+- `be_data_entry_financial_v2_runtime_v58` remains `MUTATION_SHADOW`; transactional saves, finance mutation, waybill publication and settlement are **not activated**.
 
-## Database changes applied (both preceded by transaction/rollback rehearsals)
+## New changes applied and verified
 
-### V57 authorization + V2 form-schema metadata
-- Tables restored from production column/constraint catalog: `be_data_entry_access_grants_v57`, `be_data_entry_access_mode_v57`, `be_role_authority_matrix`, `be_data_entry_financial_v2_runtime_v58`.
-- UAT-only role authority matrix: 7 current UAT role types. Only `super_admin` has Data Entry and Waybill view/create/update/upload/export entries. Branch manager has *no* Data Entry permission (retains read-only Waybill matrix entry); warehouse, finance, and mobile roles cannot access the Data Entry form under this matrix.
-- Original production function bodies installed: `be_data_entry_actor_access_v57(text,boolean)`, `be_data_entry_require_access_v57(text,boolean)`, `be_data_entry_financial_v2_schema()`, `be_data_entry_financial_v2_runtime_state()`.
-- `actor_access` and `require_access` EXECUTE revoked from `PUBLIC`, `anon`, and `authenticated` (owner-internal calls only). Form schema and runtime-state RPC EXECUTE granted only to `authenticated`; anonymous execution denied.
-- `be_data_entry_access_mode_v57` is `MATRIX_SHADOW`. `be_data_entry_financial_v2_runtime_v58` remains **MUTATION_SHADOW**: transactional registration/waybill financial writes not activated.
-- Verified as real `authenticated` database role: Super Admin form schema returns `ok:true`; runtime `mutation_mode=MUTATION_SHADOW`; Insein branch manager form-schema permission denied with SQLSTATE 42501.
+### Canonical pickup data, supervisor queue and branch-safe list
+- Restored original **193-column** `be_portal_pickup_requests` structure (constraints/defaults, not the original write triggers), 32-column `be_app_notifications` schema and 153-column `be_v_supervisor_pickup_queue`.
+- Supervisor view is **`security_invoker=true`** to respect caller row-level security.
+- `be_data_entry_pickup_list_web_v16(integer)` and `be_data_entry_pickup_list_web_v16()` restored to the original 16-field response format but changed to **SECURITY INVOKER**, with scope enforced by live UAT `be_login_access_profile()` territory grants and pickup RLS. This is a deliberate UAT security adaptation, not a byte-for-byte production function.
+- Verified using real Postgres `authenticated` role: Insein branch manager reads 1 pickup (ISN only), Mandalay manager 1 (MDY only), Super Admin 2, rider 0. Anonymous EXECUTE denied.
+- `be_data_entry_pickup_safe_numeric_v16(text,numeric)` pinned to fixed `pg_catalog, public, pg_temp` search_path after security-advisor inspection.
+- Notification table remains unpopulated, with no user-facing notification RLS policy. **Notification delivery remains untested**.
+- The QA parcel rows and stops were linked to their canonical synthetic pickup IDs; cross-table per-pickup counts passed.
 
-### UAT-only, limited tariff/provider options
-- Tables created with RLS and authenticated SELECT: `be_data_entry_service_providers`, `be_data_entry_tariff_catalog`. RLS requires an authenticated user and active rows.
-- Original invoker functions restored: `be_data_entry_service_provider_options_v13()`, `be_data_entry_tariff_options()`. EXECUTE limited to `authenticated`, not `anon`.
-- Seeded **only three service providers**: Britium, DK Delivery, Mandalay Branch, and **only four published test tariff rows**. Source rates from read-only production tariff catalog:
-  - Insein / Britium: 4,000 MMK.
-  - Mandalay (Royal) / DK Delivery: 6,000 MMK.
-  - Chanayethazan / Mandalay Branch: 6,000 standard, 5,000 special MMK.
-  - Mandalay / Mandalay Branch: 6,000 standard, 5,000 special MMK.
-- Verified as real `authenticated`: 3 providers returned, 4 tariff rows returned, schema `ok:true`. This **is not the full live tariff catalog**.
+### Original calculation backend restored in UAT
+- Restored **25 original production-derived financial calculation functions**, forming the 27-function named pricing closure together with previously restored V57 authorization functions.
+- The top-level `be_data_entry_financial_v2_calculate(jsonb)` has an extra **UAT-only Data Entry `create` authorization gate**. `authenticated` is allowed EXECUTE; anonymous users are denied; nested functions have no public/client EXECUTE privileges.
+- Installed five configuration tables from source structure with **only synthetic/verified test configuration**: `be_merchant_master`, `be_merchant_financial_profiles_v2`, `be_parcel_tariffs_v2`, `be_tariff_location_alias_v61_7_1`, `be_township_identity_v61_7`.
+- Installed source-structured `public.parcels` (94 columns) **empty and closed to client roles**, because the legacy calculation checks monthly parcel volume. Its five FK dependencies (upload_batches, riders, enterprise_accounts, pickup_requests, delivery_zones) and production triggers are **deferred**, so this is not a production-equivalent writable parcel ledger.
+- Synthetic `UAT-QA` merchant profile: STANDARD tier; five source-verified subset tariff rows covering Insein and Mandalay, including Royal tier test lookup entries. No production merchant/customer/contact/settlement-account dataset copied.
+- Post-apply tests as actual `authenticated` Postgres role:
+  - Insein: 20,000 MMK item + 4,000 MMK tariff = **24,000 MMK COD**, `ok=true`.
+  - Mandalay: 20,000 MMK item + 6,000 MMK tariff = **26,000 MMK COD**, `ok=true`.
+  - Returned financial payload explicitly labels `environment=UAT`.
+  - Insein/Mandalay branch manager unauthorized for Data Entry calculation, SQLSTATE 42501.
+- The production merchant financial profile table did **not** return profiles for GSK/GRS in the limited query. Their special fee/commission cases remain **unverified**; no merchant-specific terms were invented.
 
-## Preserved UAT state
-- auth.users = 18; be_user_account_registry = 18; branch roster = 16.
-- 2 draft synthetic QA wayplan headers; 4 synthetic parcel rows; no real customer delivery requests or COD.
-- No historical dataset or production Auth users imported.
-
-## Remaining 3-screen static RPC-name gap
-| Screen | Previously found | Now found | Still missing |
+## Three-screen RPC inventory (presence by name only)
+| Screen | Required names | Present | Missing |
 |---|---:|---:|---:|
-| Data Entry Financial V2 (20) | 0 | 4 | 16 |
-| Wayplan Command Center (10) | 1 | 1 | 9 |
-| Dispatch Command Center (3) | 1 | 1 | 2 |
-| **Total** | **2 / 33** | **6 / 33** | **27** |
+| Data Entry Financial V2 | 20 | **6** | **14** |
+| Wayplan Command Center | 10 | 1 | 9 |
+| Dispatch Command Center | 3 | 1 | 2 |
+| **Total** | **33** | **8** | **25** |
 
-This is name-based only and is not a complete app-wide RPC signature or permission audit.
+The six Data Entry names present: form-schema, runtime-state, tariff-options, service-provider-options, pickup-list, financial-calculation. These are only the directly referenced static RPC names in three source pages; neither signatures nor end-to-end UI are fully certified by this count.
 
-## Real registration/waybill blockers
-- `be_data_entry_financial_v2_calculate(jsonb)` depends on a chained legacy business pricing implementation, including ~21 functions identified in the initial dependency closure, the merchant financial profiles, parcel tariff tables, lookup functions and business date handling. Do **not** replace it with a flat fixed-price stub.
-- `be_data_entry_financial_v2_save(jsonb)` needs the delivery-way ID allocator, alias reconciliation, pickup authorization, financial validation, location registry and waybill ledger, none fully restored.
-- `be_data_entry_financial_v2_save_batch_v22(jsonb)` and `be_data_entry_financial_v2_create_ready_waybill(jsonb)` also need pickup requests, audit events, V58 request tracking, access guards, publication checks and downstream ledger synchronization.
-- Production `be_data_entry_pickup_list_web_v16` uses a supervisor pickup queue view and `be_portal_pickup_requests` plus territory permission checks; no empty-response stub installed.
-- All real mutations, existing production financial logic, branch scoping and proof/warehouse requirements remain release gates.
+## Save/Publish dependency audit — still blocked
+An initial recursive read-only production query over `be_data_entry_financial_v2_save`, `be_data_entry_financial_v2_save_batch_v22`, `be_data_entry_financial_v2_create_ready_waybill`, `be_data_entry_financial_v2_ready_sequences_v137`, and `be_data_entry_financial_v2_add_registrations` identified **39 function signatures**, **37 qualified nonfunction/unresolved reference names**, and a further unresolved scan frontier. These are not necessarily 37 missing functions; they include relations, and this audit is **not complete**.
 
-## Follow-up sequence
-1. Restore the canonical pickup-request schema, its view and authorization helpers; seed explicitly synthetic branch-scoped pickup requests and validate the authenticated Data Entry pickup list.
-2. Rebuild financial calculation dependency closure with real tariffs/merchant master and run pricing scenario fixtures (including GSK/GRS/merchant COD cases) **before** allowing mutations.
-3. Restore save, calculate-all, publish waybill and ledger integration with audit/trigger/permission checks.
-4. Run the actual Vercel UAT preview against **isolated** Supabase URL/key, test authenticated login, registration, Save All and Waybill print, then warehouse scan/wayplan/rider/finance flows.
-5. Do not merge to production or use the previously production-connected preview for write tests.
+Important relations still absent from UAT include:
+- `be_waybill_ledger`, `be_data_entry_financial_v2_requests_v58`, `be_data_entry_register_rows`, `be_data_entry_register_batches`, `be_data_entry_parcels`, `be_data_entry_pending_drafts`;
+- `be_delivery_location_registry`, `be_delivery_way_id_registry`, `be_delivery_way_id_aliases_v33`, `be_way_id_reconciliation_archive_v33`;
+- `be_pickup_parcel_verifications`, `be_branch_offices`, `be_audit_events`;
+- warehouse inventory, route/wayplan items and stop tables, and finance-projection dependencies.
 
-## Applied SQL (do not rerun; guarded against existing objects)
-- `scripts/uat-audit/uat-data-entry-acl-schema-shadow-20261121.sql`
-- `scripts/uat-audit/uat-data-entry-limited-tariff-options-20261121.sql`
+The original save/waybill functions must **not** be installed with dummy ledger, ID-allocation, location, proof or audit responses. They remain absent and UAT write operations must remain locked.
 
-**Status: READ-ONLY Data Entry metadata and limited tariffs ready in hosted UAT. Parcel registration, financial calculation and Waybill creation still NOT operational.**
+## Security-advisor findings
+Supabase security advisors still report wider-project WARN/INFO findings including mutable function search paths, executable SECURITY DEFINER functions, and GraphQL table visibility. The new numeric helper's search path was pinned. The intentionally authenticated financial-calculation SECURITY DEFINER RPC has a new UAT-only active-account/role authorization gate, but this still requires formal security review before release. Avoid general `USING (true)` RLS policies. See [Supabase database linter](https://supabase.com/docs/guides/database/database-linter).
+
+## Frontend acceptance and deployment gates
+1. Verify the **actual UAT Vercel preview** uses `https://hgijdyfwmvskchsruknp.supabase.co` and its corresponding publishable key. A previous preview visibly showed production wayplan data and must not be used for write testing.
+2. Test a real UAT password login; database-role simulations do not prove browser authentication.
+3. Test read-only Pickup List, Data Entry form, tariff selections and Calculate in the browser with synthetic records.
+4. Restore genuine Save/Save All, registration, photo verification, waybill ledger, publication and branch-specific RLS/trigger chain using original transaction semantics, then rehearse with rollback and dry-run approvals.
+5. Test supervisor wayplan creation, warehouse scan, rider proof and finance COD/settlement end to end only after the write chain passes.
+6. Keep production deployment unchanged.
+
+## SQL files already applied (do not rerun; guarded)
+- `scripts/uat-audit/uat-canonical-pickup-scope-list-20261121.sql`
+- `scripts/uat-audit/uat-qa-pickup-linkage-20261121.sql`
+- `scripts/uat-audit/uat-financial-calculator-staged-20261121.sql`
+- `scripts/uat-audit/uat-pickup-safe-numeric-search-path-20261121.sql`
+- Previously: `uat-data-entry-acl-schema-shadow-20261121.sql`, `uat-data-entry-limited-tariff-options-20261121.sql`, plus Wayplan/Dispatch read-only stages.
+
+**Status:** Pickup reads and the original UAT-gated **Calculate** path pass isolated synthetic role/pricing tests. **Save, Save All, Print Waybill and wider operational write workflows are still blocked** by missing dependencies. No production changes.
