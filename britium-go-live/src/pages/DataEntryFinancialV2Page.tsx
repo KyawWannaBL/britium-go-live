@@ -3590,7 +3590,11 @@ export default function DataEntryFinancialV2Page() {
               <p className="mt-1 max-w-4xl text-[10px] leading-4 text-[#92b7cf]">Backend-authoritative receiver collection, Britium ရပိုင်ခွင့်, delivery difference and merchant final settlement. {mutationMode==="ACTIVE"?"Live saves are active and audited.":"Live financial persistence remains disabled while the backend mutation gate is shadow."}</p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
- <span className="hidden rounded border border-slate-700 bg-[#06101e] px-2 py-1 text-[10px] text-slate-300 lg:block">{selectedPickupId||"Choose pickup"} · {rows.filter(row=>row.saved).length}/{rows.length} registered</span>
+ <select aria-label="Active pickup" className="w-44 max-w-[30vw] rounded-lg border border-slate-700 bg-[#06101e] px-2 py-2 text-[10px] font-bold text-white lg:w-64" value={selectedPickupId} onChange={e=>setSelectedPickupId(e.target.value)}>
+   <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload — multiple pickups</option>
+   {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {merchantDisplay(p.merchant_id,p.merchant_name)} · {positiveInt(p.registered_parcels)}/{authorizedParcelCount(p)} registered</option>)}
+ </select>
+ <span className="hidden rounded border border-slate-700 bg-[#06101e] px-2 py-1 text-[10px] text-slate-300 xl:block">{rows.filter(row=>row.saved).length}/{rows.length} registered</span>
  <button type="button" onClick={()=>void loadStartup()} disabled={bulkSaving||bulkCalculating} className="rounded-lg border border-slate-700 px-2 py-2 text-[10px] font-black text-slate-200"><RefreshCw size={13} className="mr-1 inline"/>Refresh</button>
  <button type="button" onClick={()=>setDataEntryDrawer("CONTRACT")} className="rounded-lg border border-amber-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-amber-300">Contract & Qty</button>
  <button type="button" onClick={()=>setDataEntryDrawer("BATCH")} className="rounded-lg border border-sky-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-sky-300">Batch & Excel</button>
@@ -3622,7 +3626,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
         :null}
 
-        {selectedPickup?.merchant_id && <CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/>}
+        {selectedPickup?.merchant_id && <details id="data-entry-contract-binding" className="rounded-xl border border-[#1a3a5c] bg-[#0a192f]"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-amber-300">Approved Corporate Contract Binding — open full controls</summary><CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/></details>}
         <nav role="tablist" aria-label="Data Entry workspace tabs" className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-lg border border-[#1a3a5c] bg-[#0a192f] p-1.5">
           <button role="tab" aria-selected={dataEntryTab==="ENTRY"} type="button" onClick={()=>setDataEntryTab("ENTRY")} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="ENTRY"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>PARCEL REGISTRATION</button>
           <button role="tab" aria-selected={dataEntryTab==="STAFF_PROGRESS"} type="button" onClick={()=>{setDataEntryTab("STAFF_PROGRESS");void loadStaffProgress(progressDate);}} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="STAFF_PROGRESS"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>DATA ENTRY STAFF PROGRESS</button>
@@ -3721,8 +3725,10 @@ export default function DataEntryFinancialV2Page() {
             <div className="rounded-xl border border-slate-700 bg-[#06101e] p-4"><h3 className="font-bold text-amber-300">Contract & Merchant Quantity</h3><p className="my-2 text-xs text-slate-400">Existing approved contract binding and audited additional quantity authorization remain unchanged.</p><button className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-bold" onClick={()=>setDataEntryTab("ENTRY")}>Open Contract & Quantity Controls</button></div>
           </div>
          </section>:null}
-        <div role="tabpanel" aria-label="Parcel Registration" className={dataEntryTab==="ENTRY"?"space-y-4":"hidden"}>
-        <section className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
+        <div role="tabpanel" aria-label="Parcel Registration" className={dataEntryTab==="ENTRY"?"space-y-2":"hidden"}>
+        <details id="data-entry-advanced-controls" className="rounded-lg border border-[#1a3a5c] bg-[#0a192f]">
+         <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-[#fbbf24]">Advanced Operations — OS Import, Photo/Location Exceptions, Batch Authorization, Export & Historical Controls</summary>
+        <section className="rounded-xl border-t border-[#1a3a5c] bg-[#0b2236] p-3">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[320px] flex-1">
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
@@ -3872,6 +3878,7 @@ export default function DataEntryFinancialV2Page() {
             {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
           </div>
         </section>
+        </details>
         {!fullRegistration?workspace:null}
         </div>
       </div>
@@ -3914,7 +3921,7 @@ export default function DataEntryFinancialV2Page() {
               <button type="button" className="w-full rounded-lg bg-emerald-600 p-2.5 text-xs font-black text-white disabled:opacity-40" onClick={()=>void createAndGenerateWaybill()} disabled={!rows.length||waybillBusy||bulkSaving||bulkCalculating}>Generate Completed Waybills</button>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200 disabled:opacity-40" onClick={()=>{const row=rows[pageStart];if(row)void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating}>Current Parcel Waybill</button>
-                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");}}>Open OS Import Workspace</button>
+                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");window.setTimeout(()=>{const el=document.getElementById("data-entry-advanced-controls") as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}},20);}}>Open OS Import Workspace</button>
               </div>
               <p className="text-xs text-slate-400">OS upload uses the original guarded importer in Parcel Registration, including pickup matching and audit controls.</p>
             </section>
@@ -3934,7 +3941,7 @@ export default function DataEntryFinancialV2Page() {
               <h3 className="text-xs font-black uppercase text-amber-300">Corporate Contract Rates</h3>
               <p className="text-xs leading-5 text-slate-400">Existing approved contracts are enforced by the live Corporate Data Entry Binding controls. No hard-coded demonstration tariffs will be used.</p>
               <p className="text-xs text-slate-300">Selected merchant: <strong>{selectedPickup?merchantDisplay(selectedPickup.merchant_id,selectedPickup.merchant_name):"None selected"}</strong></p>
-              <button type="button" className="w-full rounded-lg border border-amber-400 bg-amber-400/10 p-2.5 text-xs font-bold text-amber-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");}}>Open Existing Approved Contract Binding</button>
+              <button type="button" className="w-full rounded-lg border border-amber-400 bg-amber-400/10 p-2.5 text-xs font-bold text-amber-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");window.setTimeout(()=>{const el=document.getElementById("data-entry-contract-binding") as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}},20);}}>Open Existing Approved Contract Binding</button>
             </section>
             <section className="space-y-3 rounded-xl border border-sky-400/30 bg-[#06101e] p-4">
               <h3 className="text-xs font-black uppercase text-sky-300">Merchant Changed Pickup Quantity</h3>
