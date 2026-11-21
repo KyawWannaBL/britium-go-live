@@ -995,6 +995,13 @@ BEGIN
     RAISE EXCEPTION 'ADVANCE_OFFSET_POSTING_BLOCKED: independent review and matching approved accounting event required';
   END IF;
 
+  IF auth.uid() IS NULL OR NEW.created_by IS NULL OR NEW.reviewed_by IS NULL
+     OR NEW.created_by=NEW.reviewed_by OR NEW.created_by=auth.uid()
+     OR NEW.reviewed_by=auth.uid()
+  THEN
+    RAISE EXCEPTION 'ADVANCE_OFFSET_POSTING_BLOCKED: event creator, accounting reviewer and journal poster must be three different authenticated people';
+  END IF;
+
   SELECT * INTO b
     FROM public.be_finance_advance_batches_v1
     WHERE id=v.advance_batch_id FOR UPDATE;
