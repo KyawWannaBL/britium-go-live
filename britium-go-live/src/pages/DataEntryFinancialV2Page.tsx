@@ -1450,7 +1450,7 @@ export default function DataEntryFinancialV2Page() {
   const [pickups,setPickups]=useState<Pickup[]>([]);
   const [selectedPickupId,setSelectedPickupId]=useState("");
   const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS"|"RECONCILIATION"|"DATA_TOOLS">("ENTRY");
-  const [toolDrawer,setToolDrawer]=useState<"BATCH"|"CONTRACT"|null>(null);
+  const [toolDrawer,setToolDrawer]=useState<"BATCH"|"CONTRACT"|"EXPORT"|null>(null);
   const [rows,setRows]=useState<ParcelRow[]>([]);
   const [rowsPickupId,setRowsPickupId]=useState("");
   const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
@@ -3436,6 +3436,46 @@ export default function DataEntryFinancialV2Page() {
     && /Photo approval required/i.test(waybillMessage)
     && pendingPhotoWaiverRows.length>0;
 
+  const registrationExportPanel=(
+          <div data-data-entry-registration-export-v12-9="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Data Entry Registration Download</div>
+                <div className="mt-1 text-[12px] font-bold text-[#eef8ff]">Download registration records by timeline</div>
+                <div className="mt-1 text-[10px] text-[#7aa7c6]">Timeline uses Data Entry Saved Time. Export follows the signed-in account's existing Data Entry permissions.</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={()=>applyDownloadRange("TODAY")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">TODAY</button>
+                <button type="button" onClick={()=>applyDownloadRange("LAST_24_HOURS")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">LAST 24 HOURS</button>
+                <button type="button" onClick={()=>applyDownloadRange("THIS_WEEK")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS WEEK</button>
+                <button type="button" onClick={()=>applyDownloadRange("THIS_MONTH")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS MONTH</button>
+                <button type="button" onClick={()=>applyDownloadRange("ALL")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">ALL TIME</button>
+              </div>
+            </div>
+
+            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
+              <Field label="From date & time">
+                <input type="datetime-local" className={inputClass} value={downloadFrom} onChange={(e)=>setDownloadFrom(e.target.value)}/>
+              </Field>
+              <Field label="To date & time">
+                <input type="datetime-local" className={inputClass} value={downloadTo} onChange={(e)=>setDownloadTo(e.target.value)}/>
+              </Field>
+              <Field label="Registration scope">
+                <select className={inputClass} value={downloadScope} onChange={(e)=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}>
+                  <option value="ALL">All accessible registration records</option>
+                  <option value="CURRENT_PICKUP">Current pickup only</option>
+                </select>
+              </Field>
+              <div className="flex items-end">
+                <button type="button" onClick={()=>void downloadDataEntryRegistration()} disabled={downloadBusy} className="w-full rounded-lg bg-[#21c7e8] px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50 xl:w-auto">
+                  {downloadBusy?"PREPARING...":"DOWNLOAD REGISTRATION EXCEL"}
+                </button>
+              </div>
+            </div>
+            {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
+          </div>
+  );
+
   const workspace=(
     <div data-data-entry-split-workspace-v82="true" data-data-entry-reference-layout="true" className="min-w-0">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
@@ -3580,6 +3620,7 @@ export default function DataEntryFinancialV2Page() {
             <span className="hidden max-w-52 truncate rounded-lg bg-[#06101e] px-2 py-2 text-[10px] font-bold text-amber-300 lg:block">{selectedPickupId||"No pickup selected"} · {rows.filter(r=>r.saved).length}/{rows.length}</span>
             <button type="button" className="rounded-lg border border-slate-600 bg-[#112240] px-2.5 py-2 text-[11px] font-bold text-amber-300" onClick={()=>setToolDrawer("CONTRACT")}>Contract &amp; Qty</button>
             <button type="button" className="rounded-lg border border-slate-600 bg-[#112240] px-2.5 py-2 text-[11px] font-bold text-sky-300" onClick={()=>setToolDrawer("BATCH")}>Batch &amp; Excel</button>
+            <button type="button" data-registration-export-shortcut="true" className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-[11px] font-black text-[#04111d] hover:bg-cyan-300" onClick={()=>setToolDrawer("EXPORT")}><Download size={14}/>Download Registration Excel</button>
             <button type="button" className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-2 text-[11px] font-black text-emerald-300 disabled:opacity-40" disabled={!rows.length||bulkCalculating||bulkSaving||waybillBusy} onClick={()=>void calculateAll()}><Calculator size={13} className="mr-1 inline"/>Calc All</button>
             <button type="button" className="rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-black text-[#06101e] disabled:opacity-40" disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} onClick={()=>void saveAll()}><Save size={13} className="mr-1 inline"/>Save All</button>
           </div>
@@ -3615,7 +3656,8 @@ export default function DataEntryFinancialV2Page() {
         </section>:null}
         {dataEntryTab==="DATA_TOOLS"?<section role="tabpanel" aria-label="Data tools and audit" className="mx-auto max-w-6xl space-y-4 rounded-xl border border-[#1a3a5c] bg-[#0a192f] p-4">
           <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black">System Data Tools &amp; Audit Logs</h2><p className="text-xs text-slate-400">Existing controlled Excel exports, location review, waybill creation, and registration authorization.</p></div><button className="rounded-lg bg-[#fbbf24] px-3 py-2 text-xs font-black text-[#06101e]" onClick={()=>setDataEntryTab("ENTRY")}>Back to Parcel Registration</button></div>
-          <div className="grid gap-3 sm:grid-cols-2"><button className="rounded-xl border border-sky-500/50 bg-[#112240] p-5 text-left text-sm font-black" onClick={()=>setToolDrawer("BATCH")}>Batch &amp; Excel <span className="mt-2 block text-xs font-normal text-slate-300">Location review · Waybill generation · Registration export</span></button><button className="rounded-xl border border-amber-500/50 bg-[#112240] p-5 text-left text-sm font-black" onClick={()=>setToolDrawer("CONTRACT")}>Contract &amp; Quantity <span className="mt-2 block text-xs font-normal text-slate-300">Approved corporate tariffs · Merchant quantity changes</span></button></div>
+          <div className="grid gap-3 sm:grid-cols-2"><button className="rounded-xl border border-sky-500/50 bg-[#112240] p-5 text-left text-sm font-black" onClick={()=>setToolDrawer("BATCH")}>Batch &amp; Excel <span className="mt-2 block text-xs font-normal text-slate-300">Location review · Waybill generation · Registration export</span></button><button className="rounded-xl border border-amber-500/50 bg-[#112240] p-5 text-left text-sm font-black" onClick={()=>setToolDrawer("CONTRACT")}>Contract &amp; Quantity <span className="mt-2 block text-xs font-normal text-slate-300">Approved corporate tariffs · Merchant quantity changes</span></button>
+          <button type="button" data-registration-export-tools="true" className="rounded-xl border border-cyan-300/50 bg-cyan-400/10 p-5 text-left text-sm font-black text-cyan-200" onClick={()=>setToolDrawer("EXPORT")}>Download Data Entry Registration Excel <span className="mt-2 block text-xs font-normal text-slate-300">Date and time range · Today / Week / Month · All accessible or current pickup</span></button></div>
         </section>:null}
         {dataEntryTab==="STAFF_PROGRESS"?<div role="tabpanel" aria-label="Data Entry Staff Progress">
           <div data-data-entry-staff-progress-v96="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
@@ -3740,8 +3782,8 @@ export default function DataEntryFinancialV2Page() {
       </div>
 
       {toolDrawer?<div data-financial-v2-tool-drawer="true" className="fixed inset-0 z-[80] flex justify-end bg-black/70" onMouseDown={e=>{if(e.target===e.currentTarget)setToolDrawer(null);}}>
-        <aside role="dialog" aria-modal="true" aria-label={toolDrawer==="CONTRACT"?"Contracts and quantity":"Batch and Excel operations"} className="flex h-full w-full max-w-[590px] flex-col border-l border-slate-600 bg-[#0a192f] shadow-2xl">
-          <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-[#06101e] px-4 py-4"><div><p className="text-[10px] font-black uppercase tracking-widest text-amber-400">{toolDrawer==="CONTRACT"?"Contract & Pickup Exceptions":"Batch Operations & Exports"}</p><h2 className="text-base font-black">{toolDrawer==="CONTRACT"?"Corporate Rates & Quantity Adjustment":"Bulk Location Sync, Waybills & Excel"}</h2></div><button type="button" aria-label="Close tools" className="rounded-lg border border-slate-700 px-3 py-2" onClick={()=>setToolDrawer(null)}><X size={16}/></button></div>
+        <aside role="dialog" aria-modal="true" aria-label={toolDrawer==="CONTRACT"?"Contracts and quantity":toolDrawer==="EXPORT"?"Download Data Entry registration data":"Batch and Excel operations"} className="flex h-full w-full max-w-[590px] flex-col border-l border-slate-600 bg-[#0a192f] shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-700 bg-[#06101e] px-4 py-4"><div><p className="text-[10px] font-black uppercase tracking-widest text-amber-400">{toolDrawer==="CONTRACT"?"Contract & Pickup Exceptions":toolDrawer==="EXPORT"?"Data Entry Registration Reports":"Batch Operations & Exports"}</p><h2 className="text-base font-black">{toolDrawer==="CONTRACT"?"Corporate Rates & Quantity Adjustment":toolDrawer==="EXPORT"?"Download Registration Records by Date & Time":"Bulk Location Sync, Waybills & Excel"}</h2></div><button type="button" aria-label="Close tools" className="rounded-lg border border-slate-700 px-3 py-2" onClick={()=>setToolDrawer(null)}><X size={16}/></button></div>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             {toolDrawer==="CONTRACT"?<div className="space-y-3">{selectedPickup?.merchant_id?<CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/>:null}          {selectedPickup?<div data-extra-registration-v14="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-cyan-400/5 p-4">
             <div className="flex flex-wrap items-end gap-3">
@@ -3764,6 +3806,7 @@ export default function DataEntryFinancialV2Page() {
           </div>:null}
 
 </div>:null}
+            {toolDrawer==="EXPORT"?registrationExportPanel:null}
             {toolDrawer==="BATCH"?<div className="space-y-3">          {bulkUploadSelected?<div className="mt-4 rounded-xl border border-cyan-300/35 bg-cyan-400/5 p-4 text-[11px] leading-5 text-cyan-100"><b>Bulk upload mode:</b> attach the 12-column template. Way ID / Pickup ID assigns each row to its pickup and Merchant Name / Merchant ID is checked before any registrations are authorized. After staging, review the separate pickup batches below.</div>:null}
           {bulkImportOrder.length?<div data-os-bulk-pickup-queue-v16="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
             <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Bulk upload pickup queue</div>
@@ -3813,43 +3856,7 @@ export default function DataEntryFinancialV2Page() {
           </div>:null}
           {bulkMessage?<div className="mt-4 rounded-lg border border-[#3aa7de]/35 bg-[#12314a] px-3 py-2 text-[11px] font-semibold text-[#bfe8ff]">{bulkMessage}</div>:null}
 
-          <div data-data-entry-registration-export-v12-9="true" className="mt-4 rounded-xl border border-[#3aa7de]/30 bg-[#071b2b] p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#64c8ff]">Data Entry Registration Download</div>
-                <div className="mt-1 text-[12px] font-bold text-[#eef8ff]">Download registration records by timeline</div>
-                <div className="mt-1 text-[10px] text-[#7aa7c6]">Timeline uses Data Entry Saved Time. Export follows the signed-in account's existing Data Entry permissions.</div>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button type="button" onClick={()=>applyDownloadRange("TODAY")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">TODAY</button>
-                <button type="button" onClick={()=>applyDownloadRange("LAST_24_HOURS")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">LAST 24 HOURS</button>
-                <button type="button" onClick={()=>applyDownloadRange("THIS_WEEK")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS WEEK</button>
-                <button type="button" onClick={()=>applyDownloadRange("THIS_MONTH")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">THIS MONTH</button>
-                <button type="button" onClick={()=>applyDownloadRange("ALL")} className="rounded-lg border border-[#1a3a5c] bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">ALL TIME</button>
-              </div>
-            </div>
-
-            <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto]">
-              <Field label="From date & time">
-                <input type="datetime-local" className={inputClass} value={downloadFrom} onChange={(e)=>setDownloadFrom(e.target.value)}/>
-              </Field>
-              <Field label="To date & time">
-                <input type="datetime-local" className={inputClass} value={downloadTo} onChange={(e)=>setDownloadTo(e.target.value)}/>
-              </Field>
-              <Field label="Registration scope">
-                <select className={inputClass} value={downloadScope} onChange={(e)=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}>
-                  <option value="ALL">All accessible registration records</option>
-                  <option value="CURRENT_PICKUP">Current pickup only</option>
-                </select>
-              </Field>
-              <div className="flex items-end">
-                <button type="button" onClick={()=>void downloadDataEntryRegistration()} disabled={downloadBusy} className="w-full rounded-lg bg-[#21c7e8] px-4 py-2.5 text-[11px] font-black text-[#04111d] disabled:opacity-50 xl:w-auto">
-                  {downloadBusy?"PREPARING...":"DOWNLOAD REGISTRATION EXCEL"}
-                </button>
-              </div>
-            </div>
-            {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
-          </div>
+{registrationExportPanel}
 </div>:null}
           </div>
         </aside>
