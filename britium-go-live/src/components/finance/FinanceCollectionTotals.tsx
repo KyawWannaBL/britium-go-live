@@ -72,7 +72,7 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
  <div data-collection-report-export-actions="true" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:10,width:"100%",maxWidth:"100%",minWidth:0,margin:"12px 0"}}>
   <strong style={{fontSize:13}}>Historical collection report · {rows.length} grouped rows</strong>
   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",width:"100%",maxWidth:"100%"}}>
-    <button type="button" disabled={loading||!!error||!rows.length onClick={()=>void downloadCollectionExcel()} style={{padding:"10px 14px",borderRadius:8,background:"#f6b84b",color:"#061524",border:0,fontWeight:900,opacity:!rows.length?0.5:1}}>Export Excel (.xlsx)</button>
+    <button type="button" disabled={loading||!!error||!rows.length} onClick={()=>void downloadCollectionExcel()} style={{padding:"10px 14px",borderRadius:8,background:"#f6b84b",color:"#061524",border:0,fontWeight:900,opacity:!rows.length?0.5:1}}>Export Excel (.xlsx)</button>
     <button type="button" disabled={loading||!!error||!rows.length} onClick={printCollectionPdf} style={{padding:"10px 14px",borderRadius:8,background:"#38bdf8",color:"#061524",border:0,fontWeight:900,opacity:!rows.length?0.5:1}}>PDF / Print report</button>
   </div>
  </div>
