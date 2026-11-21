@@ -6,9 +6,10 @@ const page=fs.readFileSync('src/pages/DataEntryFinancialV2Page.tsx','utf8');
 const settlement=fs.readFileSync('src/pages/MerchantSettlementPage.tsx','utf8');
 const output=ts.transpileModule(page,{fileName:'DataEntryFinancialV2Page.tsx',reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}});
 assert.ok(!(output.diagnostics||[]).some(d=>d.category===ts.DiagnosticCategory.Error),'Data Entry TSX must parse successfully');
-for(const name of ['loadStaffProgress','calculateAll','saveAll','calculateRow','saveRow','saveAndNextRow','saveDraftRow','toggleSkip','reviewPhoto','togglePhotoWaiver','deleteRegistration','lookupPhoneHistory','applyOsImport','addRegistrations','retryImportedLocationSync','skipAllLocationReviews','downloadConsolidatedLocationReview','uploadConsolidatedLocationReview','createAndGenerateWaybill','downloadDataEntryRegistration','loadPickupRows']){
+for(const name of ['loadStaffProgress','calculateAll','saveAll','calculateRow','saveRow','saveAndNextRow','saveDraftRow','toggleSkip','reviewPhoto','togglePhotoWaiver','deleteRegistration','applyOsImport','addRegistrations','retryImportedLocationSync','skipAllLocationReviews','downloadConsolidatedLocationReview','uploadConsolidatedLocationReview','createAndGenerateWaybill','downloadDataEntryRegistration','loadPickupRows']){
   assert.match(page,new RegExp('(?:async\\s+)?function\\s+'+name+'\\s*\\('),name+' handler missing');
 }
+assert.ok(page.includes('const lookupPhoneHistory='),'phone historical autofill handler missing');
 for(const component of ['DataEntryOsBulkImport','CorporateDataEntryBinding','DeliveryAddressHistory','DataEntryLocationEditor','BufferedDataEntryInput','ParcelEditor']){
   assert.ok(page.includes('<'+component),component+' component removed');
 }
