@@ -2,7 +2,7 @@
 -- IMPORTANT: INSTALL ONLY AFTER FULL UAT SCHEMA RESTORE. NO PRODUCTION INSTALL HERE.
 -- This ledger is separate from delivered/COD settlement. No physical transfer occurs from SQL.
 -- Advance amounts use signed merchant policy; missing policy = ineligible, not zero.
--- Only verified warehouse receipt scan qualifies, not self-reported inbound field.
+-- Verified approved pickup review timestamp or physical warehouse inbound scan qualifies. Rider-submitted alone or return scan alone do not.
 BEGIN;
 CREATE TABLE IF NOT EXISTS public.be_finance_advance_merchant_policy_v1 (
  merchant_id text PRIMARY KEY,
@@ -80,7 +80,8 @@ BEGIN
   SELECT q.parcel_id,q.delivery_way_id,q.merchant_id,q.merchant_name,q.status AS delivery_state,
    d.pickup_id,coalesce(d.item_price,0)::numeric AS item_price,
    upper(coalesce(nullif(d.financial_quote->>'service_provider_code',''),'UNSET')) AS provider_code,
-   r.scanned_at::timestamptz AS receipt_at,
+   coalesce(pv.reviewed_at,r.scanned_at)::timestamptz AS receipt_at,
+   case when pv.reviewed_at is not null then 'APPROVED_PICKUP' when r.scanned_at is not null then 'WAREHOUSE_RECEIPT' else 'UNVERIFIED' end AS pickup_proof_source,
    coalesce(q.validation_status,'') AS validation_status,
    coalesce(c.financial_hold,false) AS held,
    exists(select 1 from public.be_finance_settlement_disputes_v3 z where z.parcel_id=d.id and z.status not in ('RESOLVED','REJECTED','CLOSED')) AS disputed,
@@ -92,11 +93,18 @@ BEGIN
   LEFT JOIN public.be_finance_advance_merchant_policy_v1 p ON p.merchant_id=q.merchant_id
   LEFT JOIN public.be_finance_settlement_parcel_control_v3 c ON c.parcel_id=q.parcel_id
   LEFT JOIN LATERAL (
+    SELECT v.reviewed_at FROM public.be_pickup_parcel_verifications v
+    WHERE v.delivery_way_id=d.delivery_way_id AND v.pickup_id=d.pickup_id
+      AND upper(coalesce(v.verification_status,'')) IN ('APPROVED','DATA_ENTRY_APPROVED')
+      AND v.reviewed_at IS NOT NULL
+    ORDER BY v.reviewed_at ASC LIMIT 1
+  ) pv ON true
+  LEFT JOIN LATERAL (
     SELECT wr.scanned_at FROM public.be_warehouse_receipts_v36 wr
-    WHERE upper(wr.delivery_way_id)=upper(d.delivery_way_id)
-      AND upper(wr.pickup_id)=upper(d.pickup_id)
-      AND upper(wr.warehouse_status) IN ('RECEIVED','WAREHOUSE_RECEIVED','WAREHOUSE_READY','READY_FOR_DELIVERY','RETURN_SCANNED')
-    ORDER BY wr.scanned_at ASC NULLS LAST LIMIT 1
+    WHERE wr.delivery_way_id=d.delivery_way_id AND wr.pickup_id=d.pickup_id
+      AND upper(wr.warehouse_status) IN ('RECEIVED','WAREHOUSE_RECEIVED','WAREHOUSE_READY','READY_FOR_DELIVERY')
+      AND wr.scanned_at IS NOT NULL
+    ORDER BY wr.scanned_at ASC LIMIT 1
   ) r ON true
   WHERE p_merchant_id IS NULL OR q.merchant_id=p_merchant_id
   ORDER BY d.created_at DESC
