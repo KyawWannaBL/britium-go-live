@@ -97,6 +97,9 @@ export default function CustomerServicePortalPage() {
     rows: [],
   });
   const [query, setQuery] = useState("");
+  const [statusFilter,setStatusFilter]=useState("");
+  const [ownerFilter,setOwnerFilter]=useState("");
+  const [voicesOnly,setVoicesOnly]=useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -270,6 +273,9 @@ export default function CustomerServicePortalPage() {
   }
 
   const s = queue.summary;
+  const statusOptions=useMemo(()=>Array.from(new Set(queue.rows.map(row=>safe(row.parcel_status||row.operation_status,"UNKNOWN")))).sort(),[queue.rows]);
+  const ownerOptions=useMemo(()=>Array.from(new Set(queue.rows.map(row=>safe(row.current_owner_department,"unassigned")))).sort(),[queue.rows]);
+  const visibleRows=useMemo(()=>queue.rows.filter(row=>(!statusFilter||safe(row.parcel_status||row.operation_status,"UNKNOWN")===statusFilter)&&(!ownerFilter||safe(row.current_owner_department,"unassigned")===ownerFilter)&&(!voicesOnly||Number(row.open_voice_count||0)>0)),[queue.rows,statusFilter,ownerFilter,voicesOnly]);
 
   return (
     <main data-be-page="cs-portal-v41" style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20, overflow: "auto" }}>
@@ -296,12 +302,19 @@ export default function CustomerServicePortalPage() {
         ))}
       </section>
 
-      <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 20, padding: 14, overflowX: "auto" }}>
+      <section aria-label="Customer Service queue filters" style={{display:"flex",flexWrap:"wrap",alignItems:"end",gap:10,marginBottom:14}}>
+        <label style={{fontSize:12,color:C.sub}}>Parcel status<select aria-label="Filter parcel status" value={statusFilter} onChange={e=>setStatusFilter(e.target.value)} style={{display:"block",minHeight:40,padding:"8px 12px",minWidth:180,borderRadius:9,background:"#fff",color:"#061524"}}><option value="">All statuses</option>{statusOptions.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
+        <label style={{fontSize:12,color:C.sub}}>Current owner<select aria-label="Filter current owner" value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)} style={{display:"block",minHeight:40,padding:"8px 12px",minWidth:180,borderRadius:9,background:"#fff",color:"#061524"}}><option value="">All owners</option>{ownerOptions.map(x=><option key={x} value={x}>{customerVoiceDepartmentLabel(x)}</option>)}</select></label>
+        <label style={{display:"inline-flex",alignItems:"center",gap:8,fontSize:12,color:C.sub,paddingBottom:10}}><input aria-label="Show only parcels with open voices" type="checkbox" checked={voicesOnly} onChange={e=>setVoicesOnly(e.target.checked)}/>Open voices only</label>
+        <button type="button" onClick={()=>{setStatusFilter("");setOwnerFilter("");setVoicesOnly(false);}} style={{minHeight:40,padding:"8px 12px",borderRadius:9,border:`1px solid ${C.border}`,color:C.text}}>Clear filters</button>
+        <span style={{fontSize:12,color:C.sub,paddingBottom:10}}>{visibleRows.length} of {queue.rows.length} loaded parcels</span>
+      </section>
+      <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 20, padding: 14, overflowX: "auto",maxHeight:"70vh",overflowY:"auto" }}>
         <table style={{ width: "100%", minWidth: 1450, borderCollapse: "collapse" }}>
           <thead><tr style={{ background: C.gold, color: C.bg }}>
             {["Waybill / Delivery Way ID","Status","Recipient","Phone","Township","Rider / Assignment","Open Voices","Current Owner","Latest Customer Voice","Escalation","Action"].map((h) => <th key={h} style={{ padding: 10, textAlign: "left" }}>{h}</th>)}
           </tr></thead>
-          <tbody>{queue.rows.map((row) => (
+          <tbody>{visibleRows.map((row) => (
             <tr key={row.delivery_way_id} style={{ borderTop: `1px solid ${C.border}` }}>
               <td style={{ padding: 10, color: C.gold, fontWeight: 900 }}>{safe(row.waybill_no || row.delivery_way_id)}</td>
               <td style={{ padding: 10 }}><strong style={{ color: statusColor(row.parcel_status || row.operation_status) }}>{safe(row.parcel_status || row.operation_status)}</strong><div style={{ color: C.sub, fontSize: 11 }}>WH: {safe(row.warehouse_status)} • FIN: {safe(row.finance_status)}</div></td>
@@ -317,7 +330,7 @@ export default function CustomerServicePortalPage() {
             </tr>
           ))}</tbody>
         </table>
-        {!loading && queue.rows.length === 0 && <div style={{ color: C.sub, padding: 24, textAlign: "center" }}>No authorized parcel records found.</div>}
+        {!loading && visibleRows.length === 0 && <div style={{ color: C.sub, padding: 24, textAlign: "center" }}>No authorized parcel records found.</div>}
       </section>
 
       {selectedParcel && (
