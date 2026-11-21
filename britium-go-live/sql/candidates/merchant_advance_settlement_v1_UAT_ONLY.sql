@@ -69,7 +69,7 @@ GRANT ALL ON public.be_finance_advance_merchant_policy_v1,public.be_finance_adva
 CREATE OR REPLACE FUNCTION public.be_finance_advance_preview_v1(p_merchant_id text DEFAULT NULL,p_limit integer DEFAULT 1000)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
 SET search_path='public','auth','pg_temp' AS $fn$
-DECLARE v_role text; v_rows jsonb; v_policies jsonb; v_batches jsonb; v_recoveries jsonb;
+DECLARE v_role text; v_rows jsonb; v_policies jsonb; v_batches jsonb; v_recoveries jsonb; v_items jsonb;
 BEGIN
  v_role:=public.be_finance_assert_internal_v3();
  IF upper(v_role) NOT IN ('FINANCE_CREATOR','FINANCE_REVIEWER','FINANCE_APPROVER','PAYMENT_OFFICER','FINANCE_ADMIN','FINANCE','FINANCE_MANAGER','ACCOUNTS','ADMIN','SUPERADMIN') THEN
@@ -122,6 +122,13 @@ BEGIN
  FROM public.be_finance_advance_merchant_policy_v1 p WHERE p_merchant_id IS NULL OR p.merchant_id=p_merchant_id;
  SELECT coalesce(jsonb_agg(to_jsonb(b) ORDER BY b.created_at DESC),'[]'::jsonb) INTO v_batches
  FROM (SELECT * FROM public.be_finance_advance_batches_v1 WHERE p_merchant_id IS NULL OR merchant_id=p_merchant_id ORDER BY created_at DESC LIMIT 300) b;
+ SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.created_at DESC),'[]'::jsonb) INTO v_items
+ FROM (SELECT i.*,b.batch_number,b.status AS batch_status,q.status AS current_delivery_status
+  FROM public.be_finance_advance_items_v1 i
+  JOIN public.be_finance_advance_batches_v1 b ON b.id=i.batch_id
+  LEFT JOIN public.be_v_finance_merchant_settlement_queue_v2 q ON q.parcel_id=i.parcel_id
+  WHERE p_merchant_id IS NULL OR i.merchant_id=p_merchant_id
+  ORDER BY i.created_at DESC LIMIT 2000) a;
  SELECT coalesce(jsonb_agg(to_jsonb(x) ORDER BY x.requested_at DESC),'[]'::jsonb) INTO v_recoveries
  FROM (SELECT r.*,i.delivery_way_id,i.merchant_id,b.batch_number FROM public.be_finance_advance_rto_recoveries_v1 r
  JOIN public.be_finance_advance_items_v1 i ON i.id=r.advance_item_id
@@ -129,8 +136,35 @@ BEGIN
  WHERE p_merchant_id IS NULL OR i.merchant_id=p_merchant_id
  ORDER BY r.requested_at DESC LIMIT 300) x;
  RETURN jsonb_build_object('ok',true,'build','ADVANCE_SETTLEMENT_UAT_V1','rows',v_rows,
- 'policies',v_policies,'batches',v_batches,'recoveries',v_recoveries,
+ 'policies',v_policies,'batches',v_batches,'items',v_items,'recoveries',v_recoveries,
  'note','Preview never posts COD, transfers cash or marks parcels delivered.');
+END $fn$;
+
+-- Signed commercial approval only; disabled by default for every merchant.
+CREATE OR REPLACE FUNCTION public.be_finance_advance_set_policy_v1(
+ p_merchant_id text,p_enabled boolean,p_rate_pct numeric,p_flat_deduction numeric,
+ p_allowed_providers text[],p_contract_ref text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','auth','pg_temp' AS $fn$
+DECLARE v_role text;
+BEGIN
+ v_role:=public.be_finance_assert_internal_v3();
+ IF upper(v_role) NOT IN ('SUPERADMIN','ADMIN','FINANCE_ADMIN') THEN RAISE EXCEPTION 'Merchant advance contract approval requires Finance Admin / Super Admin'; END IF;
+ IF length(btrim(coalesce(p_merchant_id,'')))<2 OR p_rate_pct IS NULL OR p_rate_pct<=0 OR p_rate_pct>100
+  OR p_flat_deduction IS NULL OR p_flat_deduction<0
+  OR cardinality(coalesce(p_allowed_providers,ARRAY[]::text[]))=0
+  OR length(btrim(coalesce(p_contract_ref,'')))<8 THEN
+  RAISE EXCEPTION 'Approved merchant, signed fee/rate, provider list and contract evidence required';
+ END IF;
+ INSERT INTO public.be_finance_advance_merchant_policy_v1
+  (merchant_id,enabled,rate_pct,flat_deduction,allowed_providers,approval_reference,approved_by)
+ VALUES(upper(btrim(p_merchant_id)),coalesce(p_enabled,false),p_rate_pct,p_flat_deduction,
+  p_allowed_providers,btrim(p_contract_ref),auth.uid())
+ ON CONFLICT(merchant_id) DO UPDATE SET enabled=excluded.enabled,rate_pct=excluded.rate_pct,
+  flat_deduction=excluded.flat_deduction,allowed_providers=excluded.allowed_providers,
+  approval_reference=excluded.approval_reference,approved_by=excluded.approved_by,
+  approved_at=now(),updated_at=now();
+ RETURN jsonb_build_object('ok',true,'merchant_id',upper(btrim(p_merchant_id)),'enabled',coalesce(p_enabled,false),
+ 'note','Contract policy updated; no parcel settlement or cash payment created');
 END $fn$;
 
 CREATE OR REPLACE FUNCTION public.be_finance_advance_create_draft_v1(p_parcel_ids uuid[],p_reason text)
@@ -240,6 +274,7 @@ BEFORE INSERT ON public.be_finance_settlement_batch_items_v3
 FOR EACH ROW EXECUTE FUNCTION public.be_finance_advance_legacy_batch_guard_v1();
 
 REVOKE ALL ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
+ public.be_finance_advance_set_policy_v1(text,boolean,numeric,numeric,text[],text),
  public.be_finance_advance_create_draft_v1(uuid[],text),
  public.be_finance_advance_transition_v1(uuid,text,text),
  public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
