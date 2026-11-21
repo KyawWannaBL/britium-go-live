@@ -32,7 +32,9 @@ BEGIN
      END AS finance_rto_stage
    FROM public.be_v_finance_merchant_settlement_queue_v2 q
    JOIN returned w ON w.way_key=upper(btrim(q.delivery_way_id))
-   WHERE p_merchant_id IS NULL OR q.merchant_id=p_merchant_id
+   WHERE (p_merchant_id IS NULL OR q.merchant_id=p_merchant_id)
+     AND (upper(coalesce(q.status,'')) LIKE 'RTO%'
+          OR upper(coalesce(q.status,'')) LIKE 'RETURN%')
  )
  SELECT coalesce(jsonb_agg(to_jsonb(matched) ORDER BY warehouse_return_scanned_at DESC NULLS LAST),'[]'::jsonb)
  INTO v_rows FROM matched;
