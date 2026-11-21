@@ -3,6 +3,7 @@ import { Download, FileText, RefreshCw, WalletCards } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadSettlementReceipt } from "@/lib/merchantSettlementReceipt";
 import SettlementReceiptLink from "@/components/SettlementReceiptLink";
+import MerchantAdvanceSettlementPanel from "@/components/finance/MerchantAdvanceSettlementPanel";
 type Row = Record<string, any>;
 const money=(n:unknown)=>Number(n||0).toLocaleString("en-US")+" MMK";
 const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
@@ -104,11 +105,12 @@ export default function MerchantSettlementPage(){
  }
  return <main className="space-y-6 p-4 text-slate-100 md:p-6">
   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
-   <div className="flex flex-wrap justify-between gap-4"><div><h1 className="flex items-center gap-3 text-2xl font-black"><WalletCards/>Merchant Settlement</h1><p className="mt-2 text-sm text-slate-300">Delivered parcels → reconciled COD → batch review → approval → confirmed merchant payments.</p></div><div className="flex gap-2"><button className={button} disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={16} className="mr-2 inline"/>Refresh</button><button className={button} disabled={loading} onClick={exportRows}><Download size={16} className="mr-2 inline"/>Export</button></div></div>
+   <div className="flex flex-wrap justify-between gap-4"><div><h1 className="flex items-center gap-3 text-2xl font-black"><WalletCards/>Merchant Settlement</h1><p className="mt-2 text-sm text-slate-300">Normal: Delivered parcels → reconciled COD → approved payment. Advance: approved merchant pickup → next-day advance → independent approval → RTO recovery as required.</p></div><div className="flex gap-2"><button className={button} disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={16} className="mr-2 inline"/>Refresh</button><button className={button} disabled={loading} onClick={exportRows}><Download size={16} className="mr-2 inline"/>Export</button></div></div>
    {error&&<p role="alert" className="mt-4 rounded-xl bg-red-950 p-3 text-red-200">{error}</p>}
    {message&&<p role="status" className="mt-4 rounded-xl bg-emerald-950 p-3 text-emerald-200">{message}</p>}
    {loading&&<p role="status" className="mt-3">Loading live settlement records…</p>}
   </section>
+  <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} />
   <section className="grid gap-3 sm:grid-cols-3">{[["Britium owes merchants",data.wallet?.britium_owes],["Confirmed merchant payments",data.wallet?.paid_amount],["Merchants owe Britium",data.wallet?.owes_britium]].map(([title,value])=><div key={String(title)} className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><p className="text-sm text-slate-300">{String(title)}</p><p className="mt-2 text-2xl font-black">{money(value)}</p></div>)}</section>
   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
    <div className="flex flex-wrap gap-3"><input aria-label="Search settlements" className={field} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Merchant filter" className={field} value={merchant} onChange={e=>{setMerchant(e.target.value);setSelected([]);setAllocations({});}}><option value="">All merchants</option>{merchants.map(m=><option key={m}>{m}</option>)}</select><label>From<input type="date" className={field+" ml-2"} value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" className={field+" ml-2"} value={to} onChange={e=>setTo(e.target.value)}/></label></div>
