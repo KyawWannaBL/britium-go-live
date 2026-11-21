@@ -28,7 +28,7 @@ AS $function$
   );
 $function$
 ;
-REVOKE ALL ON FUNCTION be_superadmin_bulkload_waybill_bypass_v34(text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.be_superadmin_bulkload_waybill_bypass_v34(text) FROM PUBLIC,anon,authenticated;
 CREATE FUNCTION private.be_ready_waybill_os_evidence_v1(p_pickup_id text, p_sequences integer[])
  RETURNS boolean
  LANGUAGE sql
@@ -338,6 +338,6 @@ begin
 end
 $function$
 ;
-REVOKE ALL ON FUNCTION be_data_entry_financial_v2_create_ready_waybill(jsonb) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.be_data_entry_financial_v2_create_ready_waybill(jsonb) FROM PUBLIC,anon,authenticated;
 NOTIFY pgrst,'reload schema';
 COMMIT;
