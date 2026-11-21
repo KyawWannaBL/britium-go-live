@@ -2,6 +2,7 @@
 -- IMPORTANT: INSTALL ONLY AFTER FULL UAT SCHEMA RESTORE. NO PRODUCTION INSTALL HERE.
 -- This ledger is separate from delivered/COD settlement. No physical transfer occurs from SQL.
 -- Advance amounts use signed merchant policy; missing policy = ineligible, not zero.
+-- Only verified warehouse receipt scan qualifies, not self-reported inbound field.
 BEGIN;
 CREATE TABLE IF NOT EXISTS public.be_finance_advance_merchant_policy_v1 (
  merchant_id text PRIMARY KEY,
@@ -79,7 +80,7 @@ BEGIN
   SELECT q.parcel_id,q.delivery_way_id,q.merchant_id,q.merchant_name,q.status AS delivery_state,
    d.pickup_id,coalesce(d.item_price,0)::numeric AS item_price,
    upper(coalesce(nullif(d.financial_quote->>'service_provider_code',''),'UNSET')) AS provider_code,
-   coalesce(r.scanned_at,d.inbound_scanned_at)::timestamptz AS receipt_at,
+   r.scanned_at::timestamptz AS receipt_at,
    coalesce(q.validation_status,'') AS validation_status,
    coalesce(c.financial_hold,false) AS held,
    exists(select 1 from public.be_finance_settlement_disputes_v3 z where z.parcel_id=d.id and z.status not in ('RESOLVED','REJECTED','CLOSED')) AS disputed,
@@ -253,6 +254,81 @@ BEGIN
  INSERT INTO public.be_finance_advance_rto_recoveries_v1(advance_item_id,amount,reason,requested_by)
  VALUES(i.id,p_amount,btrim(p_reason));
  RETURN jsonb_build_object('ok',true,'delivery_way_id',i.delivery_way_id,'status','REFUND_DUE','refund_amount',p_amount);
+END $fn$;
+
+
+CREATE OR REPLACE FUNCTION public.be_finance_advance_review_rto_v1(p_recovery_id uuid,p_action text,p_note text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','auth','pg_temp' AS $fn$
+DECLARE v_role text; r public.be_finance_advance_rto_recoveries_v1%rowtype;
+BEGIN
+ v_role:=public.be_finance_assert_internal_v3();
+ IF upper(v_role) NOT IN ('FINANCE_APPROVER','FINANCE_ADMIN','FINANCE_MANAGER','ADMIN','SUPERADMIN') THEN RAISE EXCEPTION 'Independent Finance approval required'; END IF;
+ SELECT * INTO r FROM public.be_finance_advance_rto_recoveries_v1 WHERE id=p_recovery_id FOR UPDATE;
+ IF NOT FOUND OR r.status NOT IN ('REFUND_DUE','UNDER_REVIEW') THEN RAISE EXCEPTION 'RTO recovery is not reviewable'; END IF;
+ IF r.requested_by=auth.uid() THEN RAISE EXCEPTION 'Creator cannot approve their own refund recovery'; END IF;
+ IF upper(coalesce(p_action,'')) NOT IN ('APPROVE','WAIVE')
+ OR length(btrim(coalesce(p_note,'')))<8 THEN RAISE EXCEPTION 'Approve or waive with documented reason'; END IF;
+ UPDATE public.be_finance_advance_rto_recoveries_v1
+ SET status=CASE WHEN upper(p_action)='APPROVE' THEN 'APPROVED' ELSE 'WAIVED' END,
+ reviewed_by=auth.uid(),reviewed_at=now(),review_note=p_note WHERE id=p_recovery_id;
+ RETURN jsonb_build_object('ok',true,'recovery_id',p_recovery_id,'status',CASE WHEN upper(p_action)='APPROVE' THEN 'APPROVED' ELSE 'WAIVED' END);
+END $fn$;
+
+CREATE OR REPLACE FUNCTION public.be_finance_advance_confirm_refund_v1(
+ p_recovery_id uuid,p_method text,p_reference text,p_evidence_url text)
+RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','auth','pg_temp' AS $fn$
+DECLARE v_role text; r public.be_finance_advance_rto_recoveries_v1%rowtype;
+BEGIN
+ v_role:=public.be_finance_assert_internal_v3();
+ IF upper(v_role) NOT IN ('PAYMENT_OFFICER','FINANCE_ADMIN','FINANCE_MANAGER','ACCOUNTS','ADMIN','SUPERADMIN') THEN RAISE EXCEPTION 'Finance payment officer required'; END IF;
+ SELECT * INTO r FROM public.be_finance_advance_rto_recoveries_v1 WHERE id=p_recovery_id FOR UPDATE;
+ IF NOT FOUND OR r.status<>'APPROVED' THEN RAISE EXCEPTION 'Refund must be independently approved before recording merchant return'; END IF;
+ IF r.requested_by=auth.uid() OR r.reviewed_by=auth.uid() THEN RAISE EXCEPTION 'Refund receiver must be independent of requester and approver'; END IF;
+ IF length(btrim(coalesce(p_reference,'')))<4 OR length(btrim(coalesce(p_method,'')))<3
+ OR p_evidence_url !~ '^https://[^[:space:]]{8,2000}
+-- through the old delivered-only batch creator. Dedicated offset reconciliation
+-- is REQUIRED before normal final settlement can include the advanced parcel.
+CREATE OR REPLACE FUNCTION public.be_finance_advance_legacy_batch_guard_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','pg_temp' AS $fn$
+BEGIN
+ IF EXISTS (SELECT 1 FROM public.be_finance_advance_items_v1 i
+            JOIN public.be_finance_advance_batches_v1 b ON b.id=i.batch_id
+            WHERE i.parcel_id=NEW.parcel_id AND b.status IN ('DRAFT','PENDING_APPROVAL','APPROVED','DISBURSED')) THEN
+   RAISE EXCEPTION 'ADVANCE_SETTLEMENT_RECONCILIATION_REQUIRED: parcel % already has an advance entry',NEW.delivery_way_id;
+ END IF;
+ RETURN NEW;
+END $fn$;
+DROP TRIGGER IF EXISTS be_finance_advance_legacy_batch_guard_v1 ON public.be_finance_settlement_batch_items_v3;
+CREATE TRIGGER be_finance_advance_legacy_batch_guard_v1
+BEFORE INSERT ON public.be_finance_settlement_batch_items_v3
+FOR EACH ROW EXECUTE FUNCTION public.be_finance_advance_legacy_batch_guard_v1();
+
+REVOKE ALL ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
+ public.be_finance_advance_set_policy_v1(text,boolean,numeric,numeric,text[],text),
+ public.be_finance_advance_create_draft_v1(uuid[],text),
+ public.be_finance_advance_transition_v1(uuid,text,text),
+ public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
+ public.be_finance_advance_flag_rto_v1(uuid,numeric,text),
+ public.be_finance_advance_review_rto_v1(uuid,text,text),
+ public.be_finance_advance_confirm_refund_v1(uuid,text,text,text)
+FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
+ public.be_finance_advance_create_draft_v1(uuid[],text),
+ public.be_finance_advance_transition_v1(uuid,text,text),
+ public.be_finance_advance_confirm_payment_v1(uuid,text,text,text,text),
+ public.be_finance_advance_flag_rto_v1(uuid,numeric,text),
+ public.be_finance_advance_review_rto_v1(uuid,text,text),
+ public.be_finance_advance_confirm_refund_v1(uuid,text,text,text)
+TO authenticated,service_role;
+REVOKE ALL ON FUNCTION public.be_finance_advance_legacy_batch_guard_v1() FROM PUBLIC,anon,authenticated;
+COMMIT;
+ THEN RAISE EXCEPTION 'Actual verified refund receipt and reference required'; END IF;
+ UPDATE public.be_finance_advance_rto_recoveries_v1
+ SET status='REFUND_RECEIVED',received_by=auth.uid(),received_at=now(),
+ receipt_method=p_method,receipt_reference=p_reference,receipt_evidence_url=p_evidence_url
+ WHERE id=p_recovery_id;
+ RETURN jsonb_build_object('ok',true,'recovery_id',p_recovery_id,'status','REFUND_RECEIVED',
+ 'amount',r.amount,'note','Actual refund receipt recorded separately; original advance remains immutable');
 END $fn$;
 
 -- Cross-ledger gate: a disbursed advance cannot silently be paid a second time
