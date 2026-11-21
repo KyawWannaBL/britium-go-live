@@ -21,19 +21,25 @@ async function render(role) { calls=[];snapshot=fixture(role);let tree;await act
 const button = (tree,prefix)=>tree.root.findAllByType('button').find(n=>text(n).startsWith(prefix));
 const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).startsWith(label)).findByType('input');
 async function change(node,value) { await act(async()=>node.props.onChange({target:{value}})); }
+async function openTab(tree,label) {
+ const tab=tree.root.findByProps({'aria-label':'Open '+label+' tab'});
+ await act(async()=>tab.props.onClick());
+ assert.equal(tree.root.findByProps({'aria-label':'Open '+label+' tab'}).props['aria-selected'],true,'active tab '+label+' has correct semantics');
+}
 (async()=>{
  let tree=await render();
  assert.ok(String(tree.root.findByType('main').props.className).includes('bg-[#060913]'),'navy settlement canvas preserved');
- for(const label of ['Search settlements','Merchant filter','From','To']){
-  assert.match(tree.root.findByProps({'aria-label':label}).props.className,/bg-white/,'screenshot uses white '+label+' control');
- }
- const amberHeaders=tree.root.findAllByType('thead').filter(n=>String(n.props.className||'').includes('bg-amber-400'));
- assert.equal(amberHeaders.length,3,'settlement, approval and payment history headers match screenshot amber');
- const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]'));
+ const tabs=tree.root.findAllByProps({role:'tab'});
+ assert.equal(tabs.length,8,'each settlement workflow has a separate accessible tab');
+ assert.equal(tree.root.findAllByProps({role:'tabpanel'}).length,1,'one process panel is visible at a time');
+ assert.equal(tree.root.findByProps({'aria-label':'Open Overview tab'}).props['aria-selected'],true,'overview opens first');
+ assert.match(tree.root.findByProps({'aria-label':'Merchant filter'}).props.className,/bg-white/,'global merchant selector remains high contrast');
+ assert.equal(tree.root.findAllByType('button').filter(n=>/^Record .* batches$/.test(text(n))).length,0,'payment mutation button hidden from overview');
+ const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]')&&String(n.props.className||'').includes('min-h-40'));
  assert.equal(walletCards.length,3,'three blue outlined wallet KPI cards present');
  assert.match(text(tree.root),/Production safety gate: advance batch creation/,'advance settlement safety warning visible');
- 
- assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
+ assert.ok(!calls.some(c=>c.name.startsWith('be_finance_advance_')),'advance backend is not invoked by overview');
+
  const walletSection=()=>tree.root.findAllByType('section').find(n=>text(n).includes('Settlement wallet:'));
  assert.ok(text(walletSection()).includes('30,000 MMK'),'unfiltered balance uses all-merchant wallet');
  await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'TSW');
@@ -42,11 +48,30 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  assert.ok(!text(walletSection()).includes('30,000 MMK'),'global balance must not remain visible under merchant filter');
  await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'');
  assert.ok(text(walletSection()).includes('30,000 MMK'),'clearing merchant restores all-merchant balance');
- assert.ok(text(tree.root).includes('Date filters below affect the parcel table only'),'wallet date scope is explicit');
+ assert.ok(text(tree.root).includes('Parcel Queue date filters affect only the parcel list'),'wallet date scope is explicit');
+ await openTab(tree,'Parcel Queue');
+ for(const label of ['Search settlements','From','To']){
+  assert.match(tree.root.findByProps({'aria-label':label}).props.className,/bg-white/,'screenshot uses white '+label+' control');
+ }
+ assert.equal(tree.root.findAllByType('thead').filter(n=>String(n.props.className||'').includes('bg-amber-400')).length,1,'parcel table header visible only in queue');
+ assert.ok(!button(tree,'Record '),'payment action absent while selecting parcels');
+ assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
+ await openTab(tree,'Draft Settlement');
+ assert.ok(text(tree.root).includes('1 · 50,000 MMK'),'selected parcel retained between tabs');
  await act(async()=>button(tree,'Create draft batch').props.onClick());
  assert.deepEqual(JSON.parse(JSON.stringify(calls.find(c=>c.name==='be_finance_create_settlement_batch_v3').args.p_parcel_ids)),['P1']);
+ await openTab(tree,'Review & Approval');
+ assert.equal(tree.root.findAllByType('thead').filter(n=>String(n.props.className||'').includes('bg-amber-400')).length,1,'approval table is visible in dedicated tab');
+ await openTab(tree,'Refunds & Adjustments');
+ assert.ok(text(tree.root).includes('After-payment refund and promotion requests'),'adjustment tab renders complete process');
+ await openTab(tree,'Payment History');
+ assert.equal(tree.root.findAllByType('thead').filter(n=>String(n.props.className||'').includes('bg-amber-400')).length,1,'history table isolated');
+ await openTab(tree,'Advance Settlement');
+ assert.match(text(tree.root),/Preview Only/,'advance preview remains visible as dedicated locked tab');
+ assert.ok(!calls.some(c=>c.name.startsWith('be_finance_advance_')),'no advance mutation or preview RPC');
+ await openTab(tree,'Record Payment');
  await change(tree.root.findByProps({'aria-label':'Payment amount BATCH1'}),'30001');
  await change(input(tree,'Transfer / receipt reference'),'REF1');
  await change(input(tree,'Beneficiary bank'),'Merchant bank');
@@ -63,6 +88,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  assert.equal(payments.length,1,'double click must submit once');
  assert.deepEqual(JSON.parse(JSON.stringify(payments[0].args)),{p_payments:[{batch_id:'B1',amount:10000}],p_reference:'REF1',p_method:'BANK_TRANSFER',p_account:'Merchant bank',p_evidence_url:'https://example.test/receipt'});
  tree.unmount();tree=await render('FINANCE_MANAGER');
+ await openTab(tree,'Record Payment');
  await change(tree.root.findByProps({'aria-label':'Payment amount BATCH1'}),'20000');
  await change(input(tree,'Transfer / receipt reference'),'F09-UPLOAD');
  await change(input(tree,'Beneficiary bank'),'KBZ merchant');
@@ -88,6 +114,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  uploadReply=null;
  for(const financeRole of ['FINANCE','FINANCE_CREATOR','FINANCE_REVIEWER','FINANCE_APPROVER']){
   tree=await render(financeRole);
+  await openTab(tree,'Record Payment');
   const picker=tree.root.findByProps({'aria-label':'Upload receipt'});
   assert.equal(picker.props.disabled,false,financeRole+' can upload receipts');
   await act(async()=>picker.props.onChange({target:{files:[{name:'staff.png',type:'image/png',size:30}],value:'staff.png'}}));
@@ -96,7 +123,8 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
   tree.unmount();
  }
  tree=await render('FINANCE_CREATOR');
+ await openTab(tree,'Record Payment');
  assert.equal(button(tree,'Record ').props.disabled,true,'creator cannot record payment');
  tree.unmount();
- console.log('Merchant settlement V200 UI PASS: merchant wallet scoping/date label, COD eligibility, batch selection, partial allocation, overpayment/evidence validation, role gate and double-click guard');
+ console.log('Merchant settlement V200 UI PASS: eight accessible workflow tabs, isolated task panels, preserved merchant/parcel selection, advance lock, wallet scoping, COD selection, payment evidence/roles and double-click guard');
 })().catch(e=>{console.error(e);process.exitCode=1;});
