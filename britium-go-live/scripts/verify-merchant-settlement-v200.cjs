@@ -23,6 +23,16 @@ const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).sta
 async function change(node,value) { await act(async()=>node.props.onChange({target:{value}})); }
 (async()=>{
  let tree=await render();
+ assert.ok(String(tree.root.findByType('main').props.className).includes('bg-[#060913]'),'navy settlement canvas preserved');
+ for(const label of ['Search settlements','Merchant filter','From','To']){
+  assert.match(tree.root.findByProps({'aria-label':label}).props.className,/bg-white/,'screenshot uses white '+label+' control');
+ }
+ const amberHeaders=tree.root.findAllByType('thead').filter(n=>String(n.props.className||'').includes('bg-amber-400'));
+ assert.equal(amberHeaders.length,3,'settlement, approval and payment history headers match screenshot amber');
+ const walletCards=tree.root.findAllByType('div').filter(n=>String(n.props.className||'').includes('bg-[#0b1021]'));
+ assert.equal(walletCards.length,3,'three blue outlined wallet KPI cards present');
+ assert.match(text(tree.root),/Production safety gate: advance batch creation/,'advance settlement safety warning visible');
+ 
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
  const walletSection=()=>tree.root.findAllByType('section').find(n=>text(n).includes('Settlement wallet:'));
  assert.ok(text(walletSection()).includes('30,000 MMK'),'unfiltered balance uses all-merchant wallet');
