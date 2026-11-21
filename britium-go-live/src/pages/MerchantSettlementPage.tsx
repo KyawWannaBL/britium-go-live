@@ -130,9 +130,29 @@ export default function MerchantSettlementPage(){
  }
  const paymentRows=Object.entries(allocations).filter(([,amount])=>Number(amount)>0).map(([batch_id,amount])=>({batch_id,amount:Number(amount)}));
  const paymentTotal=paymentRows.reduce((s,r)=>s+r.amount,0);
+ const selectedPayable=chosen.reduce((total,r)=>total+Number(r.merchant_final_settlement_amount||0),0);
+ const canDraft=canCreate&&!loading&&!busy&&selected.length>0&&chosen.length===selected.length&&chosen.every(r=>r.settlement_eligible&&Number(r.merchant_final_settlement_amount)>0)&&selectedPayable>0;
+ const canSubmitAdjustment=canCreate&&!busy&&Boolean(post.batch)&&postAmountValid&&postEvidenceValid&&post.reason.trim().length>=8;
+ const stageButton="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-xs font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50";
+ const primaryStageButton=stageButton+" bg-amber-400 text-[#06101e] hover:bg-amber-300";
+ const secondaryStageButton=stageButton+" border border-sky-700 bg-[#112240] text-sky-200 hover:bg-[#19385a]";
  const paymentValid=paymentRows.length>0&&paymentTotal>0&&payment.reference.trim()&&/^https:\/\//.test(payment.evidence)&&(!["BANK_TRANSFER","CHEQUE"].includes(payment.method)||payment.account.trim())&&paymentRows.every(r=>{
    const b=payableBatches.find((x:Row)=>x.id===r.batch_id);return b&&Number.isFinite(r.amount)&&r.amount<=Number(b.outstanding_amount)&&Math.round(r.amount*100)/100===r.amount;
  });
+ async function recordPayment(){
+   if(!canPay||!paymentValid||busy||loading||uploading)return;
+   await mutate(async()=>{
+     await rpc("be_finance_record_bulk_payment_v200",{p_payments:paymentRows,p_reference:payment.reference,p_method:payment.method,p_account:payment.account||null,p_evidence_url:payment.evidence});
+     setPayment(p=>({...p,reference:"",evidence:""}));setReceiptName("");
+   },"Confirmed payment recorded. Merchant wallet and transaction history updated.");
+ }
+ function exportPayments(){
+   const headers=["confirmed_at","batch_number","merchant_id","merchant_name","amount","payment_method","payment_group_reference","payment_reference","bank_account","evidence_url","entered_by","confirmed_by","status"];
+   const cell=(v:unknown)=>'"'+String(v??"").replace(/^[=+@-]/,"' function exportRows(){").replace(/"/g,'""')+'"';
+   const lines=[headers.map(cell).join(","),...payments.map((r:Row)=>headers.map(k=>cell(k==="merchant_name"?merchantName(r.merchant_id):r[k])).join(","))].join("\r\n");
+   const url=URL.createObjectURL(new Blob([lines],{type:"text/csv;charset=utf-8"}));
+   const a=document.createElement("a");a.href=url;a.download="merchant-payment-history.csv";a.click();URL.revokeObjectURL(url);
+ }
  function exportRows(){
    const headers=["delivery_way_id","merchant_id","amount_entry_type","status","customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount","settlement_state"];
    const cell=(v:any)=>'"'+String(v??"").replace(/^[=+@-]/,"'$&").replace(/"/g,'""')+'"';
@@ -167,6 +187,39 @@ export default function MerchantSettlementPage(){
     {tabs.map(tab=><button key={tab.id} type="button" role="tab" aria-selected={activeTab===tab.id} aria-controls={"settlement-"+tab.id} className={"shrink-0 rounded-lg px-3 py-2.5 text-xs font-extrabold transition "+(activeTab===tab.id?"bg-amber-400 text-[#06101e]":"bg-[#112240] text-slate-300 hover:bg-[#1d3557]")} onClick={()=>{setActiveTab(tab.id);setDrawer(null);setError("");setMobilePayout(false);}}>{tab.label}</button>)}
    </div>
   </nav>
+  <div data-settlement-action-toolbar="true" className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-amber-400/20 bg-[#10213a] px-3 py-3">
+    <div className="min-w-0 text-xs">
+      <p className="font-extrabold text-amber-300">{activeTab==="parcels"?"01 · Prepare settlement draft":activeTab==="batches"?"02 · Review & approve settlement batches":activeTab==="payments"?"03 · Record verified merchant disbursement":activeTab==="adjustments"?"04 · Handle post-payment adjustments":"05 · Review & export payment history"}</p>
+      <p className="mt-1 text-slate-300">{activeTab==="parcels"?(canCreate?(!selected.length?"Select delivered, COD-reconciled parcels to enable draft creation.":selected.length+" selected · "+money(selectedPayable)+" before adjustments"):"Your finance role cannot create settlement batches."):activeTab==="batches"?(!batches.length?"No batches for this merchant. Create a draft in the first tab.":batches.length+" batch(es) · only authorized stages can advance."):activeTab==="payments"?(payableBatches.length?payableBatches.length+" approved / partially paid batch(es) with an outstanding balance.":"No approved batches with a positive outstanding balance for this merchant."):activeTab==="adjustments"?"Requests and approvals never transfer money automatically.":"Confirmed transactions for the selected merchant."}</p>
+    </div>
+    <div className="flex max-w-full flex-wrap items-center gap-2" aria-label="Settlement workflow actions">
+      {activeTab==="parcels"&&<>
+        <button type="button" data-action="select-eligible" className={secondaryStageButton} disabled={!canCreate||busy||!selectableIds.length} onClick={toggleVisible}>{allVisibleSelected?"Deselect eligible":"Select eligible parcels"}</button>
+        <button type="button" data-action="create-draft" className={primaryStageButton} disabled={!canDraft} onClick={()=>void createBatch()}>Create settlement draft ({selected.length})</button>
+        <button type="button" className={secondaryStageButton} onClick={()=>setActiveTab("batches")}>Review batches</button>
+      </>}
+      {activeTab==="batches"&&<>
+        <button type="button" className={secondaryStageButton} disabled={loading||busy} onClick={()=>void load()}>Refresh batches</button>
+        <button type="button" className={secondaryStageButton} onClick={()=>setActiveTab("parcels")}>New settlement draft</button>
+        <button type="button" className={primaryStageButton} onClick={()=>setActiveTab("payments")}>Open payment recorder</button>
+      </>}
+      {activeTab==="payments"&&<>
+        <button type="button" data-action="record-payment" className={primaryStageButton} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void recordPayment()}>Record confirmed payment · {money(paymentTotal)}</button>
+        <button type="button" className={secondaryStageButton} onClick={()=>setActiveTab("batches")}>Back to approvals</button>
+        <button type="button" className={secondaryStageButton} onClick={()=>setActiveTab("history")}>Payment history</button>
+      </>}
+      {activeTab==="adjustments"&&<>
+        <button type="button" data-action="request-adjustment" className={primaryStageButton} disabled={!canSubmitAdjustment} onClick={()=>void requestPost()}>Submit adjustment request</button>
+        <button type="button" className={secondaryStageButton} disabled={busy} onClick={()=>void loadRequests()}>Refresh requests</button>
+        <button type="button" className={secondaryStageButton} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment CSV</button>
+      </>}
+      {activeTab==="history"&&<>
+        <button type="button" data-action="export-payment-history" className={primaryStageButton} disabled={!payments.length} onClick={exportPayments}>Export payments CSV</button>
+        <button type="button" className={secondaryStageButton} disabled={busy||loading} onClick={()=>void load()}>Refresh history</button>
+        <button type="button" className={secondaryStageButton} onClick={()=>window.print()}>Print history</button>
+      </>}
+    </div>
+  </div>
   {activeTab==="parcels"&&<section id="settlement-parcels" role="tabpanel" className="flex min-h-0 flex-1 flex-col overflow-hidden">
    <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-800 bg-[#0a192f] px-3 py-3">
     <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -210,17 +263,17 @@ export default function MerchantSettlementPage(){
       </div>
       <div className="space-y-2 rounded-xl border border-slate-800 bg-[#0a192f] p-3 text-xs"><p className="font-extrabold uppercase text-sky-400">Disbursement details · after approval only</p><p className="text-slate-300">Create a draft now, then send it through independent review and approval. Record the bank or wallet transaction only after an actual transfer.</p><button className="font-semibold text-sky-400 underline" onClick={()=>setActiveTab("payments")}>Open confirmed payment recorder</button></div>
      </div>
-     <div className="shrink-0 space-y-2 border-t border-slate-800 bg-[#0a192f] p-3"><button className="w-full rounded-xl bg-emerald-500 px-3 py-3 text-sm font-extrabold text-[#06101e] disabled:opacity-40" disabled={busy||loading||!canCreate||!selected.length||chosen.length!==selected.length} onClick={()=>void createBatch()}>Create draft batch · {selected.length} parcels</button><p className="text-[10px] text-slate-400">Approval and confirmed payment recording are separate actions. No automatic funds transfer.</p></div>
+     <div className="shrink-0 space-y-2 border-t border-slate-800 bg-[#0a192f] p-3"><button className="w-full rounded-xl bg-emerald-500 px-3 py-3 text-sm font-extrabold text-[#06101e] disabled:opacity-40" disabled={!canDraft} onClick={()=>void createBatch()}>Create draft batch · {selected.length} parcels</button><p className="text-[10px] text-slate-400">Approval and confirmed payment recording are separate actions. No automatic funds transfer.</p></div>
     </section>
    </div>
   </section>}
   <div className="min-h-0 flex-1 overflow-y-auto p-3 md:p-5">
-  {activeTab==="batches"&&<section id="settlement-batches" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Batches and approval</h2><div className="mt-4 overflow-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{merchantLabel(b.merchant_id)}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button></td></tr>)}</tbody></table></div></section>}
+  {activeTab==="batches"&&<section id="settlement-batches" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Batches and approval</h2><p className="mt-2 text-xs text-slate-300">Use the Action column to submit, review or approve individual batches. Buttons are disabled when your role lacks permission.</p>{!batches.length&&<p className="mt-3 rounded-lg border border-slate-700 p-4 text-sm">No batches yet. Select eligible parcels in Merchant settlement and create a draft.</p>}<div className="mt-4 overflow-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{merchantLabel(b.merchant_id)}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button type="button" className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button>{!actions(b)&&<span className="ml-2 text-xs text-slate-400">{["APPROVED","PARTIALLY_PAID","PAID"].includes(b.status)?"Use Payment tab": "No permitted transition"}</span>}</td></tr>)}</tbody></table></div></section>}
   {activeTab==="payments"&&<section id="settlement-payments" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Record confirmed payment</h2><p className="mt-2 text-sm text-slate-300">Record a payment already made. Enter each batch allocation for partial, split or bulk payments. Each transfer needs its own reference and receipt evidence.</p>
    <div className="mt-4 grid gap-3 sm:grid-cols-2">{payableBatches.map((b:Row)=><label key={b.id} className="rounded-xl border border-slate-700 p-3">{b.batch_number} · {merchantLabel(b.merchant_id)} · outstanding {money(b.outstanding_amount)}<input type="number" min="0" step="0.01" max={b.outstanding_amount} className={field+" mt-2 w-full"} aria-label={"Payment amount "+b.batch_number} value={allocations[b.id]||""} onChange={e=>setAllocations({...allocations,[b.id]:e.target.value})}/></label>)}</div>
    <div className="mt-4 grid gap-3 md:grid-cols-2"><label>Payment method<select className={field+" mt-1 w-full"} value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{methods.map(m=><option key={m}>{m}</option>)}</select></label><label>Transfer / receipt reference<input className={field+" mt-1 w-full"} value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></label><label>Beneficiary bank / wallet / cheque account<input className={field+" mt-1 w-full"} value={payment.account} onChange={e=>setPayment({...payment,account:e.target.value})}/></label><label>Receipt / evidence URL (HTTPS)<input disabled={busy||uploading} type="url" className={field+" mt-1 w-full"} value={payment.evidence} onChange={e=>{setPayment({...payment,evidence:e.target.value});setReceiptName("");}}/></label></div>
    <div className="mt-3 space-y-2"><label className={button+" inline-block cursor-pointer"}>Upload receipt<input aria-label="Upload receipt" type="file" accept="image/jpeg,image/png,application/pdf" className="mt-2 block max-w-full text-sm" disabled={busy||loading||uploading||!canUploadReceipt} onChange={uploadReceipt}/></label><p className="text-sm text-slate-300">JPG, PNG or PDF · up to 10 MB. Upload a file or paste an existing HTTPS evidence link.</p>{uploading&&<p role="status">Uploading receipt…</p>}{receiptName&&<p role="status">Attached: {receiptName} · <SettlementReceiptLink url={payment.evidence} label="Preview receipt"/></p>}</div>
-   <button className={button+" mt-4"} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void mutate(async()=>{await rpc("be_finance_record_bulk_payment_v200",{p_payments:paymentRows,p_reference:payment.reference,p_method:payment.method,p_account:payment.account||null,p_evidence_url:payment.evidence});setPayment(p=>({...p,reference:"",evidence:""}));setReceiptName("");},"Confirmed payment recorded. Merchant wallet and transaction history updated.")}>Record {money(paymentTotal)} · {paymentRows.length} batches</button>
+   <button className={button+" mt-4"} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void recordPayment()}>Record {money(paymentTotal)} · {paymentRows.length} batches</button>
   </section>}
   {activeTab==="adjustments"&&<section id="settlement-adjustments" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5">
     <h2 className="text-xl font-bold">After-payment refund and promotion requests</h2>
@@ -232,7 +285,7 @@ export default function MerchantSettlementPage(){
       <label>Amount (MMK)<input className={field+" mt-1 w-full"} type="number" min="0.01" step="0.01" value={post.amount} onChange={e=>setPost({...post,amount:e.target.value})}/></label>
       <label>Evidence URL (HTTPS)<input className={field+" mt-1 w-full"} type="url" value={post.evidence} onChange={e=>setPost({...post,evidence:e.target.value})} placeholder="https://..."/></label><label className="md:col-span-2">Manual reason<textarea className={field+" mt-1 w-full"} maxLength={1000} rows={2} value={post.reason} onChange={e=>setPost({...post,reason:e.target.value})}/></label>
     </div>
-    <button className={button+" mt-3"} disabled={busy||!canCreate||!post.batch||!postAmountValid||!postEvidenceValid||post.reason.trim().length<8} onClick={()=>void requestPost()}>Submit adjustment request (no payment)</button>
+    <button className={button+" mt-3"} disabled={!canSubmitAdjustment} onClick={()=>void requestPost()}>Submit adjustment request (no payment)</button>
     <p className="mt-4 text-sm text-amber-300">This adjustment register is not a refund disbursement ledger. A PAID status alone does not verify the bank reference or receipt; reconcile against external payment records before closing the case.</p><div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button><button className={button} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment register CSV</button></div>
     <div className="mt-3 space-y-2">{requests.map((a:Row)=><div className="rounded-xl border border-slate-700 p-3" key={a.id}><p>{a.batch_number} · {merchantLabel(a.merchant_id)} · {a.adjustment_type} · {money(Math.abs(Number(a.difference||0)))} · {a.status}</p><p className="text-sm text-slate-300">Reason: {a.reason}</p>{a.supporting_document_url&&<p className="mt-1 text-sm"><SettlementReceiptLink url={a.supporting_document_url} label="View adjustment evidence"/></p>}<p className="text-xs text-slate-400">Requested: {a.requested_by||"Unknown"} · Reviewed: {a.approved_by||"Pending"} · {a.created_at?new Date(a.created_at).toLocaleString():""}</p>{a.status==="APPROVED_UNPAID"&&<p className="text-amber-300 text-sm">Approved; payment not yet confirmed.</p>}{a.status==="PAID"&&<p className="text-sky-300 text-sm">Marked paid in Finance. Payment reference and supporting receipt must be reconciled separately; they are not included in this adjustment register.</p>}{a.status==="REJECTED"&&<p className="text-slate-400 text-sm">Rejected; no payment is authorized.</p>}{a.status==="PENDING_APPROVAL"&&canReviewPost&&<button className={button+" mt-2"} onClick={()=>setReview({...review,id:a.id})}>Review this request</button>}</div>)}</div>
     {review.id&&<div className="mt-3 flex flex-wrap gap-3"><select className={field} value={review.action} onChange={e=>setReview({...review,action:e.target.value})}><option value="APPROVE">Approve (unpaid)</option><option value="REJECT">Reject</option></select><input className={field} placeholder="Review note (required)" maxLength={1000} value={review.note} onChange={e=>setReview({...review,note:e.target.value})}/><button className={button} disabled={busy||!canReviewPost||review.note.trim().length<8} onClick={()=>void reviewPost()}>Record independent review</button></div>}
