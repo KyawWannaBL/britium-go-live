@@ -11,10 +11,24 @@ const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
 const filterField="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-amber-400";
 const button="rounded-xl border border-sky-700 px-4 py-2 font-bold disabled:opacity-40";
 const methods=["CASH","BANK_TRANSFER","KBZ_PAY","WAVE_PAY","AYA_PAY","CB_PAY","CHEQUE","OTHER"];
+const settlementTabs = [
+ {key:"overview",label:"Overview",description:"Merchant balances and workflow summary",step:"01"},
+ {key:"queue",label:"Parcel Queue",description:"Review eligible delivered parcels and COD",step:"02"},
+ {key:"draft",label:"Draft Settlement",description:"Prepare a merchant batch and adjustments",step:"03"},
+ {key:"approvals",label:"Review & Approval",description:"Independent checks before a payout",step:"04"},
+ {key:"payments",label:"Record Payment",description:"Record verified, already-completed transfers",step:"05"},
+ {key:"adjustments",label:"Refunds & Adjustments",description:"Post-payment requests and approvals",step:"06"},
+ {key:"history",label:"Payment History",description:"Payment evidence and audit trail",step:"07"},
+ {key:"advance",label:"Advance Settlement",description:"Preview only — payout actions locked",step:"08"}
+] as const;
+type SettlementTab = typeof settlementTabs[number]["key"];
+
 export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
+ const [activeTab,setActiveTab]=useState<SettlementTab>("overview");
+ const tabRefs=useRef<Partial<Record<SettlementTab,HTMLButtonElement|null>>>({});
  const [scopedWallet,setScopedWallet]=useState<{merchant:string;wallet:Row|null;loading:boolean;error:string}>({merchant:"",wallet:null,loading:false,error:""});
  const [selected,setSelected]=useState<string[]>([]),[allocations,setAllocations]=useState<Record<string,string>>({});
  const [payment,setPayment]=useState({method:"BANK_TRANSFER",reference:"",account:"",evidence:""});
@@ -121,44 +135,141 @@ export default function MerchantSettlementPage(){
    if(Number(b.batch_net_payable)<=0||Number(b.outstanding_amount)<0)return <span className="text-amber-300">Non-payout / merchant receivable — Finance review required</span>;
    return <button className={button} disabled={busy||!action[2]} onClick={()=>void mutate(()=>rpc("be_finance_transition_batch_v3",{p_batch_id:b.id,p_action:action[0],p_note:"Merchant settlement review"}),"Batch status updated.")}>{action[1]}</button>;
  }
+  function onTabKeyDown(event:React.KeyboardEvent<HTMLButtonElement>,index:number){
+    const key=event.key;
+    let next=index;
+    if(key==="ArrowRight")next=(index+1)%settlementTabs.length;
+    else if(key==="ArrowLeft")next=(index+settlementTabs.length-1)%settlementTabs.length;
+    else if(key==="Home")next=0;
+    else if(key==="End")next=settlementTabs.length-1;
+    else return;
+    event.preventDefault();
+    const nextTab=settlementTabs[next].key;
+    setActiveTab(nextTab);
+    tabRefs.current[nextTab]?.focus();
+  }
+  const activeTabInfo=settlementTabs.find(t=>t.key===activeTab)!;
+  const eligibleCount=rows.filter((r:Row)=>r.settlement_eligible).length;
+  const approvalQueueCount=batches.filter((b:Row)=>["UNDER_REVIEW","PENDING_APPROVAL"].includes(String(b.status))).length;
+  const adjustmentQueueCount=requests.filter((r:Row)=>r.status==="PENDING_APPROVAL").length;
+  const tabCounts:Partial<Record<SettlementTab,number>>={
+    queue:eligibleCount,draft:selected.length,approvals:approvalQueueCount,
+    payments:payableBatches.length,adjustments:adjustmentQueueCount,history:payments.length
+  };
+
  return <main className="min-h-screen space-y-6 bg-[#060913] p-4 text-slate-100 md:p-6">
-  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
    <div className="flex flex-wrap justify-between gap-4"><div><h1 className="flex items-center gap-3 text-2xl font-black"><WalletCards/>Merchant Settlement</h1><p className="mt-2 text-sm text-slate-300">Delivered parcels → reconciled COD → batch review → approval → confirmed merchant payments.</p></div><div className="flex gap-2"><button className={button} disabled={loading||busy} onClick={()=>void load()}><RefreshCw size={16} className="mr-2 inline"/>Refresh</button><button className={button} disabled={loading} onClick={exportRows}><Download size={16} className="mr-2 inline"/>Export</button></div></div>
    {error&&<p role="alert" className="mt-4 rounded-xl bg-red-950 p-3 text-red-200">{error}</p>}
    {message&&<p role="status" className="mt-4 rounded-xl bg-emerald-950 p-3 text-emerald-200">{message}</p>}
    {loading&&<p role="status" className="mt-3">Loading live settlement records…</p>}
   </section>
-  <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} previewOnly />
-  <section className="space-y-3" aria-label="Merchant settlement wallet summary">
-   <p className="text-sm text-slate-300">Settlement wallet: <strong>{merchant||"All merchants"}</strong> · All dates. Date filters below affect the parcel table only, not wallet balances or payment history.</p>
+ <p role="status" className="rounded-xl border border-amber-800/70 bg-amber-950/20 px-4 py-3 text-sm font-semibold text-amber-200">Production safety gate: advance batch creation, approval, payment recording and refunds remain NOT ACTIVE until Finance UAT and final accounting reconciliation pass. Normal Merchant Settlement is unchanged.</p>
+ 
+  <section className="rounded-3xl border border-sky-950 bg-[#090d1c] px-4 py-4 md:px-5" aria-label="Merchant selection">
+   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+    <label className="flex min-w-0 flex-col gap-2 text-sm font-bold text-slate-200 sm:flex-row sm:items-center">
+      Merchant
+      <select aria-label="Merchant filter" className={filterField+" w-full min-w-0 sm:ml-3 sm:w-64"} value={merchant} onChange={e=>{setMerchant(e.target.value);setSelected([]);setAllocations({});}}>
+       <option value="">All merchants</option>{merchants.map(m=><option key={m}>{m}</option>)}
+      </select>
+    </label>
+    <p className="max-w-2xl text-xs leading-relaxed text-slate-400">Merchant selection applies to normal settlement balances, batches, payments and parcel records. Date and search filters in Parcel Queue affect parcels only.</p>
+   </div>
+  </section>
+  <nav role="tablist" aria-label="Merchant Settlement process tabs" className="flex w-full gap-2 overflow-x-auto rounded-3xl border border-sky-950 bg-[#090d1c] p-2 shadow-lg shadow-slate-950/30" style={{scrollbarWidth:"thin"}}>
+   {settlementTabs.map((tab,index)=><button
+     key={tab.key} ref={node=>{tabRefs.current[tab.key]=node;}} type="button" role="tab"
+     id={"settlement-tab-"+tab.key} aria-controls={"settlement-panel-"+tab.key}
+     aria-selected={activeTab===tab.key} aria-label={"Open "+tab.label+" tab"}
+     tabIndex={activeTab===tab.key?0:-1}
+     onClick={()=>setActiveTab(tab.key)} onKeyDown={e=>onTabKeyDown(e,index)}
+     className={"group flex min-w-max shrink-0 items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-bold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300 "+(activeTab===tab.key?"border-amber-400 bg-amber-400 text-slate-950 shadow-lg shadow-amber-950/20":"border-slate-700 bg-slate-950 text-slate-200 hover:border-amber-500/60 hover:text-white")}>
+     <span className={"text-xs font-black "+(activeTab===tab.key?"text-amber-950":"text-sky-400")}>{tab.step}</span>
+     <span>{tab.label}</span>
+     {tab.key==="advance"&&<span className={"rounded-md px-1.5 py-0.5 text-[10px] font-black "+(activeTab===tab.key?"bg-amber-100":"bg-amber-900/50 text-amber-200")}>LOCKED</span>}
+     {tabCounts[tab.key]!==undefined&&<span className={"rounded-full px-2 py-0.5 text-xs "+(activeTab===tab.key?"bg-amber-100 text-slate-900":"bg-slate-800 text-slate-300")}>{tabCounts[tab.key]}</span>}
+    </button>)}
+  </nav>
+  <section role="tabpanel" id={"settlement-panel-"+activeTab} aria-labelledby={"settlement-tab-"+activeTab} tabIndex={0} className="space-y-5 focus:outline-none">
+    <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-sky-950/70 bg-[#0b1021] p-4 md:p-5">
+      <div><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-amber-400">Finance workspace · {activeTabInfo.step} / 08</p>
+      <h2 className="mt-2 text-xl font-extrabold text-white md:text-2xl">{activeTabInfo.label}</h2>
+      <p className="mt-1 text-sm text-slate-300">{activeTabInfo.description}</p></div>
+      {activeTab==="queue"&&<span className="rounded-full border border-sky-800 bg-sky-950/50 px-3 py-1 text-sm font-bold text-sky-200">{eligibleCount} eligible</span>}
+    </div>
+
+ 
+  {activeTab==="overview"&&<>
+     <section className="space-y-3" aria-label="Merchant settlement wallet summary">
+   <p className="text-sm text-slate-300">Settlement wallet: <strong>{merchant||"All merchants"}</strong> · All dates. Parcel Queue date filters affect only the parcel list, not wallet balances or payment history.</p>
    {merchant&&scopedWallet.loading&&<p role="status" className="text-sm text-sky-300">Loading {merchant} wallet…</p>}
    {merchant&&scopedWallet.error&&<p role="alert" className="text-sm text-red-300">Merchant wallet unavailable: {scopedWallet.error}. Totals are hidden to avoid displaying another merchant's balances.</p>}
    <div className="grid gap-4 sm:grid-cols-3">{[["Britium owes merchants",walletValues?.britium_owes],["Confirmed merchant payments",walletValues?.paid_amount],["Merchants owe Britium",walletValues?.owes_britium]].map(([title,value])=><div key={String(title)} className="min-h-40 rounded-3xl border border-sky-900/70 bg-[#0b1021] p-5 shadow-lg shadow-slate-950/30"><p className="text-base font-semibold leading-snug text-slate-200">{String(title)}</p><p className="mt-4 break-words text-3xl font-black tracking-tight text-white">{walletReady?<>{walletMoney(value).replace(/ MMK$/, "")}<span className="mt-1 block text-2xl"> MMK</span></>:walletMoney(value)}</p></div>)}</div>
   </section>
-  <section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 shadow-lg shadow-slate-950/30 md:p-5">
-   <div className="space-y-3" aria-label="Settlement search and filters">
-    <div className="grid gap-3 md:grid-cols-[minmax(250px,1.7fr)_minmax(180px,0.9fr)]">
+   <section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-5">
+     <h3 className="text-lg font-extrabold">Settlement workflow</h3>
+     <p className="mt-1 text-sm text-slate-400">Select the next step to continue. Your selected parcels and partially completed payment form stay in place when changing tabs.</p>
+     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+     {[
+       {key:"queue" as const,title:"Prepare parcels",detail:eligibleCount+" eligible parcels ready for review"},
+       {key:"draft" as const,title:"Draft settlement",detail:selected.length+" selected parcels"},
+       {key:"approvals" as const,title:"Independent review",detail:approvalQueueCount+" batches awaiting review"},
+       {key:"payments" as const,title:"Record verified payments",detail:payableBatches.length+" payable batches"},
+       {key:"adjustments" as const,title:"Manage adjustments",detail:adjustmentQueueCount+" requests awaiting decision"},
+       {key:"history" as const,title:"Review payment history",detail:payments.length+" payment records"}
+     ].map(item=><button type="button" key={item.key} onClick={()=>setActiveTab(item.key)}
+       className="flex items-center justify-between gap-3 rounded-2xl border border-slate-700 bg-[#10182b] p-4 text-left transition-colors hover:border-amber-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">
+       <span><span className="block font-bold text-white">{item.title}</span><span className="mt-1 block text-xs text-slate-300">{item.detail}</span></span>
+       <span aria-hidden="true" className="font-black text-amber-400">›</span>
+     </button>)}
+     </div>
+   </section>
+   <p className="rounded-xl border border-amber-900/70 bg-amber-950/20 p-4 text-sm text-amber-200">Advance Settlement is a separate preview-only workflow. Advance batch creation, approval, payment recording and refund operations remain disabled until Finance UAT and reconciliation pass.</p>
+  </>}
+
+ 
+  {activeTab==="queue"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 shadow-lg md:p-5">
+   <div className="space-y-3" aria-label="Settlement search and date filters">
      <input aria-label="Search settlements" className={filterField+" w-full"} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/>
-     <select aria-label="Merchant filter" className={filterField+" w-full"} value={merchant} onChange={e=>{setMerchant(e.target.value);setSelected([]);setAllocations({});}}><option value="">All merchants</option>{merchants.map(m=><option key={m}>{m}</option>)}</select>
-    </div>
-    <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-     <label className="flex items-center gap-2 text-sm font-bold text-sky-300">From<input aria-label="From" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
-     <label className="flex items-center gap-2 text-sm font-bold text-sky-300">To<input aria-label="To" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={to} onChange={e=>setTo(e.target.value)}/></label>
-    </div>
+     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">From<input aria-label="From" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
+      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">To<input aria-label="To" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={to} onChange={e=>setTo(e.target.value)}/></label>
+     </div>
    </div>
-   <div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Select","Way ID / merchant","Collection type","Delivery","Expected COD","Reported","Received by Finance","Britium entitlement","Merchant payable","State"].map(h=><th scope="col" key={h} className="px-3 py-5 font-extrabold">{h}</th>)}</tr></thead><tbody>{rows.map((r:Row)=><tr key={r.parcel_id} className="border-t border-slate-800 bg-[#090d1c] hover:bg-slate-800/60"><td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!r.settlement_eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td><td className="p-3 font-semibold">{r.delivery_way_id}<br/>{r.merchant_name||r.merchant_id}</td><td className="max-w-xs break-words p-3 text-slate-200">{r.amount_entry_type}</td><td className="p-3">{r.status}</td>{["customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount"].map(k=><td key={k} className="p-3">{money(r[k])}</td>)}<td className="p-3">{r.settlement_state}{r.validation_status!=="OK"&&<p>{r.validation_message}</p>}</td></tr>)}</tbody></table>{!loading&&!rows.length&&<p className="p-5">No settlement parcels match these filters.</p>}</div>
-   <div className="mt-4 rounded-xl border border-slate-700 p-4"><h3 className="font-bold">Refund / promotion / manual settlement adjustment</h3><p className="mt-1 text-sm text-slate-300">Draft only: credit increases merchant payable and deduction decreases it. Original COD stays unchanged; independent review and approval remain required.</p><div className="mt-3 grid gap-3 md:grid-cols-3"><label>Purpose<select aria-label="Adjustment purpose" className={field+" mt-1 w-full"} value={adjustment.type} onChange={e=>setAdjustment({...adjustment,type:e.target.value})}>{["NONE","REFUND","PROMOTION","GOODWILL","OTHER"].map(v=><option key={v} value={v}>{v==="NONE"?"No adjustment":v}</option>)}</select></label><label>Direction<select aria-label="Adjustment direction" className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.direction} onChange={e=>setAdjustment({...adjustment,direction:e.target.value})}><option value="CREDIT">Credit (+)</option><option value="DEDUCTION">Deduction (-)</option></select></label><label>Amount (MMK)<input aria-label="Adjustment amount" type="number" min="0" step="0.01" className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.amount} onChange={e=>setAdjustment({...adjustment,amount:e.target.value})}/></label></div><label className="mt-3 block">Manual reason / approval reference<textarea aria-label="Adjustment reason" maxLength={1000} rows={2} className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.reason} onChange={e=>setAdjustment({...adjustment,reason:e.target.value})}/></label><p className="mt-3 font-bold">Estimated draft payable: {money(chosen.reduce((a,r)=>a+Number(r.merchant_final_settlement_amount||0),0)+(adjustment.type==="NONE"?0:(adjustment.direction==="CREDIT"?1:-1)*Number(adjustment.amount||0)))}</p></div>
-   <button className={button+" mt-4"} disabled={busy||loading||!canCreate||!selected.length} onClick={()=>void createBatch()}>Create draft batch · {selected.length} parcels · {money(chosen.reduce((s,r)=>s+Number(r.merchant_final_settlement_amount||0),0))}</button>
-   <p className="mt-3 text-sm text-slate-400">COD must be received and reconciled before batching. The batch creator cannot approve their own batch. Zero/negative payable is not a merchant payout.</p>
-  </section>
-  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Batches and approval</h2><div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[750px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th scope="col" className="px-3 py-4 font-extrabold" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{b.merchant_name||b.merchant_id}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button></td></tr>)}</tbody></table></div></section>
-  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Record confirmed payment</h2><p className="mt-2 text-sm text-slate-300">Record a payment already made. Enter each batch allocation for partial, split or bulk payments. Each transfer needs its own reference and receipt evidence.</p>
+   <p className="mt-3 text-sm text-slate-400">Choose reconciled delivered parcels for a single merchant. Search and dates affect only this parcel table.</p>
+      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Select","Way ID / merchant","Collection type","Delivery","Expected COD","Reported","Received by Finance","Britium entitlement","Merchant payable","State"].map(h=><th scope="col" key={h} className="px-3 py-5 font-extrabold">{h}</th>)}</tr></thead><tbody>{rows.map((r:Row)=><tr key={r.parcel_id} className="border-t border-slate-800 bg-[#090d1c] hover:bg-slate-800/60"><td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!r.settlement_eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td><td className="p-3 font-semibold">{r.delivery_way_id}<br/>{r.merchant_name||r.merchant_id}</td><td className="max-w-xs break-words p-3 text-slate-200">{r.amount_entry_type}</td><td className="p-3">{r.status}</td>{["customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount"].map(k=><td key={k} className="p-3">{money(r[k])}</td>)}<td className="p-3">{r.settlement_state}{r.validation_status!=="OK"&&<p>{r.validation_message}</p>}</td></tr>)}</tbody></table>{!loading&&!rows.length&&<p className="p-5">No settlement parcels match these filters.</p>}</div>
+   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
+    <p className="text-sm text-slate-200"><strong className="text-amber-300">{selected.length}</strong> parcels selected · <strong>{money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</strong></p>
+    <button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950 hover:bg-amber-300 disabled:opacity-40"} disabled={!selected.length} onClick={()=>setActiveTab("draft")}>Continue to Draft Settlement</button>
+   </div>
+  </section>}
+
+ 
+ {activeTab==="draft"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 md:p-5">
+  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
+   <div><p className="text-xs uppercase tracking-widest text-sky-300">Selected parcels</p><p className="mt-1 text-xl font-extrabold">{selected.length} · {money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</p>{chosen.length>0&&<p className="mt-1 text-sm text-slate-300">Merchant: {chosen[0].merchant_id} · {chosen.slice(0,4).map((r:Row)=>r.delivery_way_id).join(", ")}{chosen.length>4?"…":""}</p>}</div>
+   <button type="button" className={button} onClick={()=>setActiveTab("queue")}>{selected.length?"Change parcel selection":"Select parcels"}</button>
+  </div>
+  {!selected.length&&<p role="status" className="mt-3 rounded-lg border border-amber-800 bg-amber-950/20 p-3 text-sm text-amber-200">No parcels selected. Use Parcel Queue to select eligible, reconciled parcels before creating a batch.</p>}
+     <div className="mt-4 rounded-xl border border-slate-700 p-4"><h3 className="font-bold">Refund / promotion / manual settlement adjustment</h3><p className="mt-1 text-sm text-slate-300">Draft only: credit increases merchant payable and deduction decreases it. Original COD stays unchanged; independent review and approval remain required.</p><div className="mt-3 grid gap-3 md:grid-cols-3"><label>Purpose<select aria-label="Adjustment purpose" className={field+" mt-1 w-full"} value={adjustment.type} onChange={e=>setAdjustment({...adjustment,type:e.target.value})}>{["NONE","REFUND","PROMOTION","GOODWILL","OTHER"].map(v=><option key={v} value={v}>{v==="NONE"?"No adjustment":v}</option>)}</select></label><label>Direction<select aria-label="Adjustment direction" className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.direction} onChange={e=>setAdjustment({...adjustment,direction:e.target.value})}><option value="CREDIT">Credit (+)</option><option value="DEDUCTION">Deduction (-)</option></select></label><label>Amount (MMK)<input aria-label="Adjustment amount" type="number" min="0" step="0.01" className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.amount} onChange={e=>setAdjustment({...adjustment,amount:e.target.value})}/></label></div><label className="mt-3 block">Manual reason / approval reference<textarea aria-label="Adjustment reason" maxLength={1000} rows={2} className={field+" mt-1 w-full"} disabled={adjustment.type==="NONE"} value={adjustment.reason} onChange={e=>setAdjustment({...adjustment,reason:e.target.value})}/></label><p className="mt-3 font-bold">Estimated draft payable: {money(chosen.reduce((a,r)=>a+Number(r.merchant_final_settlement_amount||0),0)+(adjustment.type==="NONE"?0:(adjustment.direction==="CREDIT"?1:-1)*Number(adjustment.amount||0)))}</p></div>
+     <button className={button+" mt-4"} disabled={busy||loading||!canCreate||!selected.length} onClick={()=>void createBatch()}>Create draft batch · {selected.length} parcels · {money(chosen.reduce((s,r)=>s+Number(r.merchant_final_settlement_amount||0),0))}</button>
+     <p className="mt-3 text-sm text-slate-400">COD must be received and reconciled before batching. The batch creator cannot approve their own batch. Zero/negative payable is not a merchant payout.</p>
+ </section>}
+
+ 
+ {activeTab==="approvals"&&<>
+    <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Batches and approval</h2><div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[750px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th scope="col" className="px-3 py-4 font-extrabold" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{b.merchant_name||b.merchant_id}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button></td></tr>)}</tbody></table></div></section>
+  {payableBatches.length>0&&<button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950"} onClick={()=>setActiveTab("payments")}>Continue to Record Payment · {payableBatches.length} payable</button>}
+ </>}
+
+ {activeTab==="payments"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Record confirmed payment</h2><p className="mt-2 text-sm text-slate-300">Record a payment already made. Enter each batch allocation for partial, split or bulk payments. Each transfer needs its own reference and receipt evidence.</p>
    <div className="mt-4 grid gap-3 sm:grid-cols-2">{payableBatches.map((b:Row)=><label key={b.id} className="rounded-xl border border-slate-700 p-3">{b.batch_number} · {b.merchant_id} · outstanding {money(b.outstanding_amount)}<input type="number" min="0" step="0.01" max={b.outstanding_amount} className={field+" mt-2 w-full"} aria-label={"Payment amount "+b.batch_number} value={allocations[b.id]||""} onChange={e=>setAllocations({...allocations,[b.id]:e.target.value})}/></label>)}</div>
    <div className="mt-4 grid gap-3 md:grid-cols-2"><label>Payment method<select className={field+" mt-1 w-full"} value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{methods.map(m=><option key={m}>{m}</option>)}</select></label><label>Transfer / receipt reference<input className={field+" mt-1 w-full"} value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></label><label>Beneficiary bank / wallet / cheque account<input className={field+" mt-1 w-full"} value={payment.account} onChange={e=>setPayment({...payment,account:e.target.value})}/></label><label>Receipt / evidence URL (HTTPS)<input disabled={busy||uploading} type="url" className={field+" mt-1 w-full"} value={payment.evidence} onChange={e=>{setPayment({...payment,evidence:e.target.value});setReceiptName("");}}/></label></div>
    <div className="mt-3 space-y-2"><label className={button+" inline-block cursor-pointer"}>Upload receipt<input aria-label="Upload receipt" type="file" accept="image/jpeg,image/png,application/pdf" className="mt-2 block max-w-full text-sm" disabled={busy||loading||uploading||!canUploadReceipt} onChange={uploadReceipt}/></label><p className="text-sm text-slate-300">JPG, PNG or PDF · up to 10 MB. Upload a file or paste an existing HTTPS evidence link.</p>{uploading&&<p role="status">Uploading receipt…</p>}{receiptName&&<p role="status">Attached: {receiptName} · <SettlementReceiptLink url={payment.evidence} label="Preview receipt"/></p>}</div>
    <button className={button+" mt-4"} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void mutate(async()=>{await rpc("be_finance_record_bulk_payment_v200",{p_payments:paymentRows,p_reference:payment.reference,p_method:payment.method,p_account:payment.account||null,p_evidence_url:payment.evidence});setPayment(p=>({...p,reference:"",evidence:""}));setReceiptName("");},"Confirmed payment recorded. Merchant wallet and transaction history updated.")}>Record {money(paymentTotal)} · {paymentRows.length} batches</button>
-  </section>
-  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+  </section>}
+ {activeTab==="adjustments"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
     <h2 className="text-xl font-bold">After-payment refund and promotion requests</h2>
     <p className="mt-2 text-sm text-slate-300">Requests and independent approvals only. No automatic funds transfer or alteration to historical COD.</p><p className="mt-2 text-sm text-amber-300">Approved requests remain unpaid until a separately verified external payment is confirmed. Do not treat approval as a disbursement.</p>
     <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -172,7 +283,9 @@ export default function MerchantSettlementPage(){
     <p className="mt-4 text-sm text-amber-300">This adjustment register is not a refund disbursement ledger. A PAID status alone does not verify the bank reference or receipt; reconcile against external payment records before closing the case.</p><div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button><button className={button} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment register CSV</button></div>
     <div className="mt-3 space-y-2">{requests.map((a:Row)=><div className="rounded-xl border border-slate-700 p-3" key={a.id}><p>{a.batch_number} · {a.merchant_id} · {a.adjustment_type} · {money(Math.abs(Number(a.difference||0)))} · {a.status}</p><p className="text-sm text-slate-300">Reason: {a.reason}</p>{a.supporting_document_url&&<p className="mt-1 text-sm"><SettlementReceiptLink url={a.supporting_document_url} label="View adjustment evidence"/></p>}<p className="text-xs text-slate-400">Requested: {a.requested_by||"Unknown"} · Reviewed: {a.approved_by||"Pending"} · {a.created_at?new Date(a.created_at).toLocaleString():""}</p>{a.status==="APPROVED_UNPAID"&&<p className="text-amber-300 text-sm">Approved; payment not yet confirmed.</p>}{a.status==="PAID"&&<p className="text-sky-300 text-sm">Marked paid in Finance. Payment reference and supporting receipt must be reconciled separately; they are not included in this adjustment register.</p>}{a.status==="REJECTED"&&<p className="text-slate-400 text-sm">Rejected; no payment is authorized.</p>}{a.status==="PENDING_APPROVAL"&&canReviewPost&&<button className={button+" mt-2"} onClick={()=>setReview({...review,id:a.id})}>Review this request</button>}</div>)}</div>
     {review.id&&<div className="mt-3 flex flex-wrap gap-3"><select className={field} value={review.action} onChange={e=>setReview({...review,action:e.target.value})}><option value="APPROVE">Approve (unpaid)</option><option value="REJECT">Reject</option></select><input className={field} placeholder="Review note (required)" maxLength={1000} value={review.note} onChange={e=>setReview({...review,note:e.target.value})}/><button className={button} disabled={busy||!canReviewPost||review.note.trim().length<8} onClick={()=>void reviewPost()}>Record independent review</button></div>}
-  </section>
-  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Payment history</h2><div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Date","Batch / merchant","Amount","Method","Reference","Account","Evidence","Entered / confirmed by","Status"].map(h=><th scope="col" key={h} className="px-3 py-4 font-extrabold">{h}</th>)}</tr></thead><tbody>{payments.map((p:Row)=><tr key={p.id} className="border-t border-slate-700"><td className="p-3">{new Date(p.confirmed_at||p.created_at).toLocaleString()}</td><td className="p-3">{p.batch_number}<br/>{p.merchant_id}</td><td className="p-3">{money(p.amount)}</td><td className="p-3">{p.payment_method}</td><td className="p-3">{p.payment_group_reference||p.payment_reference}</td><td className="p-3">{p.bank_account||"—"}</td><td className="p-3">{<SettlementReceiptLink url={p.evidence_url||""}/>}</td><td className="p-3">{p.entered_by}<br/>{p.confirmed_by}</td><td className="p-3">{p.status}</td></tr>)}</tbody></table>{!payments.length&&<p className="p-5">No recorded payments.</p>}</div></section>
+  </section>}
+ {activeTab==="history"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Payment history</h2><div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Date","Batch / merchant","Amount","Method","Reference","Account","Evidence","Entered / confirmed by","Status"].map(h=><th scope="col" key={h} className="px-3 py-4 font-extrabold">{h}</th>)}</tr></thead><tbody>{payments.map((p:Row)=><tr key={p.id} className="border-t border-slate-700"><td className="p-3">{new Date(p.confirmed_at||p.created_at).toLocaleString()}</td><td className="p-3">{p.batch_number}<br/>{p.merchant_id}</td><td className="p-3">{money(p.amount)}</td><td className="p-3">{p.payment_method}</td><td className="p-3">{p.payment_group_reference||p.payment_reference}</td><td className="p-3">{p.bank_account||"—"}</td><td className="p-3">{<SettlementReceiptLink url={p.evidence_url||""}/>}</td><td className="p-3">{p.entered_by}<br/>{p.confirmed_by}</td><td className="p-3">{p.status}</td></tr>)}</tbody></table>{!payments.length&&<p className="p-5">No recorded payments.</p>}</div></section>}
+ {activeTab==="advance"&&  <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} previewOnly />}
+ </section>
  </main>;
 }
