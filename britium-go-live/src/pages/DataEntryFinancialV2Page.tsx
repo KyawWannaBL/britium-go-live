@@ -763,8 +763,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
       </div>
 
       <fieldset disabled={row.waybillPublished || busy || row.skipped || row.checking} className="min-w-0">
-        <div className="space-y-4 p-4">
-          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
+        <div className="flex flex-col gap-3 p-3">
+          <details open={fullMode || !photoReady} className={`rounded-xl border ${fullMode?"":"order-last"} ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -1097,7 +1097,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </div>}
 
-          <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
+          <details open={fullMode || (route.mapRequired && row.locationStatus!=="SYNCED")} className={`rounded-xl border ${fullMode?"":"order-last"} ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Location & Address History · {locationReady?"READY":"ACTION REQUIRED"}
             </summary>
@@ -1128,7 +1128,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             </div>
           </details>
 
-          {!fullMode?<details className="rounded-xl border border-[#31506a] bg-[#071b2b]">
+          {!fullMode?<details className="order-last rounded-xl border border-[#31506a] bg-[#071b2b]">
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
               Backend Settlement Details · {text(c.validation_status)||"NOT CALCULATED"}
             </summary>
@@ -1449,7 +1449,22 @@ export default function DataEntryFinancialV2Page() {
   const [mutationMode,setMutationMode]=useState("MUTATION_SHADOW");
   const [pickups,setPickups]=useState<Pickup[]>([]);
   const [selectedPickupId,setSelectedPickupId]=useState("");
-  const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS">("ENTRY");
+  const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS"|"RECONCILIATION"|"DATA_TOOLS">("ENTRY");
+  const [dataEntryDrawer,setDataEntryDrawer]=useState<"BATCH"|"CONTRACT"|null>(null);
+  const [merchantDirectory,setMerchantDirectory]=useState<Record<string,string>>({});
+  useEffect(()=>{let current=true;(async()=>{
+    const result=await (supabase as any).from("be_merchant_master").select("merchant_code,merchant_name").limit(2000);
+    if(!current||result.error)return;
+    const names:Record<string,string>={};
+    for(const m of result.data||[]){const code=text(m.merchant_code).trim().toUpperCase();const name=text(m.merchant_name).trim();if(code&&name&&code!==name.toUpperCase())names[code]=name;}
+    setMerchantDirectory(names);
+  })().catch(()=>{});return()=>{current=false;};},[]);
+  const merchantDisplay=(code:unknown,name?:unknown)=>{
+    const id=text(code).trim();
+    const actual=text(name).trim();
+    const full=merchantDirectory[id.toUpperCase()]||(actual&&actual.toUpperCase()!==id.toUpperCase()?actual:"");
+    return full?(id&&id.toUpperCase()!==full.toUpperCase()?`${full} (${id})`:full):(actual||id||"Merchant");
+  };
   const [rows,setRows]=useState<ParcelRow[]>([]);
   const [rowsPickupId,setRowsPickupId]=useState("");
   const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
@@ -3436,12 +3451,12 @@ export default function DataEntryFinancialV2Page() {
     && pendingPhotoWaiverRows.length>0;
 
   const workspace=(
-    <div data-data-entry-split-workspace-v82="true">
+    <div data-data-entry-split-workspace-v82="true" className="min-w-0">
       {loadingRows?<div className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-10 text-center"><Loader2 className="mr-3 inline animate-spin text-[#f6b84b]"/>Loading pickup proof rows…</div>:
       rows.length?
-      <div className={`grid min-w-0 gap-4 ${mapFocusMode ? "grid-cols-1" : fullRegistration?"xl:grid-cols-[minmax(520px,35%)_minmax(0,65%)]":"xl:grid-cols-[minmax(430px,36%)_minmax(0,64%)]"}`}>
-        <aside className={mapFocusMode ? "min-w-0" : "min-w-0 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1"}>
-          <div className="mb-3 rounded-2xl border border-[#f6b84b]/35 bg-[#0b2236] p-4">
+      <div className={`grid min-w-0 gap-0 overflow-hidden rounded-xl border border-[#1a3a5c] lg:h-[calc(100vh-212px)] ${mapFocusMode ? "grid-cols-1" : fullRegistration?"xl:grid-cols-[minmax(520px,35%)_minmax(0,65%)]":"lg:grid-cols-[minmax(400px,43%)_minmax(0,57%)]"}`}>
+        <aside className={mapFocusMode ? "min-w-0" : "min-w-0 min-h-0 overflow-y-auto bg-[#0b1628] lg:h-full lg:border-r lg:border-[#1a3a5c]"}>
+          <div className="sticky top-0 z-20 mb-2 rounded-b-lg border border-[#f6b84b]/35 bg-[#0a192f] p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">Process Waybill · Recycled Data Entry</div>
@@ -3496,8 +3511,8 @@ export default function DataEntryFinancialV2Page() {
 {mapFocusMode ? (
         <div className="hidden" aria-hidden="true" />
       ) : (
-        <section className="min-w-0 overflow-hidden rounded-2xl border border-[#1a3a5c] bg-[#0b2236]">
-          <div className="border-b border-[#1a3a5c] bg-[#102741] p-3">
+        <section className="flex min-w-0 min-h-0 flex-col overflow-hidden bg-[#06101e] lg:h-full">
+          <div className="shrink-0 border-b border-[#1a3a5c] bg-[#0a192f] p-3">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#f6b84b]">{fullRegistration?"REGISTERED DATA / စာရင်းသွင်းပြီး":"Registration Grid"}</div>
@@ -3512,9 +3527,9 @@ export default function DataEntryFinancialV2Page() {
             </div>:null}
           </div>
 
-          <div className="max-h-[calc(100vh-12rem)] min-h-[650px] overflow-auto bg-[#f7f8fa]">
+          <div className="min-h-[400px] flex-1 overflow-auto bg-[#f7f8fa] lg:min-h-0">
             <table data-registration-grid-v137="true" className="w-full min-w-[1450px] border-collapse text-[10px] text-slate-800">
-              <thead className="sticky top-0 z-20 bg-[#102741] text-left text-[#ffd34d]">
+              <thead className="sticky top-0 z-20 bg-[#fbbf24] text-left font-black text-[#06101e]">
                 <tr>
                   <th className="px-3 py-3">SR.</th>
                   <th className="px-3 py-3">WAY ID</th>
@@ -3537,12 +3552,12 @@ export default function DataEntryFinancialV2Page() {
                   const status=row.saved?"REGISTERED":row.skipped?"PENDING":"DRAFT";
                   return <tr
                     key={row.pickup_id+":"+row.parcel_sequence}
-                    onDoubleClick={()=>{if(index>=0)setPageIndex(index);}}
+                    onClick={()=>{if(index>=0)setPageIndex(index);}} onDoubleClick={()=>{if(index>=0)setPageIndex(index);}}
                     className={`border-b border-slate-200 ${selected?"bg-sky-100":row.saved?"bg-emerald-50":"bg-white hover:bg-slate-50"}`}
                   >
                     <td className="px-3 py-2 font-black text-slate-500">{row.parcel_sequence}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-black text-sky-800">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
-                    <td className="max-w-[160px] truncate px-3 py-2">{row.sourceMerchantName||selectedPickup?.merchant_id||selectedPickup?.merchant_name||"—"}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2">{merchantDisplay(row.sourceMerchantName||selectedPickup?.merchant_id,row.sourceMerchantName||selectedPickup?.merchant_name)}</td>
                     <td className="max-w-[160px] truncate px-3 py-2 font-semibold">{row.recipient_name||"—"}</td>
                     <td className="whitespace-nowrap px-3 py-2">{row.recipient_phone||"—"}</td>
                     <td className="max-w-[150px] truncate px-3 py-2">{row.township||"—"}</td>
@@ -3565,16 +3580,27 @@ export default function DataEntryFinancialV2Page() {
   );
 
   return (
-    <div className="min-h-screen bg-[#061524] px-4 py-5 text-[#eef8ff]">
-      <div className="mx-auto max-w-[1800px] space-y-4">
-        <header className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+    <div data-data-entry-v2-compact-workspace="true" className="min-h-screen bg-[#06101e] px-2 py-2 text-[#eef8ff] md:px-3">
+      <div className="mx-auto w-full max-w-none space-y-2">
+        <header className="sticky top-0 z-30 rounded-xl border border-[#1a3a5c] bg-[#0a192f] px-3 py-2">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <div className="text-[11px] font-black uppercase tracking-[0.22em] text-[#f6b84b]">Data Entry · Financial V2</div>
-              <h1 className="mt-2 text-2xl font-black">Pickup စာရင်းသွင်းခြင်းနှင့် ကုန်သည်ငွေရှင်းတမ်း</h1>
-              <p className="mt-2 max-w-4xl text-[12px] leading-5 text-[#92b7cf]">Backend-authoritative receiver collection, Britium ရပိုင်ခွင့်, delivery difference and merchant final settlement. {mutationMode==="ACTIVE"?"Live saves are active and audited.":"Live financial persistence remains disabled while the backend mutation gate is shadow."}</p>
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#fbbf24]">BE · Financial V2 <span className="ml-2 rounded bg-emerald-500/15 px-2 py-0.5 text-emerald-400">{mutationMode}</span></div>
+              <h1 className="mt-1 text-sm font-black">Pickup စာရင်းသွင်းခြင်းနှင့် ကုန်သည်ငွေရှင်းတမ်း</h1>
+              <p className="mt-1 max-w-4xl text-[10px] leading-4 text-[#92b7cf]">Backend-authoritative receiver collection, Britium ရပိုင်ခွင့်, delivery difference and merchant final settlement. {mutationMode==="ACTIVE"?"Live saves are active and audited.":"Live financial persistence remains disabled while the backend mutation gate is shadow."}</p>
             </div>
-            <div className="rounded-lg border border-[#3aa7de]/30 bg-[#12314a] px-3 py-2 text-[10px] font-black text-[#8fd3ff]">{mutationMode}</div>
+            <div className="flex flex-wrap items-center gap-2">
+ <select aria-label="Active pickup" className="w-44 max-w-[30vw] rounded-lg border border-slate-700 bg-[#06101e] px-2 py-2 text-[10px] font-bold text-white lg:w-64" value={selectedPickupId} onChange={e=>setSelectedPickupId(e.target.value)}>
+   <option value={BULK_UPLOAD_PICKUP_ID}>Bulk upload — multiple pickups</option>
+   {pickups.map(p=><option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {merchantDisplay(p.merchant_id,p.merchant_name)} · {positiveInt(p.registered_parcels)}/{authorizedParcelCount(p)} registered</option>)}
+ </select>
+ <span className="hidden rounded border border-slate-700 bg-[#06101e] px-2 py-1 text-[10px] text-slate-300 xl:block">{rows.filter(row=>row.saved).length}/{rows.length} registered</span>
+ <button type="button" onClick={()=>void loadStartup()} disabled={bulkSaving||bulkCalculating} className="rounded-lg border border-slate-700 px-2 py-2 text-[10px] font-black text-slate-200"><RefreshCw size={13} className="mr-1 inline"/>Refresh</button>
+ <button type="button" onClick={()=>setDataEntryDrawer("CONTRACT")} className="rounded-lg border border-amber-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-amber-300">Contract & Qty</button>
+ <button type="button" onClick={()=>setDataEntryDrawer("BATCH")} className="rounded-lg border border-sky-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-sky-300">Batch & Excel</button>
+ <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} className="rounded-lg border border-emerald-400/40 bg-[#0d3b32] px-3 py-2 text-[10px] font-black text-emerald-200 disabled:opacity-40"><Calculator size={13} className="mr-1 inline"/>Calc All</button>
+ <button type="button" onClick={()=>void saveAll()} disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black text-[#06101e] disabled:opacity-40"><Save size={13} className="mr-1 inline"/>Save All</button>
+ </div>
           </div>
         </header>
 
@@ -3600,10 +3626,12 @@ export default function DataEntryFinancialV2Page() {
           </div>
         :null}
 
-        {selectedPickup?.merchant_id && <CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/>}
-        <nav role="tablist" aria-label="Data Entry workspace tabs" className="flex flex-wrap gap-2 rounded-xl border border-[#1a3a5c] bg-[#0b2236] p-2">
+        {selectedPickup?.merchant_id && <details id="data-entry-contract-binding" className="rounded-xl border border-[#1a3a5c] bg-[#0a192f]"><summary className="cursor-pointer px-3 py-2 text-xs font-bold text-amber-300">Approved Corporate Contract Binding — open full controls</summary><CorporateDataEntryBinding key={selectedPickup.pickup_id} merchantCode={selectedPickup.merchant_id}/></details>}
+        <nav role="tablist" aria-label="Data Entry workspace tabs" className="flex gap-2 overflow-x-auto whitespace-nowrap rounded-lg border border-[#1a3a5c] bg-[#0a192f] p-1.5">
           <button role="tab" aria-selected={dataEntryTab==="ENTRY"} type="button" onClick={()=>setDataEntryTab("ENTRY")} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="ENTRY"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>PARCEL REGISTRATION</button>
           <button role="tab" aria-selected={dataEntryTab==="STAFF_PROGRESS"} type="button" onClick={()=>{setDataEntryTab("STAFF_PROGRESS");void loadStaffProgress(progressDate);}} className={`rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="STAFF_PROGRESS"?"bg-[#f6b84b] text-[#061524]":"border border-[#31506a] text-cyan-100"}`}>DATA ENTRY STAFF PROGRESS</button>
+          <button role="tab" aria-selected={dataEntryTab==="RECONCILIATION"} type="button" onClick={()=>setDataEntryTab("RECONCILIATION")} className={`shrink-0 rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="RECONCILIATION"?"bg-[#fbbf24] text-[#06101e]":"border border-[#31506a] text-cyan-100"}`}>RECONCILIATION</button>
+          <button role="tab" aria-selected={dataEntryTab==="DATA_TOOLS"} type="button" onClick={()=>setDataEntryTab("DATA_TOOLS")} className={`shrink-0 rounded-lg px-5 py-3 text-xs font-black ${dataEntryTab==="DATA_TOOLS"?"bg-[#fbbf24] text-[#06101e]":"border border-[#31506a] text-cyan-100"}`}>DATA TOOLS</button>
         </nav>
         {dataEntryTab==="STAFF_PROGRESS"?<div role="tabpanel" aria-label="Data Entry Staff Progress">
           <div data-data-entry-staff-progress-v96="true" className="mt-4 rounded-xl border border-cyan-300/30 bg-[#071b2b] p-4">
@@ -3678,8 +3706,29 @@ export default function DataEntryFinancialV2Page() {
             </div>
           </div>
         </div>:null}
-        <div role="tabpanel" aria-label="Parcel Registration" className={dataEntryTab==="ENTRY"?"space-y-4":"hidden"}>
-        <section className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4">
+        {dataEntryTab==="RECONCILIATION"?<section role="tabpanel" aria-label="Pickup Reconciliation" className="min-h-[60vh] rounded-xl border border-[#1a3a5c] bg-[#0a192f] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black">Pickup Reconciliation & Cash Review</h2><p className="mt-1 text-xs text-slate-400">Live Data Entry calculation preview. This does not replace the independent Finance COD confirmation or payment settlement.</p></div><button className="rounded-lg bg-[#fbbf24] px-4 py-2 text-xs font-black text-[#06101e]" onClick={()=>setDataEntryTab("ENTRY")}>Back to Parcel Registration</button></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+           <div className="rounded-xl border border-slate-700 p-4"><p className="text-xs text-slate-400">Registered parcels</p><p className="mt-2 text-2xl font-black text-emerald-400">{rows.filter(r=>r.saved).length} / {rows.length}</p></div>
+           <div className="rounded-xl border border-slate-700 p-4"><p className="text-xs text-slate-400">Calculated receiver collect</p><p className="mt-2 text-xl font-black text-amber-300">{money(rows.filter(r=>r.saved).reduce((sum,r)=>sum+Number(r.calculation?.cod_amount||0),0))}</p></div>
+           <div className="rounded-xl border border-slate-700 p-4"><p className="text-xs text-slate-400">Pending / draft rows</p><p className="mt-2 text-2xl font-black text-sky-300">{rows.filter(r=>!r.saved).length}</p></div>
+          </div>
+          <p className="mt-4 text-xs text-amber-200">Amounts above are sourced from saved Data Entry calculations and are not proof that COD cash was received by Finance.</p>
+          <div className="mt-4 max-h-[52vh] overflow-auto rounded-lg border border-slate-700"><table className="w-full min-w-[850px] text-left text-xs"><thead className="sticky top-0 bg-[#fbbf24] text-[#06101e]"><tr>{["Way ID","Merchant","Recipient","Calculated COD","State"].map(h=><th key={h} className="px-3 py-3">{h}</th>)}</tr></thead><tbody className="divide-y divide-slate-200 bg-white text-slate-900">{rows.map((r,i)=><tr key={r.pickup_id+":"+r.parcel_sequence} className="cursor-pointer hover:bg-amber-50" onClick={()=>{setPageIndex(i);setDataEntryTab("ENTRY");}}><td className="p-3 font-bold">{r.delivery_way_id||canonicalWayId(r.pickup_id,r.parcel_sequence)}</td><td className="p-3">{merchantDisplay(r.sourceMerchantName||selectedPickup?.merchant_id,r.sourceMerchantName||selectedPickup?.merchant_name)}</td><td className="p-3">{r.recipient_name}</td><td className="p-3 font-bold">{r.calculation?.cod_amount==null?"Not calculated":money(r.calculation.cod_amount)}</td><td className="p-3">{r.saved?"REGISTERED":r.skipped?"PENDING":"DRAFT"}</td></tr>)}</tbody></table></div>
+         </section>:null}
+        {dataEntryTab==="DATA_TOOLS"?<section role="tabpanel" aria-label="Data Tools" className="min-h-[60vh] rounded-xl border border-[#1a3a5c] bg-[#0a192f] p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-lg font-black">System Data Tools & Audit Operations</h2><p className="mt-1 text-xs text-slate-400">All tools call the existing guarded workflows. Original tools remain accessible in Parcel Registration.</p></div><button className="rounded-lg bg-[#fbbf24] px-4 py-2 text-xs font-black text-[#06101e]" onClick={()=>setDataEntryTab("ENTRY")}>Back to Parcel Registration</button></div>
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            <div className="rounded-xl border border-slate-700 bg-[#06101e] p-4"><h3 className="font-bold text-amber-300">Location Review & Recovery</h3><p className="my-2 text-xs text-slate-400">{importedLocationSummary.review} need review · {importedLocationSummary.resolving} validating · {importedLocationSummary.interrupted} retryable</p><div className="flex flex-wrap gap-2"><button className="rounded-lg border border-cyan-500 px-3 py-2 text-xs" disabled={!importedLocationSummary.resolving&&!importedLocationSummary.interrupted||locationReviewBusy} onClick={()=>void retryImportedLocationSync()}>Retry Sync</button><button className="rounded-lg border border-amber-500 px-3 py-2 text-xs" disabled={!consolidatedLocationReviewRows.length||locationReviewBusy} onClick={()=>void downloadConsolidatedLocationReview()}>Download Review Excel</button></div></div>
+            <div className="rounded-xl border border-slate-700 bg-[#06101e] p-4"><h3 className="font-bold text-sky-300">Waybills & Registration Reports</h3><p className="my-2 text-xs text-slate-400">Create real waybills and export accessible registrations.</p><div className="flex flex-wrap gap-2"><button className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold disabled:opacity-40" disabled={!rows.length||waybillBusy||bulkSaving||bulkCalculating} onClick={()=>void createAndGenerateWaybill()}>Generate Completed Waybills</button><button className="rounded-lg border border-sky-500 px-3 py-2 text-xs" disabled={downloadBusy} onClick={()=>void downloadDataEntryRegistration()}>Export Registration Excel</button></div></div>
+            <div className="rounded-xl border border-slate-700 bg-[#06101e] p-4"><h3 className="font-bold text-cyan-300">Batch & OS Import</h3><p className="my-2 text-xs text-slate-400">Open the existing upload staging and pickup-specific batch workflow; no new upload implementation is substituted.</p><button className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-bold" onClick={()=>{setDataEntryTab("ENTRY");window.setTimeout(()=>{const el=document.getElementById("data-entry-advanced-controls") as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}},20);}}>Open Original Batch Tools</button></div>
+            <div className="rounded-xl border border-slate-700 bg-[#06101e] p-4"><h3 className="font-bold text-amber-300">Contract & Merchant Quantity</h3><p className="my-2 text-xs text-slate-400">Existing approved contract binding and audited additional quantity authorization remain unchanged.</p><button className="rounded-lg border border-slate-600 px-3 py-2 text-xs font-bold" onClick={()=>setDataEntryDrawer("CONTRACT")}>Open Contract & Quantity Controls</button></div>
+          </div>
+         </section>:null}
+        <div role="tabpanel" aria-label="Parcel Registration" className={dataEntryTab==="ENTRY"?"space-y-2":"hidden"}>
+        <details id="data-entry-advanced-controls" className="rounded-lg border border-[#1a3a5c] bg-[#0a192f]">
+         <summary className="cursor-pointer px-3 py-2 text-xs font-bold text-[#fbbf24]">Advanced Operations — OS Import, Photo/Location Exceptions, Batch Authorization, Export & Historical Controls</summary>
+        <section className="rounded-xl border-t border-[#1a3a5c] bg-[#0b2236] p-3">
           <div className="flex flex-wrap items-end gap-3">
             <div className="min-w-[320px] flex-1">
               <div className={labelClass}>စစ်ဆေးပြီး Pickup ကို ရွေးချယ်ရန်</div>
@@ -3689,7 +3738,7 @@ export default function DataEntryFinancialV2Page() {
                   const authorized=authorizedParcelCount(p);
                   const registered=positiveInt(p.registered_parcels);
                   const remaining=Math.max(authorized-registered,0);
-                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
+                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {merchantDisplay(p.merchant_id,p.merchant_name)} · {registered}/{authorized} registered · {remaining} remaining</option>;
                 })}
               </select>
             </div>
@@ -3733,7 +3782,7 @@ export default function DataEntryFinancialV2Page() {
           </div>:null}
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
-            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
+            <div className={serverClass}>Merchant: <b>{merchantDisplay(selectedPickup.merchant_id,selectedPickup.merchant_name)}</b></div>
             <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
@@ -3829,6 +3878,7 @@ export default function DataEntryFinancialV2Page() {
             {downloadMessage?<div className="mt-3 rounded-lg border border-[#1a3a5c] bg-[#0b2236] px-3 py-2 text-[11px] text-[#8fd3ff]">{downloadMessage}</div>:null}
           </div>
         </section>
+        </details>
         {!fullRegistration?workspace:null}
         </div>
       </div>
@@ -3845,6 +3895,67 @@ export default function DataEntryFinancialV2Page() {
           </div>
         </div>
         <div data-full-registration-layout-v85="true" className="mx-auto max-w-none p-4">{workspace}</div>
+      </div>:null}
+
+
+      {dataEntryDrawer?<div className="fixed inset-0 z-[9000] flex justify-end bg-black/70" onMouseDown={(e)=>{if(e.target===e.currentTarget)setDataEntryDrawer(null);}}>
+        <aside role="dialog" aria-modal="true" aria-label={dataEntryDrawer==="BATCH"?"Batch, Location and Excel tools":"Contract and Pickup Quantity"} className="flex h-full w-full max-w-[570px] flex-col border-l border-slate-700 bg-[#0a192f] shadow-2xl">
+          <header className="flex shrink-0 items-center justify-between border-b border-[#1a3a5c] bg-[#06101e] px-5 py-4">
+            <div><p className="text-[10px] font-black uppercase tracking-wider text-[#fbbf24]">{dataEntryDrawer==="BATCH"?"Batch Operations & Exports":"Contract & Pickup Exceptions"}</p><h2 className="mt-1 text-base font-black">{dataEntryDrawer==="BATCH"?"Bulk Location Sync, Waybills & Excel":"Corporate Rates & Quantity Adjustment"}</h2></div>
+            <button type="button" className="rounded-lg border border-slate-700 bg-[#112240] px-3 py-2 text-sm font-bold" aria-label="Close tools drawer" onClick={()=>setDataEntryDrawer(null)}><X size={16}/></button>
+          </header>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          {dataEntryDrawer==="BATCH"?<>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-black uppercase text-amber-300">Bulk Location Readiness</h3><span className="rounded bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">{importedLocationSummary.total} total</span></div>
+              <p className="text-xs leading-5 text-slate-300">{importedLocationSummary.synced} synchronized · {importedLocationSummary.notRequired} map not required · {importedLocationSummary.resolving} validating · {importedLocationSummary.review} need review · {importedLocationSummary.interrupted} interrupted</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-lg border border-sky-500 bg-sky-500/10 p-2 text-xs font-bold text-sky-300 disabled:opacity-40" onClick={()=>void retryImportedLocationSync()} disabled={!(importedLocationSummary.resolving+importedLocationSummary.interrupted)||locationReviewBusy}>Retry Location Sync</button>
+                <button type="button" className="rounded-lg border border-rose-500 bg-rose-500/10 p-2 text-xs font-bold text-rose-300 disabled:opacity-40" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some(row=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy}>Skip All Reviews</button>
+                <button type="button" className="rounded-lg bg-[#fbbf24] p-2 text-xs font-black text-[#06101e] disabled:opacity-40" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy}>Download Review Excel ({consolidatedLocationReviewRows.length})</button>
+                <label className="cursor-pointer rounded-lg border border-amber-400/50 bg-amber-400/10 p-2 text-center text-xs font-bold text-amber-200">Re-upload Corrected Excel<input type="file" accept=".xlsx" className="hidden" disabled={locationReviewBusy} onChange={e=>{const file=e.target.files?.[0];e.target.value="";if(file)void uploadConsolidatedLocationReview(file);}}/></label>
+              </div>
+            </section>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-emerald-300">Waybill Printing & OS Import</h3>
+              <button type="button" className="w-full rounded-lg bg-emerald-600 p-2.5 text-xs font-black text-white disabled:opacity-40" onClick={()=>void createAndGenerateWaybill()} disabled={!rows.length||waybillBusy||bulkSaving||bulkCalculating}>Generate Completed Waybills</button>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200 disabled:opacity-40" onClick={()=>{const row=rows[pageStart];if(row)void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating}>Current Parcel Waybill</button>
+                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");window.setTimeout(()=>{const el=document.getElementById("data-entry-advanced-controls") as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}},20);}}>Open OS Import Workspace</button>
+              </div>
+              <p className="text-xs text-slate-400">OS upload uses the original guarded importer in Parcel Registration, including pickup matching and audit controls.</p>
+            </section>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-sky-300">Registration Timeline Export</h3>
+              <div className="flex flex-wrap gap-1">{(["TODAY","LAST_24_HOURS","THIS_WEEK","THIS_MONTH","ALL"] as const).map(value=><button type="button" key={value} className="rounded-lg border border-slate-700 bg-[#112240] px-2 py-1 text-[10px] font-bold text-slate-300" onClick={()=>applyDownloadRange(value)}>{value.replaceAll("_"," ")}</button>)}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] text-slate-400">From date & time<input type="datetime-local" className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadFrom} onChange={e=>setDownloadFrom(e.target.value)}/></label>
+                <label className="text-[10px] text-slate-400">To date & time<input type="datetime-local" className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadTo} onChange={e=>setDownloadTo(e.target.value)}/></label>
+              </div>
+              <label className="block text-[10px] text-slate-400">Export Scope<select className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadScope} onChange={e=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}><option value="ALL">All accessible registrations</option><option value="CURRENT_PICKUP">Current pickup only</option></select></label>
+              <button type="button" className="w-full rounded-lg bg-sky-400 p-2.5 text-xs font-black text-[#06101e] disabled:opacity-40" disabled={downloadBusy} onClick={()=>void downloadDataEntryRegistration()}>{downloadBusy?"Preparing...":"Download Registration Excel"}</button>
+              {downloadMessage?<p className="text-xs text-sky-300">{downloadMessage}</p>:null}
+            </section>
+          </>:<>
+            <section className="space-y-3 rounded-xl border border-amber-400/30 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-amber-300">Corporate Contract Rates</h3>
+              <p className="text-xs leading-5 text-slate-400">Existing approved contracts are enforced by the live Corporate Data Entry Binding controls. No hard-coded demonstration tariffs will be used.</p>
+              <p className="text-xs text-slate-300">Selected merchant: <strong>{selectedPickup?merchantDisplay(selectedPickup.merchant_id,selectedPickup.merchant_name):"None selected"}</strong></p>
+              <button type="button" className="w-full rounded-lg border border-amber-400 bg-amber-400/10 p-2.5 text-xs font-bold text-amber-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");window.setTimeout(()=>{const el=document.getElementById("data-entry-contract-binding") as HTMLDetailsElement|null;if(el){el.open=true;el.scrollIntoView({behavior:"smooth",block:"start"});}},20);}}>Open Existing Approved Contract Binding</button>
+            </section>
+            <section className="space-y-3 rounded-xl border border-sky-400/30 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-sky-300">Merchant Changed Pickup Quantity</h3>
+              <p className="text-xs text-slate-400">Authorize extra registration rows before saving. The original requested count, verified count and audit history remain under the existing backend guard.</p>
+              <div className="grid grid-cols-[100px_1fr] gap-2">
+                <label className="text-[10px] text-slate-400">Extra Quantity<input type="number" min={1} max={50} className="mt-1 w-full rounded-lg bg-white p-2 text-xs text-slate-900" value={additionalCount} onChange={e=>setAdditionalCount(Math.max(1,Math.min(50,Math.trunc(Number(e.target.value)||1))))}/></label>
+                <label className="text-[10px] text-slate-400">Merchant Addition Reason<input className="mt-1 w-full rounded-lg bg-white p-2 text-xs text-slate-900" value={additionalReason} onChange={e=>setAdditionalReason(e.target.value)} placeholder="Why are extra parcels being handed over?"/></label>
+              </div>
+              <button type="button" className="w-full rounded-lg bg-sky-400 p-2.5 text-xs font-black text-[#06101e] disabled:opacity-40" disabled={!selectedPickup||addingRegistration} onClick={()=>void addRegistrations()}>{addingRegistration?"Authorizing...":"Add Registration Row(s)"}</button>
+              {bulkMessage?<p className="text-xs text-sky-300">{bulkMessage}</p>:null}
+            </section>
+          </>}
+          </div>
+        </aside>
       </div>:null}
 
       <BritiumQuickTools hidden={mapFocusMode} />
