@@ -27,6 +27,15 @@ Production UI is preview-only. PR #328 is draft. Production advance tables and R
 - Read-only five-case financial conservation checks passed on both production and incomplete UAT. Anonymous EXECUTE denial and RLS isolation passed during BEGIN/ROLLBACK compilation. These tests do not substitute for authenticated UAT.
 - **Accounting uncertainty:** production COD_COLLECTED events show both debits and credits against account 111004 in aggregate, and 212002 Merchant Payable has debit entries in observed settled events but payable accrual source was not established. Do not post Dr Payable/Cr Advance until an authorized Finance accountant confirms accrual and COD clearing mechanics, including existing event deduplication.
 
+## Payable accrual / posting-readiness guard (21 November)
+- New UAT-only SQL: `sql/candidates/merchant_advance_payable_accrual_readiness_v1_UAT_ONLY.sql`, with read-only `be_finance_advance_payable_accrual_readiness_v1`.
+- Blocks any claimed readiness unless: independent final offset review is approved, advance is actually disbursed and its accounting event is **POSTED**, delivery is DELIVERED with unchanged Finance validation/merchant/payable, no hold/dispute/prior normal settlement, and exactly one **POSTED** matching way-level Merchant Payable accrual credits 212002 with amount equal to final payable.
+- No journal posting, ledger, bank or wallet mutation. Even the status `POSTING_PREREQUISITES_SATISFIED_REVIEW_ONLY` is not approval to move money.
+- Existing authorized accounting workflow requires `be_accounting_review_event_v1` and `be_accounting_post_approved_event_v2`, which can block self-approval/self-post. Do not bypass them from Finance Advance.
+- **Production accounting blocker observed:** 1,264 `REVIEW_PENDING`, 57 `NEEDS_REVIEW`, and zero `POSTED` event statuses at verification; missing posted accrual means no advance final-offset posting is permitted. Existing events should be reviewed through standard Finance accounting controls rather than mass-approved.
+- Candidate RPC compiled with all preceding SQL candidates inside `BEGIN/ROLLBACK`; no production object persisted. End-to-end UAT and signed merchant policy still missing.
+- Finance feature preview displays a per-way `posting_gate` reason for transparent back-office reconciliation.
+
 ## Rehearsal status
 - Syntax/dependency compile of all three candidate SQL files in a **single BEGIN/ROLLBACK transaction against production**: passed. No objects persisted.
 - This is NOT a payout functional test.
