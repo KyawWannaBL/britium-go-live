@@ -13,6 +13,7 @@ export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
+ const [scopedWallet,setScopedWallet]=useState<{merchant:string;wallet:Row|null;loading:boolean;error:string}>({merchant:"",wallet:null,loading:false,error:""});
  const [selected,setSelected]=useState<string[]>([]),[allocations,setAllocations]=useState<Record<string,string>>({});
  const [payment,setPayment]=useState({method:"BANK_TRANSFER",reference:"",account:"",evidence:""});
  const [adjustment,setAdjustment]=useState({type:"NONE",direction:"CREDIT",amount:"",reason:""});
@@ -47,6 +48,17 @@ export default function MerchantSettlementPage(){
  async function requestPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");if(ok)await loadRequests();}
  async function reviewPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");if(ok){setReview({id:"",action:"APPROVE",note:""});await loadRequests();}}
  useEffect(()=>{void load();void loadRequests();},[]);
+ // The main snapshot populates the full merchant selector. A second scoped snapshot
+ // supplies ledger-derived wallet figures without truncating that selector.
+ useEffect(()=>{
+   if(!merchant){setScopedWallet({merchant:"",wallet:null,loading:false,error:""});return;}
+   let cancelled=false;
+   setScopedWallet({merchant,wallet:null,loading:true,error:""});
+   void rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:merchant,p_search:null,p_limit:1})
+    .then(result=>{if(!cancelled)setScopedWallet({merchant,wallet:result.wallet||{},loading:false,error:""});})
+    .catch((e:any)=>{if(!cancelled)setScopedWallet({merchant,wallet:null,loading:false,error:e.message||"Merchant wallet could not be loaded"});});
+   return ()=>{cancelled=true;};
+ },[merchant,data.wallet]);
  const role=String(data.scope?.role||"");
  const canCreate=["FINANCE_CREATOR","FINANCE_ADMIN","FINANCE","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
  const canUploadReceipt=["FINANCE","FINANCE_CREATOR","FINANCE_REVIEWER","FINANCE_APPROVER","PAYMENT_OFFICER","FINANCE_ADMIN","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
@@ -55,6 +67,9 @@ export default function MerchantSettlementPage(){
  const postAmount=Number(post.amount);
  const postAmountValid=post.amount.trim()!==""&&Number.isFinite(postAmount)&&postAmount>0&&postAmount<=1000000000&&Math.round(postAmount*100)/100===postAmount;
  const postEvidenceValid=!post.evidence.trim()||(/^https:\/\/\S+$/i.test(post.evidence.trim())&&post.evidence.trim().length<=2000);
+ const walletReady=!merchant ? !loading&&!error : scopedWallet.merchant===merchant&&!scopedWallet.loading&&!scopedWallet.error&&scopedWallet.wallet!==null;
+ const walletValues=merchant?scopedWallet.wallet:data.wallet;
+ const walletMoney=(v:unknown)=>walletReady?money(v):"—";
  const rows=useMemo(()=>(data.rows||[]).filter((r:Row)=>{
    const day=String(r.created_at||"").slice(0,10);
    return (!merchant||r.merchant_id===merchant)&&(!from||day>=from)&&(!to||day<=to)&&(!search||JSON.stringify(r).toLowerCase().includes(search.toLowerCase()));
@@ -101,6 +116,7 @@ export default function MerchantSettlementPage(){
      PENDING_APPROVAL:["APPROVE","Approve",privileged||role==="FINANCE_APPROVER"]
    };
    const action=map[b.status];if(!action)return null;
+   if(Number(b.batch_net_payable)<=0||Number(b.outstanding_amount)<0)return <span className="text-amber-300">Non-payout / merchant receivable — Finance review required</span>;
    return <button className={button} disabled={busy||!action[2]} onClick={()=>void mutate(()=>rpc("be_finance_transition_batch_v3",{p_batch_id:b.id,p_action:action[0],p_note:"Merchant settlement review"}),"Batch status updated.")}>{action[1]}</button>;
  }
  return <main className="space-y-6 p-4 text-slate-100 md:p-6">
@@ -111,7 +127,12 @@ export default function MerchantSettlementPage(){
    {loading&&<p role="status" className="mt-3">Loading live settlement records…</p>}
   </section>
   <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} previewOnly />
-  <section className="grid gap-3 sm:grid-cols-3">{[["Britium owes merchants",data.wallet?.britium_owes],["Confirmed merchant payments",data.wallet?.paid_amount],["Merchants owe Britium",data.wallet?.owes_britium]].map(([title,value])=><div key={String(title)} className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><p className="text-sm text-slate-300">{String(title)}</p><p className="mt-2 text-2xl font-black">{money(value)}</p></div>)}</section>
+  <section className="space-y-2">
+   <p className="text-sm text-slate-300">Settlement wallet: <strong>{merchant||"All merchants"}</strong> · All dates. Date filters below affect the parcel table only, not wallet balances or payment history.</p>
+   {merchant&&scopedWallet.loading&&<p role="status" className="text-sm text-sky-300">Loading {merchant} wallet…</p>}
+   {merchant&&scopedWallet.error&&<p role="alert" className="text-sm text-red-300">Merchant wallet unavailable: {scopedWallet.error}. Totals are hidden to avoid displaying another merchant's balances.</p>}
+   <div className="grid gap-3 sm:grid-cols-3">{[["Britium owes merchants",walletValues?.britium_owes],["Confirmed merchant payments",walletValues?.paid_amount],["Merchants owe Britium",walletValues?.owes_britium]].map(([title,value])=><div key={String(title)} className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><p className="text-sm text-slate-300">{String(title)}</p><p className="mt-2 text-2xl font-black">{walletMoney(value)}</p></div>)}</div>
+  </section>
   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
    <div className="flex flex-wrap gap-3"><input aria-label="Search settlements" className={field} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Merchant filter" className={field} value={merchant} onChange={e=>{setMerchant(e.target.value);setSelected([]);setAllocations({});}}><option value="">All merchants</option>{merchants.map(m=><option key={m}>{m}</option>)}</select><label>From<input type="date" className={field+" ml-2"} value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" className={field+" ml-2"} value={to} onChange={e=>setTo(e.target.value)}/></label></div>
    <div className="mt-4 overflow-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead><tr>{["Select","Way ID / merchant","Collection type","Delivery","Expected COD","Reported","Received by Finance","Britium entitlement","Merchant payable","State"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead><tbody>{rows.map((r:Row)=><tr key={r.parcel_id} className="border-t border-slate-700"><td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!r.settlement_eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td><td className="p-3">{r.delivery_way_id}<br/>{r.merchant_name||r.merchant_id}</td><td className="p-3">{r.amount_entry_type}</td><td className="p-3">{r.status}</td>{["customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount"].map(k=><td key={k} className="p-3">{money(r[k])}</td>)}<td className="p-3">{r.settlement_state}{r.validation_status!=="OK"&&<p>{r.validation_message}</p>}</td></tr>)}</tbody></table>{!loading&&!rows.length&&<p className="p-5">No settlement parcels match these filters.</p>}</div>
