@@ -17,6 +17,7 @@ import {
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
 import WarehouseReviewedBatch from "@/components/warehouse/WarehouseReviewedBatch";
+import WarehouseCustodyMonitor from "@/components/warehouse/WarehouseCustodyMonitor";
 import { WarehouseReportedHistory, reportedDateMatches } from "@/components/warehouse/WarehouseReportedHistory";
 import { warehouseQueueStatus } from "@/lib/warehouseStatus";
 import { normalizeWarehouseScan } from "@/lib/warehouseScan";
@@ -47,6 +48,8 @@ export default function WarehousePage() {
   const warehouseCode = isBranchManager ? `${String(profile?.branch_code || "").trim().toUpperCase()}-MAIN` : "YGN-MAIN";
   const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
+  const [showCustodyMonitor,setShowCustodyMonitor]=useState(false);
+  const canInspectCrossLedger=["superadmin","super-admin","admin","finance"].includes(currentRole);
   const [snapshotLoadError, setSnapshotLoadError] = useState(false);
   const batchBusyRef=useRef(false);
   const [batchBusy,setBatchBusy]=useState(false);
@@ -728,6 +731,7 @@ export default function WarehousePage() {
         </div>
 
         <div className="flex flex-wrap gap-2">
+          {canInspectCrossLedger&&<button type="button" data-open-custody-monitor="true" onClick={()=>setShowCustodyMonitor(v=>!v)} className="rounded-lg border border-amber-500 bg-amber-400/10 px-3 py-2 text-sm font-bold text-amber-200">{showCustodyMonitor?"Close custody monitor":"Custody & Missing-Way Monitor"}</button>}
           <button
             onClick={()=>void loadAll(false)}
             className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold hover:bg-blue-500"
@@ -745,6 +749,7 @@ export default function WarehousePage() {
         </div>
       </div>
 
+      {showCustodyMonitor&&canInspectCrossLedger&&<div className="mb-5"><WarehouseCustodyMonitor/></div>}
       {message && (
         <div className="mb-4 rounded-lg border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
           {message}
