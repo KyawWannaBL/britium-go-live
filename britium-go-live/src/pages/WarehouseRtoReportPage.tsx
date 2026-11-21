@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
 
 function text(v:any,fallback=""){ const s=String(v??"").trim(); return s||fallback; }
 function dt(v:any){ if(!v) return ""; const d=new Date(v); return Number.isNaN(d.getTime())?String(v):d.toLocaleString("en-GB",{timeZone:"Asia/Yangon"}); }
-function csvCell(v:any){ return '"' + String(v??"").replace(/"/g,'""') + '"'; }
+function csvCell(v:any){ return '"' + String(v??"").replace(/^[=+@-]/,"'function csvCell(v:any){ return '"' + String(v??"").replace(/"/g,'""') + '"'; }").replace(/"/g,'""') + '"'; }
 
 export default function WarehouseRtoReportPage(){
   const {profile}=useAuth();
@@ -20,6 +20,9 @@ export default function WarehouseRtoReportPage(){
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
   const [message,setMessage]=useState("");
+  const [reasonFilter,setReasonFilter]=useState("");
+  const [attemptFilter,setAttemptFilter]=useState("");
+  const [generatedAt,setGeneratedAt]=useState("");
 
   async function loadMerchantOptions(){
     if(isBranchManager) return;
@@ -46,12 +49,14 @@ export default function WarehouseRtoReportPage(){
       if(error) throw error;
       if(data?.ok===false) throw new Error(data?.message||data?.error||"RTO report load failed.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
+      setGeneratedAt(new Date().toISOString());
     }catch(e:any){ setMessage(e?.message||"Could not load RTO report data."); }
     finally{ setLoading(false); }
   }
   useEffect(()=>{ void loadMerchantOptions(); void load(); },[]);
 
   const rtoRows=rows;
+  const rtoReasons=useMemo(()=>Array.from(new Set(rows.flatMap(r=>[text(r.reason_1_name),text(r.reason_2_name),text(r.reason_3_name),text(r.final_failed_reason)]).filter(Boolean))).sort((a,b)=>a.localeCompare(b)),[rows]);
 
   const merchants=useMemo(()=>{
     if(merchantOptions.length){
@@ -68,6 +73,8 @@ export default function WarehouseRtoReportPage(){
   },[merchantOptions,rtoRows]);
 
   const visible=useMemo(()=>rtoRows.filter((r:any)=>{
+    if(attemptFilter && Number(r.attempt_count||0)<Number(attemptFilter))return false;
+    if(reasonFilter && ![r.reason_1_name,r.reason_2_name,r.reason_3_name,r.final_failed_reason].some(x=>text(x).toLowerCase()===reasonFilter.toLowerCase()))return false;
     const merchantCode=text(r.merchant_code).toUpperCase();
     const merchantName=text(r.merchant_name).toUpperCase();
     if(merchant.trim()){
@@ -83,10 +90,10 @@ export default function WarehouseRtoReportPage(){
     if(!q) return true;
     return [
       r.delivery_way_id,r.waybill_no,r.pickup_id,r.recipient_name,r.recipient_phone,
-      r.delivery_township,r.merchant_name,r.merchant_code,r.return_reason_1_name,r.return_reason_2_name,
-      r.return_reason_3_name,r.last_exception_reason,r.pending_return_reason_name
+      r.delivery_township,r.township,r.merchant_name,r.merchant_code,r.reason_1_name,r.reason_2_name,
+      r.reason_3_name,r.final_failed_reason,r.remark_1,r.remark_2,r.remark_3,r.remarks
     ].join(" ").toLowerCase().includes(q);
-  }),[rtoRows,merchant,dateFrom,dateTo,query]);
+  }),[rtoRows,merchant,dateFrom,dateTo,query,attemptFilter,reasonFilter]);
 
   function failureReason(r:any){
     return [
@@ -98,12 +105,11 @@ export default function WarehouseRtoReportPage(){
   }
 
   function exportCsv(){
-    const headers=["Merchant","Delivery Way","Waybill","Pickup","Recipient","Phone","Township","COD","Attempt 1 Reason","Attempt 2 Reason","Attempt 3 Reason","Final RTO Reason","RTO Date","Rider","Wayplan","Remarks"];
+    const headers=["Merchant","Merchant Code","Delivery Way","Waybill","Pickup","Recipient","Phone","Township","COD","Attempt 1 Timestamp","Attempt 1 Reason","Attempt 1 Remarks","Attempt 2 Timestamp","Attempt 2 Reason","Attempt 2 Remarks","Attempt 3 Timestamp","Attempt 3 Reason","Attempt 3 Remarks","Final RTO Reason","RTO Date","Rider","Wayplan","Remarks"];
     const data=[headers,...visible.map((r:any)=>[
-      text(r.merchant_name,r.merchant_code),text(r.delivery_way_id),text(r.waybill_no),text(r.pickup_id),
+      text(r.merchant_name,r.merchant_code),text(r.merchant_code),text(r.delivery_way_id),text(r.waybill_no),text(r.pickup_id),
       text(r.recipient_name),text(r.recipient_phone,r.phone_number),text(r.delivery_township,r.township),
-      Number(r.cod_amount||0),text(r.reason_1_name),text(r.reason_2_name),
-      text(r.reason_3_name),failureReason(r),dt(r.return_scan_3_at||r.last_return_scan_at),
+      Number(r.cod_amount||0),dt(r.return_scan_1_at),text(r.reason_1_name),text(r.remark_1),dt(r.return_scan_2_at),text(r.reason_2_name),text(r.remark_2),dt(r.return_scan_3_at),text(r.reason_3_name),text(r.remark_3),failureReason(r),dt(r.return_scan_3_at||r.last_return_scan_at),
       text(r.rider_name,r.rider_code),text(r.wayplan_id),text(r.remarks)
     ])];
     const csv=data.map(row=>row.map(csvCell).join(",")).join("\n");
@@ -115,69 +121,98 @@ export default function WarehouseRtoReportPage(){
     a.click(); URL.revokeObjectURL(url);
   }
 
-  return <main className="min-h-screen bg-[#061524] p-5 text-black">
-    <style>{`@media print{aside,button,input,select,.no-print{display:none!important} body{background:white!important;color:black!important}.print-card{border:none!important;background:white!important;color:black!important}.print-card *{color:black!important} table{font-size:10px!important}}`}</style>
-    <section className="print-card mb-4 rounded-3xl border border-slate-300 bg-white p-6 text-black">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+
+  const printDate=generatedAt||new Date().toISOString();
+  const controls="min-h-11 w-full rounded-xl border border-slate-400 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-500";
+  return <main data-rto-report="true" className="min-h-screen min-w-0 bg-[#061524] p-3 text-slate-100 md:p-5">
+    <style>{String.raw\`
+      .rto-screen-scroll { scrollbar-width: thin; scrollbar-color: #5a8aaf #092037; }
+      .rto-print-document {display:none;}
+      @media print {
+        @page { size: A4 portrait; margin: 12mm 11mm; }
+        html, body, #root { overflow:visible!important; height:auto!important; background:#fff!important; }
+        body * { visibility:hidden!important; }
+        #rto-print-document, #rto-print-document * { visibility:visible!important; }
+        #rto-print-document { display:block!important; position:absolute!important; top:0!important; left:0!important; width:100%!important; max-width:none!important; height:auto!important; overflow:visible!important; margin:0!important; padding:0!important; background:white!important; color:#111827!important; font-family:Arial,"Noto Sans Myanmar",sans-serif!important; font-size:10pt!important; }
+        #rto-print-document .rto-print-card { break-inside:avoid; page-break-inside:avoid; border:1px solid #cbd5e1; border-radius:6px; margin:0 0 11mm; padding:3.5mm; background:#fff; }
+        #rto-print-document table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:9pt; }
+        #rto-print-document th, #rto-print-document td { padding:5px 6px; border:1px solid #cbd5e1; text-align:left; overflow-wrap:anywhere; white-space:normal; vertical-align:top; }
+        #rto-print-document th { background:#e5edf5!important; font-weight:700; }
+        #rto-print-document h1 { font-size:19pt; font-weight:800; margin:0 0 2mm; }
+        #rto-print-document h2 { font-size:12pt; margin:0 0 2mm; }
+        #rto-print-document .print-meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:5px; margin:0 0 4mm; }
+        #rto-print-document .print-attempts td { min-height:20px; }
+        #rto-print-document .print-subhead { font-weight:700; margin:4mm 0 2mm; }
+      }
+    \`}</style>
+    <section className="mb-4 rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-4 md:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-xs font-black uppercase tracking-[0.22em] text-black">Merchant Return Report</div>
-          <h1 className="mt-2 text-2xl font-black text-black">RTO Report</h1>
-          <p className="mt-1 text-sm text-black">Return-to-origin parcels with failed delivery reasons and attempt history, ready to send back to the merchant.</p>
+          <p className="text-[10px] font-black uppercase tracking-[.18em] text-amber-300">Merchant Return Report</p>
+          <h1 className="mt-2 text-2xl font-black">RTO Report</h1>
+          <p className="mt-1 text-sm text-slate-300">Recorded return scans, failed delivery reasons and attempt history for merchant reconciliation.</p>
         </div>
-        <div className="no-print flex gap-2">
-          <button onClick={()=>void load()} className="rounded-xl border border-[#1a3a5c] bg-[#102b45] px-4 py-3 text-sm font-black"><RefreshCw size={16} className={"mr-2 inline "+(loading?"animate-spin":"")}/>Refresh</button>
-          <button onClick={exportCsv} className="rounded-xl bg-[#f6b84b] px-4 py-3 text-sm font-black text-[#061524]"><Download size={16} className="mr-2 inline"/>Merchant CSV</button>
-          <button onClick={()=>window.print()} className="rounded-xl bg-cyan-500 px-4 py-3 text-sm font-black text-[#061524]"><Printer size={16} className="mr-2 inline"/>Print / PDF</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" disabled={loading} onClick={()=>void load()} className="rounded-xl border border-[#31506a] bg-[#12314a] px-4 py-2.5 text-sm font-bold"><RefreshCw size={15} className={"mr-2 inline "+(loading?"animate-spin":"")}/>Refresh</button>
+          <button type="button" disabled={!visible.length} onClick={exportCsv} className="rounded-xl bg-[#f6b84b] px-4 py-2.5 text-sm font-extrabold text-[#061524] disabled:opacity-40"><Download size={15} className="mr-2 inline"/>Merchant CSV</button>
+          <button type="button" disabled={!visible.length} onClick={()=>window.print()} className="rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-extrabold text-[#061524] disabled:opacity-40"><Printer size={15} className="mr-2 inline"/>Print full report / PDF</button>
         </div>
       </div>
-      {message?<div className="mt-3 rounded-xl border border-rose-500/40 bg-rose-950/20 p-3 text-rose-200">{message}</div>:null}
+      {message&&<div role="alert" className="mt-3 rounded-lg border border-rose-500 bg-rose-950/30 p-3 text-sm text-rose-200">{message}</div>}
     </section>
-
-    <section className="no-print mb-4 grid gap-3 md:grid-cols-4">
-      <div className="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 text-black"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Way ID / recipient / reason..." className="min-h-11 w-full bg-white text-black placeholder:text-slate-500 outline-none"/></div>
-      <div className="relative">
-        <input
-          list="rto-merchant-options"
-          value={merchant}
-          onChange={e=>setMerchant(e.target.value)}
-          placeholder="All Merchants — type name or code"
-          className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-black placeholder:text-slate-500 outline-none"
-        />
-        <datalist id="rto-merchant-options">
-          {merchants.map((m:any)=><option key={m.value} value={m.value}>{m.label}</option>)}
-        </datalist>
-      </div>
-      <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black"/>
-      <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 text-black"/>
+    <section aria-label="RTO report filters" className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <label className="text-xs font-semibold text-slate-300 xl:col-span-2">Search way / recipient / reason
+        <div className="mt-1 flex items-center gap-2 rounded-xl bg-white px-3 text-slate-900"><Search size={15}/><input aria-label="Search RTO records" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Way ID, name, phone, township..." className="min-h-11 w-full bg-transparent outline-none"/></div>
+      </label>
+      <label className="text-xs font-semibold text-slate-300 xl:col-span-2">Merchant
+        <select aria-label="Filter merchant" value={merchant} onChange={e=>setMerchant(e.target.value)} className={"mt-1 "+controls}>
+          <option value="">All merchants</option>{merchants.map((m:any)=><option key={m.value} value={m.value}>{m.label}</option>)}
+        </select>
+      </label>
+      <label className="text-xs font-semibold text-slate-300">RTO from<input aria-label="RTO date from" type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)} className={"mt-1 "+controls}/></label>
+      <label className="text-xs font-semibold text-slate-300">RTO to<input aria-label="RTO date to" type="date" value={dateTo} min={dateFrom||undefined} onChange={e=>setDateTo(e.target.value)} className={"mt-1 "+controls}/></label>
+      <label className="text-xs font-semibold text-slate-300 xl:col-span-2">Failure reason
+        <select aria-label="Filter reason" value={reasonFilter} onChange={e=>setReasonFilter(e.target.value)} className={"mt-1 "+controls}><option value="">All recorded reasons</option>{rtoReasons.map(reason=><option key={reason} value={reason}>{reason}</option>)}</select>
+      </label>
+      <label className="text-xs font-semibold text-slate-300 xl:col-span-2">Recorded return attempts
+        <select aria-label="Filter attempt count" value={attemptFilter} onChange={e=>setAttemptFilter(e.target.value)} className={"mt-1 "+controls}><option value="">All attempts</option><option value="1">At least 1 attempt</option><option value="2">At least 2 attempts</option><option value="3">At least 3 attempts</option></select>
+      </label>
+      <div className="flex items-end gap-2 xl:col-span-2"><button type="button" className="min-h-11 rounded-lg border border-slate-600 px-4 text-xs font-bold" onClick={()=>{setQuery("");setMerchant("");setDateFrom("");setDateTo("");setAttemptFilter("");setReasonFilter("");}}>Clear filters</button><span className="pb-3 text-xs text-slate-300">{visible.length} of {rows.length} loaded RTO records</span></div>
     </section>
-
-    <section className="print-card rounded-3xl border border-slate-300 bg-white p-4 text-black">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div><b>{visible.length}</b> RTO parcel(s){merchant.trim()?` · Merchant: ${merchant}`:""}</div>
-        <div className="text-xs text-black">Generated: {dt(new Date().toISOString())}</div>
-      </div>
-      <div className="overflow-auto">
-        <table className="w-full min-w-[1500px] border-collapse text-xs">
-          <thead><tr className="border-b border-slate-300 bg-[#f6b84b] text-left uppercase text-black">
-            {["Merchant","Delivery Way","Recipient","Township","COD","Attempt 1","Attempt 2","Attempt 3","Final Reason","RTO Date","Rider","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
-          </tr></thead>
-          <tbody>{visible.map((r:any,i:number)=><tr key={text(r.delivery_way_id)+i} className="border-b border-slate-200 align-top text-black">
-            <td className="p-2 font-bold">{text(r.merchant_name,r.merchant_code)}</td>
-            <td className="p-2 font-bold">{text(r.delivery_way_id,r.waybill_no)}</td>
-            <td className="p-2"><div>{text(r.recipient_name)}</div><div className="text-black">{text(r.recipient_phone,r.phone_number)}</div></td>
-            <td className="p-2">{text(r.delivery_township,r.township)}</td>
-            <td className="p-2">{Number(r.cod_amount||0).toLocaleString()} MMK</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_1_name,"-")}</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_2_name,"-")}</td>
-            <td className="max-w-[220px] whitespace-normal p-2">{text(r.reason_3_name,"-")}</td>
-            <td className="max-w-[300px] whitespace-normal p-2 font-bold text-black">{failureReason(r)||"-"}</td>
-            <td className="p-2">{dt(r.return_scan_3_at||r.last_return_scan_at)}</td>
-            <td className="p-2">{text(r.rider_name,r.rider_code)}</td>
-            <td className="p-2">{text(r.wayplan_id)}</td>
-          </tr>)}
-          {!visible.length?<tr><td colSpan={12} className="p-12 text-center text-black">No RTO parcels match the current filters.</td></tr>:null}</tbody>
+    <section aria-label="RTO parcel list" className="rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-3">
+      <div className="mb-3 flex items-center justify-between gap-2 text-xs"><strong>{visible.length} RTO parcels</strong><span>Snapshot: {dt(generatedAt)||"Not loaded"} · Yangon Time</span></div>
+      <div data-rto-scroll="true" className="rto-screen-scroll max-h-[65vh] min-h-[300px] w-full overflow-auto rounded-xl border border-[#31506a]" style={{overscrollBehavior:"contain"}}>
+        <table className="w-full min-w-[1600px] border-collapse text-left text-xs">
+          <thead className="sticky top-0 z-20 bg-[#f6b84b] text-[#061524]"><tr>{["Merchant","Delivery Way","Recipient / Phone","Township","COD","Attempt 1 · Date & Reason","Attempt 2 · Date & Reason","Attempt 3 · Date & Reason","Final RTO Reason","RTO Date","Rider","Wayplan"].map(t=><th key={t} className="whitespace-normal px-3 py-3 font-extrabold">{t}</th>)}</tr></thead>
+          <tbody>{visible.map((r:any,i:number)=><tr key={text(r.delivery_way_id)+i} className="border-b border-[#31506a] align-top">
+            <td className="px-3 py-3 font-bold">{text(r.merchant_name,r.merchant_code)}</td><td className="px-3 py-3 font-mono font-bold text-amber-300">{text(r.delivery_way_id,r.waybill_no)}</td>
+            <td className="px-3 py-3">{text(r.recipient_name)}<div className="text-slate-300">{text(r.recipient_phone,r.phone_number)}</div></td>
+            <td className="px-3 py-3">{text(r.township)}</td><td className="px-3 py-3">{Number(r.cod_amount||0).toLocaleString()} MMK</td>
+            {[1,2,3].map(n=><td key={n} className="min-w-[170px] max-w-[220px] px-3 py-3"><span className="font-semibold">{text(r["reason_"+n+"_name"],"—")}</span><div className="text-slate-300">{dt(r["return_scan_"+n+"_at"])||"—"}</div>{r["remark_"+n]&&<div className="mt-1 text-slate-300">{r["remark_"+n]}</div>}</td>)}
+            <td className="max-w-56 px-3 py-3 font-bold">{text(r.final_failed_reason,failureReason(r)||"—")}</td><td className="px-3 py-3">{dt(r.return_scan_3_at||r.last_return_scan_at)}</td><td className="px-3 py-3">{text(r.rider_name,r.rider_code)}</td><td className="max-w-40 break-all px-3 py-3">{text(r.wayplan_id)}</td>
+          </tr>)}{!visible.length&&<tr><td colSpan={12} className="px-3 py-10 text-center">No RTO records match these filters.</td></tr>}</tbody>
         </table>
       </div>
+      <p className="mt-2 text-[11px] text-slate-300">Scroll horizontally to see the full attempt and wayplan columns; scroll vertically within the RTO list. The print layout below is separately paginated for A4 paper.</p>
+    </section>
+    <section id="rto-print-document" className="rto-print-document" aria-label="Printable detailed RTO report">
+      <h1>Britium Express | Merchant Return-to-Origin Report</h1>
+      <div className="print-meta"><div>Merchant: <strong>{merchant?merchants.find(m=>m.value===merchant)?.label||merchant:"All merchants"}</strong></div><div>Generated: {dt(printDate)} · Myanmar Time</div><div>Report parcels: {visible.length}</div></div>
+      <p>Detailed audit of recorded delivery return scans. Missing attempts or remarks are shown as not recorded. Monetary values are source COD amounts, not a confirmed refund.</p>
+      {visible.map((r:any,i:number)=><article key={text(r.delivery_way_id)+i} className="rto-print-card">
+        <h2>{i+1}. {text(r.delivery_way_id,r.waybill_no)} — {text(r.merchant_name,r.merchant_code)}</h2>
+        <table><tbody>
+          <tr><th>Recipient / Phone</th><td>{text(r.recipient_name,"—")} / {text(r.recipient_phone,r.phone_number)||"—"}</td><th>Township</th><td>{text(r.township,"—")}</td></tr>
+          <tr><th>Pickup / Wayplan</th><td>{text(r.pickup_id,"—")} / {text(r.wayplan_id,"—")}</td><th>COD</th><td>{Number(r.cod_amount||0).toLocaleString()} MMK</td></tr>
+          <tr><th>Rider</th><td>{text(r.rider_name,r.rider_code)||"—"}</td><th>RTO Date</th><td>{dt(r.return_scan_3_at||r.last_return_scan_at)||"—"}</td></tr>
+        </tbody></table>
+        <div className="print-subhead">Recorded return / failed-delivery attempts</div>
+        <table className="print-attempts"><thead><tr><th style={{width:"14%"}}>Attempt</th><th style={{width:"23%"}}>Time (Myanmar)</th><th style={{width:"28%"}}>Recorded reason</th><th>Operator remarks</th></tr></thead>
+          <tbody>{[1,2,3].map(n=><tr key={n}><td>Attempt {n}</td><td>{dt(r["return_scan_"+n+"_at"])||"Not recorded"}</td><td>{text(r["reason_"+n+"_name"],"Not recorded")}</td><td>{text(r["remark_"+n],"—")}</td></tr>)}</tbody>
+        </table>
+        <p><strong>Final RTO reason:</strong> {text(r.final_failed_reason,failureReason(r)||"Not recorded")}<br/><strong>Additional remarks:</strong> {text(r.remarks,"—")}</p>
+      </article>)}
+      {!visible.length&&<p>No records match the selected filters.</p>}
     </section>
   </main>;
 }
