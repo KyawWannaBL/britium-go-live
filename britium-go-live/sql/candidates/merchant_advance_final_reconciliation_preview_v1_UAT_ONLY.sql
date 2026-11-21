@@ -68,10 +68,14 @@ BEGIN
   'refund_confirmed_received',coalesce(sum(confirmed_refund_received),0),
   'requires_review',count(*) FILTER (WHERE reconciliation_state<>'DELIVERED_FINAL_REVIEW')
  ) INTO v_kpis
- FROM evaluated;
+ FROM jsonb_to_recordset(coalesce(v_rows,'[]'::jsonb)) AS evaluated(
+  advance_amount numeric, net_final_delta numeric, advance_at_risk numeric,
+  confirmed_refund_received numeric, reconciliation_state text
+ );
  RETURN jsonb_build_object(
    'ok',true,'build','ADVANCE_FINAL_RECONCILIATION_PREVIEW_V1',
    'rows',v_rows,'kpis',v_kpis,
+   'kpis_scope','RETURNED_PAGE_ONLY',
    'posting_status','READ_ONLY_NOT_POSTED',
    'note','This is a financial preview only. Final COD settlement, wallet offset and adjustments require separately tested ledger posting and approval.'
  );
