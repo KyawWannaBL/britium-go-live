@@ -237,8 +237,39 @@ BEGIN
  SELECT * INTO b FROM public.be_finance_advance_batches_v1 WHERE id=p_batch_id FOR UPDATE;
  IF NOT FOUND OR b.status<>'APPROVED' THEN RAISE EXCEPTION 'Independent approval required before recording payout'; END IF;
  IF b.created_by=auth.uid() OR b.approved_by=auth.uid() THEN RAISE EXCEPTION 'Payout recorder must be independent of creator and approver'; END IF;
- IF length(btrim(coalesce(p_reference,'')))<4 OR length(btrim(coalesce(p_method,'')))<3
-  OR p_evidence_url !~ '^https://[^[:space:]]{8,2000}$' THEN RAISE EXCEPTION 'Actual payment reference, method and secure evidence URL required'; END IF;
+ IF length(btrim(coalesce(p_reference,'')))<4 OR upper(btrim(coalesce(p_method,''))) NOT IN
+   ('CASH','BANK_TRANSFER','KBZ_PAY','AYA_PAY','WAVE_PAY','CB_PAY','CHEQUE','OTHER')
+   OR coalesce(p_evidence_url,'') NOT LIKE 'https://%' OR length(btrim(coalesce(p_evidence_url,'')))<16
+   THEN RAISE EXCEPTION 'Actual payment reference, supported method and secure evidence URL required'; END IF;
+ IF upper(btrim(p_method)) IN ('BANK_TRANSFER','CHEQUE') AND nullif(btrim(coalesce(p_account,'')),'') IS NULL THEN
+   RAISE EXCEPTION 'Bank transfer requires merchant beneficiary account'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(lower(btrim(p_reference)),200));
+ IF EXISTS (SELECT 1 FROM public.be_finance_advance_batches_v1 x
+     WHERE lower(btrim(coalesce(x.payment_reference,'')))=lower(btrim(p_reference)))
+    OR EXISTS (SELECT 1 FROM public.be_finance_settlement_payments_v3 x
+     WHERE lower(btrim(coalesce(x.payment_reference,'')))=lower(btrim(p_reference))
+        OR lower(btrim(coalesce(x.payment_group_reference,'')))=lower(btrim(p_reference)))
+    OR EXISTS (SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 x
+     WHERE lower(btrim(coalesce(x.receipt_reference,'')))=lower(btrim(p_reference))) THEN
+   RAISE EXCEPTION 'Transfer reference already used by a Finance payment or refund';
+ END IF;
+ IF NOT EXISTS (SELECT 1 FROM public.be_finance_advance_merchant_policy_v1 p
+    WHERE p.merchant_id=b.merchant_id AND p.enabled) THEN
+   RAISE EXCEPTION 'Merchant advance authorization was revoked before payout'; END IF;
+ IF EXISTS (
+   SELECT 1 FROM public.be_finance_advance_items_v1 i
+   LEFT JOIN public.be_v_finance_merchant_settlement_queue_v2 q ON q.parcel_id=i.parcel_id
+   LEFT JOIN public.be_finance_settlement_parcel_control_v3 c ON c.parcel_id=i.parcel_id
+   WHERE i.batch_id=b.id AND (
+      q.parcel_id IS NULL OR q.validation_status<>'OK' OR coalesce(c.financial_hold,false)
+      OR upper(coalesce(q.status,'')) LIKE 'RTO%'
+      OR upper(coalesce(q.status,'')) IN ('RETURN_TO_SENDER','RETURNED_TO_ORIGIN','CANCELLED','CANCELED')
+      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
+        WHERE d.parcel_id=i.parcel_id AND d.status NOT IN ('RESOLVED','REJECTED','CLOSED'))
+      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_batch_items_v3 z
+        WHERE z.parcel_id=i.parcel_id AND z.active)
+   )
+ ) THEN RAISE EXCEPTION 'Parcel eligibility, hold, delivery, or normal settlement state changed before advance payout'; END IF;
  UPDATE public.be_finance_advance_batches_v1 SET status='DISBURSED',payment_by=auth.uid(),paid_at=now(),
  payment_method=p_method,payment_reference=p_reference,payment_account=p_account,payment_evidence_url=p_evidence_url,
  updated_at=now() WHERE id=p_batch_id;
