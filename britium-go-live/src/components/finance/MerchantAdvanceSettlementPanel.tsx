@@ -16,6 +16,10 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
  const [data,setData] = useState<Entry>({rows:[],batches:[],recoveries:[],items:[],policies:[]});
  const [finalReconciliation,setFinalReconciliation]=useState<Entry>({rows:[],kpis:{}});
  const [finalUnavailable,setFinalUnavailable]=useState("");
+ const [offsetReviews,setOffsetReviews]=useState<Entry[]>([]);
+ const [offsetUnavailable,setOffsetUnavailable]=useState("");
+ const [offsetReason,setOffsetReason]=useState("");
+ const [offsetReviewNote,setOffsetReviewNote]=useState("");
  const [selected,setSelected] = useState<string[]>([]);
  const [draftNote,setDraftNote] = useState("");
  const [decisionNote,setDecisionNote] = useState("");
@@ -43,6 +47,8 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
    setAvailable(true);
    try{const final=await call("be_finance_advance_final_reconciliation_preview_v1",{p_merchant_id:merchant||null,p_limit:3000});setFinalReconciliation(final||{rows:[],kpis:{}});setFinalUnavailable("");}
    catch(e:any){setFinalReconciliation({rows:[],kpis:{}});setFinalUnavailable(e.message||"Final reconciliation preview not installed");}
+   try{const reviews=await call("be_finance_advance_final_offset_reviews_snapshot_v1",{p_merchant_id:merchant||null,p_limit:1000});setOffsetReviews(reviews.rows||[]);setOffsetUnavailable("");}
+   catch(e:any){setOffsetReviews([]);setOffsetUnavailable(e.message||"Offset reviews are not installed");}
    const existing=response.policies?.find((p:Entry)=>p.merchant_id===merchant);
    if(existing)setPolicy({
      rate:String(existing.rate_pct),deduction:String(existing.flat_deduction),
@@ -68,6 +74,18 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
   if(busy)return;setBusy(true);setError("");setMessage("");
   try{await callback();setMessage(success);setSelected([]);await refresh()}
   catch(e:any){setError(e.message||"Action rejected")}finally{setBusy(false)}
+ }
+ async function prepareFinalOffset(r:Entry){
+  if(!r.advance_item_id||offsetReason.trim().length<12)return;
+  await action(()=>call("be_finance_advance_final_offset_prepare_v1",{
+   p_advance_item_id:r.advance_item_id,p_reason:offsetReason.trim()
+  }),"Final merchant advance offset review created, NOT posted. Independent approval required.");
+ }
+ async function reviewFinalOffset(r:Entry,decision:"APPROVE"|"REJECT"){
+  if(offsetReviewNote.trim().length<12)return;
+  await action(()=>call("be_finance_advance_final_offset_review_v1",{
+   p_review_id:r.id,p_decision:decision,p_note:offsetReviewNote.trim()
+  }),"Final offset reviewed. No bank transfer, COD, wallet or journal posting was performed.");
  }
  async function policySave(){
   if(!merchant||!policy.contract.trim()||policy.contract.trim().length<8||!policy.rate||Number(policy.rate)<=0)return;
@@ -202,6 +220,35 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
     </tr>)}
    </tbody></table></div>
    {!(finalReconciliation.rows||[]).length&&!finalUnavailable&&<p className="mt-2 text-sm text-slate-400">No advanced items with confirmed disbursements yet.</p>}
+   <div className="mt-3 rounded-lg border border-slate-700 bg-slate-950/40 p-3">
+    <h4 className="font-bold text-sky-200">Final advance offset review · proposal only</h4>
+    <p className="mt-1 text-xs text-amber-200">Finance Creator prepares a delivered-way offset. Another Finance Approver reviews. Neither step posts a journal, releases an additional payout or sets Delivered.</p>
+    {offsetUnavailable&&<p role="status" className="mt-2 text-xs text-amber-300">Offset review backend unavailable: {offsetUnavailable}</p>}
+    <label className="mt-2 block text-xs">Preparation reason / source reference (12+ characters)
+      <input aria-label="Final offset preparation reference" className={input} value={offsetReason} onChange={e=>setOffsetReason(e.target.value)} placeholder="Final delivered and COD reconciliation evidence"/>
+    </label>
+    <label className="mt-2 block text-xs">Independent review note (12+ characters)
+      <input aria-label="Final offset independent review note" className={input} value={offsetReviewNote} onChange={e=>setOffsetReviewNote(e.target.value)} placeholder="Explain approval or rejection evidence"/>
+    </label>
+    <div className="mt-2 max-h-44 space-y-2 overflow-auto">
+      {(finalReconciliation.rows||[]).filter((r:Entry)=>r.reconciliation_state==="DELIVERED_FINAL_REVIEW"&&!offsetReviews.some((x:Entry)=>x.advance_item_id===r.advance_item_id)).map((r:Entry)=>
+        <div key={r.advance_item_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 p-2 text-xs">
+          <span>{r.delivery_way_id} · Advance {money(r.advance_amount)} · Final delta {money(r.net_final_delta)}</span>
+          <button className={btn} disabled={!available||busy||!!offsetUnavailable||!financeCreators.includes(roleKey)||offsetReason.trim().length<12} onClick={()=>void prepareFinalOffset(r)}>Prepare offset review</button>
+        </div>
+      )}
+    </div>
+    <div className="mt-2 max-h-52 space-y-2 overflow-auto">
+      {offsetReviews.map((r:Entry)=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-700 p-2 text-xs">
+        <div><b>{r.delivery_way_id}</b> · {r.state} · Offset {money(r.applied_offset_snapshot)} · Remaining {money(r.remaining_merchant_payable)} · Due from merchant {money(Number(r.overadvance_recovery_due||0)+Number(r.other_merchant_receivable||0))}</div>
+        {r.state==="REVIEW_PENDING"&&financeApprovers.includes(roleKey)&&<div className="flex gap-2">
+          <button className={btn} disabled={busy||offsetReviewNote.trim().length<12} onClick={()=>void reviewFinalOffset(r,"APPROVE")}>Review approve</button>
+          <button className={btn} disabled={busy||offsetReviewNote.trim().length<12} onClick={()=>void reviewFinalOffset(r,"REJECT")}>Review reject</button>
+        </div>}
+      </div>)}
+    </div>
+   </div>
+
    <p className="mt-2 text-xs font-semibold text-amber-200">Posting is intentionally blocked until approved final ledger-offset and UAT accounting tests are completed.</p>
   </div>
   <div className="mt-4 rounded-lg border border-rose-700/50 p-3">
