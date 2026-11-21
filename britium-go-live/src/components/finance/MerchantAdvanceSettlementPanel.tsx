@@ -19,6 +19,7 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
  const [decisionNote,setDecisionNote] = useState("");
  const [payment,setPayment] = useState({method:"BANK_TRANSFER",ref:"",account:"",evidence:""});
  const [rto,setRto] = useState({itemId:"",amount:"",reason:""});
+ const [refundReceipt,setRefundReceipt] = useState({method:"BANK_TRANSFER",reference:"",evidence:""});
  const [policy,setPolicy] = useState({rate:"",deduction:"0",contract:"",enabled:false,providers:providerOptions});
  const [message,setMessage] = useState("");
  const [error,setError] = useState("");
@@ -93,6 +94,18 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
   await action(()=>call("be_finance_advance_flag_rto_v1",{
    p_advance_item_id:rto.itemId,p_amount:Number(rto.amount),p_reason:rto.reason
   }),"RTO recovery recorded as REFUND_DUE. No refund has yet been received.");
+ }
+ async function reviewRto(r:Entry,kind:"APPROVE"|"WAIVE"){
+  if(decisionNote.trim().length<8)return;
+  await action(()=>call("be_finance_advance_review_rto_v1",{p_recovery_id:r.id,p_action:kind,p_note:decisionNote.trim()}),
+   "RTO refund review recorded. No refund receipt has been recorded.");
+ }
+ async function confirmRefund(r:Entry){
+  if(refundReceipt.reference.trim().length<4||!/^https:\/\//.test(refundReceipt.evidence))return;
+  if(!window.confirm("Confirm the merchant has actually returned these funds and the receipt has been verified. This does not move money."))return;
+  await action(()=>call("be_finance_advance_confirm_refund_v1",{
+   p_recovery_id:r.id,p_method:refundReceipt.method,p_reference:refundReceipt.reference,p_evidence_url:refundReceipt.evidence
+  }),"Actual merchant refund receipt recorded.");
  }
  return <section className="rounded-2xl border border-amber-500/40 bg-slate-900 p-4 text-slate-100 md:p-5">
   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -179,7 +192,23 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
     <input aria-label="RTO recovery reason" className={input} placeholder="RTO reason / reference" value={rto.reason} onChange={e=>setRto({...rto,reason:e.target.value})}/>
    </div>
    <button className={btn+" mt-2"} disabled={!available||busy||!financeCreators.includes(roleKey)||!rto.itemId||Number(rto.amount)<=0||rto.reason.trim().length<8} onClick={()=>void flagRto()}>Flag verified RTO refund due</button>
-   <div className="mt-3 space-y-2">{recoveries.map(r=><div key={r.id} className="rounded-lg border border-rose-900 p-2 text-sm">{r.delivery_way_id} · {r.merchant_id} · {money(r.amount)} · <b>{r.status}</b> · {r.reason}</div>)}</div>
+   <div className="mt-3 grid gap-2 md:grid-cols-3">
+    <select aria-label="Refund receipt method" className={input} value={refundReceipt.method} onChange={e=>setRefundReceipt({...refundReceipt,method:e.target.value})}>
+      {["BANK_TRANSFER","KBZ_PAY","AYA_PAY","WAVE_PAY","CASH","OTHER"].map(x=><option key={x}>{x}</option>)}
+    </select>
+    <input aria-label="Refund receipt transaction reference" className={input} placeholder="Actual merchant refund reference" value={refundReceipt.reference} onChange={e=>setRefundReceipt({...refundReceipt,reference:e.target.value})}/>
+    <input aria-label="Refund receipt evidence URL" className={input} placeholder="Secure HTTPS refund receipt" value={refundReceipt.evidence} onChange={e=>setRefundReceipt({...refundReceipt,evidence:e.target.value})}/>
+   </div>
+   <div className="mt-3 space-y-2">{recoveries.map(r=><div key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-rose-900 p-2 text-sm">
+    <div>{r.delivery_way_id} · {r.merchant_id} · {money(r.amount)} · <b>{r.status}</b> · {r.reason}</div>
+    <div className="flex gap-2">
+      {r.status==="REFUND_DUE"&&financeApprovers.includes(roleKey)&&<>
+       <button className={btn} disabled={busy||decisionNote.trim().length<8} onClick={()=>void reviewRto(r,"APPROVE")}>Approve refund</button>
+       <button className={btn} disabled={busy||decisionNote.trim().length<8} onClick={()=>void reviewRto(r,"WAIVE")}>Waive with reason</button>
+      </>}
+      {r.status==="APPROVED"&&<button className={btn} disabled={busy||!financePayers.includes(roleKey)||refundReceipt.reference.trim().length<4||!/^https:\/\//.test(refundReceipt.evidence)} onClick={()=>void confirmRefund(r)}>Record received refund</button>}
+    </div>
+   </div>)}</div>
   </div>
  </section>;
 }
