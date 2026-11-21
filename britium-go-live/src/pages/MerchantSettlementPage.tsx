@@ -11,6 +11,26 @@ const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
 const filterField="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-amber-400";
 const button="rounded-xl border border-sky-700 px-4 py-2 font-bold disabled:opacity-40";
 const methods=["CASH","BANK_TRANSFER","KBZ_PAY","WAVE_PAY","AYA_PAY","CB_PAY","CHEQUE","OTHER"];
+const RTO_EXPLANATIONS = {
+ warehouse:"Returned to an authorized warehouse or hub; merchant/sender return is not yet confirmed.",
+ return:"Return-to-origin completed and confirmed by the operational return workflow.",
+ pending:"RTO initiated or pending; warehouse receipt or return completion is not yet verified."
+} as const;
+function rtoStage(row:Row):"warehouse"|"return"|"pending"|null {
+ if(row.finance_rto_stage==="RTO_WAREHOUSE")return "warehouse";
+ if(row.finance_rto_stage==="RTO_RETURN")return "return";
+ if(row.finance_rto_stage==="RTO_PENDING")return "pending";
+ const status=String(row.status||"").trim().toUpperCase().replace(/[\\s-]+/g,"_");
+ const returnStates=new Set(["RTO_RETURNED_TO_ORIGIN","RTO_RETURN_COMPLETED","RTO_RETURNED_TO_SENDER","RETURNED_TO_ORIGIN","RETURNED_TO_SENDER","RETURN_TO_ORIGIN_COMPLETED","RTO_DELIVERED_BACK"]);
+ const warehouseStates=new Set(["RTO_RETURNED_TO_HUB","RTO_AT_WAREHOUSE","RTO_WAREHOUSE","RETURNED_TO_WAREHOUSE","RTO_WAREHOUSE_RECEIVED","RTO_RECEIVED_AT_HUB"]);
+ if(returnStates.has(status))return "return";
+ if(warehouseStates.has(status))return "warehouse";
+ if(status.startsWith("RTO")||status.includes("RETURN_TO_ORIGIN")||status.includes("RETURN_PENDING")||status==="RETURN_SCANNED")return "pending";
+ return null;
+}
+const rtoName=(stage:ReturnType<typeof rtoStage>)=>stage==="warehouse"?"RTO Warehouse":stage==="return"?"RTO Return":stage==="pending"?"RTO Pending":"—";
+const uniqueOptions=(rows:Row[],field:string)=>Array.from(new Set(rows.map(r=>String(r[field]||"").trim()).filter(Boolean))).sort();
+
 const settlementTabs = [
  {key:"overview",label:"Overview",description:"Merchant balances and workflow summary",step:"01"},
  {key:"queue",label:"Parcel Queue",description:"Review eligible delivered parcels and COD",step:"02"},
@@ -25,8 +45,22 @@ type SettlementTab = typeof settlementTabs[number]["key"];
 
 export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
+ const [rtoEvidence,setRtoEvidence]=useState<Record<string,Row>>({});
+ const [rtoEvidenceWarning,setRtoEvidenceWarning]=useState("");
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
+ const [queueStatus,setQueueStatus]=useState("ALL");
+ const [collectionFilter,setCollectionFilter]=useState("");
+ const [deliveryFilter,setDeliveryFilter]=useState("");
+ const [paymentFilter,setPaymentFilter]=useState("");
+ const [rtoSearch,setRtoSearch]=useState("");
+ const [historySearch,setHistorySearch]=useState("");
+ const [historyStatus,setHistoryStatus]=useState("");
+ const [historyMethod,setHistoryMethod]=useState("");
+ const [postRtoStage,setPostRtoStage]=useState("");
+ const [postSearch,setPostSearch]=useState("");
+ const [postTypeFilter,setPostTypeFilter]=useState("");
+ const [postStatusFilter,setPostStatusFilter]=useState("");
  const [activeTab,setActiveTab]=useState<SettlementTab>("overview");
  const tabRefs=useRef<Partial<Record<SettlementTab,HTMLButtonElement|null>>>({});
  const tabStripRef=useRef<HTMLElement|null>(null);
@@ -52,7 +86,22 @@ export default function MerchantSettlementPage(){
  async function rpc(name:string,args:Row){ const r=await (supabase as any).rpc(name,args); if(r.error||r.data?.ok===false) throw new Error(r.error?.message||r.data?.error||r.data?.code||"Request failed"); return r.data; }
  async function load(){
    setLoading(true); setError("");
-   try { const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}); setData(next); }
+   try {
+    const next=await rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000});
+    setData(next);
+    try{
+      const evidence=await rpc("be_finance_rto_evidence_snapshot_v1",{p_merchant_id:null});
+      const mapped:Record<string,Row>={};
+      for(const entry of (Array.isArray(evidence?.rows)?evidence.rows:[])){
+        const key=String(entry.delivery_way_id||"").trim().toUpperCase();
+        if(key)mapped[key]=entry;
+      }
+      setRtoEvidence(mapped);setRtoEvidenceWarning("");
+    }catch(e:any){
+      setRtoEvidence({});
+      setRtoEvidenceWarning("Warehouse RTO evidence unavailable: "+(e.message||"Lookup failed")+". Generic RTO items remain pending; no warehouse/return completion is inferred.");
+    }
+   }
    catch(e:any){setError(e.message);} finally{setLoading(false);}
  }
  async function loadRequests(){try{const x=await rpc("be_finance_post_payment_adjustments_list_v1",{});setRequests(Array.isArray(x)?x:[]);}catch(e:any){setError(e.message);}}
@@ -63,7 +112,7 @@ export default function MerchantSettlementPage(){
   const url=URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   const a=document.createElement("a");a.href=url;a.download="merchant-post-payment-adjustments.csv";a.click();URL.revokeObjectURL(url);
  }
- async function requestPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");if(ok)await loadRequests();}
+ async function requestPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:postRtoStage?"RTO stage (operator-selected, verify evidence): "+postRtoStage+"; "+post.reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");if(ok)await loadRequests();}
  async function reviewPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");if(ok){setReview({id:"",action:"APPROVE",note:""});await loadRequests();}}
  useEffect(()=>{void load();void loadRequests();},[]);
  // The main snapshot populates the full merchant selector. A second scoped snapshot
@@ -88,15 +137,50 @@ export default function MerchantSettlementPage(){
  const walletReady=!merchant ? !loading&&!error : scopedWallet.merchant===merchant&&!scopedWallet.loading&&!scopedWallet.error&&scopedWallet.wallet!==null;
  const walletValues=merchant?scopedWallet.wallet:data.wallet;
  const walletMoney=(v:unknown)=>walletReady?money(v):"—";
- const rows=useMemo(()=>(data.rows||[]).filter((r:Row)=>{
+ const rows=useMemo(()=>(data.rows||[]).map((r:Row)=>({...r,...(rtoEvidence[String(r.delivery_way_id||"").trim().toUpperCase()]||{})})).filter((r:Row)=>{
    const day=String(r.created_at||"").slice(0,10);
    return (!merchant||r.merchant_id===merchant)&&(!from||day>=from)&&(!to||day<=to)&&(!search||JSON.stringify(r).toLowerCase().includes(search.toLowerCase()));
- }),[data.rows,search,merchant,from,to]);
+ }),[data.rows,rtoEvidence,search,merchant,from,to]);
  const merchants=useMemo(()=>Array.from(new Set<string>((data.rows||[]).map((r:Row)=>String(r.merchant_id)).filter(Boolean))).sort(),[data.rows]);
  const batches=(data.batches||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
  const payments=(data.payments||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
  const payableBatches=batches.filter((b:Row)=>["APPROVED","PARTIALLY_PAID"].includes(b.status)&&Number(b.outstanding_amount)>0);
  const chosen=rows.filter((r:Row)=>selected.includes(r.parcel_id));
+ const queueRows=useMemo(()=>rows.filter((r:Row)=>{
+  const stage=rtoStage(r);
+  if(collectionFilter&&String(r.amount_entry_type||"")!==collectionFilter)return false;
+  if(deliveryFilter&&String(r.status||"")!==deliveryFilter)return false;
+  if(paymentFilter&&String(r.settlement_method||"")!==paymentFilter)return false;
+  if(rtoSearch&&!JSON.stringify(r).toLowerCase().includes(rtoSearch.toLowerCase()))return false;
+  if(queueStatus==="READY")return Boolean(r.settlement_eligible);
+  if(queueStatus==="RTO_WAREHOUSE")return stage==="warehouse";
+  if(queueStatus==="RTO_RETURN")return stage==="return";
+  if(queueStatus==="RTO_PENDING")return stage==="pending";
+  if(queueStatus==="IN_TRANSIT")return !r.settlement_eligible&&!stage&&!["DELIVERED","CANCELLED"].includes(String(r.status||"").toUpperCase());
+  return true;
+ }),[rows,collectionFilter,deliveryFilter,paymentFilter,rtoSearch,queueStatus]);
+ const queueCounts={ALL:rows.length,READY:rows.filter(r=>r.settlement_eligible).length,
+  RTO_WAREHOUSE:rows.filter(r=>rtoStage(r)==="warehouse").length,
+  RTO_RETURN:rows.filter(r=>rtoStage(r)==="return").length,
+  RTO_PENDING:rows.filter(r=>rtoStage(r)==="pending").length,
+  IN_TRANSIT:rows.filter(r=>!r.settlement_eligible&&!rtoStage(r)&&!["DELIVERED","CANCELLED"].includes(String(r.status||"").toUpperCase())).length};
+ const filteredHistory=payments.filter((p:Row)=>
+  (!historyStatus||String(p.status||"")===historyStatus)&&
+  (!historyMethod||String(p.payment_method||"")===historyMethod)&&
+  (!historySearch||JSON.stringify(p).toLowerCase().includes(historySearch.toLowerCase())));
+ const filteredRequests=requests.filter((r:Row)=>
+  (!merchant||r.merchant_id===merchant)&&(!postTypeFilter||r.adjustment_type===postTypeFilter)&&
+  (!postStatusFilter||r.status===postStatusFilter)&&
+  (!postSearch||JSON.stringify(r).toLowerCase().includes(postSearch.toLowerCase())));
+ function selectAllReady(){
+  if(busy||!canCreate)return;
+  const ready=queueRows.filter((r:Row)=>r.settlement_eligible);
+  const scope=merchant||selected.length?rows.find((r:Row)=>selected.includes(r.parcel_id))?.merchant_id||merchant:ready[0]?.merchant_id;
+  const eligible=ready.filter((r:Row)=>r.merchant_id===scope).map((r:Row)=>r.parcel_id);
+  setSelected(eligible);
+  if(ready.some((r:Row)=>r.merchant_id!==scope))setMessage("Selected eligible parcels for one merchant only. Switch merchant to select another merchant.");
+ }
+
  async function mutate(action:()=>Promise<any>,success:string){
    if(mutation.current||uploadLock.current)return; mutation.current=true;setBusy(true);setError("");setMessage("");
    try{await action();setSelected([]);setAllocations({});setMessage(success);await load();return true;}
@@ -281,22 +365,60 @@ export default function MerchantSettlementPage(){
 
  
   {activeTab==="queue"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 shadow-lg md:p-5">
-   <div className="space-y-3" aria-label="Settlement search and date filters">
-     <input aria-label="Search settlements" className={filterField+" w-full"} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/>
-     <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
-      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">From<input aria-label="From" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
-      <label className="flex items-center gap-2 text-sm font-bold text-sky-300">To<input aria-label="To" type="date" className={filterField+" min-w-0 w-[min(100%,15rem)]"} value={to} onChange={e=>setTo(e.target.value)}/></label>
-     </div>
-   </div>
-   <p className="mt-3 text-sm text-slate-400">Choose reconciled delivered parcels for a single merchant. Search and dates affect only this parcel table.</p>
-      <div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Select","Way ID / merchant","Collection type","Delivery","Expected COD","Reported","Received by Finance","Britium entitlement","Merchant payable","State"].map(h=><th scope="col" key={h} className="px-3 py-5 font-extrabold">{h}</th>)}</tr></thead><tbody>{rows.map((r:Row)=><tr key={r.parcel_id} className="border-t border-slate-800 bg-[#090d1c] hover:bg-slate-800/60"><td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!r.settlement_eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td><td className="p-3 font-semibold">{r.delivery_way_id}<br/>{r.merchant_name||r.merchant_id}</td><td className="max-w-xs break-words p-3 text-slate-200">{r.amount_entry_type}</td><td className="p-3">{r.status}</td>{["customer_total_collection","cod_reported","cod_received","net_system_delivery_charge","merchant_final_settlement_amount"].map(k=><td key={k} className="p-3">{money(r[k])}</td>)}<td className="p-3">{r.settlement_state}{r.validation_status!=="OK"&&<p>{r.validation_message}</p>}</td></tr>)}</tbody></table>{!loading&&!rows.length&&<p className="p-5">No settlement parcels match these filters.</p>}</div>
-   <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
-    <p className="text-sm text-slate-200"><strong className="text-amber-300">{selected.length}</strong> parcels selected · <strong>{money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</strong></p>
-    <button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950 hover:bg-amber-300 disabled:opacity-40"} disabled={!selected.length} onClick={()=>setActiveTab("draft")}>Continue to Draft Settlement</button>
-   </div>
-  </section>}
+ <div className="flex flex-wrap items-center justify-between gap-2">
+  <div><h3 className="text-xl font-black">Merchant Parcel Settlement Queue</h3><p className="text-sm text-slate-300">Only server-verified eligible parcels can be settled. RTO stages are shown for operational review.</p></div>
+  <div className="flex gap-2">
+   <button className={button+" border-amber-500"} onClick={selectAllReady} disabled={!canCreate||busy||!queueRows.some((r:Row)=>r.settlement_eligible)}>Select All Delivered / Ready</button>
+   <button className={button} onClick={()=>setSelected([])}>Clear selection</button>
+  </div>
+ </div>
+ <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Settlement status and RTO filters">
+  {([["ALL","All Unsettled"],["READY","Ready"],["RTO_WAREHOUSE","RTO Warehouse"],["RTO_RETURN","RTO Return"],["RTO_PENDING","RTO Pending"],["IN_TRANSIT","In Transit"]] as const).map(([key,label])=>
+   <button key={key} aria-pressed={queueStatus===key} className={"rounded-lg border px-3 py-2 text-xs font-bold "+(queueStatus===key?"border-amber-400 bg-amber-400 text-slate-950":"border-slate-700 bg-[#121c30] text-slate-200")} onClick={()=>setQueueStatus(key)}>{label} ({queueCounts[key]})</button>)}
+ </div>
+ <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-label="Settlement search and date filters">
+  <label className="text-xs text-slate-300">Search Way ID / recipient<input aria-label="Search settlements" className={filterField+" mt-1 h-11 w-full text-sm"} placeholder="Way ID, merchant…" value={search} onChange={e=>setSearch(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">Collection type<select aria-label="Collection type filter" className={field+" mt-1 w-full"} value={collectionFilter} onChange={e=>setCollectionFilter(e.target.value)}><option value="">All collection types</option>{uniqueOptions(rows,"amount_entry_type").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">Delivery state<select aria-label="Delivery state filter" className={field+" mt-1 w-full"} value={deliveryFilter} onChange={e=>setDeliveryFilter(e.target.value)}><option value="">All delivery states</option>{uniqueOptions(rows,"status").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">Settlement method<select aria-label="Settlement method filter" className={field+" mt-1 w-full"} value={paymentFilter} onChange={e=>setPaymentFilter(e.target.value)}><option value="">All settlement methods</option>{uniqueOptions(rows,"settlement_method").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">From<input aria-label="From" type="date" className={filterField+" mt-1 h-11 w-full text-sm"} value={from} onChange={e=>setFrom(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">To<input aria-label="To" type="date" min={from||undefined} className={filterField+" mt-1 h-11 w-full text-sm"} value={to} onChange={e=>setTo(e.target.value)}/></label>
+  <label className="text-xs text-slate-300">Additional details<input aria-label="Search RTO notes" className={filterField+" mt-1 h-11 w-full text-sm"} placeholder="Search any available data" value={rtoSearch} onChange={e=>setRtoSearch(e.target.value)}/></label>
+  <div className="flex items-end"><button className={button+" h-11 w-full"} onClick={()=>{setSearch("");setFrom("");setTo("");setCollectionFilter("");setDeliveryFilter("");setPaymentFilter("");setRtoSearch("");setQueueStatus("ALL");}}>Clear filters</button></div>
+ </div>
+ {rtoEvidenceWarning&&<p role="alert" className="mt-3 rounded-lg border border-amber-700 bg-amber-950/40 p-3 text-xs text-amber-200">{rtoEvidenceWarning}</p>}
+ <p className="mt-3 text-xs text-slate-400">Showing {queueRows.length} of {rows.length} parcels. Scroll horizontally or vertically inside the table; no rows are silently omitted by the display.</p>
+ <div className="mt-3 max-h-[540px] overflow-auto rounded-xl border border-slate-700" aria-label="Scrollable merchant parcel settlement table" style={{scrollbarWidth:"auto",scrollbarColor:"#fbbf24 #111827"}}>
+  <table className="w-full min-w-[1520px] text-left text-xs">
+   <thead className="sticky top-0 z-10 bg-amber-400 text-slate-950"><tr>{["Select","Way ID / Date","Merchant","Collection type","Delivery state","Expected COD","COD received","Britium fee","Net merchant payable","RTO stage / reason","Settlement state"].map(h=><th key={h} scope="col" className="whitespace-nowrap px-3 py-4 font-extrabold">{h}</th>)}</tr></thead>
+   <tbody>{queueRows.map((r:Row)=>{const stage=rtoStage(r);const eligible=Boolean(r.settlement_eligible);
+    return <tr key={r.parcel_id} className={"border-t border-slate-800 "+(stage?"bg-rose-950/30":eligible?"bg-amber-950/10":"bg-[#0a1222]")+" hover:bg-slate-800/50"}>
+     <td className="p-3"><input type="checkbox" aria-label={"Select "+r.delivery_way_id} checked={selected.includes(r.parcel_id)} disabled={!eligible||busy||!canCreate} onChange={()=>toggle(r)}/></td>
+     <td className="whitespace-nowrap p-3 font-bold text-sky-300">{r.delivery_way_id}<div className="font-normal text-slate-400">{String(r.created_at||"").slice(0,10)}</div></td>
+     <td className="p-3">{r.merchant_name||r.merchant_id}<div className="text-slate-400">{r.merchant_id}</div></td>
+     <td className="p-3">{r.amount_entry_type||"—"}</td>
+     <td className="p-3"><span className={"rounded-full px-2 py-1 font-bold "+(stage?"bg-rose-900/60 text-rose-200":eligible?"bg-emerald-900/60 text-emerald-200":"bg-slate-700 text-slate-100")}>{stage?rtoName(stage):r.status||"Unknown"}</span><div className="mt-1 text-slate-400">{stage?String(r.status||""):""}</div></td>
+     <td className="whitespace-nowrap p-3 text-right">{money(r.customer_total_collection)}</td>
+     <td className="whitespace-nowrap p-3 text-right">{money(r.cod_received)}</td>
+     <td className="whitespace-nowrap p-3 text-right text-sky-300">{money(r.net_system_delivery_charge)}</td>
+     <td className={"whitespace-nowrap p-3 text-right font-bold "+(Number(r.merchant_final_settlement_amount)<0?"text-rose-300":"text-emerald-300")}>{money(r.merchant_final_settlement_amount)}</td>
+     <td className="min-w-64 p-3">{stage?<><strong className="text-rose-300">{rtoName(stage)}</strong><p className="mt-1 text-slate-300">{RTO_EXPLANATIONS[stage]}</p>{r.warehouse_return_scanned_at&&<p className="mt-1 text-xs text-rose-200">Warehouse scan: {new Date(r.warehouse_return_scanned_at).toLocaleString("en-GB",{timeZone:"Asia/Yangon"})} · {r.warehouse_code||"warehouse"} · {r.reason_name||r.reason_code||""}</p>}</>:<span className="text-slate-500">—</span>}</td>
+     <td className="p-3">{r.settlement_state||"—"}{r.validation_status!=="OK"&&<p className="text-rose-300">{r.validation_message||"Validation required"}</p>}</td>
+    </tr>;})}</tbody>
+  </table>
+  {!loading&&!queueRows.length&&<p className="p-5 text-sm text-slate-300">No parcels match these filters.</p>}
+ </div>
+ <div className="mt-3 grid gap-3 rounded-xl border border-slate-700 bg-[#0b1527] p-3 text-xs text-slate-300 md:grid-cols-3">
+  <p><strong className="block text-amber-300">Settlement rule</strong>Only backend-verified eligible parcels can enter normal settlement; RTO records are not automatically payable.</p>
+  <p><strong className="block text-rose-300">RTO Warehouse</strong>{RTO_EXPLANATIONS.warehouse}</p>
+  <p><strong className="block text-rose-300">RTO Return</strong>{RTO_EXPLANATIONS.return} Generic RTO and RETURN_SCANNED remain pending until confirmed.</p>
+ </div>
+ <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-sky-900 bg-slate-950/70 p-4">
+  <p className="text-sm text-slate-200"><strong className="text-amber-300">{selected.length}</strong> parcels selected · <strong>{money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</strong></p>
+  <button type="button" className={button+" border-amber-500 bg-amber-400 text-slate-950"} disabled={!selected.length} onClick={()=>setActiveTab("draft")}>Continue to Draft Settlement</button>
+ </div>
+</section>}
 
- 
  {activeTab==="draft"&&<section className="rounded-3xl border border-sky-950 bg-[#090d1c] p-4 md:p-5">
   <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sky-900 bg-slate-950/70 p-4">
    <div><p className="text-xs uppercase tracking-widest text-sky-300">Selected parcels</p><p className="mt-1 text-xl font-extrabold">{selected.length} · {money(chosen.reduce((sum,r)=>sum+Number(r.merchant_final_settlement_amount||0),0))}</p>{chosen.length>0&&<p className="mt-1 text-sm text-slate-300">Merchant: {chosen[0].merchant_id} · {chosen.slice(0,4).map((r:Row)=>r.delivery_way_id).join(", ")}{chosen.length>4?"…":""}</p>}</div>
@@ -323,7 +445,13 @@ export default function MerchantSettlementPage(){
  {activeTab==="adjustments"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
     <h2 className="text-xl font-bold">After-payment refund and promotion requests</h2>
     <p className="mt-2 text-sm text-slate-300">Requests and independent approvals only. No automatic funds transfer or alteration to historical COD.</p><p className="mt-2 text-sm text-amber-300">Approved requests remain unpaid until a separately verified external payment is confirmed. Do not treat approval as a disbursement.</p>
-    <div className="mt-3 grid gap-3 md:grid-cols-3">
+    <div className="mt-3 grid gap-2 sm:grid-cols-3 xl:grid-cols-4" aria-label="Adjustment register filters">
+ <label className="text-xs text-slate-300">Search merchant / batch<input aria-label="Search adjustment records" className={filterField+" mt-1 h-11 w-full text-sm"} value={postSearch} onChange={e=>setPostSearch(e.target.value)} placeholder="Merchant or batch ID"/></label>
+ <label className="text-xs text-slate-300">Purpose<select aria-label="Adjustment purpose filter" className={field+" mt-1 w-full"} value={postTypeFilter} onChange={e=>setPostTypeFilter(e.target.value)}><option value="">All purposes</option>{uniqueOptions(requests,"adjustment_type").map(x=><option key={x}>{x}</option>)}</select></label>
+ <label className="text-xs text-slate-300">Status<select aria-label="Adjustment status filter" className={field+" mt-1 w-full"} value={postStatusFilter} onChange={e=>setPostStatusFilter(e.target.value)}><option value="">All statuses</option>{uniqueOptions(requests,"status").map(x=><option key={x}>{x}</option>)}</select></label>
+ <div className="flex items-end"><button type="button" className={button+" h-11 w-full"} onClick={()=>{setPostSearch("");setPostTypeFilter("");setPostStatusFilter("");}}>Clear filters</button></div>
+ </div>
+ <div className="mt-3 grid gap-3 md:grid-cols-3">
       <label>Paid settlement<select className={field+" mt-1 w-full"} value={post.batch} onChange={e=>setPost({...post,batch:e.target.value})}><option value="">Choose paid batch</option>{batches.filter((b:Row)=>b.status==="PAID").map((b:Row)=><option key={b.id} value={b.id}>{b.batch_number} / {b.merchant_id}</option>)}</select></label>
       <label>Purpose<select className={field+" mt-1 w-full"} value={post.type} onChange={e=>setPost({...post,type:e.target.value})}>{["REFUND","PROMOTION","GOODWILL","OTHER"].map(t=><option key={t}>{t}</option>)}</select></label>
       <label>Direction<select className={field+" mt-1 w-full"} value={post.direction} onChange={e=>setPost({...post,direction:e.target.value})}><option value="CREDIT">Credit merchant</option><option value="DEDUCTION">Merchant deduction</option></select></label>
@@ -331,11 +459,19 @@ export default function MerchantSettlementPage(){
       <label>Evidence URL (HTTPS)<input className={field+" mt-1 w-full"} type="url" value={post.evidence} onChange={e=>setPost({...post,evidence:e.target.value})} placeholder="https://..."/></label><label className="md:col-span-2">Manual reason<textarea className={field+" mt-1 w-full"} maxLength={1000} rows={2} value={post.reason} onChange={e=>setPost({...post,reason:e.target.value})}/></label>
     </div>
     <button className={button+" mt-3"} disabled={busy||!canCreate||!post.batch||!postAmountValid||!postEvidenceValid||post.reason.trim().length<8} onClick={()=>void requestPost()}>Submit adjustment request (no payment)</button>
-    <p className="mt-4 text-sm text-amber-300">This adjustment register is not a refund disbursement ledger. A PAID status alone does not verify the bank reference or receipt; reconcile against external payment records before closing the case.</p><div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button><button className={button} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment register CSV</button></div>
-    <div className="mt-3 space-y-2">{requests.map((a:Row)=><div className="rounded-xl border border-slate-700 p-3" key={a.id}><p>{a.batch_number} · {a.merchant_id} · {a.adjustment_type} · {money(Math.abs(Number(a.difference||0)))} · {a.status}</p><p className="text-sm text-slate-300">Reason: {a.reason}</p>{a.supporting_document_url&&<p className="mt-1 text-sm"><SettlementReceiptLink url={a.supporting_document_url} label="View adjustment evidence"/></p>}<p className="text-xs text-slate-400">Requested: {a.requested_by||"Unknown"} · Reviewed: {a.approved_by||"Pending"} · {a.created_at?new Date(a.created_at).toLocaleString():""}</p>{a.status==="APPROVED_UNPAID"&&<p className="text-amber-300 text-sm">Approved; payment not yet confirmed.</p>}{a.status==="PAID"&&<p className="text-sky-300 text-sm">Marked paid in Finance. Payment reference and supporting receipt must be reconciled separately; they are not included in this adjustment register.</p>}{a.status==="REJECTED"&&<p className="text-slate-400 text-sm">Rejected; no payment is authorized.</p>}{a.status==="PENDING_APPROVAL"&&canReviewPost&&<button className={button+" mt-2"} onClick={()=>setReview({...review,id:a.id})}>Review this request</button>}</div>)}</div>
+    <p className="mt-4 text-sm text-amber-300">An RTO stage entered here records the requested classification only; staff must verify warehouse/return evidence before approval. This adjustment register is not a refund disbursement ledger. A PAID status alone does not verify the bank reference or receipt; reconcile against external payment records before closing the case.</p><div className="mt-5 flex items-center gap-3"><h3 className="font-bold">Review queue</h3><button className={button} onClick={()=>void loadRequests()}>Refresh requests</button><button className={button} disabled={!requests.length} onClick={exportAdjustments}>Export adjustment register CSV</button></div>
+    <div className="mt-3 space-y-2">{filteredRequests.map((a:Row)=><div className="rounded-xl border border-slate-700 p-3" key={a.id}><p>{a.batch_number} · {a.merchant_id} · {a.adjustment_type} · {money(Math.abs(Number(a.difference||0)))} · {a.status}</p><p className="text-sm text-slate-300">Reason: {a.reason}</p>{a.supporting_document_url&&<p className="mt-1 text-sm"><SettlementReceiptLink url={a.supporting_document_url} label="View adjustment evidence"/></p>}<p className="text-xs text-slate-400">Requested: {a.requested_by||"Unknown"} · Reviewed: {a.approved_by||"Pending"} · {a.created_at?new Date(a.created_at).toLocaleString():""}</p>{a.status==="APPROVED_UNPAID"&&<p className="text-amber-300 text-sm">Approved; payment not yet confirmed.</p>}{a.status==="PAID"&&<p className="text-sky-300 text-sm">Marked paid in Finance. Payment reference and supporting receipt must be reconciled separately; they are not included in this adjustment register.</p>}{a.status==="REJECTED"&&<p className="text-slate-400 text-sm">Rejected; no payment is authorized.</p>}{a.status==="PENDING_APPROVAL"&&canReviewPost&&<button className={button+" mt-2"} onClick={()=>setReview({...review,id:a.id})}>Review this request</button>}</div>)}</div>
     {review.id&&<div className="mt-3 flex flex-wrap gap-3"><select className={field} value={review.action} onChange={e=>setReview({...review,action:e.target.value})}><option value="APPROVE">Approve (unpaid)</option><option value="REJECT">Reject</option></select><input className={field} placeholder="Review note (required)" maxLength={1000} value={review.note} onChange={e=>setReview({...review,note:e.target.value})}/><button className={button} disabled={busy||!canReviewPost||review.note.trim().length<8} onClick={()=>void reviewPost()}>Record independent review</button></div>}
   </section>}
- {activeTab==="history"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Payment history</h2><div className="mt-4 overflow-x-auto rounded-xl border border-slate-800"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Date","Batch / merchant","Amount","Method","Reference","Account","Evidence","Entered / confirmed by","Status"].map(h=><th scope="col" key={h} className="px-3 py-4 font-extrabold">{h}</th>)}</tr></thead><tbody>{payments.map((p:Row)=><tr key={p.id} className="border-t border-slate-700"><td className="p-3">{new Date(p.confirmed_at||p.created_at).toLocaleString()}</td><td className="p-3">{p.batch_number}<br/>{p.merchant_id}</td><td className="p-3">{money(p.amount)}</td><td className="p-3">{p.payment_method}</td><td className="p-3">{p.payment_group_reference||p.payment_reference}</td><td className="p-3">{p.bank_account||"—"}</td><td className="p-3">{<SettlementReceiptLink url={p.evidence_url||""}/>}</td><td className="p-3">{p.entered_by}<br/>{p.confirmed_by}</td><td className="p-3">{p.status}</td></tr>)}</tbody></table>{!payments.length&&<p className="p-5">No recorded payments.</p>}</div></section>}
+ {activeTab==="history"&&  <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><h2 className="text-xl font-bold">Settled History · Confirmed Payouts</h2>
+ <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4" aria-label="Payment history filters">
+  <label className="text-xs text-slate-300">Search Way / Batch / Reference<input aria-label="Search payment history" className={filterField+" mt-1 h-11 w-full text-sm"} value={historySearch} onChange={e=>setHistorySearch(e.target.value)} placeholder="Batch / reference…"/></label>
+  <label className="text-xs text-slate-300">Payment status<select aria-label="Payment history status filter" className={field+" mt-1 w-full"} value={historyStatus} onChange={e=>setHistoryStatus(e.target.value)}><option value="">All statuses</option>{uniqueOptions(payments,"status").map(x=><option key={x}>{x}</option>)}</select></label>
+  <label className="text-xs text-slate-300">Payment method<select aria-label="Payment history method filter" className={field+" mt-1 w-full"} value={historyMethod} onChange={e=>setHistoryMethod(e.target.value)}><option value="">All methods</option>{uniqueOptions(payments,"payment_method").map(x=><option key={x}>{x}</option>)}</select></label>
+  <div className="flex items-end"><button className={button+" h-11 w-full"} onClick={()=>{setHistorySearch("");setHistoryStatus("");setHistoryMethod("");}}>Clear filters</button></div>
+ </div>
+ <p className="mt-2 text-xs text-slate-400">Showing {filteredHistory.length} of {payments.length} payment records · Merchant selector applies to history.</p>
+ <div className="mt-4 max-h-[550px] overflow-auto rounded-xl border border-slate-800"><table className="w-full min-w-[900px] text-left text-sm"><thead className="bg-amber-400 text-slate-950"><tr>{["Date","Batch / merchant","Amount","Method","Reference","Account","Evidence","Entered / confirmed by","Status"].map(h=><th scope="col" key={h} className="px-3 py-4 font-extrabold">{h}</th>)}</tr></thead><tbody>{filteredHistory.map((p:Row)=><tr key={p.id} className="border-t border-slate-700"><td className="p-3">{new Date(p.confirmed_at||p.created_at).toLocaleString()}</td><td className="p-3">{p.batch_number}<br/>{p.merchant_id}</td><td className="p-3">{money(p.amount)}</td><td className="p-3">{p.payment_method}</td><td className="p-3">{p.payment_group_reference||p.payment_reference}</td><td className="p-3">{p.bank_account||"—"}</td><td className="p-3">{<SettlementReceiptLink url={p.evidence_url||""}/>}</td><td className="p-3">{p.entered_by}<br/>{p.confirmed_by}</td><td className="p-3">{p.status}</td></tr>)}</tbody></table>{!payments.length&&<p className="p-5">No recorded payments.</p>}</div></section>}
  {activeTab==="advance"&&  <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} previewOnly />}
  </section>
  </main>;
