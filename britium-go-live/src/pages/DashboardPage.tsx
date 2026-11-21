@@ -5,8 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const C={panel:"#0b2236",border:"#1a3a5c",sub:"#8fb2c9",gold:"#f6b84b",green:"#34d399",blue:"#38bdf8",red:"#fb7185"};
-const money=(v:any)=>Number(v||0).toLocaleString()+" MMK";
-const num=(v:any)=>Number(v||0).toLocaleString();
+const money=(v:any)=>v===null||v===undefined||v===""||!Number.isFinite(Number(v))?"Not available":Number(v).toLocaleString()+" MMK";
+const num=(v:any)=>v===null||v===undefined||v===""||!Number.isFinite(Number(v))?"Not available":Number(v).toLocaleString();
 
 function Card({title,value,icon:Icon,accent=C.gold,sub}:{title:string;value:any;icon:any;accent?:string;sub?:string}){
   return <div className="rounded-2xl border p-5" style={{background:C.panel,borderColor:C.border}}>
@@ -48,6 +48,14 @@ export default function DashboardPage(){
   const branchView=superView||["branch_admin","branch_office"].includes(role);
 
   const o=data?.operations||{},f=data?.finance||{},w=data?.warehouse||{},h=data?.hr||{},g=data?.growth||{},b=data?.branches||{};
+  const validCount=(v:unknown)=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v));
+  const settlementReconciles=validCount(f.settlement_rows)&&validCount(f.pending_rows)&&validCount(f.settled_rows)
+    ?Number(f.settlement_rows)===Number(f.pending_rows)+Number(f.settled_rows):null;
+  const warehouseReconciles=validCount(w.rows)&&validCount(w.inbound)&&validCount(w.awaiting_return_scan)
+    ?Number(w.rows)===Number(w.inbound)+Number(w.awaiting_return_scan):null;
+  const snapshotAge=data?.as_of?Math.floor((Date.now()-new Date(data.as_of).getTime())/60000):null;
+  const metricMeta="Metrics retain their server-defined scope. 'Today' means Myanmar business date; unlabeled inventory counts are current/cumulative.";
+
 
   return <div className="min-h-full bg-[#061524] p-2 text-[#eef8ff]">
     <section className="rounded-3xl border p-6" style={{background:C.panel,borderColor:C.border}}>
@@ -66,28 +74,32 @@ export default function DashboardPage(){
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
         <Card title="Pickup Requests Today" value={num(o.pickup_requests_today ?? o.pickups_today)} icon={Truck} accent={C.blue} sub="Pickup request headers created today"/>
         <Card title="Parcels Registered Today" value={num(o.parcels_registered_today)} icon={Truck} accent={C.green} sub="Individual parcel records"/>
-        <Card title="Pickup Batches Registered" value={num(o.pickup_batches_registered_today)} icon={Truck} accent={C.blue} sub="Distinct pickup IDs in today's parcel registrations"/>
-        <Card title="Awaiting Pickup Assignment" value={num(o.pending_pickups)} icon={Activity} accent={C.gold}/>
-        <Card title="Pickups In Progress" value={num(o.pickups_in_progress)} icon={Activity} accent={C.blue}/>
-        <Card title="Pickups Completed" value={num(o.pickups_completed)} icon={Truck} accent={C.green}/>
-        <Card title="Active Shipments" value={num(o.active_shipments)} icon={Truck} accent={C.blue}/>
-        <Card title="Delivered Today" value={num(o.delivered_today)} icon={Truck} accent={C.green}/>
-        <Card title="Failed Today" value={num(o.failed_today)} icon={Activity} accent={C.red}/>
-        <Card title="Open Exceptions" value={num(o.exceptions_open)} icon={Activity} accent={C.red}/>
+        <Card title="Pickup Batches Registered Today" value={num(o.pickup_batches_registered_today)} icon={Truck} accent={C.blue} sub="Distinct pickup IDs of parcels created today"/>
+        <Card title="Awaiting Pickup Assignment (open)" value={num(o.pending_pickups)} icon={Activity} accent={C.gold} sub="Current pickup-request statuses, not just today"/>
+        <Card title="Pickups In Progress (open)" value={num(o.pickups_in_progress)} icon={Activity} accent={C.blue} sub="Current pickup-request statuses"/>
+        <Card title="Pickups Completed (cumulative)" value={num(o.pickups_completed)} icon={Truck} accent={C.green} sub="Completed pickup requests across all dates"/>
+        <Card title="Active Shipments (current)" value={num(o.active_shipments)} icon={Truck} accent={C.blue} sub="Latest wayplan dispatch-stop status by Way ID"/>
+        <Card title="Delivered Today" value={num(o.delivered_today)} icon={Truck} accent={C.green} sub="Latest dispatch stop completed today, Myanmar time"/>
+        <Card title="Failed Today" value={num(o.failed_today)} icon={Activity} accent={C.red} sub="Latest failed dispatch-stop status updated today"/>
+        <Card title="Open Pickup Exceptions" value={num(o.exceptions_open)} icon={Activity} accent={C.red} sub="Pickup-request exceptions only; excludes warehouse return queue"/>
       </div>
     </section>}
 
     {financeView&&<section className="mt-5">
       <div className="mb-3 flex items-center gap-2"><DollarSign size={19} color={C.green}/><h2 className="font-black">Finance & Settlement</h2></div>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card title="Settlement Rows" value={num(f.settlement_rows)} icon={DollarSign} accent={C.blue}/>
-        <Card title="Pending Settlement" value={num(f.pending_rows)} icon={DollarSign} accent={C.gold}/>
-        <Card title="COD Expected" value={money(f.cod_expected)} icon={DollarSign} accent={C.green}/>
-        <Card title="Merchant Payable" value={money(f.merchant_payable)} icon={DollarSign} accent={C.gold}/>
-        <Card title="Merchant Receivable" value={money(f.merchant_receivable)} icon={DollarSign} accent={C.blue}/>
-        <Card title="Delivery Revenue" value={money(f.delivery_revenue)} icon={DollarSign} accent={C.green}/>
-        <Card title="Settled Rows" value={num(f.settled_rows)} icon={DollarSign} accent={C.green}/>
+        <Card title="Settlement Queue Rows" value={num(f.settlement_rows)} icon={DollarSign} accent={C.blue} sub="All finance queue records, including undelivered parcels"/>
+        <Card title="Unsettled Queue Rows (all stages)" value={num(f.pending_rows)} icon={DollarSign} accent={C.gold} sub="Not marked SETTLED; includes waiting delivery and COD. Not all payable now."/>
+        <Card title="Expected Customer Collections" value={money(f.cod_expected)} icon={DollarSign} accent={C.green} sub="Projected total; not confirmed cash received"/>
+        <Card title="Projected Merchant Payable" value={money(f.merchant_payable)} icon={DollarSign} accent={C.gold} sub="All queue stages; excludes negative balances, not amount approved for transfer"/>
+        <Card title="Projected Merchant Receivable" value={money(f.merchant_receivable)} icon={DollarSign} accent={C.blue} sub="Projected merchant obligations across queue"/>
+        <Card title="Projected Delivery Entitlement" value={money(f.delivery_revenue)} icon={DollarSign} accent={C.green} sub="Not booked or bank-confirmed revenue"/>
+        <Card title="Settled Rows (cumulative)" value={num(f.settled_rows)} icon={DollarSign} accent={C.green} sub="Finance projection rows marked SETTLED"/>
       </div>
+      <p className="mt-2 text-xs" style={{color:C.sub}}>Finance source: canonical settlement queue projection, all recorded dates. A settlement-ready payout requires COD reconciliation and independent approval.</p>
+      <p role="status" className={"mt-2 rounded-lg border px-3 py-2 text-xs "+(settlementReconciles===true?"border-emerald-700/50 bg-emerald-950/20 text-emerald-200":"border-amber-600/50 bg-amber-950/20 text-amber-200")}>
+        Finance reconciliation: {settlementReconciles===true?"PASS — Total queue rows = unsettled + settled":settlementReconciles===false?"MISMATCH — Finance queue row components do not add up":"Unavailable — expected figures missing from backend"}.
+      </p>
     </section>}
 
     {opsView&&<section className="mt-5">
@@ -100,6 +112,8 @@ export default function DashboardPage(){
         <Card title="Dispatch Scanned" value={num(w.dispatch)} icon={Truck} accent={C.green}/>
         <Card title="Return Scans" value={num(w.returns)} icon={Warehouse} accent={C.red}/>
       </div>
+      <p className="mt-2 text-xs" style={{color:C.sub}}>Warehouse source: operational scan lifecycle snapshot (cumulative). Received, dispatch scans and return scans are different milestones; do not add them as if mutually exclusive.</p>
+      <p className={"mt-2 text-xs "+(warehouseReconciles===true?"text-emerald-300":"text-amber-300")}>Warehouse inventory check: {warehouseReconciles===true?"PASS — Received + awaiting return scan equals warehouse rows":warehouseReconciles===false?"Review needed — scan categories are not an exact partition":"Not checked — metrics unavailable"}.</p>
     </section>}
 
     {hrView&&<section className="mt-5">
@@ -136,6 +150,6 @@ export default function DashboardPage(){
       </div>
     </section>}
 
-    <p className="mt-6 text-xs" style={{color:C.sub}}>Live backend snapshot · {data?.as_of?new Date(data.as_of).toLocaleString("en-GB",{timeZone:"Asia/Yangon",dateStyle:"medium",timeStyle:"medium"})+" Myanmar Time":"not synchronized"} · Auto-refresh every 60 seconds while active</p>
+    <p className="mt-6 text-xs" style={{color:C.sub}}>{metricMeta} · {snapshotAge!==null?`Snapshot age: ${Math.max(snapshotAge,0)} min`: "Snapshot unavailable"} · Live backend snapshot · {data?.as_of?new Date(data.as_of).toLocaleString("en-GB",{timeZone:"Asia/Yangon",dateStyle:"medium",timeStyle:"medium"})+" Myanmar Time":"not synchronized"} · Auto-refresh every 60 seconds while active</p>
   </div>;
 }
