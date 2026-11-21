@@ -16,7 +16,7 @@ const mod = {exports:{}};
 vm.runInNewContext(compiled, {exports:mod.exports, require:localRequire, crypto:require('node:crypto').webcrypto, console, URL, setTimeout, clearTimeout});
 const Page = mod.exports.default;
 const text = n => typeof n==='string'?n:(n?.children||[]).map(text).join('');
-function fixture(role='SUPERADMIN') { return {scope:{role},wallet:{britium_owes:30000,paid_amount:20000,owes_britium:0},rows:[{parcel_id:'P1',delivery_way_id:'WAY1',merchant_id:'TSW',status:'DELIVERED',validation_status:'OK',settlement_eligible:true,merchant_final_settlement_amount:50000},{parcel_id:'P2',delivery_way_id:'WAY2',merchant_id:'TSW',status:'DELIVERED',validation_status:'OK',settlement_eligible:false,settlement_state:'WAITING_COD_REMITTANCE'}],batches:[{id:'B1',batch_number:'BATCH1',merchant_id:'TSW',status:'PARTIALLY_PAID',batch_net_payable:50000,paid_amount:20000,outstanding_amount:30000}],payments:[]}; }
+function fixture(role='SUPERADMIN') { return {scope:{role},wallet:{britium_owes:30000,paid_amount:20000,owes_britium:0},rows:[{parcel_id:'P1',delivery_way_id:'WAY1',merchant_id:'TSW',merchant_name:'Three & Six Online Store',status:'DELIVERED',validation_status:'OK',settlement_eligible:true,merchant_final_settlement_amount:50000},{parcel_id:'P2',delivery_way_id:'WAY2',merchant_id:'TSW',status:'DELIVERED',validation_status:'OK',settlement_eligible:false,settlement_state:'WAITING_COD_REMITTANCE'}],batches:[{id:'B1',batch_number:'BATCH1',merchant_id:'TSW',merchant_name:'Three & Six Online Store',status:'PARTIALLY_PAID',batch_net_payable:50000,paid_amount:20000,outstanding_amount:30000}],payments:[]}; }
 async function render(role) { calls=[];snapshot=fixture(role);let tree;await act(async()=>{tree=create(React.createElement(Page));});return tree; }
 const button = (tree,prefix)=>tree.root.findAllByType('button').find(n=>text(n).startsWith(prefix));
 const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).startsWith(label)).findByType('input');
@@ -24,6 +24,9 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
 async function openPayments(tree) { await act(async()=>button(tree,'03 · Record payment').props.onClick()); }
 (async()=>{
  let tree=await render();
+ const merchantOption=tree.root.findAllByType('option').find(n=>n.props.value==='TSW');
+ assert.match(text(merchantOption),/Three & Six Online Store \\(TSW\\)/,'merchant selector must show full merchant name');
+ assert.ok(tree.root.findAllByType('h2').some(n=>text(n).includes('Three & Six Online Store (TSW)')),'cashier payout title must show merchant full name');
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
