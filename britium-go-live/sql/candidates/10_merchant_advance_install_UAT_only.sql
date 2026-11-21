@@ -41,7 +41,6 @@ END $preflight$;
 -- This ledger is separate from delivered/COD settlement. No physical transfer occurs from SQL.
 -- Advance amounts use signed merchant policy; missing policy = ineligible, not zero.
 -- Verified approved pickup review timestamp or physical warehouse inbound scan qualifies. Rider-submitted alone or return scan alone do not.
-BEGIN;
 CREATE TABLE IF NOT EXISTS public.be_finance_advance_merchant_policy_v1 (
  merchant_id text PRIMARY KEY,
  enabled boolean NOT NULL DEFAULT false,
@@ -451,7 +450,6 @@ REVOKE ALL ON FUNCTION public.be_finance_advance_legacy_batch_guard_v1() FROM PU
 -- BRITIUM EXPRESS: reviewed advance vs final COD / RTO reconciliation PREVIEW.
 -- Install AFTER merchant_advance_settlement_v1_UAT_ONLY.sql, in restored UAT only.
 -- READ ONLY: no double payout, delivery status changes, wallet posting or refunds.
-BEGIN;
 CREATE OR REPLACE FUNCTION public.be_finance_advance_final_reconciliation_preview_v1(
  p_merchant_id text DEFAULT NULL, p_limit integer DEFAULT 1000
 ) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER
@@ -539,7 +537,6 @@ GRANT EXECUTE ON FUNCTION public.be_finance_advance_final_reconciliation_preview
 -- INSTALL AFTER merchant_advance_settlement_v1_UAT_ONLY.sql.
 -- No external bank transfer. Draft events enter REVIEW_PENDING, not posted journals.
 -- Cash/bank accounts follow existing private.be_merchant_payment_accounting_v200.
-BEGIN;
 ALTER TABLE public.be_finance_advance_batches_v1
  ADD COLUMN IF NOT EXISTS accounting_event_id uuid UNIQUE;
 ALTER TABLE public.be_finance_advance_rto_recoveries_v1
@@ -648,8 +645,6 @@ REVOKE ALL ON FUNCTION private.be_finance_advance_accounting_v1() FROM PUBLIC,an
 -- Britium Express — Advance versus delivered merchant final settlement offset review
 -- UAT ONLY. Does NOT create money transfer, COD settlement, journal or wallet mutation.
 -- Install AFTER merchant_advance_settlement_v1_UAT_ONLY.sql.
-BEGIN;
-
 CREATE TABLE IF NOT EXISTS public.be_finance_advance_final_offset_reviews_v1(
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  advance_item_id uuid NOT NULL UNIQUE REFERENCES public.be_finance_advance_items_v1(id),
@@ -712,7 +707,9 @@ BEGIN
    OR q.financial_settled_at IS NOT NULL THEN
     RAISE EXCEPTION 'Verified delivered, unsettled, financially valid merchant parcel required';
  END IF;
- IF EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
+ IF EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+    WHERE r.advance_item_id=i.id)
+ OR EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
     WHERE c.parcel_id=i.parcel_id AND c.financial_hold)
  OR EXISTS(SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
     WHERE d.parcel_id=i.parcel_id AND d.status NOT IN('RESOLVED','REJECTED','CLOSED'))
@@ -771,6 +768,8 @@ BEGIN
    OR NOT coalesce(q.settlement_eligible,false)
    OR q.merchant_final_settlement_amount IS DISTINCT FROM v.final_entitlement_snapshot
    OR q.financial_settled_at IS NOT NULL
+   OR EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+      WHERE r.advance_item_id=v.advance_item_id)
    OR EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
       WHERE c.parcel_id=v.parcel_id AND c.financial_hold)
    OR EXISTS(SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
@@ -826,7 +825,6 @@ TO authenticated,service_role;
 -- READ-ONLY RPC for restored UAT. No journal posting, payout or status mutation.
 -- Requires prior three merchant_advance SQL candidates and final_offset_review_v1.
 -- A verified POSTED accrual event is required before ANY Dr Payable / Cr Advance offset.
-BEGIN;
 CREATE OR REPLACE FUNCTION public.be_finance_advance_payable_accrual_readiness_v1(
   p_merchant_id text DEFAULT NULL,
   p_limit integer DEFAULT 250
@@ -868,6 +866,8 @@ BEGIN
       q.merchant_final_settlement_amount AS current_final_entitlement,
       q.financial_settled_at,
       coalesce(c.financial_hold,false) AS held,
+      EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+        WHERE r.advance_item_id=v.advance_item_id) AS rto_case_exists,
       EXISTS (
         SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
         WHERE d.parcel_id=v.parcel_id
@@ -916,6 +916,7 @@ BEGIN
         WHEN current_final_entitlement IS DISTINCT FROM final_entitlement_snapshot
           THEN 'MERCHANT_PAYABLE_CHANGED'
         WHEN financial_settled_at IS NOT NULL THEN 'ALREADY_FINAL_SETTLED'
+        WHEN rto_case_exists THEN 'RTO_REFUND_OR_RECOVERY_REQUIRES_MANUAL_REVIEW'
         WHEN held OR disputed OR standard_settlement_present THEN 'HOLD_DISPUTE_OR_STANDARD_SETTLEMENT'
         WHEN posted_accrual_events<>1 THEN 'POSTED_WAY_LEVEL_PAYABLE_ACCRUAL_REQUIRED'
         WHEN posted_payable_credit<>greatest(final_entitlement_snapshot,0)
@@ -946,7 +947,9 @@ FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.be_finance_advance_payable_accrual_readiness_v1(text,integer)
 TO authenticated,service_role;
 
--- SECTION 6 merchant_advance_offset_accounting_event_v1
+
+-- SECTION 6 merchant_advance_offset_accounting_event_v1_UAT_ONLY.sql
+-- Britium Express | FINAL OFFSET ACCOUNTING EVENT | UAT ONLY
 -- Install AFTER 10_merchant_advance_install_UAT_only.sql.
 -- This stages a balanced Dr Merchant Settlement Payable / Cr Merchant Advances event.
 -- It DOES NOT mark a parcel settled, pay cash, or automatically post any journal.
@@ -1015,6 +1018,8 @@ BEGIN
      OR NOT coalesce(q.settlement_eligible,false)
      OR q.merchant_final_settlement_amount IS DISTINCT FROM v.final_entitlement_snapshot
      OR q.financial_settled_at IS NOT NULL
+     OR EXISTS (SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+        WHERE r.advance_item_id=v.advance_item_id)
      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
          WHERE c.parcel_id=v.parcel_id AND c.financial_hold)
      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
@@ -1127,6 +1132,8 @@ BEGIN
      OR NOT coalesce(q.settlement_eligible,false)
      OR q.merchant_final_settlement_amount IS DISTINCT FROM v.final_entitlement_snapshot
      OR q.financial_settled_at IS NOT NULL
+     OR EXISTS (SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+        WHERE r.advance_item_id=v.advance_item_id)
      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
         WHERE c.parcel_id=v.parcel_id AND c.financial_hold)
      OR EXISTS (SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
@@ -1209,6 +1216,5 @@ REVOKE ALL ON FUNCTION public.be_finance_advance_final_offset_stage_event_v1(uui
   FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.be_finance_advance_final_offset_stage_event_v1(uuid,text)
   TO authenticated,service_role;
-
 
 COMMIT;
