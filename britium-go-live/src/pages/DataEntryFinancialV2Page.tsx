@@ -3542,7 +3542,7 @@ export default function DataEntryFinancialV2Page() {
                   >
                     <td className="px-3 py-2 font-black text-slate-500">{row.parcel_sequence}</td>
                     <td className="whitespace-nowrap px-3 py-2 font-black text-sky-800">{row.delivery_way_id||canonicalWayId(row.pickup_id,row.parcel_sequence)}</td>
-                    <td className="max-w-[160px] truncate px-3 py-2">{row.sourceMerchantName||selectedPickup?.merchant_id||selectedPickup?.merchant_name||"—"}</td>
+                    <td className="max-w-[160px] truncate px-3 py-2">{row.sourceMerchantName||selectedPickup?.merchant_name||selectedPickup?.merchant_id||"—"}</td>
                     <td className="max-w-[160px] truncate px-3 py-2 font-semibold">{row.recipient_name||"—"}</td>
                     <td className="whitespace-nowrap px-3 py-2">{row.recipient_phone||"—"}</td>
                     <td className="max-w-[150px] truncate px-3 py-2">{row.township||"—"}</td>
@@ -3715,7 +3715,7 @@ export default function DataEntryFinancialV2Page() {
                   const authorized=authorizedParcelCount(p);
                   const registered=positiveInt(p.registered_parcels);
                   const remaining=Math.max(authorized-registered,0);
-                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_id||p.merchant_name||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
+                  return <option key={p.pickup_id} value={p.pickup_id}>{p.pickup_id} · {p.merchant_name||p.merchant_id||"Merchant"} · {registered}/{authorized} registered · {remaining} remaining</option>;
                 })}
               </select>
             </div>
@@ -3759,7 +3759,7 @@ export default function DataEntryFinancialV2Page() {
           </div>:null}
           {selectedPickup?<div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
             <div className={serverClass}>Pickup: <b>{selectedPickup.pickup_id}</b></div>
-            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_id||selectedPickup.merchant_name||"—"}</b></div>
+            <div className={serverClass}>Merchant: <b>{selectedPickup.merchant_name||selectedPickup.merchant_id||"—"}</b></div>
             <div className={serverClass}>Requested: <b>{requestedParcelCount(selectedPickup)}</b> · Authorized: <b>{authorizedParcelCount(selectedPickup,rows.length)}</b></div>
             <div className={serverClass}>Status: <b>{selectedPickup.pickup_status||"—"}</b></div>
             <div className={serverClass}>Stage: <b>{selectedPickup.workflow_stage||"—"}</b></div>
