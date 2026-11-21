@@ -21,6 +21,7 @@ async function render(role) { calls=[];snapshot=fixture(role);let tree;await act
 const button = (tree,prefix)=>tree.root.findAllByType('button').find(n=>text(n).startsWith(prefix));
 const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).startsWith(label)).findByType('input');
 async function change(node,value) { await act(async()=>node.props.onChange({target:{value}})); }
+async function openPayments(tree) { await act(async()=>button(tree,'03 · Record payment').props.onClick()); }
 (async()=>{
  let tree=await render();
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
@@ -28,6 +29,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
  await act(async()=>button(tree,'Create draft batch').props.onClick());
  assert.deepEqual(JSON.parse(JSON.stringify(calls.find(c=>c.name==='be_finance_create_settlement_batch_v3').args.p_parcel_ids)),['P1']);
+ await openPayments(tree);
  await change(tree.root.findByProps({'aria-label':'Payment amount BATCH1'}),'30001');
  await change(input(tree,'Transfer / receipt reference'),'REF1');
  await change(input(tree,'Beneficiary bank'),'Merchant bank');
@@ -44,6 +46,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  assert.equal(payments.length,1,'double click must submit once');
  assert.deepEqual(JSON.parse(JSON.stringify(payments[0].args)),{p_payments:[{batch_id:'B1',amount:10000}],p_reference:'REF1',p_method:'BANK_TRANSFER',p_account:'Merchant bank',p_evidence_url:'https://example.test/receipt'});
  tree.unmount();tree=await render('FINANCE_MANAGER');
+ await openPayments(tree);
  await change(tree.root.findByProps({'aria-label':'Payment amount BATCH1'}),'20000');
  await change(input(tree,'Transfer / receipt reference'),'F09-UPLOAD');
  await change(input(tree,'Beneficiary bank'),'KBZ merchant');
@@ -69,6 +72,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  uploadReply=null;
  for(const financeRole of ['FINANCE','FINANCE_CREATOR','FINANCE_REVIEWER','FINANCE_APPROVER']){
   tree=await render(financeRole);
+  await openPayments(tree);
   const picker=tree.root.findByProps({'aria-label':'Upload receipt'});
   assert.equal(picker.props.disabled,false,financeRole+' can upload receipts');
   await act(async()=>picker.props.onChange({target:{files:[{name:'staff.png',type:'image/png',size:30}],value:'staff.png'}}));
@@ -77,6 +81,7 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
   tree.unmount();
  }
  tree=await render('FINANCE_CREATOR');
+ await openPayments(tree);
  assert.equal(button(tree,'Record ').props.disabled,true,'creator cannot record payment');
  tree.unmount();
  console.log('Merchant settlement V200 UI PASS: COD eligibility, batch selection, partial allocation, overpayment/evidence validation, role gate and double-click guard');
