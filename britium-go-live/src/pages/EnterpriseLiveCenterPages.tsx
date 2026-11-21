@@ -627,7 +627,7 @@ export function FinancePortalLivePage() {
              <button type="button" disabled={!filteredCod.length||state.loading} onClick={printCodPdf} style={{padding:"10px 14px",border:0,borderRadius:9,background:"#38bdf8",color:"#071729",fontWeight:900,opacity:!filteredCod.length?0.5:1}}>PDF / Print report</button>
            </div>
           </div>
-          {reportError&&<p role="alert" style={{color:"#fb7185",fontSize:12}}>{reportError}</p>
+          {reportError&&<p role="alert" style={{color:"#fb7185",fontSize:12}}>{reportError}</p>}
           <p style={{color:C.sub,fontSize:12}}>Exports include {filteredCod.length} filtered ways currently loaded on this page. PDF opens a printable document; choose Save as PDF.</p>
           <CodQueueFilters value={codFilters} onChange={setCodFilters} statuses={[...new Set(state.rows.map(r=>r.settlement_status).filter(Boolean))] as string[]} count={filteredCod.length} total={state.rows.length}/>
           <p style={{ color: C.sub }}>Expected collection is the amount due. Historical rows marked “Not recorded” require collection reconciliation before Finance can settle them.</p>
