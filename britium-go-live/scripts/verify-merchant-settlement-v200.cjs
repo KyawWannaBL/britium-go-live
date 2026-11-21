@@ -24,13 +24,14 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
 (async()=>{
  let tree=await render();
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
- assert.ok(text(tree.root).includes('30,000 MMK'),'unfiltered balance uses all-merchant wallet');
+ const walletSection=()=>tree.root.findAllByType('section').find(n=>text(n).includes('Settlement wallet:'));
+ assert.ok(text(walletSection()).includes('30,000 MMK'),'unfiltered balance uses all-merchant wallet');
  await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'TSW');
  assert.ok(calls.some(c=>c.name==='be_finance_settlement_snapshot_v3'&&c.args.p_merchant_id==='TSW'&&c.args.p_limit===1),'merchant wallet uses server-scoped snapshot');
- assert.ok(text(tree.root).includes('777 MMK'),'selected merchant must display scoped outstanding');
- assert.ok(!text(tree.root).includes('30,000 MMK'),'global balance must not remain visible under merchant filter');
+ assert.ok(text(walletSection()).includes('777 MMK'),'selected merchant must display scoped outstanding');
+ assert.ok(!text(walletSection()).includes('30,000 MMK'),'global balance must not remain visible under merchant filter');
  await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'');
- assert.ok(text(tree.root).includes('30,000 MMK'),'clearing merchant restores all-merchant balance');
+ assert.ok(text(walletSection()).includes('30,000 MMK'),'clearing merchant restores all-merchant balance');
  assert.ok(text(tree.root).includes('Date filters below affect the parcel table only'),'wallet date scope is explicit');
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
