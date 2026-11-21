@@ -3,6 +3,7 @@ import { Download, FileText, RefreshCw, WalletCards } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { uploadSettlementReceipt } from "@/lib/merchantSettlementReceipt";
 import SettlementReceiptLink from "@/components/SettlementReceiptLink";
+import MerchantAdvanceSettlementPanel from "@/components/finance/MerchantAdvanceSettlementPanel";
 type Row = Record<string, any>;
 const money=(n:unknown)=>Number(n||0).toLocaleString("en-US")+" MMK";
 const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
@@ -109,6 +110,7 @@ export default function MerchantSettlementPage(){
    {message&&<p role="status" className="mt-4 rounded-xl bg-emerald-950 p-3 text-emerald-200">{message}</p>}
    {loading&&<p role="status" className="mt-3">Loading live settlement records…</p>}
   </section>
+  <MerchantAdvanceSettlementPanel role={role} merchantOptions={merchants} previewOnly />
   <section className="grid gap-3 sm:grid-cols-3">{[["Britium owes merchants",data.wallet?.britium_owes],["Confirmed merchant payments",data.wallet?.paid_amount],["Merchants owe Britium",data.wallet?.owes_britium]].map(([title,value])=><div key={String(title)} className="rounded-2xl border border-slate-700 bg-slate-900 p-5"><p className="text-sm text-slate-300">{String(title)}</p><p className="mt-2 text-2xl font-black">{money(value)}</p></div>)}</section>
   <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
    <div className="flex flex-wrap gap-3"><input aria-label="Search settlements" className={field} placeholder="Way ID / merchant / collection type" value={search} onChange={e=>setSearch(e.target.value)}/><select aria-label="Merchant filter" className={field} value={merchant} onChange={e=>{setMerchant(e.target.value);setSelected([]);setAllocations({});}}><option value="">All merchants</option>{merchants.map(m=><option key={m}>{m}</option>)}</select><label>From<input type="date" className={field+" ml-2"} value={from} onChange={e=>setFrom(e.target.value)}/></label><label>To<input type="date" className={field+" ml-2"} value={to} onChange={e=>setTo(e.target.value)}/></label></div>
