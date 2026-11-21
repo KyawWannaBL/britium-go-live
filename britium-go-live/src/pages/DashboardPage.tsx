@@ -21,12 +21,20 @@ export default function DashboardPage(){
   const [data,setData]=useState<any>(null);
   const [loading,setLoading]=useState(false);
   const [error,setError]=useState("");
+  const [financeStages,setFinanceStages]=useState<any>(null);
+  const [financeStageError,setFinanceStageError]=useState("");
 
   async function load(){
     setLoading(true);setError("");
     const {data,error}=await (supabase as any).rpc("be_role_dashboard_v1");
     if(error||data?.ok===false){setError(error?.message||data?.code||"Dashboard unavailable.");setLoading(false);return;}
     setData(data);setLoading(false);
+    const dashboardRole=String(data?.role||"").replaceAll("-","_").toLowerCase();
+    if(["superadmin","super_admin","admin","management","director","finance","finance_user","accountant"].includes(dashboardRole)){
+      const {data:stages,error:stageErr}=await (supabase as any).rpc("be_dashboard_settlement_reconciliation_v1");
+      if(stageErr||stages?.ok===false){setFinanceStages(null);setFinanceStageError(stageErr?.message||stages?.code||"Unable to load finance breakdown");}
+      else {setFinanceStages(stages);setFinanceStageError("");}
+    }else{setFinanceStages(null);setFinanceStageError("");}
   }
   useEffect(()=>{
     void load();
@@ -48,6 +56,9 @@ export default function DashboardPage(){
   const branchView=superView||["branch_admin","branch_office"].includes(role);
 
   const o=data?.operations||{},f=data?.finance||{},w=data?.warehouse||{},h=data?.hr||{},g=data?.growth||{},b=data?.branches||{};
+  const cod=financeStages?.cod||{},merchant=financeStages?.merchant||{};
+  const codReconciles=[cod.total,cod.settled,cod.pending,cod.other].every(x=>x!==undefined&&x!==null)?Number(cod.total)===Number(cod.settled)+Number(cod.pending)+Number(cod.other):null;
+  const merchantReconciles=[merchant.total,merchant.waiting_delivery,merchant.waiting_cod_remittance,merchant.ready_to_settle,merchant.settled,merchant.other].every(x=>x!==undefined&&x!==null)?Number(merchant.total)===Number(merchant.waiting_delivery)+Number(merchant.waiting_cod_remittance)+Number(merchant.ready_to_settle)+Number(merchant.settled)+Number(merchant.other):null;
   const validCount=(v:unknown)=>v!==null&&v!==undefined&&v!==""&&Number.isFinite(Number(v));
   const settlementReconciles=validCount(f.settlement_rows)&&validCount(f.pending_rows)&&validCount(f.settled_rows)
     ?Number(f.settlement_rows)===Number(f.pending_rows)+Number(f.settled_rows):null;
@@ -85,21 +96,36 @@ export default function DashboardPage(){
       </div>
     </section>}
 
-    {financeView&&<section className="mt-5">
+    {financeView&&<section className="mt-5" data-dual-finance-settlement="true">
       <div className="mb-3 flex items-center gap-2"><DollarSign size={19} color={C.green}/><h2 className="font-black">Finance & Settlement</h2></div>
+      <p className="mb-4 rounded-xl border border-sky-900 bg-[#0b2236] p-3 text-xs text-slate-300">COD collection handover and merchant payout are different lifecycles. COD settled does not mean merchant paid. Counts cover all dates in the enterprise Finance scope.</p>
+      <h3 className="mb-2 font-extrabold text-sky-300">01 · COD Collection Settlement</h3>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Card title="Settlement Queue Rows" value={num(f.settlement_rows)} icon={DollarSign} accent={C.blue} sub="All finance queue records, including undelivered parcels"/>
-        <Card title="Unsettled Queue Rows (all stages)" value={num(f.pending_rows)} icon={DollarSign} accent={C.gold} sub="Not marked SETTLED; includes waiting delivery and COD. Not all payable now."/>
-        <Card title="Expected Customer Collections" value={money(f.cod_expected)} icon={DollarSign} accent={C.green} sub="Projected total; not confirmed cash received"/>
-        <Card title="Projected Merchant Payable" value={money(f.merchant_payable)} icon={DollarSign} accent={C.gold} sub="All queue stages; excludes negative balances, not amount approved for transfer"/>
-        <Card title="Projected Merchant Receivable" value={money(f.merchant_receivable)} icon={DollarSign} accent={C.blue} sub="Projected merchant obligations across queue"/>
-        <Card title="Projected Delivery Entitlement" value={money(f.delivery_revenue)} icon={DollarSign} accent={C.green} sub="Not booked or bank-confirmed revenue"/>
-        <Card title="Settled Rows (cumulative)" value={num(f.settled_rows)} icon={DollarSign} accent={C.green} sub="Finance projection rows marked SETTLED"/>
+        <Card title="COD Collection Records" value={num(cod.total)} icon={DollarSign} accent={C.blue} sub="All way-level COD handover records"/>
+        <Card title="COD Collections Settled" value={num(cod.settled)} icon={DollarSign} accent={C.green} sub="Confirmed COD collection handovers; not merchant payouts"/>
+        <Card title="COD Collections Pending" value={num(cod.pending)} icon={DollarSign} accent={C.gold} sub="COD handovers pending"/>
+        {Number(cod.other||0)>0&&<Card title="Other COD Statuses" value={num(cod.other)} icon={DollarSign} accent={C.red} sub="Review unknown status values"/>}
       </div>
-      <p className="mt-2 text-xs" style={{color:C.sub}}>Finance source: canonical settlement queue projection, all recorded dates. A settlement-ready payout requires COD reconciliation and independent approval.</p>
-      <p role="status" className={"mt-2 rounded-lg border px-3 py-2 text-xs "+(settlementReconciles===true?"border-emerald-700/50 bg-emerald-950/20 text-emerald-200":"border-amber-600/50 bg-amber-950/20 text-amber-200")}>
-        Finance reconciliation: {settlementReconciles===true?"PASS — Total queue rows = unsettled + settled":settlementReconciles===false?"MISMATCH — Finance queue row components do not add up":"Unavailable — expected figures missing from backend"}.
-      </p>
+      <p role="status" className={"mt-2 text-xs "+(codReconciles===true?"text-emerald-300":"text-amber-300")}>COD reconciliation: {codReconciles===true?"PASS — all COD statuses accounted for":codReconciles===false?"MISMATCH — check COD statuses":"Unavailable — COD source not loaded"}.</p>
+      <h3 className="mb-2 mt-6 font-extrabold text-amber-300">02 · Merchant Payout Settlement</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card title="Merchant Queue Records" value={num(merchant.total??f.settlement_rows)} icon={DollarSign} accent={C.blue} sub="All merchant settlement projection rows"/>
+        <Card title="Waiting Delivery" value={num(merchant.waiting_delivery)} icon={Truck} accent={C.blue} sub="Not ready for merchant payout"/>
+        <Card title="Waiting COD Remittance" value={num(merchant.waiting_cod_remittance)} icon={DollarSign} accent={C.gold} sub="Requires COD handover or reconciliation"/>
+        <Card title="Ready to Settle Merchant" value={num(merchant.ready_to_settle)} icon={DollarSign} accent={C.green} sub="Eligible for review; approval and payment still required"/>
+        <Card title="Merchant Settled" value={num(merchant.settled??f.settled_rows)} icon={DollarSign} accent={C.green} sub="Merchant projection marked SETTLED"/>
+        {Number(merchant.other||0)>0&&<Card title="Other Merchant Statuses" value={num(merchant.other)} icon={DollarSign} accent={C.red} sub="Review unclassified merchant statuses"/>}
+      </div>
+      <div role="status" className={"mt-3 rounded-xl border p-3 text-sm "+(Number(financeStages?.cod_settled_waiting_merchant_remittance||0)>0?"border-amber-600/60 bg-amber-950/30 text-amber-200":"border-slate-700 bg-[#0b2236] text-slate-300")}><strong>Cross-ledger exception:</strong> {financeStages?num(financeStages.cod_settled_waiting_merchant_remittance)+" COD-settled way(s) still marked waiting COD remittance in the merchant projection. Review evidence before changing a status.":financeStageError||"Loading settlement reconciliation."}</div>
+      <p role="status" className={"mt-2 text-xs "+(merchantReconciles===true?"text-emerald-300":"text-amber-300")}>Merchant queue reconciliation: {merchantReconciles===true?"PASS — all merchant stages accounted for":merchantReconciles===false?"MISMATCH — check merchant projection stages":"Unavailable — merchant stage source not loaded"}.</p>
+      <h3 className="mb-2 mt-6 font-extrabold text-slate-200">03 · Finance Projections (Not Confirmed Cash)</h3>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Card title="Expected Customer Collections" value={money(f.cod_expected)} icon={DollarSign} accent={C.green} sub="Projected total; not confirmed cash received"/>
+        <Card title="Projected Merchant Payable" value={money(f.merchant_payable)} icon={DollarSign} accent={C.gold} sub="Includes stages not approved for transfer"/>
+        <Card title="Projected Merchant Receivable" value={money(f.merchant_receivable)} icon={DollarSign} accent={C.blue} sub="Projected merchant obligations"/>
+        <Card title="Projected Delivery Entitlement" value={money(f.delivery_revenue)} icon={DollarSign} accent={C.green} sub="Not bank-confirmed revenue"/>
+      </div>
+      {financeStageError&&<p role="alert" className="mt-2 text-xs text-amber-300">Detailed settlement report unavailable: {financeStageError}</p>}
     </section>}
 
     {opsView&&<section className="mt-5">

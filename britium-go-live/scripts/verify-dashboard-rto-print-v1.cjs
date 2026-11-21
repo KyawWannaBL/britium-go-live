@@ -16,7 +16,7 @@ for(const marker of ['data-rto-scroll','rto-print-document','@page { size: A4 po
 assert.ok(r.includes('max-h-[65vh]')&&r.includes('overflow-auto'),'RTO screen must scroll in both directions');
 assert.ok(r.includes('break-inside:avoid'),'RTO print must paginate parcel entries without clipping');
 assert.ok(!r.includes('min-w-[1500px]'),'Print must not reuse the wide screen table');
-for(const marker of ['be_role_dashboard_v1','Unsettled Queue Rows (all stages)','Finance reconciliation','Warehouse inventory check','Not available','Projected Merchant Payable','Snapshot age']){
+for(const marker of ['be_role_dashboard_v1','COD Collections Settled','COD Collections Pending','Ready to Settle Merchant','Merchant queue reconciliation','Warehouse inventory check','Not available','Projected Merchant Payable','Snapshot age']){
  assert.ok(d.includes(marker),'Missing dashboard source guard: '+marker);
 }
 for(const marker of ['Filter parcel status','Filter current owner','Show only parcels with open voices','visibleRows.map']){
