@@ -16,7 +16,7 @@ for(const component of ['DataEntryOsBulkImport','CorporateDataEntryBinding','Del
 for(const label of ['data-financial-v2-command-bar','data-financial-v2-tool-drawer','data-data-entry-reference-layout','data-registration-grid-v137','data-full-review-sheet','data-full-registration-layout-v85','data-extra-registration-v14','data-bulk-location-readiness-v19','data-data-entry-staff-progress-v96','data-data-entry-registration-export-v12-9','data-operator-workflow-v86']){
   assert.ok(page.includes(label),label+' workflow or layout marker missing');
 }
-for(const control of ['Parcel Registration','Staff Progress','Reconciliation','Data Tools','Batch & Excel','Contract & Qty','SAVE ALL','CALCULATE ALL','DOWNLOAD REVIEW EXCEL','DOWNLOAD REGISTRATION EXCEL','GENERATE COMPLETED WAYBILLS','ADD REGISTRATION']){
+for(const control of ['Parcel Registration','Staff Progress','Reconciliation','Data Tools','Batch &amp; Excel','Contract &amp; Qty','SAVE ALL','CALCULATE ALL','DOWNLOAD REVIEW EXCEL','DOWNLOAD REGISTRATION EXCEL','GENERATE COMPLETED WAYBILLS','ADD REGISTRATION']){
   assert.ok(page.includes(control),control+' operator action removed');
 }
 assert.ok(settlement.includes('source("merchant_master","merchant_code,merchant_name,business_name")'),'canonical merchant master lookup missing');
