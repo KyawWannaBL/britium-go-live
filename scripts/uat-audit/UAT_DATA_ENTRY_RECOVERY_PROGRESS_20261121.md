@@ -105,3 +105,21 @@ Nine Data Entry RPC names still absent:
 **Save / Save All / Create Waybill are not yet functional or enabled.** The original write chain still needs the dependent operational schemas and functions, mandatory triggers, RLS/permissions, delivery-way ID allocation, audit semantics, canonical parcel validation, photo/location review and waybill publication rules, followed by transaction-rollback tests with synthetic UAT data. The writer should not be replaced with a success-returning placeholder, and `MUTATION_SHADOW` must stay set until validation and end-to-end browser tests pass.
 
 **No production changes. No production deployment.** Vercel UAT configuration/login/browser operation not yet verified during this stage.
+
+---
+
+## 2026-11-21 — Trigger, photo-review and location-review continuation
+
+See the verified dedicated report: [UAT_DATA_ENTRY_INTEGRITY_PHOTO_LOCATION_20261121.md](./UAT_DATA_ENTRY_INTEGRITY_PHOTO_LOCATION_20261121.md).
+
+**New applied UAT changes**:
+- Six production-derived integrity triggers installed across Data Entry parcel details, canonical parcels and waybill ledger. Branch-manager insert-denial, canonical Way ID, status coherence and updated timestamps passed rollback tests.
+- Original photo review RPC installed, with synthetic-only global-admin authorization and an additional requirement for photo evidence on approval. Post-apply authenticated-role and denial tests passed.
+- Location review V23/V29 installed for synthetic QA only, with manual-pin and canonical Way ID checks; UAT `SKIP_REVIEW` requires an existing stored trusted exact suggestion. Authenticated role and branch-denial tests passed.
+- A combined rollback transaction passed **photo approval → manual location pin → original Save dry-run** for an Insein synthetic parcel, with 20,000 MMK item + 4,000 MMK delivery = 24,000 MMK COD. It did **not** persist a registration or issue a waybill.
+
+**Static Data Entry RPC name availability: 18/20**. Remaining: `be_data_entry_financial_v2_add_registrations` and `be_data_entry_registration_delete_v1`. These are write/destructive operations, not released.
+
+**Safety remains unchanged:** 18 UAT Auth users, 16 branch roster, 2 QA pickups, 4 QA parcel details, 2 draft wayplans, zero retained photo/location/audit records, zero published waybills; `MUTATION_SHADOW`, authenticated Save/Waybill EXECUTE denied. No Vercel deployment or production modification.
+
+**Next release gate:** reconcile missing October-2026 write guards and finance/warehouse/address-history triggers, complete real transactional Save/Save All/Waybill acceptance, and verify the isolated UAT browser deployment. 
