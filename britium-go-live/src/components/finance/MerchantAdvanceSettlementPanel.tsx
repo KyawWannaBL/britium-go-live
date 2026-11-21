@@ -18,6 +18,8 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
  const [finalUnavailable,setFinalUnavailable]=useState("");
  const [offsetReviews,setOffsetReviews]=useState<Entry[]>([]);
  const [offsetUnavailable,setOffsetUnavailable]=useState("");
+ const [postingReadiness,setPostingReadiness]=useState<Entry>({rows:[],summary:{}});
+ const [postingGateUnavailable,setPostingGateUnavailable]=useState("");
  const [offsetReason,setOffsetReason]=useState("");
  const [offsetReviewNote,setOffsetReviewNote]=useState("");
  const [selected,setSelected] = useState<string[]>([]);
@@ -49,6 +51,8 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
    catch(e:any){setFinalReconciliation({rows:[],kpis:{}});setFinalUnavailable(e.message||"Final reconciliation preview not installed");}
    try{const reviews=await call("be_finance_advance_final_offset_reviews_snapshot_v1",{p_merchant_id:merchant||null,p_limit:1000});setOffsetReviews(reviews.rows||[]);setOffsetUnavailable("");}
    catch(e:any){setOffsetReviews([]);setOffsetUnavailable(e.message||"Offset reviews are not installed");}
+   try{const gate=await call("be_finance_advance_payable_accrual_readiness_v1",{p_merchant_id:merchant||null,p_limit:250});setPostingReadiness(gate||{rows:[],summary:{}});setPostingGateUnavailable("");}
+   catch(e:any){setPostingReadiness({rows:[],summary:{}});setPostingGateUnavailable(e.message||"Posting readiness is unavailable");}
    const existing=response.policies?.find((p:Entry)=>p.merchant_id===merchant);
    if(existing)setPolicy({
      rate:String(existing.rate_pct),deduction:String(existing.flat_deduction),
@@ -249,6 +253,20 @@ export default function MerchantAdvanceSettlementPanel({role,merchantOptions}:{r
     </div>
    </div>
 
+   <div className="mt-3 rounded-lg border border-amber-800/80 bg-slate-950/40 p-3">
+    <h4 className="font-bold text-amber-200">Accounting accrual readiness · No posting</h4>
+    <p className="mt-1 text-xs text-slate-400">Advance asset must be posted and the same Way ID must have one independently posted merchant payable accrual. The review status does not itself approve cash movement or COD settlement.</p>
+    {postingGateUnavailable&&<p role="status" className="mt-2 text-xs text-amber-300">Accrual gate unavailable: {postingGateUnavailable}</p>}
+    <p className="mt-2 text-xs">Reviewed ways: {postingReadiness.summary?.reviews||0} · Prerequisites satisfied: {postingReadiness.summary?.prerequisites_satisfied||0} · Blocked: {postingReadiness.summary?.blocked||0}</p>
+    <div className="mt-2 max-h-44 overflow-auto"><table className="min-w-[800px] w-full text-left text-xs">
+      <thead className="bg-slate-800"><tr><th className="p-2">Way ID</th><th className="p-2">Merchant</th><th className="p-2">Offset (MMK)</th><th className="p-2">Advance event</th><th className="p-2">Accrual credit</th><th className="p-2">Posting gate</th></tr></thead>
+      <tbody>{(postingReadiness.rows||[]).map((r:Entry)=><tr key={r.review_id} className="border-t border-slate-700">
+        <td className="p-2">{r.delivery_way_id}</td><td className="p-2">{r.merchant_id}</td>
+        <td className="p-2">{money(r.applied_offset_snapshot)}</td><td className="p-2">{r.advance_event_status||"UNPOSTED"}</td>
+        <td className="p-2">{money(r.posted_payable_credit)}</td>
+        <td className="p-2 font-medium text-amber-300">{r.posting_gate}</td>
+      </tr>)}</tbody></table></div>
+   </div>
    <p className="mt-2 text-xs font-semibold text-amber-200">Posting is intentionally blocked until approved final ledger-offset and UAT accounting tests are completed.</p>
   </div>
   <div className="mt-4 rounded-lg border border-rose-700/50 p-3">
