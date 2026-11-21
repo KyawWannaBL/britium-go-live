@@ -320,6 +320,32 @@ CREATE TRIGGER be_finance_advance_legacy_batch_guard_v1
 BEFORE INSERT ON public.be_finance_settlement_batch_items_v3
 FOR EACH ROW EXECUTE FUNCTION public.be_finance_advance_legacy_batch_guard_v1();
 
+-- Legacy Finance V2 writes a separate parcel ledger, bypassing V3 batch items.
+-- Do not allow it to finalize an advanced way as if no merchant advance existed.
+CREATE OR REPLACE FUNCTION public.be_finance_advance_v2_ledger_guard_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','pg_temp' AS $fn$
+BEGIN
+ IF EXISTS (
+   SELECT 1
+   FROM public.be_finance_advance_items_v1 i
+   JOIN public.be_finance_advance_batches_v1 b ON b.id=i.batch_id
+   WHERE b.status IN ('DRAFT','PENDING_APPROVAL','APPROVED','DISBURSED')
+     AND (
+      (NEW.parcel_id IS NOT NULL AND NEW.parcel_id=i.parcel_id::text)
+      OR (NULLIF(btrim(NEW.way_id),'') IS NOT NULL
+         AND upper(btrim(NEW.way_id))=upper(btrim(i.delivery_way_id)))
+     )
+ ) THEN
+   RAISE EXCEPTION 'ADVANCE_SETTLEMENT_RECONCILIATION_REQUIRED_V2: way % cannot bypass the advance ledger',NEW.way_id;
+ END IF;
+ RETURN NEW;
+END $fn$;
+DROP TRIGGER IF EXISTS be_finance_advance_v2_ledger_guard_v1 ON public.be_parcel_settlement_ledger_v2;
+CREATE TRIGGER be_finance_advance_v2_ledger_guard_v1
+BEFORE INSERT ON public.be_parcel_settlement_ledger_v2
+FOR EACH ROW EXECUTE FUNCTION public.be_finance_advance_v2_ledger_guard_v1();
+REVOKE ALL ON FUNCTION public.be_finance_advance_v2_ledger_guard_v1() FROM PUBLIC,anon,authenticated;
+
 REVOKE ALL ON FUNCTION public.be_finance_advance_preview_v1(text,integer),
  public.be_finance_advance_set_policy_v1(text,boolean,numeric,numeric,text[],text),
  public.be_finance_advance_create_draft_v1(uuid[],text),
