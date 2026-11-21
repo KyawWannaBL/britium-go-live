@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const ts = require('typescript');
 const React = require('react');
 const {create, act} = require('react-test-renderer');
-let calls = [], snapshot;
+let calls = [], snapshot, stripMock;
 const source = fs.readFileSync('src/pages/MerchantSettlementPage.tsx', 'utf8');
 const compiled = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS, jsx:ts.JsxEmit.ReactJSX, target:ts.ScriptTarget.ES2020}}).outputText;
 let uploadReply, uploadPending;
@@ -17,7 +17,13 @@ vm.runInNewContext(compiled, {exports:mod.exports, require:localRequire, crypto:
 const Page = mod.exports.default;
 const text = n => typeof n==='string'?n:(n?.children||[]).map(text).join('');
 function fixture(role='SUPERADMIN') { return {scope:{role},wallet:{britium_owes:30000,paid_amount:20000,owes_britium:0},rows:[{parcel_id:'P1',delivery_way_id:'WAY1',merchant_id:'TSW',status:'DELIVERED',validation_status:'OK',settlement_eligible:true,merchant_final_settlement_amount:50000},{parcel_id:'P2',delivery_way_id:'WAY2',merchant_id:'TSW',status:'DELIVERED',validation_status:'OK',settlement_eligible:false,settlement_state:'WAITING_COD_REMITTANCE'}],batches:[{id:'B1',batch_number:'BATCH1',merchant_id:'TSW',status:'PARTIALLY_PAID',batch_net_payable:50000,paid_amount:20000,outstanding_amount:30000}],payments:[]}; }
-async function render(role) { calls=[];snapshot=fixture(role);let tree;await act(async()=>{tree=create(React.createElement(Page));});return tree; }
+async function render(role) {
+ calls=[];snapshot=fixture(role);
+ stripMock={scrollWidth:1800,clientWidth:500,scrollLeft:0,scrollBy({left}){this.scrollLeft=Math.max(0,Math.min(this.scrollWidth-this.clientWidth,this.scrollLeft+left));}};
+ let tree;
+ await act(async()=>{tree=create(React.createElement(Page),{createNodeMock:node=>node.type==='nav'&&node.props.role==='tablist'?stripMock:null});});
+ return tree;
+}
 const button = (tree,prefix)=>tree.root.findAllByType('button').find(n=>text(n).startsWith(prefix));
 const input = (tree,label)=>tree.root.findAllByType('label').find(n=>text(n).startsWith(label)).findByType('input');
 async function change(node,value) { await act(async()=>node.props.onChange({target:{value}})); }
@@ -31,6 +37,20 @@ async function openTab(tree,label) {
  assert.ok(String(tree.root.findByType('main').props.className).includes('bg-[#060913]'),'navy settlement canvas preserved');
  const tabs=tree.root.findAllByProps({role:'tab'});
  assert.equal(tabs.length,8,'each settlement workflow has a separate accessible tab');
+ const scrollInput=()=>tree.root.findByProps({'aria-label':'Horizontal workflow scrollbar'});
+ const tabNav=tree.root.findByProps({'aria-label':'Merchant Settlement process tabs'});
+ assert.ok(tabNav.props.className.includes('overflow-x-auto'),'native horizontal tab scrolling preserved');
+ assert.equal(scrollInput().props.type,'range','always-visible workflow scrollbar');
+ assert.equal(scrollInput().props.disabled,false,'scrollbar enabled when workflow tabs overflow');
+ assert.equal(scrollInput().props.value,0,'scrollbar initially at start');
+ await act(async()=>tree.root.findByProps({'aria-label':'Scroll workflows right'}).props.onClick());
+ assert.ok(stripMock.scrollLeft>0,'right control advances tab navigation');
+ assert.ok(scrollInput().props.value>0,'scrollbar follows tab navigation scroll');
+ await act(async()=>scrollInput().props.onChange({target:{value:'100'}}));
+ assert.equal(scrollInput().props.value,100,'dragging slider reaches all workflows');
+ assert.equal(stripMock.scrollLeft,stripMock.scrollWidth-stripMock.clientWidth,'dragging slider moves nav to end');
+ await act(async()=>tree.root.findByProps({'aria-label':'Scroll workflows left'}).props.onClick());
+ assert.ok(scrollInput().props.value<100,'left control returns toward prior workflows');
  assert.equal(tree.root.findAllByProps({role:'tabpanel'}).length,1,'one process panel is visible at a time');
  assert.equal(tree.root.findByProps({'aria-label':'Open Overview tab'}).props['aria-selected'],true,'overview opens first');
  assert.match(tree.root.findByProps({'aria-label':'Merchant filter'}).props.className,/bg-white/,'global merchant selector remains high contrast');
@@ -126,5 +146,5 @@ async function openTab(tree,label) {
  await openTab(tree,'Record Payment');
  assert.equal(button(tree,'Record ').props.disabled,true,'creator cannot record payment');
  tree.unmount();
- console.log('Merchant settlement V200 UI PASS: eight accessible workflow tabs, isolated task panels, preserved merchant/parcel selection, advance lock, wallet scoping, COD selection, payment evidence/roles and double-click guard');
+ console.log('Merchant settlement V200 UI PASS: visible horizontal workflow slider/arrows, eight accessible tabs, isolated task panels, merchant/parcel selection, advance lock, wallet scoping, COD selection, payment evidence/roles and double-click guard');
 })().catch(e=>{console.error(e);process.exitCode=1;});

@@ -29,6 +29,8 @@ export default function MerchantSettlementPage(){
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
  const [activeTab,setActiveTab]=useState<SettlementTab>("overview");
  const tabRefs=useRef<Partial<Record<SettlementTab,HTMLButtonElement|null>>>({});
+ const tabStripRef=useRef<HTMLElement|null>(null);
+ const [tabScroll,setTabScroll]=useState({offset:0,max:0});
  const [scopedWallet,setScopedWallet]=useState<{merchant:string;wallet:Row|null;loading:boolean;error:string}>({merchant:"",wallet:null,loading:false,error:""});
  const [selected,setSelected]=useState<string[]>([]),[allocations,setAllocations]=useState<Record<string,string>>({});
  const [payment,setPayment]=useState({method:"BANK_TRANSFER",reference:"",account:"",evidence:""});
@@ -148,6 +150,39 @@ export default function MerchantSettlementPage(){
     setActiveTab(nextTab);
     tabRefs.current[nextTab]?.focus();
   }
+  function syncTabScrollbar(){
+    const strip=tabStripRef.current;
+    if(!strip)return;
+    const max=Math.max(0,strip.scrollWidth-strip.clientWidth);
+    const offset=Math.max(0,Math.min(max,strip.scrollLeft));
+    setTabScroll(previous=>previous.max===max&&Math.abs(previous.offset-offset)<1?previous:{offset,max});
+  }
+  useEffect(()=>{
+    const strip=tabStripRef.current;
+    if(!strip)return;
+    syncTabScrollbar();
+    const resizeObserver=typeof ResizeObserver!=="undefined"?new ResizeObserver(syncTabScrollbar):null;
+    resizeObserver?.observe(strip);
+    if(typeof window!=="undefined")window.addEventListener("resize",syncTabScrollbar);
+    return ()=>{resizeObserver?.disconnect();if(typeof window!=="undefined")window.removeEventListener("resize",syncTabScrollbar);};
+  },[]);
+  useEffect(()=>{
+    tabRefs.current[activeTab]?.scrollIntoView?.({behavior:"smooth",block:"nearest",inline:"nearest"});
+  },[activeTab]);
+  function shiftTabScroll(direction:-1|1){
+    const strip=tabStripRef.current;
+    if(!strip)return;
+    const delta=Math.max(180,Math.floor(strip.clientWidth*0.7))*direction;
+    if(typeof strip.scrollBy==="function")strip.scrollBy({left:delta,behavior:"smooth"});
+    else strip.scrollLeft+=delta;
+    syncTabScrollbar();
+  }
+  function seekTabScroll(percent:number){
+    const strip=tabStripRef.current;
+    if(!strip)return;
+    strip.scrollLeft=Math.max(0,strip.scrollWidth-strip.clientWidth)*percent/100;
+    syncTabScrollbar();
+  }
   const activeTabInfo=settlementTabs.find(t=>t.key===activeTab)!;
   const eligibleCount=rows.filter((r:Row)=>r.settlement_eligible).length;
   const approvalQueueCount=batches.filter((b:Row)=>["UNDER_REVIEW","PENDING_APPROVAL"].includes(String(b.status))).length;
@@ -177,7 +212,7 @@ export default function MerchantSettlementPage(){
     <p className="max-w-2xl text-xs leading-relaxed text-slate-400">Merchant selection applies to normal settlement balances, batches, payments and parcel records. Date and search filters in Parcel Queue affect parcels only.</p>
    </div>
   </section>
-  <nav role="tablist" aria-label="Merchant Settlement process tabs" className="flex w-full gap-2 overflow-x-auto rounded-3xl border border-sky-950 bg-[#090d1c] p-2 shadow-lg shadow-slate-950/30" style={{scrollbarWidth:"thin"}}>
+  <nav ref={tabStripRef} onScroll={syncTabScrollbar} role="tablist" aria-label="Merchant Settlement process tabs" className="flex w-full gap-2 overflow-x-auto rounded-t-3xl border border-b-0 border-sky-950 bg-[#090d1c] p-2 shadow-lg shadow-slate-950/30" style={{scrollbarWidth:"auto",scrollbarColor:"#fbbf24 #111827"}}>
    {settlementTabs.map((tab,index)=><button
      key={tab.key} ref={node=>{tabRefs.current[tab.key]=node;}} type="button" role="tab"
      id={"settlement-tab-"+tab.key} aria-controls={"settlement-panel-"+tab.key}
@@ -191,6 +226,22 @@ export default function MerchantSettlementPage(){
      {tabCounts[tab.key]!==undefined&&<span className={"rounded-full px-2 py-0.5 text-xs "+(activeTab===tab.key?"bg-amber-100 text-slate-900":"bg-slate-800 text-slate-300")}>{tabCounts[tab.key]}</span>}
     </button>)}
   </nav>
+  <div className="flex items-center gap-3 rounded-b-3xl border border-t-0 border-sky-950 bg-[#090d1c] px-3 pb-3 pt-2" aria-label="Workflow horizontal scrollbar controls">
+    <button type="button" aria-label="Scroll workflows left" onClick={()=>shiftTabScroll(-1)} disabled={tabScroll.max<=0||tabScroll.offset<=1}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-950 text-amber-300 hover:border-amber-400 hover:text-white disabled:opacity-35" title="Scroll workflow tabs left">‹</button>
+    <label className="flex min-w-0 flex-1 flex-col gap-1">
+      <span className="flex items-center justify-between text-[11px] font-semibold text-slate-300">
+        <span>Scroll workflows horizontally</span>
+        <span>{tabScroll.max>1?"Drag the bar to see all 8 tabs":"All workflows visible"}</span>
+      </span>
+      <input type="range" min={0} max={100} step={1} value={tabScroll.max>0?Math.round(tabScroll.offset/tabScroll.max*100):0}
+        onChange={e=>seekTabScroll(Number(e.target.value))} disabled={tabScroll.max<=0}
+        aria-label="Horizontal workflow scrollbar" aria-valuetext={tabScroll.max>0?Math.round(tabScroll.offset/tabScroll.max*100)+"% across workflow tabs":"All workflow tabs visible"}
+        className="h-4 w-full cursor-ew-resize accent-amber-400 disabled:cursor-default disabled:opacity-40"/>
+    </label>
+    <button type="button" aria-label="Scroll workflows right" onClick={()=>shiftTabScroll(1)} disabled={tabScroll.max<=0||tabScroll.offset>=tabScroll.max-1}
+      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-600 bg-slate-950 text-amber-300 hover:border-amber-400 hover:text-white disabled:opacity-35" title="Scroll workflow tabs right">›</button>
+  </div>
   <section role="tabpanel" id={"settlement-panel-"+activeTab} aria-labelledby={"settlement-tab-"+activeTab} tabIndex={0} className="space-y-5 focus:outline-none">
     <div className="flex flex-wrap items-end justify-between gap-3 rounded-2xl border border-sky-950/70 bg-[#0b1021] p-4 md:p-5">
       <div><p className="text-xs font-extrabold uppercase tracking-[0.15em] text-amber-400">Finance workspace · {activeTabInfo.step} / 08</p>
