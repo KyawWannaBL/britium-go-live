@@ -282,12 +282,20 @@ BEGIN
  v_role:=public.be_finance_assert_internal_v3();
  IF upper(v_role) NOT IN ('PAYMENT_OFFICER','FINANCE_ADMIN','FINANCE_MANAGER','ACCOUNTS','ADMIN','SUPERADMIN') THEN RAISE EXCEPTION 'Finance payment officer required'; END IF;
  SELECT * INTO r FROM public.be_finance_advance_rto_recoveries_v1 WHERE id=p_recovery_id FOR UPDATE;
- IF NOT FOUND OR r.status<>'APPROVED' THEN RAISE EXCEPTION 'Refund must be independently approved before recording merchant return'; END IF;
+ IF NOT FOUND OR r.status<>'APPROVED' THEN RAISE EXCEPTION 'Refund requires independent approval'; END IF;
  IF r.requested_by=auth.uid() OR r.reviewed_by=auth.uid() THEN RAISE EXCEPTION 'Refund receiver must be independent of requester and approver'; END IF;
  IF length(btrim(coalesce(p_reference,'')))<4 OR length(btrim(coalesce(p_method,'')))<3
- OR p_evidence_url !~ '^https://[^[:space:]]{8,2000}
--- through the old delivered-only batch creator. Dedicated offset reconciliation
--- is REQUIRED before normal final settlement can include the advanced parcel.
+ OR coalesce(p_evidence_url,'') NOT LIKE 'https://%' OR length(btrim(coalesce(p_evidence_url,'')))<16
+ THEN RAISE EXCEPTION 'Verified refund receipt and reference required'; END IF;
+ UPDATE public.be_finance_advance_rto_recoveries_v1
+ SET status='REFUND_RECEIVED',received_by=auth.uid(),received_at=now(),
+ receipt_method=p_method,receipt_reference=p_reference,receipt_evidence_url=p_evidence_url
+ WHERE id=p_recovery_id;
+ RETURN jsonb_build_object('ok',true,'recovery_id',p_recovery_id,'status','REFUND_RECEIVED','amount',r.amount,
+ 'note','External refund receipt recorded; original advance remains immutable');
+END $fn$;
+
+-- Prevent duplicate normal settlement until dedicated advance-offset reconciliation exists.
 CREATE OR REPLACE FUNCTION public.be_finance_advance_legacy_batch_guard_v1()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path='public','pg_temp' AS $fn$
 BEGIN
