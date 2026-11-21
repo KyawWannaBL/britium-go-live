@@ -11,6 +11,23 @@ const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
 const filterField="h-14 rounded-2xl border border-slate-200 bg-white px-4 text-base font-semibold text-slate-950 shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-amber-400";
 const button="rounded-xl border border-sky-700 px-4 py-2 font-bold disabled:opacity-40";
 const methods=["CASH","BANK_TRANSFER","KBZ_PAY","WAVE_PAY","AYA_PAY","CB_PAY","CHEQUE","OTHER"];
+const RTO_EXPLANATIONS = {
+ warehouse:"Returned to an authorized warehouse or hub; merchant/sender return is not yet confirmed.",
+ return:"Return-to-origin completed and confirmed by the operational return workflow.",
+ pending:"RTO initiated or pending; warehouse receipt or return completion is not yet verified."
+} as const;
+function rtoStage(row:Row):"warehouse"|"return"|"pending"|null {
+ const status=String(row.status||"").trim().toUpperCase().replace(/[\\s-]+/g,"_");
+ const returnStates=new Set(["RTO_RETURNED_TO_ORIGIN","RTO_RETURN_COMPLETED","RTO_RETURNED_TO_SENDER","RETURNED_TO_ORIGIN","RETURNED_TO_SENDER","RETURN_TO_ORIGIN_COMPLETED","RTO_DELIVERED_BACK"]);
+ const warehouseStates=new Set(["RTO_RETURNED_TO_HUB","RTO_AT_WAREHOUSE","RTO_WAREHOUSE","RETURNED_TO_WAREHOUSE","RTO_WAREHOUSE_RECEIVED","RTO_RECEIVED_AT_HUB"]);
+ if(returnStates.has(status))return "return";
+ if(warehouseStates.has(status))return "warehouse";
+ if(status.startsWith("RTO")||status.includes("RETURN_TO_ORIGIN")||status.includes("RETURN_PENDING"))return "pending";
+ return null;
+}
+const rtoName=(stage:ReturnType<typeof rtoStage>)=>stage==="warehouse"?"RTO Warehouse":stage==="return"?"RTO Return":stage==="pending"?"RTO Pending":"—";
+const uniqueOptions=(rows:Row[],field:string)=>Array.from(new Set(rows.map(r=>String(r[field]||"").trim()).filter(Boolean))).sort();
+
 const settlementTabs = [
  {key:"overview",label:"Overview",description:"Merchant balances and workflow summary",step:"01"},
  {key:"queue",label:"Parcel Queue",description:"Review eligible delivered parcels and COD",step:"02"},
@@ -27,6 +44,17 @@ export default function MerchantSettlementPage(){
  const [data,setData]=useState<Row>({rows:[],batches:[],payments:[],wallet:{}});
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState(""),[message,setMessage]=useState("");
  const [search,setSearch]=useState(""),[merchant,setMerchant]=useState(""),[from,setFrom]=useState(""),[to,setTo]=useState("");
+ const [queueStatus,setQueueStatus]=useState("ALL");
+ const [collectionFilter,setCollectionFilter]=useState("");
+ const [deliveryFilter,setDeliveryFilter]=useState("");
+ const [paymentFilter,setPaymentFilter]=useState("");
+ const [rtoSearch,setRtoSearch]=useState("");
+ const [historySearch,setHistorySearch]=useState("");
+ const [historyStatus,setHistoryStatus]=useState("");
+ const [historyMethod,setHistoryMethod]=useState("");
+ const [postSearch,setPostSearch]=useState("");
+ const [postTypeFilter,setPostTypeFilter]=useState("");
+ const [postStatusFilter,setPostStatusFilter]=useState("");
  const [activeTab,setActiveTab]=useState<SettlementTab>("overview");
  const tabRefs=useRef<Partial<Record<SettlementTab,HTMLButtonElement|null>>>({});
  const tabStripRef=useRef<HTMLElement|null>(null);
@@ -97,6 +125,41 @@ export default function MerchantSettlementPage(){
  const payments=(data.payments||[]).filter((r:Row)=>!merchant||r.merchant_id===merchant);
  const payableBatches=batches.filter((b:Row)=>["APPROVED","PARTIALLY_PAID"].includes(b.status)&&Number(b.outstanding_amount)>0);
  const chosen=rows.filter((r:Row)=>selected.includes(r.parcel_id));
+ const queueRows=useMemo(()=>rows.filter((r:Row)=>{
+  const stage=rtoStage(r);
+  if(collectionFilter&&String(r.amount_entry_type||"")!==collectionFilter)return false;
+  if(deliveryFilter&&String(r.status||"")!==deliveryFilter)return false;
+  if(paymentFilter&&String(r.settlement_method||"")!==paymentFilter)return false;
+  if(rtoSearch&&!JSON.stringify(r).toLowerCase().includes(rtoSearch.toLowerCase()))return false;
+  if(queueStatus==="READY")return Boolean(r.settlement_eligible);
+  if(queueStatus==="RTO_WAREHOUSE")return stage==="warehouse";
+  if(queueStatus==="RTO_RETURN")return stage==="return";
+  if(queueStatus==="RTO_PENDING")return stage==="pending";
+  if(queueStatus==="IN_TRANSIT")return !r.settlement_eligible&&!stage&&!["DELIVERED","CANCELLED"].includes(String(r.status||"").toUpperCase());
+  return true;
+ }),[rows,collectionFilter,deliveryFilter,paymentFilter,rtoSearch,queueStatus]);
+ const queueCounts={ALL:rows.length,READY:rows.filter(r=>r.settlement_eligible).length,
+  RTO_WAREHOUSE:rows.filter(r=>rtoStage(r)==="warehouse").length,
+  RTO_RETURN:rows.filter(r=>rtoStage(r)==="return").length,
+  RTO_PENDING:rows.filter(r=>rtoStage(r)==="pending").length,
+  IN_TRANSIT:rows.filter(r=>!r.settlement_eligible&&!rtoStage(r)&&!["DELIVERED","CANCELLED"].includes(String(r.status||"").toUpperCase())).length};
+ const filteredHistory=payments.filter((p:Row)=>
+  (!historyStatus||String(p.status||"")===historyStatus)&&
+  (!historyMethod||String(p.payment_method||"")===historyMethod)&&
+  (!historySearch||JSON.stringify(p).toLowerCase().includes(historySearch.toLowerCase())));
+ const filteredRequests=requests.filter((r:Row)=>
+  (!merchant||r.merchant_id===merchant)&&(!postTypeFilter||r.adjustment_type===postTypeFilter)&&
+  (!postStatusFilter||r.status===postStatusFilter)&&
+  (!postSearch||JSON.stringify(r).toLowerCase().includes(postSearch.toLowerCase())));
+ function selectAllReady(){
+  if(busy||!canCreate)return;
+  const ready=queueRows.filter((r:Row)=>r.settlement_eligible);
+  const scope=merchant||selected.length?rows.find((r:Row)=>selected.includes(r.parcel_id))?.merchant_id||merchant:ready[0]?.merchant_id;
+  const eligible=ready.filter((r:Row)=>r.merchant_id===scope).map((r:Row)=>r.parcel_id);
+  setSelected(eligible);
+  if(ready.some((r:Row)=>r.merchant_id!==scope))setMessage("Selected eligible parcels for one merchant only. Switch merchant to select another merchant.");
+ }
+
  async function mutate(action:()=>Promise<any>,success:string){
    if(mutation.current||uploadLock.current)return; mutation.current=true;setBusy(true);setError("");setMessage("");
    try{await action();setSelected([]);setAllocations({});setMessage(success);await load();return true;}
