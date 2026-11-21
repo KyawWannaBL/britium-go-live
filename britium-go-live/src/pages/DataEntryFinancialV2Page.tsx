@@ -3592,6 +3592,8 @@ export default function DataEntryFinancialV2Page() {
             <div className="flex flex-wrap items-center gap-2">
  <span className="hidden rounded border border-slate-700 bg-[#06101e] px-2 py-1 text-[10px] text-slate-300 lg:block">{selectedPickupId||"Choose pickup"} · {rows.filter(row=>row.saved).length}/{rows.length} registered</span>
  <button type="button" onClick={()=>void loadStartup()} disabled={bulkSaving||bulkCalculating} className="rounded-lg border border-slate-700 px-2 py-2 text-[10px] font-black text-slate-200"><RefreshCw size={13} className="mr-1 inline"/>Refresh</button>
+ <button type="button" onClick={()=>setDataEntryDrawer("CONTRACT")} className="rounded-lg border border-amber-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-amber-300">Contract & Qty</button>
+ <button type="button" onClick={()=>setDataEntryDrawer("BATCH")} className="rounded-lg border border-sky-400/30 bg-[#112240] px-2 py-2 text-[10px] font-black text-sky-300">Batch & Excel</button>
  <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} className="rounded-lg border border-emerald-400/40 bg-[#0d3b32] px-3 py-2 text-[10px] font-black text-emerald-200 disabled:opacity-40"><Calculator size={13} className="mr-1 inline"/>Calc All</button>
  <button type="button" onClick={()=>void saveAll()} disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} className="rounded-lg bg-emerald-500 px-3 py-2 text-[10px] font-black text-[#06101e] disabled:opacity-40"><Save size={13} className="mr-1 inline"/>Save All</button>
  </div>
@@ -3886,6 +3888,67 @@ export default function DataEntryFinancialV2Page() {
           </div>
         </div>
         <div data-full-registration-layout-v85="true" className="mx-auto max-w-none p-4">{workspace}</div>
+      </div>:null}
+
+
+      {dataEntryDrawer?<div className="fixed inset-0 z-[9000] flex justify-end bg-black/70" onMouseDown={(e)=>{if(e.target===e.currentTarget)setDataEntryDrawer(null);}}>
+        <aside role="dialog" aria-modal="true" aria-label={dataEntryDrawer==="BATCH"?"Batch, Location and Excel tools":"Contract and Pickup Quantity"} className="flex h-full w-full max-w-[570px] flex-col border-l border-slate-700 bg-[#0a192f] shadow-2xl">
+          <header className="flex shrink-0 items-center justify-between border-b border-[#1a3a5c] bg-[#06101e] px-5 py-4">
+            <div><p className="text-[10px] font-black uppercase tracking-wider text-[#fbbf24]">{dataEntryDrawer==="BATCH"?"Batch Operations & Exports":"Contract & Pickup Exceptions"}</p><h2 className="mt-1 text-base font-black">{dataEntryDrawer==="BATCH"?"Bulk Location Sync, Waybills & Excel":"Corporate Rates & Quantity Adjustment"}</h2></div>
+            <button type="button" className="rounded-lg border border-slate-700 bg-[#112240] px-3 py-2 text-sm font-bold" aria-label="Close tools drawer" onClick={()=>setDataEntryDrawer(null)}><X size={16}/></button>
+          </header>
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+          {dataEntryDrawer==="BATCH"?<>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <div className="flex items-center justify-between gap-2"><h3 className="text-xs font-black uppercase text-amber-300">Bulk Location Readiness</h3><span className="rounded bg-amber-400/15 px-2 py-1 text-xs font-bold text-amber-200">{importedLocationSummary.total} total</span></div>
+              <p className="text-xs leading-5 text-slate-300">{importedLocationSummary.synced} synchronized · {importedLocationSummary.notRequired} map not required · {importedLocationSummary.resolving} validating · {importedLocationSummary.review} need review · {importedLocationSummary.interrupted} interrupted</p>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-lg border border-sky-500 bg-sky-500/10 p-2 text-xs font-bold text-sky-300 disabled:opacity-40" onClick={()=>void retryImportedLocationSync()} disabled={!(importedLocationSummary.resolving+importedLocationSummary.interrupted)||locationReviewBusy}>Retry Location Sync</button>
+                <button type="button" className="rounded-lg border border-rose-500 bg-rose-500/10 p-2 text-xs font-bold text-rose-300 disabled:opacity-40" onClick={()=>void skipAllLocationReviews()} disabled={!consolidatedLocationReviewRows.some(row=>row.locationCandidate&&validMyanmarCoordinate(row.locationCandidate.longitude,row.locationCandidate.latitude))||locationReviewBusy}>Skip All Reviews</button>
+                <button type="button" className="rounded-lg bg-[#fbbf24] p-2 text-xs font-black text-[#06101e] disabled:opacity-40" onClick={()=>void downloadConsolidatedLocationReview()} disabled={!consolidatedLocationReviewRows.length||locationReviewBusy}>Download Review Excel ({consolidatedLocationReviewRows.length})</button>
+                <label className="cursor-pointer rounded-lg border border-amber-400/50 bg-amber-400/10 p-2 text-center text-xs font-bold text-amber-200">Re-upload Corrected Excel<input type="file" accept=".xlsx" className="hidden" disabled={locationReviewBusy} onChange={e=>{const file=e.target.files?.[0];e.target.value="";if(file)void uploadConsolidatedLocationReview(file);}}/></label>
+              </div>
+            </section>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-emerald-300">Waybill Printing & OS Import</h3>
+              <button type="button" className="w-full rounded-lg bg-emerald-600 p-2.5 text-xs font-black text-white disabled:opacity-40" onClick={()=>void createAndGenerateWaybill()} disabled={!rows.length||waybillBusy||bulkSaving||bulkCalculating}>Generate Completed Waybills</button>
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200 disabled:opacity-40" onClick={()=>{const row=rows[pageStart];if(row)void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating}>Current Parcel Waybill</button>
+                <button type="button" className="rounded-lg border border-sky-600 p-2 text-xs font-bold text-sky-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");}}>Open OS Import Workspace</button>
+              </div>
+              <p className="text-xs text-slate-400">OS upload uses the original guarded importer in Parcel Registration, including pickup matching and audit controls.</p>
+            </section>
+            <section className="space-y-3 rounded-xl border border-slate-700 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-sky-300">Registration Timeline Export</h3>
+              <div className="flex flex-wrap gap-1">{(["TODAY","LAST_24_HOURS","THIS_WEEK","THIS_MONTH","ALL"] as const).map(value=><button type="button" key={value} className="rounded-lg border border-slate-700 bg-[#112240] px-2 py-1 text-[10px] font-bold text-slate-300" onClick={()=>applyDownloadRange(value)}>{value.replaceAll("_"," ")}</button>)}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] text-slate-400">From date & time<input type="datetime-local" className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadFrom} onChange={e=>setDownloadFrom(e.target.value)}/></label>
+                <label className="text-[10px] text-slate-400">To date & time<input type="datetime-local" className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadTo} onChange={e=>setDownloadTo(e.target.value)}/></label>
+              </div>
+              <label className="block text-[10px] text-slate-400">Export Scope<select className="mt-1 w-full rounded-lg bg-white px-2 py-2 text-xs text-slate-900" value={downloadScope} onChange={e=>setDownloadScope(e.target.value as "ALL"|"CURRENT_PICKUP")}><option value="ALL">All accessible registrations</option><option value="CURRENT_PICKUP">Current pickup only</option></select></label>
+              <button type="button" className="w-full rounded-lg bg-sky-400 p-2.5 text-xs font-black text-[#06101e] disabled:opacity-40" disabled={downloadBusy} onClick={()=>void downloadDataEntryRegistration()}>{downloadBusy?"Preparing...":"Download Registration Excel"}</button>
+              {downloadMessage?<p className="text-xs text-sky-300">{downloadMessage}</p>:null}
+            </section>
+          </>:<>
+            <section className="space-y-3 rounded-xl border border-amber-400/30 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-amber-300">Corporate Contract Rates</h3>
+              <p className="text-xs leading-5 text-slate-400">Existing approved contracts are enforced by the live Corporate Data Entry Binding controls. No hard-coded demonstration tariffs will be used.</p>
+              <p className="text-xs text-slate-300">Selected merchant: <strong>{selectedPickup?merchantDisplay(selectedPickup.merchant_id,selectedPickup.merchant_name):"None selected"}</strong></p>
+              <button type="button" className="w-full rounded-lg border border-amber-400 bg-amber-400/10 p-2.5 text-xs font-bold text-amber-200" onClick={()=>{setDataEntryDrawer(null);setDataEntryTab("ENTRY");}}>Open Existing Approved Contract Binding</button>
+            </section>
+            <section className="space-y-3 rounded-xl border border-sky-400/30 bg-[#06101e] p-4">
+              <h3 className="text-xs font-black uppercase text-sky-300">Merchant Changed Pickup Quantity</h3>
+              <p className="text-xs text-slate-400">Authorize extra registration rows before saving. The original requested count, verified count and audit history remain under the existing backend guard.</p>
+              <div className="grid grid-cols-[100px_1fr] gap-2">
+                <label className="text-[10px] text-slate-400">Extra Quantity<input type="number" min={1} max={50} className="mt-1 w-full rounded-lg bg-white p-2 text-xs text-slate-900" value={additionalCount} onChange={e=>setAdditionalCount(Math.max(1,Math.min(50,Math.trunc(Number(e.target.value)||1))))}/></label>
+                <label className="text-[10px] text-slate-400">Merchant Addition Reason<input className="mt-1 w-full rounded-lg bg-white p-2 text-xs text-slate-900" value={additionalReason} onChange={e=>setAdditionalReason(e.target.value)} placeholder="Why are extra parcels being handed over?"/></label>
+              </div>
+              <button type="button" className="w-full rounded-lg bg-sky-400 p-2.5 text-xs font-black text-[#06101e] disabled:opacity-40" disabled={!selectedPickup||addingRegistration} onClick={()=>void addRegistrations()}>{addingRegistration?"Authorizing...":"Add Registration Row(s)"}</button>
+              {bulkMessage?<p className="text-xs text-sky-300">{bulkMessage}</p>:null}
+            </section>
+          </>}
+          </div>
+        </aside>
       </div>:null}
 
       <BritiumQuickTools hidden={mapFocusMode} />
