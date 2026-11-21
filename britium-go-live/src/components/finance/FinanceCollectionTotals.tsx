@@ -1,6 +1,7 @@
 import React,{useEffect,useState} from 'react';
 import {codPaymentTypeLabel} from '@/lib/paymentAllocations';
 import {supabase} from '@/integrations/supabase/client';
+import {exportFinanceExcel,printFinancePdf,type FinanceReport} from '@/lib/financeReportExports';
 const money=(value:unknown)=>Number(value||0).toLocaleString('en-US',{maximumFractionDigits:2});
 const collectionDisplay=(row:any,key:string)=>{const monetary=['total_collected','cash_collected','digital_collected','unclassified_collected','confirmed_total','pending_total'].includes(key);if(monetary&&Number(row?.unknown_count||0)>0&&Number(row?.total_collected||0)===0)return 'Not recorded';if(monetary&&(row?.[key]===null||row?.[key]===undefined))return 'Not recorded';return money(row?.[key]);};
 const field:React.CSSProperties={minHeight:40,padding:8,color:'#eef8ff',background:'#061524',border:'1px solid #35516a',borderRadius:6};
@@ -9,6 +10,7 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
  const [rows,setRows]=useState<any[]>([]),[error,setError]=useState(''),[loading,setLoading]=useState(false);
  const [ground,setGround]=useState<any>(null),[groundError,setGroundError]=useState('');
  const [reviewQueue,setReviewQueue]=useState<any[]>([]),[reviewError,setReviewError]=useState('');
+ const [exportError,setExportError]=useState('');
  useEffect(()=>{let active=true;(async()=>{try{
  const {data,error}=await (supabase as any).rpc('be_finance_ground_reconciliation_queue_v1',{p_limit:1000});
  if(error||!data?.ok)throw new Error(error?.message||data?.error||'Review queue unavailable');
@@ -25,6 +27,18 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
    return {date:d.service_date,ways:Number(d.ways||0),reported:Number(d.reported_final_cod||0),posted:dayRows.reduce((s:number,r:any)=>s+Number(r.total_collected||0),0),unknown:dayRows.reduce((s:number,r:any)=>s+Number(r.unknown_count||0),0),matched:dayRows.reduce((s:number,r:any)=>s+Number(r.waybill_count||0),0)};
  });
  const columns=[['service_date','Service date'],[group==='VAN'?'vehicle_name':'collector_name',group==='VAN'?'Van':'Delivery person'],['waybill_count','Ways'],['unknown_count','Unknown collection ways'],['total_collected','Total (MMK)'],['cash_collected','Cash'],['digital_collected','Other methods'],['unclassified_collected','Unclassified'],['confirmed_total','Confirmed'],['pending_total','Pending']];
+ const collectionReport:FinanceReport={
+  title:"Historical Finance Collection Totals — "+(group==="VAN"?"By Van":"By Delivery Person"),
+  fileStem:"Britium_Historical_Finance_Collections_"+(group==="VAN"?"Van":"Delivery_Person")+"_"+(from||"all")+"_to_"+(to||"latest"),
+  generatedAt:new Date(),
+  filters:{"Service date from":from||"All","Service date to":to||"All","Group by":group==="VAN"?"Van":"Delivery person"},
+  note:"Historical reconciliation only. Ground reports are unverified and are not confirmed cash receipts or settlement approvals. 'Not recorded' is missing evidence, not zero COD. Rows reflect the selected date range and grouping.",
+  columns:[...columns.map(([key,label])=>({key,label,kind:(["waybill_count","unknown_count","total_collected","cash_collected","digital_collected","unclassified_collected","confirmed_total","pending_total"].includes(key)?"number":"text") as "number"|"text"})),{key:"by_method",label:"Method breakdown",kind:"text"}],
+  rows:rows.map((row:any)=>Object.fromEntries([...columns.map(([key])=>[key,key==="service_date"?(row[key]||"Service date missing — reconcile"):key.endsWith("_name")?`${row[key]||"Unassigned"} (${row[group==="VAN"?"vehicle_code":"collector_code"]||"—"})`:((row[key]===null||row[key]===undefined||Number(row.unknown_count||0)>0&&Number(row.total_collected||0)===0&&["total_collected","cash_collected","digital_collected","unclassified_collected","confirmed_total","pending_total"].includes(key))?"Not recorded":row[key])]),["by_method",Object.entries(row.by_method||{}).filter(([,amount])=>Number(amount)>0).map(([method,amount])=>`${codPaymentTypeLabel(method)} ${money(amount)} MMK`).join(" + ")||"—"]]))
+ };
+ async function downloadCollectionExcel(){try{setExportError("");await exportFinanceExcel(collectionReport);}catch(e:any){setExportError(e?.message||"Excel export unavailable.");}}
+ function printCollectionPdf(){try{setExportError("");printFinancePdf(collectionReport);}catch(e:any){setExportError(e?.message||"PDF preview unavailable.");}}
+
  return <section style={{padding:16,border:'1px solid #35516a',borderRadius:12,background:'#0b2236'}}>
  <h3 style={{marginTop:0}}>Delivery collection totals</h3><p style={{color:'#ffca79',fontSize:12}}>Attention: Historical records without delivery timestamps cannot be assigned to a service date automatically. Do not interpret undated rows as zero or settled; reconcile each Way ID against dispatch, delivery proof and payment evidence.</p><p style={{color:'#ffca79',fontSize:12}}>Expected COD is separate from collected COD. “Not recorded” means collection evidence or allocation is missing, not zero COD. A displayed 0 is not proof of a completed cash handover. Ground-reported schedules are unverified.</p>
  <details><summary style={{cursor:'pointer',padding:12}}>Historical reconciliation evidence · before the November opening</summary><p>Preserved historical reports and unresolved claims. These are separate from current production collections and do not establish payment or settlement.</p>
@@ -55,6 +69,14 @@ export default function FinanceCollectionTotals({refreshKey=0}:{refreshKey?:numb
  </div></>}
  </div>
  </details>
+ <div data-collection-report-export-actions="true" style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",margin:"12px 0"}}>
+  <strong style={{fontSize:13}}>Historical collection report · {rows.length} grouped rows</strong>
+  <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+    <button type="button" disabled={loading||!!error||!rows.length} onClick={()=>void downloadCollectionExcel()} style={{padding:"10px 14px",borderRadius:8,background:"#f6b84b",color:"#061524",border:0,fontWeight:900,opacity:!rows.length?0.5:1}}>Export Excel (.xlsx)</button>
+    <button type="button" disabled={loading||!!error||!rows.length} onClick={printCollectionPdf} style={{padding:"10px 14px",borderRadius:8,background:"#38bdf8",color:"#061524",border:0,fontWeight:900,opacity:!rows.length?0.5:1}}>PDF / Print report</button>
+  </div>
+ </div>
+ {exportError&&<p role="alert" style={{color:"#fb7185"}}>{exportError}</p>}
  <div style={{display:'flex',gap:12,flexWrap:'wrap'}}><label>From <input type="date" value={from} onChange={e=>setFrom(e.target.value)} style={field}/></label><label>To <input type="date" value={to} onChange={e=>setTo(e.target.value)} style={field}/></label><label>Group by <select value={group} onChange={e=>setGroup(e.target.value)} style={field}><option value="PERSON">Delivery person</option><option value="VAN">Van</option></select></label></div>
  {error&&<p role="alert">{error}</p>}{loading&&<p role="status">Loading collection totals…</p>}
  {!loading&&!error&&<div style={{overflowX:'auto',marginTop:12}}><table style={{width:'100%',borderCollapse:'collapse'}}><thead><tr>{columns.map(([key,label])=><th key={key} style={{textAlign:'left',padding:8}}>{label}</th>)}<th>Method breakdown</th></tr></thead><tbody>{rows.map((row,index)=><tr key={`${row.service_date}-${group==='VAN'?row.vehicle_code:row.collector_code}-${index}`}>{columns.map(([key])=><td key={key} style={{padding:8}}>{key==='service_date'?(row[key]||'Service date missing — reconcile'):key.endsWith('_name')?`${row[key]||'Unassigned'} (${row[group==='VAN'?'vehicle_code':'collector_code']||'—'})`:collectionDisplay(row,key)}</td>)}<td style={{padding:8}}>{Object.entries(row.by_method||{}).filter(([,amount])=>Number(amount)>0).map(([method,amount])=>`${codPaymentTypeLabel(method)} ${money(amount)}`).join(' + ')||'—'}</td></tr>)}</tbody></table>{!rows.length&&<p>No collections for these filters.</p>}</div>}
