@@ -65,7 +65,9 @@ BEGIN
    OR q.financial_settled_at IS NOT NULL THEN
     RAISE EXCEPTION 'Verified delivered, unsettled, financially valid merchant parcel required';
  END IF;
- IF EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
+ IF EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+    WHERE r.advance_item_id=i.id)
+ OR EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
     WHERE c.parcel_id=i.parcel_id AND c.financial_hold)
  OR EXISTS(SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
     WHERE d.parcel_id=i.parcel_id AND d.status NOT IN('RESOLVED','REJECTED','CLOSED'))
@@ -124,6 +126,8 @@ BEGIN
    OR NOT coalesce(q.settlement_eligible,false)
    OR q.merchant_final_settlement_amount IS DISTINCT FROM v.final_entitlement_snapshot
    OR q.financial_settled_at IS NOT NULL
+   OR EXISTS(SELECT 1 FROM public.be_finance_advance_rto_recoveries_v1 r
+      WHERE r.advance_item_id=v.advance_item_id)
    OR EXISTS(SELECT 1 FROM public.be_finance_settlement_parcel_control_v3 c
       WHERE c.parcel_id=v.parcel_id AND c.financial_hold)
    OR EXISTS(SELECT 1 FROM public.be_finance_settlement_disputes_v3 d
