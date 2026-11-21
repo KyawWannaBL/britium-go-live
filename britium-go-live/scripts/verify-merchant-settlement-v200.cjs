@@ -25,7 +25,7 @@ async function openPayments(tree) { await act(async()=>button(tree,'03 · Record
 (async()=>{
  let tree=await render();
  const merchantOption=tree.root.findAllByType('option').find(n=>n.props.value==='TSW');
- assert.match(text(merchantOption),/Three & Six Online Store \\(TSW\\)/,'merchant selector must show full merchant name');
+ assert.ok(text(merchantOption).includes('Three & Six Online Store (TSW)'),'merchant selector must show full merchant name');
  assert.ok(tree.root.findAllByType('h2').some(n=>text(n).includes('Three & Six Online Store (TSW)')),'cashier payout title must show merchant full name');
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
