@@ -122,4 +122,21 @@ See the verified dedicated report: [UAT_DATA_ENTRY_INTEGRITY_PHOTO_LOCATION_2026
 
 **Safety remains unchanged:** 18 UAT Auth users, 16 branch roster, 2 QA pickups, 4 QA parcel details, 2 draft wayplans, zero retained photo/location/audit records, zero published waybills; `MUTATION_SHADOW`, authenticated Save/Waybill EXECUTE denied. No Vercel deployment or production modification.
 
-**Next release gate:** reconcile missing October-2026 write guards and finance/warehouse/address-history triggers, complete real transactional Save/Save All/Waybill acceptance, and verify the isolated UAT browser deployment. 
+**Next release gate:** reconcile missing October-2026 write guards and finance/warehouse/address-history triggers, complete real transactional Save/Save All/Waybill acceptance, and verify the isolated UAT browser deployment.
+
+---
+
+## 2026-11-21 — October write epoch, address-history, and finance-sync continuation
+
+**Installed in isolated UAT** (no production changes):
+- Original private October write-epoch core: `be_oct2026_epoch`, `be_oct2026_retired_keys`, `be_oct2026_identity_links` and three source functions. **Epoch remains INACTIVE**; no operational October row/truncate triggers attached.
+- Sixteen private identity ledgers (empty) and original 16 parent-to-identity mappings. Zero historical retired IDs imported. Synthetic `AFTER INSERT` identity-capture and cutoff/reuse-denial behavior passed rollback tests.
+- Source-protected recipient address-history table and trigger; address-change and actor-attribution tests passed. Direct client access revoked.
+- Source finance pre-dispatch review table, original COD policy and before/after parcel finance triggers; COD reprice/upsert and financial policy test passed.
+- Full combined rollback regression: address audit, finance review, synthetic-only proof waiver, manual location, original Save **dry run** at 24,000 MMK COD, then clean rollback; no published waybill.
+
+**Verified UAT state:** 18 Auth users, 18 linked accounts, 16 branch-roster entries, two synthetic pickups, four parcel details, two draft wayplans, zero retained audit/proof/location/finance review rows, zero waybills. `MUTATION_SHADOW`; app Save/Save All/Create Waybill execution still denied.
+
+**Detailed report:** [UAT_OCT2026_EPOCH_FINANCE_AUDIT_20261121.md](./UAT_OCT2026_EPOCH_FINANCE_AUDIT_20261121.md)
+
+**Release blocker:** original October epoch cannot be activated until app epoch headers, historical ID/reuse policy, remaining production trigger dependencies and committed-write integration are verified. Do not enable production or UAT write routes just because the core types/functions now exist.
