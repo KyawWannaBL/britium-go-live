@@ -40,16 +40,21 @@ export default function MerchantSettlementPage(){
    try {
      // Resolve the actual merchant display name from merchant masters, not from
      // the queue's sometimes code-only merchant_name field.
-     const [master,profiles,next]=await Promise.all([
-       (supabase as any).from("be_merchant_master").select("merchant_code,merchant_name").limit(2000),
-       (supabase as any).from("be_merchant_financial_profiles_v2").select("merchant_id,merchant_name").limit(2000),
+     const source=(table:string,fields:string)=>
+       typeof (supabase as any).from==="function"
+         ?(supabase as any).from(table).select(fields).limit(1000)
+         :Promise.resolve({data:[],error:null});
+     const [legacyMaster,profiles,canonical,next]=await Promise.all([
+       source("be_merchant_master","merchant_code,merchant_name"),
+       source("be_merchant_financial_profiles_v2","merchant_id,merchant_name"),
+       source("merchant_master","merchant_code,merchant_name,business_name"),
        rpc("be_finance_settlement_snapshot_v3",{p_merchant_id:null,p_search:null,p_limit:5000}),
      ]);
      const names:Record<string,string>={};
-     for(const r of [...(profiles.data||[]),...(master.data||[])]){
+     for(const r of [...(profiles.data||[]),...(legacyMaster.data||[]),...(canonical.data||[])]){
        const code=String(r.merchant_code||r.merchant_id||"").trim().toUpperCase();
-       const name=String(r.merchant_name||"").trim();
-       if(code&&name&&name.toUpperCase()!==code)names[code]=name;
+       const name=String(r.merchant_name||r.business_name||"").trim();
+       if(code&&name&&name.toUpperCase()!==code) names[code]=name;
      }
      setCanonicalMerchantNames(names);
      setData(next);setMerchant((current:string)=>current||String(next.rows?.find((r:Row)=>r.merchant_id)?.merchant_id||""));
