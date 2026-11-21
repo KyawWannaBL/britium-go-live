@@ -9,7 +9,7 @@ let calls = [], snapshot;
 const source = fs.readFileSync('src/pages/MerchantSettlementPage.tsx', 'utf8');
 const compiled = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS, jsx:ts.JsxEmit.ReactJSX, target:ts.ScriptTarget.ES2020}}).outputText;
 let uploadReply, uploadPending;
-const client={rpc:async(name,args)=>{calls.push({name,args});return {data:name==='be_finance_settlement_snapshot_v3'?snapshot:{ok:true},error:null};},auth:{getUser:async()=>({data:{user:{id:'USER1'}},error:null})},storage:{from:bucket=>({upload:async()=>uploadPending||uploadReply||{data:{path:'receipt.png'},error:null},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/'+bucket+'/'+path}}),createSignedUrl:async()=>({data:{signedUrl:'https://example.supabase.co/signed'},error:null})})}};
+const client={rpc:async(name,args)=>{calls.push({name,args});return {data:name==='be_finance_settlement_snapshot_v3'?(args?.p_merchant_id==='TSW'?{...snapshot,wallet:{britium_owes:777,paid_amount:7,owes_britium:22}}:snapshot):{ok:true},error:null};},auth:{getUser:async()=>({data:{user:{id:'USER1'}},error:null})},storage:{from:bucket=>({upload:async()=>uploadPending||uploadReply||{data:{path:'receipt.png'},error:null},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/'+bucket+'/'+path}}),createSignedUrl:async()=>({data:{signedUrl:'https://example.supabase.co/signed'},error:null})})}};
 function loadLocal(path){const m={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText,{exports:m.exports,require:localRequire,URL,crypto:require('node:crypto').webcrypto,console});return m.exports;}
 function localRequire(name){if(name==='@/integrations/supabase/client')return {supabase:client};if(name.startsWith('@/lib/'))return loadLocal('src/lib/'+name.slice(6)+'.ts');if(name.startsWith('@/components/'))return loadLocal('src/components/'+name.slice(13)+'.tsx');return require(name);}
 const mod = {exports:{}};
@@ -24,6 +24,15 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
 (async()=>{
  let tree=await render();
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
+ const walletSection=()=>tree.root.findAllByType('section').find(n=>text(n).includes('Settlement wallet:'));
+ assert.ok(text(walletSection()).includes('30,000 MMK'),'unfiltered balance uses all-merchant wallet');
+ await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'TSW');
+ assert.ok(calls.some(c=>c.name==='be_finance_settlement_snapshot_v3'&&c.args.p_merchant_id==='TSW'&&c.args.p_limit===1),'merchant wallet uses server-scoped snapshot');
+ assert.ok(text(walletSection()).includes('777 MMK'),'selected merchant must display scoped outstanding');
+ assert.ok(!text(walletSection()).includes('30,000 MMK'),'global balance must not remain visible under merchant filter');
+ await change(tree.root.findByProps({'aria-label':'Merchant filter'}),'');
+ assert.ok(text(walletSection()).includes('30,000 MMK'),'clearing merchant restores all-merchant balance');
+ assert.ok(text(tree.root).includes('Date filters below affect the parcel table only'),'wallet date scope is explicit');
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
  await act(async()=>button(tree,'Create draft batch').props.onClick());
@@ -79,5 +88,5 @@ async function change(node,value) { await act(async()=>node.props.onChange({targ
  tree=await render('FINANCE_CREATOR');
  assert.equal(button(tree,'Record ').props.disabled,true,'creator cannot record payment');
  tree.unmount();
- console.log('Merchant settlement V200 UI PASS: COD eligibility, batch selection, partial allocation, overpayment/evidence validation, role gate and double-click guard');
+ console.log('Merchant settlement V200 UI PASS: merchant wallet scoping/date label, COD eligibility, batch selection, partial allocation, overpayment/evidence validation, role gate and double-click guard');
 })().catch(e=>{console.error(e);process.exitCode=1;});
