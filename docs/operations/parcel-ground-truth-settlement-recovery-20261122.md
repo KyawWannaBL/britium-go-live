@@ -15,12 +15,12 @@
 | Finance COD PENDING_REMITTANCE | 44 | Needs remittance evidence and finance approval |
 | Warehouse without Finance COD v48 record | 1,125 | Not automatically a missing financial liability |
 | Dedicated provider physical custody rows | 0 | Provider proof integration gap |
-| Return scans | 165 events / 125 distinct ways | Multiple scans are not necessarily duplicates |
+| Return scans | 165 events / 125 distinct ways | Multiple scans are not necessarily duplicates |\n| Return scans while warehouse READY_FOR_DELIVERY | 49 distinct ways | Independently flag, even if finance is SETTLED |
 | Ledger delivered_at / rider proof / cod_settled_at populated | 0 / 0 / 0 | That specific ledger is not an authoritative proof source here |
  
 **Critical:** All 816 finance SETTLED records currently pair with warehouse READY_FOR_DELIVERY. Do not reverse settlement or mark delivered automatically. Investigate joined source-of-truth conflicts and provenance.
 
-## Owner-approved operational work queue (complete in order)
+## Reconciliation exceptions visible independently\nA way may appear in multiple exception groups. The monitoring view includes an array of independent flags instead of losing secondary evidence to a one-label precedence rule. As of the read-only audit, 816 ways have a finance-settled/warehouse-ready conflict and 49 ways have a return-scan/warehouse-ready conflict. These are not automatically 865 distinct ways.\n\n## Owner-approved operational work queue (complete in order)
 1. **Freeze baseline / preservation** — Operations + Finance Controller: export immutable, timestamped canonical Way IDs, source status, COD, provider and finance evidence. Never hard-delete or bulk reset historical rows; preserve prior revisions and receipt references.
 2. **Collect ground truth** — Branch Managers / Provider Coordinator / Rider Supervisors: for every Way ID import actual outcome from signed delivery sheets, POD photo, provider external tracking, delivery signatures, third-party manifests, cash handover receipts, merchant RTO acceptance. Every assertion needs source, date/time, operator, reviewer and attachment; store as **unverified ground claim** until approved.
 3. **Match without overwriting** — Data Audit: match exact original Way ID first; retain merchant and destination, resolve duplicates with controlled human review; report evidence present outside app and app-only statuses. Reject joins based solely on three-letter merchant codes or recipient names.
