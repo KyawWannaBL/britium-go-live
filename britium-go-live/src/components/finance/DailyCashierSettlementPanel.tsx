@@ -41,7 +41,7 @@ const statuses=[
  ["CASHIER_RECORDED_FINANCE_PENDING","Cashier recorded, finance pending"],
  ["FINANCE_RECORDED_CHECK_EVIDENCE","Finance settlement review"]
 ] as const;
-export default function DailyCashierSettlementPanel({mode="finance"}:{mode?:"finance"|"field"}){
+export default function DailyCashierSettlementPanel({mode="finance",client}:{mode?:"finance"|"field";client?:typeof supabase}){\n const api=client||supabase;
  const {profile}=useAuth();
  const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
  const cashierAllowed=mode==="finance"&&["superadmin","super_admin","finance","accountant"].includes(role);
@@ -55,13 +55,13 @@ export default function DailyCashierSettlementPanel({mode="finance"}:{mode?:"fin
  const [busy,setBusy]=useState(false);
  const refresh=useCallback(async()=>{
   setLoading(true);setError("");
-  const {data,error:e}=await (supabase as any).rpc("be_finance_cashier_daily_report_v1",{
+  const {data,error:e}=await (api as any).rpc("be_finance_cashier_daily_report_v1",{
    p_from:from,p_to:to,p_worker_code:mode==="finance"&&worker.trim()?worker.trim():null
   });
   setLoading(false);
   if(e||!data?.ok){setRecords([]);setError(e?.message||data?.code||"Daily report is unavailable");return;}
   setRecords((data.rows||[]) as Way[]);
- },[from,to,worker,mode]);
+ },[from,to,worker,mode,api]);
  useEffect(()=>{void refresh();},[refresh]);
  const view=useMemo(()=>records.filter(r=>{
   if(status==="MISSING"&&r.receipt_id)return false;
