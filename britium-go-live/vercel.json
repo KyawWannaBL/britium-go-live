@@ -80,6 +80,18 @@
     {
       "source": "/rider-dashboard",
       "destination": "/index.html"
+    },
+    {
+      "source": "/parcel-control",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/parcel-follow-up",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/admin-hr",
+      "destination": "/index.html"
     }
   ],
   "headers": [

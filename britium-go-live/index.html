@@ -16,6 +16,16 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- Legacy direct URLs: Vercel serves the SPA, then normalize to HashRouter paths. -->
+    <script>
+      (function () {
+        var supported = ["/parcel-control", "/parcel-follow-up", "/admin-hr"];
+        var path = (window.location.pathname.endsWith("/") && window.location.pathname !== "/" ? window.location.pathname.slice(0, -1) : window.location.pathname);
+        if (supported.indexOf(path) !== -1 && !window.location.hash) {
+          window.history.replaceState(null, "", "/" + window.location.search + "#" + path);
+        }
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
