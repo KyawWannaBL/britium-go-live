@@ -70,10 +70,13 @@ export default function RolePortalPage({ portalName = "Portal", portalCode = "st
 
       if (!ev.error) setEvents(ev.data || []);
 
+      const { data: login } = await supabase.auth.getUser();
+      const targets = [`target_role.eq.${role}`,`target_role.eq.${portalCode}`,"target_role.eq.all"];
+      if (login.user?.id) targets.push(`target_user_id.eq.${login.user.id}`);
       const nt = await supabase
         .from("be_app_notifications")
-        .select("*")
-        .or(`target_role.eq.${role},target_role.eq.${portalCode},target_role.eq.all`)
+        .select("id,title,message,body,created_at,is_read,event_type,waybill_no,target_user_id")
+        .or(targets.join(","))
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -147,6 +150,16 @@ export default function RolePortalPage({ portalName = "Portal", portalCode = "st
             ))}
             {!events.length ? <div style={{color:C.muted}}>No backend cargo events.</div> : null}
           </div>
+        </section>
+        <section style={{border:`1px solid ${C.border}`,background:C.panel,borderRadius:20,padding:16,marginTop:18}}>
+          <h2 style={{marginTop:0}}>My notifications / ကျွန်ုပ်၏အသိပေးချက်များ</h2>
+          {notifications.slice(0,12).map((n:any)=>(
+            <div key={n.id} style={{background:C.panel2,border:`1px solid ${C.border}`,borderRadius:12,padding:12,marginBottom:8}}>
+              <b style={{color:C.green}}>{n.title||"Parcel task / ပါဆယ်တာဝန်"}</b>
+              <div style={{color:C.sub,whiteSpace:"pre-wrap",fontSize:13}}>{n.message||n.body}</div>
+              {n.waybill_no&&<a href={`/parcel-follow-up`} style={{color:C.blue}}>Way ID: {n.waybill_no} · Open follow-up</a>}
+            </div>))}
+          {!notifications.length&&<div style={{color:C.muted}}>No assigned notifications / အသိပေးချက်မရှိပါ</div>}
         </section>
       </div>
     </main>
