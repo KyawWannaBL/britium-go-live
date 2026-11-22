@@ -162,9 +162,9 @@ BEGIN
  END difference_mmk,
  CASE WHEN NOT j.listed_in_wayplan THEN 'NOT_LISTED_IN_WAYPLAN'
  WHEN NOT j.wayplan_team_assigned THEN 'NO_WORKER_ASSIGNED'
- WHEN j.receipt_id IS NULL AND (j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED') THEN 'FINANCE_SETTLED_CASHIER_UNRECORDED'
  WHEN j.receipt_id IS NULL AND j.other_receipt_date IS NOT NULL
  THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
+ WHEN j.receipt_id IS NULL AND (j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED') THEN 'FINANCE_SETTLED_CASHIER_UNRECORDED'
  WHEN j.receipt_id IS NULL THEN 'MISSING_CASHIER_RECEIPT'
  WHEN j.cashier_receipt_work_date<>j.work_date THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
  WHEN j.receipt_id IS NOT NULL AND NOT coalesce(j.cashier_worker_is_assigned,false)
