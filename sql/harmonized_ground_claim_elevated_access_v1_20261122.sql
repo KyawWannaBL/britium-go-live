@@ -52,7 +52,7 @@ CREATE POLICY be_ground_claim_elevated_read_v1
  USING (
   (select auth.uid()) IS NOT NULL
   AND replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-   IN ('superadmin','super_admin','app_owner','sys','admin')
+   IN ('superadmin','super_admin')
  );
 
 CREATE POLICY be_ground_claim_elevated_submit_v1
@@ -63,7 +63,7 @@ CREATE POLICY be_ground_claim_elevated_submit_v1
   AND review_state = 'UNREVIEWED'
   AND reviewer_user_id IS NULL AND reviewed_at IS NULL
   AND replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-   IN ('superadmin','super_admin','app_owner','sys','admin')
+   IN ('superadmin','super_admin')
   AND EXISTS (SELECT 1 FROM public.be_data_entry_parcel_details d
     WHERE d.delivery_way_id = original_delivery_way_id
       AND coalesce(d.parcel_status,'') <> 'duplicate_archived')
@@ -76,14 +76,14 @@ CREATE POLICY be_ground_claim_elevated_review_v1
   (select auth.uid()) IS NOT NULL
   AND (select auth.uid()) <> reported_by_user_id
   AND replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-   IN ('superadmin','super_admin','app_owner','sys','admin')
+   IN ('superadmin','super_admin')
  )
  WITH CHECK (
   (select auth.uid()) IS NOT NULL
   AND reviewer_user_id = (select auth.uid())
   AND (select auth.uid()) <> reported_by_user_id
   AND replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-   IN ('superadmin','super_admin','app_owner','sys','admin')
+   IN ('superadmin','super_admin')
  );
 
 GRANT SELECT ON public.be_parcel_ground_outcome_claims_v1 TO authenticated;
