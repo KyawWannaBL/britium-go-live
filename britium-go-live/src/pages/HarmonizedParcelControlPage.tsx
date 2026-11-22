@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
+import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import { downloadParcelXlsx,openParcelPrintWindow,renderParcelPdf,fromMyanmarDay,untilMyanmarDay } from "@/lib/parcelReportExport";
 
 type Parcel = {
   delivery_way_id: string;
+  warehouse_record_created_at: string | null;
   merchant_name: string | null;
   destination_township: string | null;
   recorded_provider_code: string | null;
@@ -25,7 +28,7 @@ type Parcel = {
 };
 
 const selectColumns = [
-  "delivery_way_id","merchant_name","destination_township","recorded_provider_code",
+  "delivery_way_id","warehouse_record_created_at","merchant_name","destination_township","recorded_provider_code",
   "physically_recorded_provider","provider_custody_evidence","warehouse_status",
   "dispatch_scanned","wayplan_id","physically_handed_over_at","delivered_at",
   "rider_proof_present","finance_settlement_status","expected_cod_mmk",
@@ -50,6 +53,11 @@ export default function HarmonizedParcelControlPage() {
   const [tab, setTab] = useState<ViewTab>("All");
   const [search, setSearch] = useState("");
   const [provider, setProvider] = useState("ALL");
+  const [from,setFrom]=useState("2026-11-01");
+  const [to,setTo]=useState(new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Yangon"}));
+  const [warehouseFilter,setWarehouseFilter]=useState("");
+  const [merchant,setMerchant]=useState("");
+  const [busyExport,setBusyExport]=useState(false);
   const [selected, setSelected] = useState<Parcel | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -57,50 +65,82 @@ export default function HarmonizedParcelControlPage() {
   const [page, setPage] = useState(0);
   const pageSize = 100;
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError("");
-    // The view remains closed until its UAT/RLS rollout is approved.
-    // No fallback to unrestricted base-table reads is permitted.
-    let query = supabase.from("be_v_harmonized_parcel_monitor_v1" as never)
-      .select(selectColumns, { count: "exact" });
-    if (search.trim()) query = query.ilike("delivery_way_id", `%${search.trim().replace(/[%_,]/g, "")}%`);
-    if (provider !== "ALL") query = query.eq("recorded_provider_code", provider);
-    if (tab === "Exceptions") query = query.neq("attention_category", "MONITOR");
-    if (tab === "Provider & Branch") query = query.is("physically_handed_over_at", null);
-    if (tab === "Wayplans") query = query.not("wayplan_id", "is", null);
-    if (tab === "Warehouse") query = query.not("warehouse_status", "is", null);
-    if (tab === "Delivery / RTO") query = query.not("delivered_at", "is", null);
-    if (tab === "Finance") query = query.not("finance_settlement_status", "is", null);
-    const { data, count: total, error: queryError } = await query.order("delivery_way_id").range(page * pageSize, (page + 1) * pageSize - 1);
-    if (queryError) {
-      setRows([]); setCount(null);
-      setError("Parcel monitoring has not been enabled for this account. UAT deployment and role-scoped database access must be approved before live records can be displayed. Technical detail: " + queryError.message);
-    } else {
-      setRows((data || []) as unknown as Parcel[]); setCount(total);
-    }
+  const makeQuery=useCallback(()=>{
+    let query=(supabase.from("be_v_harmonized_parcel_monitor_v1" as never) as any)
+       .select(selectColumns,{count:"exact"});
+    if(from)query=query.gte("warehouse_record_created_at",fromMyanmarDay(from));
+    if(to)query=query.lt("warehouse_record_created_at",untilMyanmarDay(to));
+    if(search.trim())query=query.ilike("delivery_way_id","%"+search.trim().replace(/[%_,]/g,"")+"%");
+    if(merchant.trim())query=query.ilike("merchant_name","%"+merchant.trim().replace(/[%_,]/g,"")+"%");
+    if(provider!=="ALL")query=query.eq("recorded_provider_code",provider);
+    if(warehouseFilter)query=query.eq("warehouse_status",warehouseFilter);
+    if(tab==="Exceptions")query=query.neq("attention_category","MONITOR");
+    if(tab==="Provider & Branch")query=query.is("physically_handed_over_at",null);
+    if(tab==="Wayplans")query=query.not("wayplan_id","is",null);
+    if(tab==="Warehouse")query=query.not("warehouse_status","is",null);
+    if(tab==="Delivery / RTO")query=query.not("delivered_at","is",null);
+    if(tab==="Finance")query=query.not("finance_settlement_status","is",null);
+    return query;
+  },[search,merchant,provider,warehouseFilter,from,to,tab]);
+  const load=useCallback(async()=>{
+    if(from&&to&&from>to){setError("Start date must not be after end date.");return;}
+    setLoading(true);setError("");
+    const {data,count:total,error:queryError}=await makeQuery().order("warehouse_record_created_at",{ascending:false}).range(page*pageSize,(page+1)*pageSize-1);
+    if(queryError){setRows([]);setCount(null);setError(queryError.message);}
+    else{setRows((data||[]) as Parcel[]);setCount(total);}
     setLoading(false);
-  }, [search, provider, tab, page]);
-
-  useEffect(() => { void load(); }, [load]);
-  useEffect(() => { setPage(0); setSelected(null); }, [search, provider, tab]);
-  const summary = useMemo(() => ({
-    received: rows.filter(r => Boolean(r.warehouse_status)).length,
-    custody: rows.filter(r => r.provider_custody_evidence === "HANDOVER_EVIDENCED").length,
-    alerts: rows.filter(r => r.attention_category !== "MONITOR").length,
-    settled: rows.filter(r => Boolean(r.finance_settlement_status) && /settled|completed/i.test(r.finance_settlement_status || "")).length
-  }), [rows]);
-  const exportCsv = () => {
-    const keys: (keyof Parcel)[] = ["delivery_way_id","merchant_name","destination_township","recorded_provider_code","provider_custody_evidence","warehouse_status","wayplan_id","physically_handed_over_at","delivered_at","finance_settlement_status","expected_cod_mmk","settled_cod_mmk","attention_category","exception_flags","return_scan_count"];
-    const escapeCell = (value: unknown) => {
-      const raw = String(value ?? "");
-      const safe = /^[\s]*[=+@-]/.test(raw) ? "\'" + raw : raw;
-      return '"' + safe.replace(/"/g, '""') + '"';
-    };
-    const csv = [keys.join(","), ...rows.map(row => keys.map(k => escapeCell(row[k])).join(","))].join("\r\n");
-    const url = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8" }));
-    const link = document.createElement("a"); link.href=url; link.download="britium-parcel-monitor-page.csv"; link.click(); URL.revokeObjectURL(url);
-  };
+  },[makeQuery,page]);
+  useEffect(()=>{void load();},[load]);
+  useEffect(()=>{setPage(0);setSelected(null);},[search,merchant,provider,warehouseFilter,from,to,tab]);
+  const summary=useMemo(()=>({
+    received:rows.filter(r=>Boolean(r.warehouse_status)).length,
+    custody:rows.filter(r=>r.provider_custody_evidence==="HANDOVER_EVIDENCED").length,
+    alerts:rows.filter(r=>r.attention_category!=="MONITOR").length
+  }),[rows]);
+  const exportCols=[
+    {key:"delivery_way_id",label:"Way ID"},{key:"warehouse_record_created_at",label:"Registration (source)"},
+    {key:"merchant_name",label:"Merchant"},{key:"destination_township",label:"Destination township"},
+    {key:"recorded_provider_code",label:"Recorded provider"},{key:"provider_custody_evidence",label:"Custody evidence"},
+    {key:"warehouse_status",label:"Warehouse status"},{key:"wayplan_id",label:"Wayplan"},
+    {key:"physically_handed_over_at",label:"Physical handover"},{key:"delivered_at",label:"Delivery timestamp"},
+    {key:"rider_proof_present",label:"Proof reference present"},
+    {key:"finance_settlement_status",label:"Finance status"},
+    {key:"expected_cod_mmk",label:"Expected COD MMK"},{key:"settled_cod_mmk",label:"Settled MMK"},
+    {key:"attention_category",label:"Review workstream"},{key:"exception_flags",label:"Exception flags"},
+    {key:"last_evidence_at",label:"Last source evidence"}
+  ];
+  async function allMatching(){
+    if(from&&to&&from>to)throw new Error("Invalid date range.");
+    let results:Parcel[]=[];let offset=0;
+    do{
+      const {data,error:e}=await makeQuery().order("warehouse_record_created_at",{ascending:false}).range(offset,offset+499);
+      if(e)throw new Error(e.message);
+      const chunk=(data||[]) as Parcel[];
+      results=results.concat(chunk);offset+=chunk.length;
+      if(chunk.length<500)break;
+    }while(offset<10000);
+    if(offset>=10000)throw new Error("More than 10,000 rows; narrow the date filter.");
+    if(!results.length)throw new Error("No matching parcel records.");
+    return results;
+  }
+  async function exportExcel(){
+    setBusyExport(true);setError("");
+    try{
+      const data=await allMatching();
+      await downloadParcelXlsx(data as unknown as Record<string,unknown>[],exportCols,from,to,"Britium_Parcel_Control_"+from+"_to_"+to+".xlsx");
+    }catch(e){setError(String(e instanceof Error?e.message:e));}
+    finally{setBusyExport(false);}
+  }
+  async function exportPdf(){
+    const pop=openParcelPrintWindow();
+    setBusyExport(true);setError("");
+    try{
+      if(!pop)throw new Error("Browser blocked the print window.");
+      const data=await allMatching();
+      renderParcelPdf(pop,data as unknown as Record<string,unknown>[],exportCols,from,to);
+    }catch(e){pop?.close();setError(String(e instanceof Error?e.message:e));}
+    finally{setBusyExport(false);}
+  }
 
   return <div className="space-y-5 p-4 md:p-6 text-slate-800">
     <header className="space-y-1">
@@ -131,14 +171,30 @@ export default function HarmonizedParcelControlPage() {
           {providers.map(p=><option value={p} key={p}>{p === "ALL" ? "All registered providers" : p === "MDY BRANCH" ? "Mandalay Branch (MDY BRANCH)" : p}</option>)}
         </select>
       </label>
-      <button onClick={()=>void load()} disabled={loading} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Refresh</button>
-      <button onClick={exportCsv} disabled={!rows.length} className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50">Export loaded page ({rows.length})</button>
+      <label className="flex flex-col gap-1 text-xs font-medium">Merchant / ကုန်သည်
+        <input value={merchant} onChange={e=>setMerchant(e.target.value)} className="rounded-lg border px-3 py-2 text-sm" placeholder="All merchants"/>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium">Warehouse status / အခြေအနေ
+        <select value={warehouseFilter} onChange={e=>setWarehouseFilter(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
+          <option value="">All statuses</option>{["READY_FOR_DELIVERY","DELIVERY_FAILED","RETURN_TO_SENDER","SUBMITTED"].map(x=><option key={x}>{x}</option>)}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium">From / စတင်ရက်
+        <input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="rounded-lg border px-3 py-2 text-sm"/>
+      </label>
+      <label className="flex flex-col gap-1 text-xs font-medium">Through / နောက်ဆုံးရက်
+        <input type="date" value={to} onChange={e=>setTo(e.target.value)} className="rounded-lg border px-3 py-2 text-sm"/>
+      </label>
+      <button onClick={()=>void load()} disabled={loading} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Refresh / ပြန်လည်ကြည့်ရန်</button>
+      <button onClick={()=>void exportExcel()} disabled={busyExport} className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50">Export Excel</button>
+      <button onClick={()=>void exportPdf()} disabled={busyExport} className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50">Export PDF</button>
+      <button onClick={()=>{setSearch("");setMerchant("");setProvider("ALL");setWarehouseFilter("");setFrom("");setTo("");setTab("All");}} className="rounded-lg border px-4 py-2 text-sm">Clear filters</button>
     </div>
     {error && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
     <div className="overflow-x-auto rounded-xl border bg-white">
       <table className="min-w-[1250px] w-full text-left text-sm">
         <thead className="bg-slate-100 text-xs uppercase tracking-wide"><tr>
-          {["Way ID", "Merchant / destination", "Recorded provider", "Custody evidence", "Warehouse", "Wayplan", "Delivery / proof", "COD (MMK)", "Finance", "Attention"].map(h=><th key={h} className="whitespace-nowrap px-3 py-3">{h}</th>)}
+          {["Way ID", "Merchant / destination", "Recorded provider", "Custody evidence", "Warehouse", "Wayplan", "Delivery / proof", "COD (MMK)", "Finance", "Attention", "Action / တာဝန်ပေး"].map(h=><th key={h} className="whitespace-nowrap px-3 py-3">{h}</th>)}
         </tr></thead>
         <tbody className="divide-y">{rows.map(row=><tr key={row.delivery_way_id} className="hover:bg-slate-50">
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
@@ -151,6 +207,7 @@ export default function HarmonizedParcelControlPage() {
           <td className="px-3 py-3">{currency(row.expected_cod_mmk)}<div><N>Settled: {currency(row.settled_cod_mmk)}</N></div></td>
           <td className="px-3 py-3">{display(row.finance_settlement_status)}</td>
           <td className="px-3 py-3"><Attention value={row.attention_category}/></td>
+          <td className="px-3 py-3"><button className="rounded border border-blue-300 px-3 py-2 text-xs text-blue-700" onClick={()=>setSelected(row)}>Message / Notify</button></td>
         </tr>)}</tbody>
       </table>
       {!loading && !error && !rows.length && <p className="p-6 text-sm text-slate-500">No matching parcel evidence found.</p>}
@@ -180,6 +237,7 @@ export default function HarmonizedParcelControlPage() {
           ["Last evidence",when(selected.last_evidence_at)],
         ].map(([key,val])=><div key={String(key)}><dt className="text-xs text-slate-500">{key}</dt><dd className="break-all text-sm font-medium">{display(val)}</dd></div>)}
       </dl>
+      <ParcelActionComposer wayId={selected.delivery_way_id}/>
       <GroundEvidenceReviewPanel wayId={selected.delivery_way_id}/>
     </section>}
   </div>;
