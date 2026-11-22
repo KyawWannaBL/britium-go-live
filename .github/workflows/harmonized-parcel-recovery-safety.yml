@@ -1,0 +1,29 @@
+name: Harmonized Parcel Recovery Safety Checks
+
+on:
+  pull_request:
+    paths:
+      - 'sql/harmonized_*.sql'
+      - 'britium-go-live/src/pages/HarmonizedParcelControlPage.tsx'
+      - 'britium-go-live/src/components/parcel/**'
+      - 'britium-go-live/src/App.tsx'
+      - 'britium-go-live/src/components/Sidebar.tsx'
+      - 'britium-go-live/src/lib/accessControl.ts'
+      - 'britium-go-live/scripts/test-harmonized-parcel-guardrails.mjs'
+      - '.github/workflows/harmonized-parcel-recovery-safety.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  parcel-safety:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Way ID, role, custody and settlement safeguards
+        working-directory: britium-go-live
+        run: node scripts/test-harmonized-parcel-guardrails.mjs
