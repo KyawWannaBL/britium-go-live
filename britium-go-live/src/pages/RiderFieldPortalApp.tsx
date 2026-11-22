@@ -1,6 +1,7 @@
 // @ts-nocheck
 // BRITIUM_PRIMARY_FIELD_VERIFICATION_GUARD_V10_1
 import PaymentAllocationEditor from '@/components/finance/PaymentAllocationEditor';
+import DailyCashierSettlementPanel from '@/components/finance/DailyCashierSettlementPanel';
 import {validatePaymentAllocations,allocationPayload} from '@/lib/paymentAllocations';
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -3541,6 +3542,7 @@ function FieldPortal() {
               <Card><small>Settlement</small><div style={{ color: C.blue, fontSize: 26, fontWeight: 900 }}>Backend</div></Card>
             </div>
             {renderJobs(codJobs, "No COD jobs", "COD records appear only when assigned pickups include COD/payment amount.", "cod")}
+            <DailyCashierSettlementPanel mode="field" client={supabase}/>
           </div>
         )}
 

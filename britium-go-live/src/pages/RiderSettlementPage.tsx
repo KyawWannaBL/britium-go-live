@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import FieldSettlementSignature from '@/components/finance/FieldSettlementSignature';
 import FieldSettlementAmounts from '@/components/finance/FieldSettlementAmounts';
+import DailyCashierSettlementPanel from '@/components/finance/DailyCashierSettlementPanel';
 import {Link} from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 
@@ -83,5 +84,6 @@ export default function RiderSettlementPage(){
         </table>
       </div>
     </section>
+  <DailyCashierSettlementPanel mode="field"/>
   </div>;
 }

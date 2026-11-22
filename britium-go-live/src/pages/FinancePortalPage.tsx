@@ -6,6 +6,7 @@ import {FinancePortalLivePage} from './EnterpriseLiveCenterPages';
 import BranchFinanceOversight from '@/components/finance/BranchFinanceOversight';
 import {CorporateFinanceReviewPanel} from '@/components/tariff/CorporateTariffPanel';
 import RiderWeightAmendmentReviews from '@/components/finance/RiderWeightAmendmentReviews';
+import DailyCashierSettlementPanel from '@/components/finance/DailyCashierSettlementPanel';
 export default function FinancePortalPage(){
- return <><BranchFinanceOversight/><RiderWeightAmendmentReviews/><CorporateFinanceReviewPanel/><FinancePortalLivePage/></>;
+ return <><DailyCashierSettlementPanel mode="finance"/><BranchFinanceOversight/><RiderWeightAmendmentReviews/><CorporateFinanceReviewPanel/><FinancePortalLivePage/></>;
 }
