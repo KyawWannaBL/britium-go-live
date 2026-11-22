@@ -69,6 +69,17 @@ export default function FinanceSettlementDayEvents(){
  return <section className="space-y-3 rounded-xl border border-blue-300 bg-white p-4 text-slate-900">
   <header><h2 className="text-lg font-bold">Finance settlement-date audit / ငွေရှင်းပြီးစီးရက်အလိုက် အစီရင်ခံစာ</h2>
    <p className="text-xs text-slate-600">This section uses Finance SETTLED timestamps in Myanmar time, not Wayplan dispatch dates. Historical cash receipts remain separate from final settlement.</p></header>
+  <div className="flex flex-wrap items-center gap-2 text-xs">
+   <span className="font-semibold text-slate-600">Report period / အစီရင်ခံစာကာလ:</span>
+   {(["Today","Yesterday","Last 7 days","This month"] as const).map(label=><button key={label} type="button" onClick={()=>{
+    const now=new Date(Date.now()+6.5*3600000);
+    const today=now.toISOString().slice(0,10);
+    if(label==="Today"){setFrom(today);setTo(today);}
+    else if(label==="Yesterday"){const d=new Date(now.getTime()-86400000).toISOString().slice(0,10);setFrom(d);setTo(d);}
+    else if(label==="Last 7 days"){setFrom(new Date(now.getTime()-6*86400000).toISOString().slice(0,10));setTo(today);}
+    else {setFrom(today.slice(0,7)+"-01");setTo(today);}
+   }} className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-slate-700 transition-colors hover:border-sky-400 hover:bg-sky-50">{label}</button>)}
+  </div>
   <div className="flex flex-wrap gap-3">
    <label className="text-xs font-semibold">From / စတင်ရက်<input className={input+" block"} type="date" value={from} onChange={e=>setFrom(e.target.value)}/></label>
    <label className="text-xs font-semibold">To / နောက်ဆုံးရက်<input className={input+" block"} type="date" value={to} onChange={e=>setTo(e.target.value)}/></label>

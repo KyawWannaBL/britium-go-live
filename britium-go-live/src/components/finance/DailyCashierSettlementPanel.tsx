@@ -42,11 +42,11 @@ const statuses=[
  ["CASHIER_RECORDED_FINANCE_PENDING","Cashier recorded, finance pending"],
  ["FINANCE_RECORDED_CHECK_EVIDENCE","Finance settlement review"]
 ] as const;
-export default function DailyCashierSettlementPanel({mode="finance",client}:{mode?:"finance"|"field";client?:{rpc:(...args:any[])=>any}}){
+export default function DailyCashierSettlementPanel({mode="finance",client,readOnly=false}:{mode?:"finance"|"field";client?:{rpc:(...args:any[])=>any};readOnly?:boolean}){
  const api=client||supabase;
  const {profile}=useAuth();
  const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
- const cashierAllowed=mode==="finance"&&["superadmin","super_admin","finance","accountant"].includes(role);
+ const cashierAllowed=!readOnly&&mode==="finance"&&["superadmin","super_admin","finance","accountant"].includes(role);
  const [from,setFrom]=useState(dateOneBack),[to,setTo]=useState(day);
  const [worker,setWorker]=useState(""),[status,setStatus]=useState("ALL"),[search,setSearch]=useState("");
  const [records,setRecords]=useState<Way[]>([]);
@@ -157,6 +157,16 @@ export default function DailyCashierSettlementPanel({mode="finance",client}:{mod
  return <section className="rounded-xl border border-slate-300 bg-white p-4 text-slate-900 space-y-4" aria-label="Daily cashier waybill reconciliation">
   <header><h2 className="text-xl font-bold">Daily Cashier & Waybill Reconciliation / နေ့စဉ်ငွေလက်ခံမှုနှင့် Waybill စိစစ်ညှိနှိုင်းရေး</h2>
    <p className="text-xs text-slate-600">Wayplan + Data Entry + Cashier + Finance COD / Rider, Driver, Helper. An absent new cashier record does NOT prove cash loss or non-payment.</p></header>
+  <div className="flex flex-wrap items-center gap-2 text-xs">
+   <span className="font-semibold text-slate-600">Quick period / ကာလရွေးရန်:</span>
+   {(["Today","Yesterday","Last 7 days","This month"] as const).map(label=><button key={label} type="button" onClick={()=>{
+    const now=new Date(Date.now()+6.5*3600000);const t=now.toISOString().slice(0,10);
+    if(label==="Today"){setFrom(t);setTo(t);}
+    else if(label==="Yesterday"){const d=new Date(now.getTime()-86400000).toISOString().slice(0,10);setFrom(d);setTo(d);}
+    else if(label==="Last 7 days"){setFrom(new Date(now.getTime()-6*86400000).toISOString().slice(0,10));setTo(t);}
+    else {setFrom(t.slice(0,7)+"-01");setTo(t);}
+   }} className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 font-medium text-slate-700 transition-colors hover:border-blue-400 hover:bg-blue-50">{label}</button>)}
+  </div>
   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
    <label className="text-xs font-semibold">From / စတင်ရက်<input type="date" value={from} onChange={e=>setFrom(e.target.value)} className={input}/></label>
    <label className="text-xs font-semibold">Through / နောက်ဆုံးရက်<input type="date" value={to} onChange={e=>setTo(e.target.value)} className={input}/></label>
@@ -170,8 +180,8 @@ export default function DailyCashierSettlementPanel({mode="finance",client}:{mod
   </div>
   <div className="flex flex-wrap items-center gap-2">
    <button className="rounded border px-3 py-2 text-sm" disabled={loading} onClick={()=>void refresh()}>{loading?"Loading…":"Refresh / ပြန်စစ်ရန်"}</button>
-   <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-40" disabled={busy||loading} onClick={()=>void excel()}>Export Excel</button>
-   <button className="rounded border px-3 py-2 text-sm disabled:opacity-40" disabled={busy||loading} onClick={()=>void pdf()}>Print / Save PDF</button>
+   <button className="rounded bg-slate-900 px-3 py-2 text-sm text-white disabled:opacity-40" disabled={busy||loading||!view.length} onClick={()=>void excel()}>Export Excel</button>
+   <button className="rounded border px-3 py-2 text-sm disabled:opacity-40" disabled={busy||loading||!view.length} onClick={()=>void pdf()}>Print / Save PDF</button>
   </div>
   <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
    {([["Matching Ways",view.length],["Cashier missing",countMissing],["Amount differences",mismatch],

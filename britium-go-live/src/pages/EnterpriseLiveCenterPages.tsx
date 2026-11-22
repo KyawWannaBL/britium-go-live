@@ -415,21 +415,27 @@ export function WarehouseLifecycleLivePage() {
   );
 }
 
-export function FinancePortalLivePage() {
+export function FinancePortalLivePage({section="overview"}:{section?:"overview"|"wayplans"|"cod"}) {
   const {role:financeRole}=useAuth();
   const canReviewCod=["finance","accountant","superadmin","super_admin"].includes(String(financeRole||"").toLowerCase());
   const [collectionRefresh,setCollectionRefresh]=useState(0);
   const state = useRows(
     async () => {
       // These sections must fail independently: a heavy COD request should never hide today's drops.
+      // Each workflow tab loads only the source needed for that workflow.
+      // Field signatures use their own RPC below and must not wait for a heavy COD query.
       const [centerResult, liveResult] = await Promise.allSettled([
-        supabase.rpc("be_finance_portal_center"),
-        supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
-          p_work_date: null,
-          p_vehicle: null,
-          p_worker: null,
-          p_status: null,
-        }),
+        section==="wayplans"
+          ? Promise.resolve({data:{ok:true,cod_rows:[],finance_summary:{},settlement_queue:0},error:null})
+          : supabase.rpc("be_finance_portal_center"),
+        section==="overview"
+          ? supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
+              p_work_date: null,
+              p_vehicle: null,
+              p_worker: null,
+              p_status: null,
+            })
+          : Promise.resolve({data:{ok:true,rows:[]},error:null}),
       ]);
       const center = centerResult.status === "fulfilled" && !centerResult.value.error && centerResult.value.data?.ok !== false ? centerResult.value.data : null;
       const live = liveResult.status === "fulfilled" && !liveResult.value.error && liveResult.value.data?.ok !== false ? liveResult.value.data : null;
@@ -488,7 +494,7 @@ export function FinancePortalLivePage() {
     setSettlements(Array.isArray(data?.rows) ? data.rows : []);
   }
 
-  useEffect(() => { void loadSettlements(); }, [settlementDate]);
+  useEffect(() => { if(section==="wayplans") void loadSettlements(); }, [settlementDate,section]);
 
   async function signFinance(row:any) {
     setSettlementBusy(row.wayplan_id);
@@ -540,16 +546,20 @@ export function FinancePortalLivePage() {
   }),{totalWays:0,dropped:0,failed:0,left:0,opening:0,cash:0,mobile:0,collected:0});
 
   return (
-    <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
+    <main style={{ background: C.bg, color: C.text, padding: "8px 0 16px", borderRadius: 16 }}>
       <div style={{ display: "grid", gap: 16 }}>
-        <Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />
+        {section==="overview"&&<div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:12,padding:"4px 2px"}}>
+          <p style={{margin:0,fontSize:13,color:C.sub}}>Live dashboard · Financial health & Wayplan collection</p>
+          <button type="button" style={btn("blue")} disabled={state.loading}
+           onClick={async()=>{await state.load();setCollectionRefresh(value=>value+1);}}>↻ Refresh live metrics</button>
+         </div>}
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.data?.partial_error && <div role="alert" style={{ color: C.gold, padding: 12 }}>{state.data.partial_error}</div>}
-        <div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>
-        <FinanceCollectionTotals refreshKey={collectionRefresh}/>
-        {settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
+        {section==="wayplans"&&<div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>}
+        {section==="overview"&&<FinanceCollectionTotals refreshKey={collectionRefresh}/>}
+        {section==="wayplans"&&settlementMessage && <div style={{ border: `1px solid ${C.green}`, color: C.green, borderRadius: 14, padding: 12 }}>{settlementMessage}</div>}
 
-        <SummaryCards cards={[
+        {section==="overview"&&<SummaryCards cards={[
           { label: "Today Revenue", value: money(s.today_revenue), color: C.green },
           { label: "Opening COD", value: money(liveTotals.opening), color: C.gold },
           { label: "Total Ways", value: liveTotals.totalWays, color: C.blue },
@@ -560,9 +570,9 @@ export function FinancePortalLivePage() {
           { label: "Mobile Banking", value: money(liveTotals.mobile), color: C.blue },
           { label: "Actual Collected", value: money(liveTotals.collected), color: C.green },
           { label: "Workforce Pending", value: money(ws.pending_amount), color: C.gold },
-        ]} />
+        ]} />}
 
-        <Card>
+        {section==="overview"&&<Card>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap", marginBottom:12 }}>
             <div>
               <h2 style={{ margin:0 }}>Live Wayplan Financial Status</h2>
@@ -589,9 +599,8 @@ export function FinancePortalLivePage() {
               { key: "actual_collected", label: "Actual", align:"right", render:(r)=>money(r.actual_collected) },
             ]}
           />
-        </Card>
-
-        <Card>
+        </Card>}
+        {section==="wayplans"&&<Card>
           <div style={{ display:"flex", justifyContent:"space-between", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:12 }}>
             <div>
               <h2 id="financial-settlement" style={{ margin:0 }}>Financial Settlement</h2>
@@ -620,9 +629,8 @@ export function FinancePortalLivePage() {
               </div>
             ))}
           </div>
-        </Card>
-
-        <Card>
+        </Card>}
+        {section==="cod"&&<Card>
           <div data-cod-report-actions="true" style={{display:"flex",flexDirection:"column",alignItems:"flex-start",width:"100%",maxWidth:"100%",minWidth:0,gap:10,marginBottom:12}}>
            <h2 style={{ marginTop: 0 }}>Way-Level COD Settlement Queue</h2>
            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",width:"100%",maxWidth:"100%"}}>
@@ -658,7 +666,7 @@ export function FinancePortalLivePage() {
               { key: "settled_at", label: "Settled At", render: (r) => dateText(r.settled_at) },
             ]}
           />
-        </Card>
+        </Card>}
       </div>
     </main>
   );
