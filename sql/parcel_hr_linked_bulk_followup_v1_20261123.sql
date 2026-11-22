@@ -287,7 +287,7 @@ BEGIN
     'PARCEL_FOLLOWUP','PARCEL_BATCH_REVIEW_'||t.id::text,
     'be_parcel_followup_tasks_v1',t.id::text,t.original_delivery_way_id,
     'operations','NORMAL',jsonb_build_object('batch_id',p_batch_id,'decision',p_decision)
-   FROM public.be_parcel_followup_tasks_v1 t WHERE t.notification_request_id=p_batch_id
+   FROM public.be_parcel_followup_tasks_v1 t WHERE t.notification_request_id=p_batch_id AND t.status='CANCELLED'
    ON CONFLICT(event_key) DO NOTHING;
  END IF;
  -- Decision concerns follow-up task review, NOT proof of delivery or COD approval.
