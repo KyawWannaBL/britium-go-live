@@ -60,6 +60,7 @@ export default function ParcelFollowUpPage(){
  const [message,setMessage]=useState("");
  const [printBusy,setPrintBusy]=useState(false);
  const allowed = ["superadmin","super-admin","operation-manager","operation_manager","operations-manager","operations_manager"].includes((profile?.role||"").toLowerCase());
+ useEffect(()=>{if(!allowed)setTab("My alerts");},[allowed]);
  const pageSize=75;
 
  const makeQuery=useCallback(()=>{
