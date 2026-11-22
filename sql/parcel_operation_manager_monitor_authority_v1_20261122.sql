@@ -181,7 +181,7 @@ DECLARE t text;
 BEGIN
   FOREACH t IN ARRAY ARRAY['be_waybill_ledger','be_finance_cod_settlements_v48','be_provider_transfer_custody_v1','be_parcel_provider_overrides_v1','be_warehouse_return_scans_v39']
   LOOP
-    EXECUTE format('ALTER POLICY be_harmonized_superadmin_read_v1 ON public.%I USING ((SELECT auth.uid()) IS NOT NULL AND lower(replace(public.be_current_role(),''-'',''_'') ) IN ('superadmin','super_admin','operation_manager','operations_manager'))',t);
+    EXECUTE format($policy$ALTER POLICY be_harmonized_superadmin_read_v1 ON public.%I USING ((SELECT auth.uid()) IS NOT NULL AND lower(replace(public.be_current_role(),'-','_')) IN ('superadmin','super_admin','operation_manager','operations_manager'))$policy$,t);
   END LOOP;
 END $$;
 ALTER POLICY be_ground_claim_elevated_read_v1 ON public.be_parcel_ground_outcome_claims_v1
