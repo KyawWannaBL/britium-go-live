@@ -26,8 +26,9 @@ const columns = [
 ].join(",");
 const tabs = ["All parcels","Idle / exceptions","Gate finance queue","My alerts"] as const;
 const taskTypes=["POD_VERIFICATION","PROVIDER_HANDOVER","RTO_CONFIRMATION","COD_RECONCILIATION","GATE_SETTLEMENT","LOCATION_AND_CUSTODY","OTHER_REVIEW"];
-const isoDate = (v:string) => v ? new Date(v+"T00:00:00Z").toISOString() : null;
-const isoToExclusive = (v:string) => {if(!v)return null;const d=new Date(v+"T00:00:00Z");d.setDate(d.getDate()+1);return d.toISOString();};
+// Date filters follow Myanmar operational calendar days (UTC+06:30), not UTC midnight.
+const isoDate = (v:string) => v ? new Date(v+"T00:00:00+06:30").toISOString() : null;
+const isoToExclusive = (v:string) => {if(!v)return null;const d=new Date(v+"T00:00:00+06:30");d.setUTCDate(d.getUTCDate()+1);return d.toISOString();};
 const esc = (v:unknown) => String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
 const money = (v:number|null|undefined) => v == null ? "Not recorded" : Number(v).toLocaleString("en-US");
 const stamp = (v:string|null|undefined) => v ? new Date(v).toLocaleString() : "Not evidenced";
@@ -137,7 +138,7 @@ export default function ParcelFollowUpPage(){
    const sheet=XLSX.utils.aoa_to_sheet([reportColumns.map(c=>c.heading),...data.map(r=>reportColumns.map(c=>safeCell(flat(r,c.key))))]);
    sheet["!cols"]=reportColumns.map(c=>({wch:Math.min(43,Math.max(17,c.heading.length+7))}));
    const notes=XLSX.utils.aoa_to_sheet([
-    ["Britium Express","Parcel follow-up evidence report"],["Period from",from],["Period through",to],
+    ["Britium Express","Parcel follow-up evidence report"],["Period from (Myanmar time)",from],["Period through (Myanmar time)",to],
     ["Filter provider",provider||"All"],["Workstream",tab],["Rows",data.length],
     ["Dispatch scenario","Owner assumes dispatch complete for planning, not verified scan data."],
     ["Evidence control","Source app status and recorded finance fields are not proof of physical outcome."],
@@ -158,7 +159,7 @@ export default function ParcelFollowUpPage(){
    const headings=["Way ID","Merchant","Destination","Provider","App Status","Finance","Last evidence","Exceptions"];
    const body=data.map(p=>[p.delivery_way_id,p.merchant_name,p.destination_township,p.recorded_provider_code,p.warehouse_status,p.finance_settlement_status,p.last_evidence_at,(p.exception_flags||[]).join("; ")].map(v=>"<td>"+esc(v??"Not recorded")+"</td>").join(""));
    pop.document.open();
-   pop.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Britium Parcel Follow-Up</title><style>@page{size:A3 landscape;margin:12mm}body{font:11px Arial,"Noto Sans Myanmar",sans-serif;color:#16293c}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:5px;overflow-wrap:anywhere}th{background:#0e2942;color:white}thead{display:table-header-group}tr{break-inside:avoid}button{padding:10px;background:#0e2942;color:white;border:0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h2>BRITIUM EXPRESS — Parcel Follow-Up</h2><p>Registration timeline: '+esc(from)+' to '+esc(to)+' | '+data.length+' rows | '+esc(tab)+'</p><p><b>Notice:</b> Dispatch assumed complete for planning only. App records and COD flags do not independently verify physical handover, delivery or payment.</p><table><thead><tr>'+headings.map(h=>"<th>"+esc(h)+"</th>").join("")+'</tr></thead><tbody>'+body.map(x=>"<tr>"+x+"</tr>").join("")+'</tbody></table></body></html>');
+   pop.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Britium Parcel Follow-Up</title><style>@page{size:A3 landscape;margin:12mm}body{font:11px Arial,"Noto Sans Myanmar",sans-serif;color:#16293c}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:5px;overflow-wrap:anywhere}th{background:#0e2942;color:white}thead{display:table-header-group}tr{break-inside:avoid}button{padding:10px;background:#0e2942;color:white;border:0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h2>BRITIUM EXPRESS — Parcel Follow-Up</h2><p>Registration timeline (Myanmar Time): '+esc(from)+' to '+esc(to)+' | '+data.length+' rows | '+esc(tab)+'</p><p><b>Notice:</b> Dispatch assumed complete for planning only. App records and COD flags do not independently verify physical handover, delivery or payment.</p><table><thead><tr>'+headings.map(h=>"<th>"+esc(h)+"</th>").join("")+'</tr></thead><tbody>'+body.map(x=>"<tr>"+x+"</tr>").join("")+'</tbody></table></body></html>');
    pop.document.close();pop.focus();
   }catch(e){pop?.close();setError(e instanceof Error?e.message:String(e));}finally{setPrintBusy(false);}
  }
