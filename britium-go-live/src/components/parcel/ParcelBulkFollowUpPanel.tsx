@@ -37,8 +37,6 @@ export default function ParcelBulkFollowUpPanel({selected,onClear,onSent}:{
  const [batches,setBatches]=useState<Batch[]>([]);
  const [decisions,setDecisions]=useState<Decision[]>([]);
  const [reason,setReason]=useState("");
- const [reviewId,setReviewId]=useState("");
- const [sendResult,setSendResult]=useState<string|null>(null);
  const matching=useMemo(()=>selected.filter(p=>!wayplan||(p.wayplan_id||"")===wayplan),[selected,wayplan]);
  const byWayplan=useMemo(()=>Array.from(new Set(selected.map(p=>p.wayplan_id).filter((x):x is string=>!!x))),[selected]);
  const available=useMemo(()=>people.filter(p=>p.department_key===department&&p.active),[people,department]);
@@ -86,7 +84,7 @@ export default function ParcelBulkFollowUpPanel({selected,onClear,onSent}:{
   setBusy(false);
   if(e){setError(e.message);return;}
   setNotice(data?.already_sent?"Batch already sent; no duplicate notifications.":"Submitted "+data.sent+" notifications to "+data.recipients+" linked HR employee(s).");
-  setSendResult(requestId);setReviewId(requestId);setRequestId(crypto.randomUUID());setPreview(false);
+  setRequestId(crypto.randomUUID());setPreview(false);
   await reload();onSent?.();
  }
  async function decide(id:string,action:"APPROVED"|"REJECTED"|"CANCELLED"){
