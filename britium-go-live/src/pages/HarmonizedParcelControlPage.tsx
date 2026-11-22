@@ -34,7 +34,7 @@ const selectColumns = [
 
 const views = ["All", "Provider & Branch", "Wayplans", "Warehouse", "Delivery / RTO", "Finance", "Exceptions"] as const;
 type ViewTab = typeof views[number];
-const providers = ["ALL", "BRITIUM", "DK DELIVERY", "MANDALAY BRANCH", "INSEIN BRANCH", "NPT BRANCH", "ROYAL EXPRESS", "OTHER THIRD PARTY", "H.TERMINAL DROP-OFF"];
+const providers = ["ALL", "BRITIUM", "DK DELIVERY", "MDY BRANCH", "NPT BRANCH", "ROYAL EXPRESS", "H.TERMINAL DROP-OFF", "AHL BRANCH", "ARLU POST", "BEE EXPRESS", "GRS", "NINJA VAN", "NOK BRANCH", "SAFE EXPRESS"];
 const currency = (value: number | null | undefined) => value == null ? "—" : Number(value).toLocaleString("en-US");
 const when = (value: string | null | undefined) => value ? new Date(value).toLocaleString() : "Not evidenced";
 const display = (value: string | null | undefined) => value?.trim() || "Unverified";
@@ -106,7 +106,7 @@ export default function HarmonizedParcelControlPage() {
     <header className="space-y-1">
       <h1 className="text-2xl font-bold">Harmonized Parcel Control Center</h1>
       <p className="text-sm text-slate-600">Original Way ID · provider & branch custody · warehouse · wayplans · delivery/RTO · COD settlement</p>
-      <p className="text-xs text-amber-800">Read-only monitoring. Routing labels are not physical handover evidence; missing records are not automatic parcel-loss findings.</p>
+      <p className="text-xs text-amber-800">Read-only monitoring. Routing labels are not physical handover evidence; missing records are not automatic parcel-loss findings. Insein and other transfer hubs are custody stages unless specifically registered as service providers.</p>
     </header>
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
       {[
@@ -128,7 +128,7 @@ export default function HarmonizedParcelControlPage() {
       </label>
       <label className="flex min-w-52 flex-col gap-1 text-xs font-medium">Recorded service provider
         <select value={provider} onChange={e=>setProvider(e.target.value)} className="rounded-lg border px-3 py-2 text-sm">
-          {providers.map(p=><option value={p} key={p}>{p === "ALL" ? "All providers" : p}</option>)}
+          {providers.map(p=><option value={p} key={p}>{p === "ALL" ? "All registered providers" : p === "MDY BRANCH" ? "Mandalay Branch (MDY BRANCH)" : p}</option>)}
         </select>
       </label>
       <button onClick={()=>void load()} disabled={loading} className="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-white disabled:opacity-50">Refresh</button>
