@@ -42,7 +42,8 @@ const statuses=[
  ["CASHIER_RECORDED_FINANCE_PENDING","Cashier recorded, finance pending"],
  ["FINANCE_RECORDED_CHECK_EVIDENCE","Finance settlement review"]
 ] as const;
-export default function DailyCashierSettlementPanel({mode="finance",client}:{mode?:"finance"|"field";client?:{rpc:(...args:any[])=>any}}){\n const api=client||supabase;
+export default function DailyCashierSettlementPanel({mode="finance",client}:{mode?:"finance"|"field";client?:{rpc:(...args:any[])=>any}}){
+ const api=client||supabase;
  const {profile}=useAuth();
  const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
  const cashierAllowed=mode==="finance"&&["superadmin","super_admin","finance","accountant"].includes(role);
