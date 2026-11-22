@@ -75,22 +75,33 @@ export default function DailyCashierSettlementPanel({mode="finance",client}:{mod
  const sumFinance=view.reduce((sum,r)=>sum+Number(r.finance_settled_amount||0),0);
  const mismatch=view.filter(r=>r.sync_status==="AMOUNT_DIFFERENCE").length;
  const teamSummary=useMemo(()=>{
-  const result=new Map<string,{role:string;code:string;ways:Set<string>;missing:Set<string>;cashier:number;settled:number}>();
+  // First collapse repeated dispatch dates to one physical Way ID. Cashier evidence
+  // entered on a different workday must not be counted twice or declared missing.
+  const byWay=new Map<string,{team:Set<string>;hasReceipt:boolean;cashier:number;settled:number}>();
   for(const r of view){
+   const x=byWay.get(r.delivery_way_id)||{team:new Set<string>(),hasReceipt:false,cashier:0,settled:0};
    for(const [role,code] of [["Rider",r.rider_code],["Driver",r.driver_code],["Helper",r.helper_code]] as [string,string|null][]){
-    if(!code)continue;
-    const key=role+":"+code;
-    const x=result.get(key)||{role,code,ways:new Set<string>(),missing:new Set<string>(),cashier:0,settled:0};
-    if(!x.ways.has(r.delivery_way_id)){
-      x.ways.add(r.delivery_way_id);
-      if(!r.receipt_id)x.missing.add(r.delivery_way_id);
-      x.cashier+=Number(r.cashier_actual_mmk||0);
-      x.settled+=Number(r.finance_settled_amount||0);
-    }
-    result.set(key,x);
+    if(code)x.team.add(role+":"+code);
    }
+   if(r.cashier_worker_code&&r.cashier_worker_role&&r.cashier_worker_role!=="UNASSIGNED"){
+    x.team.add(r.cashier_worker_role.toLowerCase().replace(/^./,c=>c.toUpperCase())+":"+r.cashier_worker_code);
+   }
+   x.hasReceipt ||= !!r.receipt_id;
+   x.cashier=Math.max(x.cashier,Number(r.cashier_actual_mmk||0));
+   x.settled=Math.max(x.settled,Number(r.finance_settled_amount||0));
+   byWay.set(r.delivery_way_id,x);
   }
-  return Array.from(result.values()).sort((a,b)=>b.missing.size-a.missing.size||a.code.localeCompare(b.code));
+  const people=new Map<string,{role:string;code:string;ways:Set<string>;missing:Set<string>;cashier:number;settled:number}>();
+  for(const [way,x] of byWay)for(const id of x.team){
+   const split=id.indexOf(":");const role=id.slice(0,split),code=id.slice(split+1);
+   const item=people.get(id)||{role,code,ways:new Set<string>(),missing:new Set<string>(),cashier:0,settled:0};
+   item.ways.add(way);
+   if(!x.hasReceipt)item.missing.add(way);
+   item.cashier+=x.cashier;
+   item.settled+=x.settled;
+   people.set(id,item);
+  }
+  return Array.from(people.values()).sort((a,b)=>b.missing.size-a.missing.size||a.code.localeCompare(b.code));
  },[view]);
  const workers=useMemo(()=>Array.from(new Set(records.flatMap(r=>[r.rider_code,r.driver_code,r.helper_code,r.cashier_worker_code]).filter((s):s is string=>!!s))).sort(),[records]);
  function choose(r:Way){
