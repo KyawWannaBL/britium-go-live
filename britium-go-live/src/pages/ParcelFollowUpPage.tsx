@@ -65,6 +65,7 @@ export default function ParcelFollowUpPage(){
   if(way.trim())q=q.ilike("delivery_way_id","%"+way.trim().replace(/[%_,]/g,"")+"%");
   if(provider.trim())q=q.eq("recorded_provider_code",provider);
   if(tab==="Idle / exceptions")q=q.neq("attention_category","MONITOR");
+  if(tab==="Gate finance queue")q=q.eq("recorded_provider_code","H.TERMINAL DROP-OFF");
   return q;
  },[from,to,way,provider,tab]);
 
@@ -76,7 +77,7 @@ export default function ParcelFollowUpPage(){
    .range(page*pageSize,(page+1)*pageSize-1);
   if(e){setRows([]);setCount(null);setError("Parcel monitor not activated or access restricted: "+e.message);}
   else {const selectedRows=(data||[]) as Parcel[];
-   setRows(tab==="Gate finance queue"?selectedRows.filter(r=>r.recorded_provider_code==="H.TERMINAL DROP-OFF"):selectedRows);
+   setRows(selectedRows);
    setCount(total);}
   setLoading(false);
  },[makeQuery,page,tab]);
@@ -113,7 +114,7 @@ export default function ParcelFollowUpPage(){
    if(batch.length<500)break;
   }
   if(offset>=10000)throw new Error("Export exceeds 10,000 rows. Narrow the timeline to avoid a partial report.");
-  return tab==="Gate finance queue"?list.filter(r=>r.recorded_provider_code==="H.TERMINAL DROP-OFF"):list;
+  return list;
  }
  const reportColumns: {key:keyof Parcel;heading:string}[]=[
   {key:"delivery_way_id",heading:"Original Way ID"}, {key:"warehouse_record_created_at",heading:"Registered"},
@@ -184,7 +185,7 @@ export default function ParcelFollowUpPage(){
  return <main className="space-y-5 p-4 text-slate-800 md:p-6">
   <div><h1 className="text-2xl font-bold">Parcel Status & Follow-Up Center</h1>
    <p className="text-sm text-slate-600">Track original Way IDs, review idle work, target accountable staff, and export evidence for an exact registration timeline.</p>
-   <p className="mt-1 text-xs text-amber-800">Owner planning scenario: all dispatches assumed completed. Actual scans, provider custody and COD payments require separate verified evidence. Screens and task inbox activate only after UAT/RLS approval.</p>
+   <p className="mt-1 text-xs text-amber-800">Owner planning scenario: all dispatches assumed completed. Actual scans, provider custody and COD payments require separate verified evidence. The gate tab displays registered provider codes only, not the 21 destination-proposed gates in the Excel scenario. Screens and task inbox activate only after UAT/RLS approval.</p>
   </div>
   <nav className="flex gap-2 overflow-x-auto pb-2" aria-label="Parcel follow-up workflows">
    {tabs.map(t=><button key={t} onClick={()=>setTab(t)} className={`shrink-0 rounded-lg px-4 py-2 text-sm ${tab===t?"bg-slate-900 text-white":"border bg-white"}`}>{t}</button>)}
