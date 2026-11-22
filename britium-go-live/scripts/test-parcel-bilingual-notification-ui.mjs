@@ -15,7 +15,7 @@ check(sql,/be_current_role\(\)/,"server role gate");
 check(sql,/REVOKE ALL ON FUNCTION public\.be_parcel_send_targeted_alert_v1/,"privileged RPC revoked");
 check(sql,/u\.auth_user_id=p_recipient_user_id/,"specific recipient guard");
 check(sql,/v_dept<>p_department/,"department membership guard");
-check(sql,/v_total>40/,"department recipient cap");
+check(sql,/v_total>80/,"department recipient cap");
 check(sql,/notification_request_id/,"idempotent alert request");
 check(sql,/ON CONFLICT DO NOTHING/,"duplicate suppression");
 check(sql,/target_user_id,target_email/,"targeted notification insert");
