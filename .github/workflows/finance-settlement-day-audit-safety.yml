@@ -1,0 +1,21 @@
+name: Finance Settlement-Date Audit Safety
+on:
+  pull_request:
+    paths:
+      - 'sql/finance_settlement_date_events_v1_20261123.sql'
+      - 'britium-go-live/src/components/finance/FinanceSettlementDayEvents.tsx'
+      - 'britium-go-live/src/pages/FinancePortalPage.tsx'
+      - 'britium-go-live/scripts/test-finance-settlement-day-events.mjs'
+      - '.github/workflows/finance-settlement-day-audit-safety.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node britium-go-live/scripts/test-finance-settlement-day-events.mjs
