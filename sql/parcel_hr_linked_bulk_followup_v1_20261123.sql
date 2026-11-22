@@ -30,7 +30,8 @@ BEGIN
    FROM src
  )
  SELECT s.code,s.staff_name,s.raw_department,
-  public.be_parcel_department_key_v1(s.raw_department,s.staff_role) AS department_key,
+  CASE WHEN lower(s.raw_department) ~ 'business development|biz dev|လုပ်ငန်းဖွံ့' THEN 'BUSINESS_DEVELOPMENT'
+       ELSE public.be_parcel_department_key_v1(s.raw_department,s.staff_role) END AS department_key,
   s.staff_role,s.raw_branch,s.staff_email,u.auth_user_id,
   (u.auth_user_id IS NOT NULL),s.hr_active AND s.hr_status NOT IN ('inactive','terminated','deleted','suspended')
  FROM staff s
@@ -113,9 +114,10 @@ BEGIN
  IF v_total<1 OR v_total>100 THEN RAISE EXCEPTION 'Select 1 to 100 Way IDs per batch'; END IF;
  IF p_scope NOT IN ('PERSON','DEPARTMENT') OR p_department NOT IN
  ('OPERATIONS','FIELD_TEAM','WAREHOUSE','CUSTOMER_SERVICE','FINANCE','BRANCH','THIRD_PARTY',
- 'MERCHANT_RELATIONS','ADMIN_HR','MARKETING')
+ 'MERCHANT_RELATIONS','ADMIN_HR','MARKETING','BUSINESS_DEVELOPMENT','UNASSIGNED')
  THEN RAISE EXCEPTION 'Invalid recipient selection'; END IF;
  IF p_scope='PERSON' AND p_recipient_id IS NULL THEN RAISE EXCEPTION 'Employee required'; END IF;
+ IF p_scope='DEPARTMENT' AND p_department='UNASSIGNED' THEN RAISE EXCEPTION 'Unassigned staff require individual recipient selection'; END IF;
  IF p_due_at IS NULL OR p_due_at<now()+interval '5 minutes' OR p_due_at>now()+interval '30 days'
  THEN RAISE EXCEPTION 'Deadline out of range'; END IF;
  IF p_default_type NOT IN ('POD_VERIFICATION','PROVIDER_HANDOVER','RTO_CONFIRMATION',
