@@ -7,14 +7,14 @@ export const sanitizeExcel=(v:unknown)=>{
  return /^\s*[=+@-]/.test(s)?"'"+s:s;
 };
 const html=(v:unknown)=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]||c));
-export async function downloadParcelXlsx(rows:ReportRow[],labels:{key:string;label:string}[],from:string,to:string,filename:string){
+export async function downloadParcelXlsx(rows:ReportRow[],labels:{key:string;label:string}[],from:string,to:string,filename:string,reportTitle="Britium Express Parcel Status",dateBasis="Registration period (Myanmar)"){
  const XLSX=await import("xlsx");
  const matrix=[labels.map(c=>c.label),...rows.map(r=>labels.map(c=>sanitizeExcel(r[c.key])))];
  const sheet=XLSX.utils.aoa_to_sheet(matrix);
  sheet["!cols"]=labels.map(c=>({wch:Math.min(45,Math.max(17,c.label.length+5))}));
  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,sheet,"Parcel Status");
  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([
-  ["Register","Britium Express Parcel Status"],["From (Myanmar)",from||"All"],
+  ["Register",reportTitle],["Date basis",dateBasis],["From (Myanmar)",from||"All"],
   ["Through (Myanmar)",to||"All"],["Way IDs exported",rows.length],
   ["Physical custody","Only source evidence; routing labels and dispatch assumptions are NOT verified scans"],
   ["Finance","Existing settlement statuses are read-only; report is not a payment instruction"],
@@ -23,7 +23,7 @@ export async function downloadParcelXlsx(rows:ReportRow[],labels:{key:string;lab
  XLSX.writeFile(wb,filename);
 }
 export function openParcelPrintWindow():Window|null{return window.open("","_blank");}
-export function renderParcelPdf(printWindow:Window,rows:ReportRow[],labels:{key:string;label:string}[],from:string,to:string){
+export function renderParcelPdf(printWindow:Window,rows:ReportRow[],labels:{key:string;label:string}[],from:string,to:string,reportTitle="Britium Express — Parcel Status",dateBasis="Registration period (Myanmar)"){
  if(rows.length>2000)throw new Error("PDF output exceeds 2,000 parcels. Narrow your timeline.");
  const lines=rows.map(r=>"<tr>"+labels.map(c=>"<td>"+html(Array.isArray(r[c.key])?(r[c.key] as string[]).join("; "):r[c.key])+"</td>").join("")+"</tr>").join("");
  printWindow.document.open();
