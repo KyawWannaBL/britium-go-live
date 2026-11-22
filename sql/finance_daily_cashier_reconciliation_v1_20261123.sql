@@ -119,7 +119,8 @@ BEGIN
  p.rider_code,p.rider_name,p.driver_code,p.driver_name,p.helper_code,p.helper_name,p.vehicle_code,
  d.actual_collect data_entry_actual_collect,d.cod_amount data_entry_cod_amount,
  d.item_price,d.delivery_fee,
- c.id receipt_id,c.work_date cashier_receipt_work_date,c.worker_role cashier_worker_role,c.worker_code cashier_worker_code,
+ c.id receipt_id,c.work_date cashier_receipt_work_date,
+ other_receipt.other_receipt_date,c.worker_role cashier_worker_role,c.worker_code cashier_worker_code,
  c.cashier_actual_mmk,c.payment_method,c.evidence_reference,c.created_at cashier_registered_at,
  c.exception_note,c.created_by cashier_user_id,
  f.settlement_status finance_settlement_status,f.settled_amount finance_settled_amount,
@@ -143,7 +144,13 @@ BEGIN
  WHERE d1.delivery_way_id=a.delivery_way_id
  ORDER BY d1.updated_at DESC NULLS LAST LIMIT 1) d ON true
  LEFT JOIN public.be_finance_cashier_way_receipts_v1 c
- ON c.delivery_way_id=a.delivery_way_id
+ ON c.delivery_way_id=a.delivery_way_id AND c.work_date=a.work_date
+ LEFT JOIN LATERAL (
+  SELECT r.work_date other_receipt_date
+  FROM public.be_finance_cashier_way_receipts_v1 r
+  WHERE r.delivery_way_id=a.delivery_way_id AND r.work_date<>a.work_date
+  LIMIT 1
+ ) other_receipt ON true
  LEFT JOIN public.be_finance_cod_settlements_v48 f ON f.delivery_way_id=a.delivery_way_id
  LEFT JOIN public.be_field_finance_settlements_v1 fs
  ON fs.work_date=a.work_date AND fs.wayplan_id=p.wayplan_id
@@ -156,6 +163,8 @@ BEGIN
  CASE WHEN NOT j.listed_in_wayplan THEN 'NOT_LISTED_IN_WAYPLAN'
  WHEN NOT j.wayplan_team_assigned THEN 'NO_WORKER_ASSIGNED'
  WHEN j.receipt_id IS NULL AND (j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED') THEN 'FINANCE_SETTLED_CASHIER_UNRECORDED'
+ WHEN j.receipt_id IS NULL AND j.other_receipt_date IS NOT NULL
+ THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
  WHEN j.receipt_id IS NULL THEN 'MISSING_CASHIER_RECEIPT'
  WHEN j.cashier_receipt_work_date<>j.work_date THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
  WHEN j.receipt_id IS NOT NULL AND NOT coalesce(j.cashier_worker_is_assigned,false)
