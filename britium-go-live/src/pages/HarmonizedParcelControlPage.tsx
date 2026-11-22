@@ -19,6 +19,8 @@ type Parcel = {
   expected_cod_mmk: number | null;
   settled_cod_mmk: number | null;
   attention_category: string | null;
+  exception_flags: string[] | null;
+  return_scan_count: number | null;
   last_evidence_at: string | null;
 };
 
@@ -27,7 +29,7 @@ const selectColumns = [
   "physically_recorded_provider","provider_custody_evidence","warehouse_status",
   "dispatch_scanned","wayplan_id","physically_handed_over_at","delivered_at",
   "rider_proof_present","finance_settlement_status","expected_cod_mmk",
-  "settled_cod_mmk","attention_category","last_evidence_at"
+  "settled_cod_mmk","attention_category","exception_flags","return_scan_count","last_evidence_at"
 ].join(",");
 
 const views = ["All", "Provider & Branch", "Wayplans", "Warehouse", "Delivery / RTO", "Finance", "Exceptions"] as const;
@@ -89,7 +91,7 @@ export default function HarmonizedParcelControlPage() {
     settled: rows.filter(r => Boolean(r.finance_settlement_status) && /settled|completed/i.test(r.finance_settlement_status || "")).length
   }), [rows]);
   const exportCsv = () => {
-    const keys: (keyof Parcel)[] = ["delivery_way_id","merchant_name","destination_township","recorded_provider_code","provider_custody_evidence","warehouse_status","wayplan_id","physically_handed_over_at","delivered_at","finance_settlement_status","expected_cod_mmk","settled_cod_mmk","attention_category"];
+    const keys: (keyof Parcel)[] = ["delivery_way_id","merchant_name","destination_township","recorded_provider_code","provider_custody_evidence","warehouse_status","wayplan_id","physically_handed_over_at","delivered_at","finance_settlement_status","expected_cod_mmk","settled_cod_mmk","attention_category","exception_flags","return_scan_count"];
     const escapeCell = (value: unknown) => {
       const raw = String(value ?? "");
       const safe = /^[\s]*[=+@-]/.test(raw) ? "\'" + raw : raw;
@@ -173,6 +175,8 @@ export default function HarmonizedParcelControlPage() {
           ["Wayplan ID",selected.wayplan_id],["Warehouse status",selected.warehouse_status],
           ["Delivered at",when(selected.delivered_at)],["Delivery proof",selected.rider_proof_present?"Reference recorded":"Not evidenced"],
           ["Finance settlement",selected.finance_settlement_status],
+          ["Return-scan events",String(selected.return_scan_count ?? 0)],
+          ["Independent exceptions",(selected.exception_flags || []).join("; ") || "No additional flags"],
           ["Last evidence",when(selected.last_evidence_at)],
         ].map(([key,val])=><div key={String(key)}><dt className="text-xs text-slate-500">{key}</dt><dd className="break-all text-sm font-medium">{display(val)}</dd></div>)}
       </dl>
