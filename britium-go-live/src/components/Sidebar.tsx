@@ -107,6 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
       { name: "HQ Branch Shuttle Receipts", path: "/branch-hq-intake", icon: PackageSearch },
       { name: "Pending Parcels", path: "/warehouse-pending", icon: AlertTriangle },
       { name: "Parcel Control Center", path: "/parcel-control", icon: PackageSearch },
+      { name: "Parcel Follow-Up & Alerts", path: "/parcel-follow-up", icon: AlertTriangle },
       { name: "Dispatch Command (View)", path: "/warehouse-dispatch-command", icon: Truck },
       { name: "Wayplan View", path: "/wayplan-view", icon: MapIcon },
       { name: "RTO Report", path: "/rto-report", icon: FileSpreadsheet },
