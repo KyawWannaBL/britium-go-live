@@ -5,6 +5,7 @@ on:
     paths:
       - 'sql/harmonized_*.sql'
       - 'britium-go-live/src/pages/HarmonizedParcelControlPage.tsx'
+      - 'britium-go-live/src/pages/ParcelFollowUpPage.tsx'
       - 'britium-go-live/src/components/parcel/**'
       - 'britium-go-live/src/App.tsx'
       - 'britium-go-live/src/components/Sidebar.tsx'
