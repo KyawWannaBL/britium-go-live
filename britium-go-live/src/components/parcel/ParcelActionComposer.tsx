@@ -13,7 +13,9 @@ export const departments=[
  ["THIRD_PARTY","Third-Party Providers / ပြင်ပဝန်ဆောင်မှု"],
  ["MERCHANT_RELATIONS","Merchant Relations / ဆိုင်များဆက်သွယ်ရေး"],
  ["ADMIN_HR","Administration & HR / စီမံခန့်ခွဲရေး"],
- ["MARKETING","Marketing / ဈေးကွက်ရှာဖွေရေး"]
+ ["MARKETING","Marketing / ဈေးကွက်ရှာဖွေရေး"],
+ ["BUSINESS_DEVELOPMENT","Business Development / လုပ်ငန်းဖွံ့ဖြိုးရေး"],
+ ["UNASSIGNED","Other / Unassigned HR employees — သတ်မှတ်ဌာနမရှိသေးသူများ"]
 ] as const;
 export const templates=[
  ["POD_VERIFICATION","Request delivery proof / ပို့ဆောင်မှုအထောက်အထား",
@@ -73,6 +75,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  };
  async function send(){
   setResult("");setError("");
+  if(scope==="DEPARTMENT"&&department==="UNASSIGNED"){setError("Unassigned HR employees require individual selection.");return;}
   if(scope==="DEPARTMENT"&&!window.confirm(`Send to ${sendable.length} linked Admin/HR staff in ${department}? / HR တွင်အကောင့်ချိတ်ဆက်ထားသောဝန်ထမ်း ${sendable.length} ဦးထံ ပို့ရန်အတည်ပြုပါ။`))return;
   if(!allowed||!user){setError("An authorized Superadmin or Operation Manager session is required.");return;}
   if(scope==="PERSON"&&!recipient){setError("Select an individual recipient.");return;}
