@@ -111,7 +111,7 @@ export default function ParcelFollowUpPage(){
  },[allowed]);
  const age=(v:string|null) => v ? Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/86400000)) : null;
  const queue = rows.filter(r=>r.attention_category!=="MONITOR").length;
- const overdue=tasks.filter(t=>t.status!=="RESOLVED" && new Date(t.due_at).getTime()<Date.now()).length;
+ const overdue=tasks.filter(t=>!["RESOLVED","CANCELLED"].includes(t.status) && new Date(t.due_at).getTime()<Date.now()).length;
  const gateRows=rows.filter(r=>r.recorded_provider_code==="H.TERMINAL DROP-OFF").length;
 
  async function allFiltered(){
@@ -227,8 +227,8 @@ export default function ParcelFollowUpPage(){
     <h2 className="p-4 font-semibold">{tab==="My alerts"?"My assigned follow-up tasks / ကျွန်ုပ်၏တာဝန်များ":"Team alerts / ဌာနအဖွဲ့တာဝန်များ"}</h2>
     <table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-slate-100"><tr>{["Way ID","Department","Task","Due","Status","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{tasks.map(t=><tr key={t.id} className="border-t">
      <td className="p-3 font-semibold">{t.original_delivery_way_id}</td><td className="p-3">{t.assigned_department}</td><td className="p-3">{t.task_type}: {t.task_note}</td>
-     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{t.status!=="RESOLVED"&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
-     <td className="p-3">{user?.id===t.assigned_user_id&&t.status!=="RESOLVED"&&<div className="flex gap-1">
+     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{!["RESOLVED","CANCELLED"].includes(t.status)&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
+     <td className="p-3">{user?.id===t.assigned_user_id&&!["RESOLVED","CANCELLED"].includes(t.status)&&<div className="flex gap-1">
        {t.status==="OPEN"&&<button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"ACKNOWLEDGED")}>Acknowledge</button>}
        <button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"RESOLVED")}>Resolve with evidence</button>
      </div>}</td></tr>)}</tbody></table></div>:
