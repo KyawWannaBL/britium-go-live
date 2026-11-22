@@ -74,6 +74,8 @@ ways AS (
 )
 SELECT
   w.delivery_way_id,
+  h.created_at AS warehouse_record_created_at,
+  h.dispatch_scanned_at AS verified_dispatch_scanned_at,
   coalesce(h.merchant_name, l.merchant_name) AS merchant_name,
   coalesce(h.delivery_township, l.ledger_township) AS destination_township,
   coalesce(h.recipient_address, l.delivery_address) AS destination_address,
