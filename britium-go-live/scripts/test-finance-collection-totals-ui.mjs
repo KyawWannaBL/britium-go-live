@@ -13,7 +13,7 @@ const rpc=async(name,args)=>{
   {service_date:null,unknown_count:148,collector_code:'UNKNOWN',collector_name:'Missing evidence',vehicle_code:'UNKNOWN',vehicle_name:'Missing evidence',waybill_count:148,total_collected:null,cash_collected:null,digital_collected:null,unclassified_collected:null,confirmed_total:null,pending_total:null,by_method:{}}
  ]},error:null};
 };
-const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:id=>id==='@/integrations/supabase/client'?{supabase:{rpc}}:id==='@/lib/paymentAllocations'?helper.exports:require(id)});
+const module={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX}}).outputText,{module,exports:module.exports,require:id=>id==='@/integrations/supabase/client'?{supabase:{rpc}}:id==='@/lib/paymentAllocations'?helper.exports:id==='@/lib/financeReportExports'?{exportFinanceExcel:async()=>{},printFinancePdf:()=>{}}:require(id)});
 const totalsCalls=()=>calls.filter(c=>c.name==='be_finance_collection_totals_v215');
 const text=n=>typeof n==='string'||typeof n==='number'?String(n):(n.children||[]).map(text).join(' ');
 const totalsTable=view=>view.root.findAllByType('table').find(t=>t.findAllByType('th').some(h=>text(h)==='Total (MMK)'));

@@ -163,6 +163,8 @@ const WarehouseWayplanViewPage = safeLazy(() => import("@/pages/WarehouseWayplan
 const WarehouseRtoReportPage = safeLazy(() => import("@/pages/WarehouseRtoReportPage"));
 const WarehouseDispatchCommandViewPage = safeLazy(() => import("@/pages/WarehouseDispatchCommandViewPage"));
 const WarehousePendingParcelsPage = safeLazy(() => import("@/pages/WarehousePendingParcelsPage"));
+const HarmonizedParcelControlPage = safeLazy(() => import("@/pages/HarmonizedParcelControlPage"));
+const ParcelFollowUpPage = safeLazy(() => import("@/pages/ParcelFollowUpPage"));
 const WaybillStudioPage = safeLazy(() => import("@/pages/WaybillStudioPage"));
 const WayplanCreatePage = safeLazy(() => import("@/pages/WayplanCreatePage"));
 const WayplanCommandCenterPage = safeLazy(() => import("@/pages/WayplanCommandCenterPage"));
@@ -309,6 +311,8 @@ function AppRoutes() {
             <Route path="/rto-report" element={<WarehouseRtoReportPage />} />
             <Route path="/warehouse-dispatch-command" element={<WarehouseDispatchCommandViewPage />} />
             <Route path="/warehouse-pending" element={<WarehousePendingParcelsPage />} />
+            <Route path="/parcel-control" element={<HarmonizedParcelControlPage />} />
+            <Route path="/parcel-follow-up" element={<ParcelFollowUpPage />} />
             <Route path="/waybill-studio" element={<WaybillStudioPage />} />
             <Route path="/wayplan/create" element={<WayplanCreatePage />} />
             <Route path="/wayplan-command" element={<WayplanCommandCenterPage />} />
