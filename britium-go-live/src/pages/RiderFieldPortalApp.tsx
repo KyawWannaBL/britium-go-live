@@ -3542,7 +3542,7 @@ function FieldPortal() {
               <Card><small>Settlement</small><div style={{ color: C.blue, fontSize: 26, fontWeight: 900 }}>Backend</div></Card>
             </div>
             {renderJobs(codJobs, "No COD jobs", "COD records appear only when assigned pickups include COD/payment amount.", "cod")}
-            <DailyCashierSettlementPanel mode="field"/>
+            <DailyCashierSettlementPanel mode="field" client={supabase}/>
           </div>
         )}
 
