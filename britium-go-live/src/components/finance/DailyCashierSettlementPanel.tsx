@@ -5,7 +5,7 @@ import {downloadParcelXlsx,openParcelPrintWindow,renderParcelPdf} from "@/lib/pa
 
 type Way={
  work_date:string;delivery_way_id:string;wayplan_id:string|null;
- listed_in_wayplan:boolean;wayplan_team_assigned:boolean;
+ listed_in_wayplan:boolean;wayplan_team_assigned:boolean;cashier_worker_is_assigned:boolean|null;
  rider_code:string|null;rider_name:string|null;driver_code:string|null;driver_name:string|null;
  helper_code:string|null;helper_name:string|null;vehicle_code:string|null;
  data_entry_actual_collect:number|null;data_entry_cod_amount:number|null;
@@ -17,7 +17,7 @@ type Way={
 };
 const fields=[
  ["work_date","Settlement date"],["delivery_way_id","Waybill ID"],["wayplan_id","Wayplan ID"],
- ["listed_in_wayplan","In Wayplan (Yes/No)"],["wayplan_team_assigned","Assigned team (Yes/No)"],
+ ["listed_in_wayplan","In Wayplan (Yes/No)"],["wayplan_team_assigned","Assigned team (Yes/No)"],["cashier_worker_is_assigned","Cashier worker assignment match"],
  ["rider_code","Rider"],["driver_code","Driver"],["helper_code","Helper"],
  ["data_entry_cod_amount","Data Entry COD MMK"],["data_entry_actual_collect","Data Entry actual_collect (raw)"],
  ["cashier_actual_mmk","Cashier actual MMK"],["difference_mmk","Cashier less Data Entry MMK"],
@@ -36,6 +36,7 @@ const statuses=[
  ["FINANCE_SETTLED_CASHIER_UNRECORDED","Finance settled, cashier absent"],
  ["NOT_LISTED_IN_WAYPLAN","Not listed in Wayplan"],
  ["NO_WORKER_ASSIGNED","No team assigned"],
+ ["RECEIPT_WORKER_NOT_ASSIGNED","Cashier receipt from unassigned worker"],
  ["AMOUNT_DIFFERENCE","Amount differs"],
  ["CASHIER_RECEIPT_DIFFERENT_DATE","Cashier receipt is for another day"],
  ["CASHIER_RECORDED_FINANCE_PENDING","Cashier recorded, finance pending"],
@@ -121,7 +122,8 @@ export default function DailyCashierSettlementPanel({mode="finance",client}:{mod
    if(!view.length)throw Error("No matching ways to export");
    const rows=view.map(r=>({
     ...r,listed_in_wayplan:r.listed_in_wayplan?"Yes":"No",
-    wayplan_team_assigned:r.wayplan_team_assigned?"Yes":"No"
+    wayplan_team_assigned:r.wayplan_team_assigned?"Yes":"No",
+    cashier_worker_is_assigned:r.cashier_worker_is_assigned==null?"Not recorded":r.cashier_worker_is_assigned?"Yes":"No"
    }));
    await downloadParcelXlsx(rows as unknown as Record<string,unknown>[],fields,from,to,"Britium_Cashier_Waybill_Reconciliation_"+from+"_to_"+to+".xlsx");
   }catch(e){setError(String(e instanceof Error?e.message:e));}
