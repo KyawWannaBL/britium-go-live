@@ -58,11 +58,19 @@ finance AS (
  WHERE nullif(trim(delivery_way_id),'') IS NOT NULL
  ORDER BY nullif(trim(delivery_way_id),''), updated_at DESC NULLS LAST, created_at DESC NULLS LAST
 ),
+returns AS (
+ SELECT nullif(trim(delivery_way_id),'') AS delivery_way_id,
+   count(*) AS return_scan_count, max(scanned_at) AS last_return_scanned_at
+ FROM public.be_warehouse_return_scans_v39
+ WHERE nullif(trim(delivery_way_id),'') IS NOT NULL
+ GROUP BY 1
+),
 ways AS (
  SELECT delivery_way_id FROM warehouse
  UNION SELECT delivery_way_id FROM ledger
  UNION SELECT delivery_way_id FROM custody
  UNION SELECT delivery_way_id FROM finance
+ UNION SELECT delivery_way_id FROM returns
 )
 SELECT
   w.delivery_way_id,
@@ -95,8 +103,23 @@ SELECT
   f.settled_amount AS settled_cod_mmk,
   f.settlement_status AS finance_settlement_status,
   f.settlement_reference, f.settled_at,
+  coalesce(r.return_scan_count,0) AS return_scan_count,
+  r.last_return_scanned_at,
   CASE
     WHEN h.delivery_way_id IS NULL THEN 'WAREHOUSE_RECORD_UNMATCHED'
+    -- A settled finance row does not prove physical delivery; reconcile against POD and origin event.
+    WHEN upper(coalesce(f.settlement_status,'')) = 'SETTLED'
+      AND h.item_status IN ('READY_FOR_DELIVERY','SUBMITTED','DELIVERY_FAILED','RETURN_TO_SENDER')
+      AND l.delivered_at IS NULL THEN 'FINANCE_SETTLED_PHYSICAL_OUTCOME_UNVERIFIED'
+    WHEN upper(coalesce(f.settlement_status,'')) = 'PENDING_REMITTANCE'
+      THEN 'COD_REMITTANCE_REVIEW'
+    WHEN h.item_status = 'RETURN_TO_SENDER'
+      THEN 'RTO_HANDOVER_AND_FINANCE_REVIEW'
+    WHEN h.item_status = 'DELIVERY_FAILED'
+      AND coalesce(r.return_scan_count,0) = 0
+      THEN 'FAILED_DELIVERY_OUTCOME_REVIEW'
+    WHEN coalesce(r.return_scan_count,0) > 0 AND h.item_status = 'READY_FOR_DELIVERY'
+      THEN 'RETURN_SCAN_WAREHOUSE_STATUS_CONFLICT'
     WHEN coalesce(h.dwell_alert,false) AND h.item_status NOT ILIKE '%DELIVER%'
       THEN 'WAREHOUSE_DWELL_REVIEW'
     WHEN coalesce(h.dispatch_scanned,false)
@@ -114,13 +137,14 @@ SELECT
       THEN 'PROVIDER_ASSIGNMENT_REVIEW'
     ELSE 'MONITOR' END AS attention_category,
   greatest(h.updated_at, l.delivered_at, c.custody_created_at,
-           f.finance_created_at, o.changed_at) AS last_evidence_at
+           f.finance_created_at, o.changed_at, r.last_return_scanned_at) AS last_evidence_at
 FROM ways w
 LEFT JOIN warehouse h USING (delivery_way_id)
 LEFT JOIN ledger l USING (delivery_way_id)
 LEFT JOIN custody c USING (delivery_way_id)
 LEFT JOIN provider_override o USING (delivery_way_id)
-LEFT JOIN finance f USING (delivery_way_id);
+LEFT JOIN finance f USING (delivery_way_id)
+LEFT JOIN returns r USING (delivery_way_id);
 
 COMMENT ON VIEW public.be_v_harmonized_parcel_monitor_v1 IS
 'Read-only way-level reconciliation of warehouse, provider custody, override and finance evidence. NO_PROVIDER_CUSTODY_RECORD is not a parcel-loss finding. Routing/provider labels do not confirm physical custody.';
