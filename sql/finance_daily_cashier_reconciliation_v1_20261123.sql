@@ -62,6 +62,13 @@ BEGIN
    IF length(btrim(coalesce(p_exception_note,'')))<8 THEN
     RAISE EXCEPTION 'No verified Wayplan/team match. Explain the unmatched cashier entry (minimum 8 characters).';END IF;
  END IF;
+ -- Historical Finance SETTLED records require an explicit backfill reason;
+ -- this cashier register never re-posts settlement or changes prior approval.
+ IF EXISTS(SELECT 1 FROM public.be_finance_cod_settlements_v48 f
+           WHERE f.delivery_way_id=v_way AND f.settlement_status='SETTLED')
+    AND length(btrim(coalesce(p_exception_note,'')))<8 THEN
+    RAISE EXCEPTION 'Existing Finance SETTLED record. Explain why cashier evidence is being registered (minimum 8 characters).';
+ END IF;
  INSERT INTO public.be_finance_cashier_way_receipts_v1
  (work_date,delivery_way_id,wayplan_id,worker_role,worker_code,cashier_actual_mmk,
  payment_method,evidence_reference,exception_note,created_by)
