@@ -11,7 +11,7 @@ for(const [s,re,desc] of [
 [sql,/be_wayplan_dispatch_stops/,"wayplan source"],
 [sql,/be_data_entry_parcel_details/,"data entry source"],
 [sql,/auth\.uid\(\) IS NULL/,"auth guarded"],
-[sql,/('rider','driver','helper')/,"restricted by finance role"],
+[sql,/operation_manager.*operations_manager/,"restricted to management and finance roles"],
 [sql,/REVOKE ALL ON FUNCTION public\.be_finance_daily_settled_events_v1/,"revoke public rpc"],
 [panel,/be_finance_daily_settled_events_v1/,"new daily finance report"],
 [panel,/downloadParcelXlsx/,"excel"],
