@@ -194,6 +194,65 @@ END $f$;
 REVOKE ALL ON FUNCTION public.be_parcel_bulk_followup_send_v1(jsonb,text,text,uuid,text,text,text,timestamptz,text,uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.be_parcel_bulk_followup_send_v1(jsonb,text,text,uuid,text,text,text,timestamptz,text,uuid) TO authenticated;
 
+-- Allow auditable managerial cancellation of open follow-up tasks; historical assignment data remains immutable.
+ALTER TABLE public.be_parcel_followup_tasks_v1
+ DROP CONSTRAINT be_parcel_followup_tasks_v1_status_check;
+ALTER TABLE public.be_parcel_followup_tasks_v1
+ ADD CONSTRAINT be_parcel_followup_tasks_v1_status_check
+ CHECK(status IN ('OPEN','ACKNOWLEDGED','RESOLVED','CANCELLED'));
+
+CREATE OR REPLACE FUNCTION public.be_parcel_followup_change_guard_v1()
+RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public AS $f$
+BEGIN
+ IF ROW(NEW.original_delivery_way_id,NEW.assigned_user_id,NEW.assigned_department,NEW.task_type,
+    NEW.task_note,NEW.evidence_reference,NEW.created_by,NEW.created_at,NEW.due_at) IS DISTINCT FROM
+    ROW(OLD.original_delivery_way_id,OLD.assigned_user_id,OLD.assigned_department,OLD.task_type,
+    OLD.task_note,OLD.evidence_reference,OLD.created_by,OLD.created_at,OLD.due_at)
+ THEN RAISE EXCEPTION 'Task assignment evidence cannot be altered'; END IF;
+ IF OLD.status IN ('RESOLVED','CANCELLED') THEN RAISE EXCEPTION 'Closed task cannot be altered'; END IF;
+ IF OLD.status='OPEN' AND NEW.status='ACKNOWLEDGED' THEN
+   IF NEW.acknowledged_by IS DISTINCT FROM auth.uid()
+      OR NEW.acknowledged_by IS DISTINCT FROM OLD.assigned_user_id
+      OR NEW.acknowledged_at IS NULL THEN RAISE EXCEPTION 'Assigned employee acknowledgement required'; END IF;
+ ELSIF OLD.status IN ('OPEN','ACKNOWLEDGED') AND NEW.status='RESOLVED' THEN
+   IF NEW.resolved_by IS DISTINCT FROM auth.uid() OR NEW.resolved_at IS NULL
+   OR length(btrim(coalesce(NEW.resolution_note,'')))<8
+   THEN RAISE EXCEPTION 'Assigned employee with evidence is required for resolution'; END IF;
+ ELSIF OLD.status IN ('OPEN','ACKNOWLEDGED') AND NEW.status='CANCELLED' THEN
+   IF auth.uid() IS NULL OR lower(replace(public.be_current_role(),'-','_'))
+     NOT IN ('superadmin','super_admin','operation_manager','operations_manager')
+   OR NEW.resolved_by IS DISTINCT FROM auth.uid() OR NEW.resolved_at IS NULL
+   OR length(btrim(coalesce(NEW.resolution_note,'')))<8
+   THEN RAISE EXCEPTION 'Documented manager cancellation required'; END IF;
+ ELSE RAISE EXCEPTION 'Unsupported task state transition';
+ END IF;
+ NEW.updated_at=now();
+ RETURN NEW;
+END $f$;
+
+CREATE OR REPLACE FUNCTION private.be_parcel_followup_reminder_tick_v1()
+RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,private AS $f$
+DECLARE v_created integer:=0;
+BEGIN
+ INSERT INTO public.be_app_notifications(target_user_id,title,message,notification_type,event_type,
+ event_key,source_table,source_key,waybill_no,priority,is_read,created_at)
+ SELECT t.assigned_user_id::text,
+ CASE WHEN t.due_at<now() THEN 'Overdue parcel follow-up' ELSE 'Parcel follow-up due within 24 hours' END,
+ 'Way ID '||t.original_delivery_way_id||' | '||t.assigned_department||' | '||t.task_type||
+ ' | due '||to_char(t.due_at AT TIME ZONE 'Asia/Yangon','YYYY-MM-DD HH24:MI')||' Myanmar time.',
+ 'workflow','PARCEL_FOLLOWUP_TASK',
+ 'PARCEL_FOLLOWUP:'||t.id::text||CASE WHEN t.due_at<now() THEN ':OVERDUE' ELSE ':DUE_SOON' END,
+ 'be_parcel_followup_tasks_v1',t.id::text,t.original_delivery_way_id,
+ CASE WHEN t.due_at<now() THEN 'HIGH' ELSE 'NORMAL' END,false,now()
+ FROM public.be_parcel_followup_tasks_v1 t
+ WHERE t.status NOT IN ('RESOLVED','CANCELLED') AND t.due_at<=now()+interval '24 hours'
+ AND t.assigned_user_id IS NOT NULL
+ ON CONFLICT(event_key) DO NOTHING;
+ GET DIAGNOSTICS v_created=ROW_COUNT;
+ RETURN jsonb_build_object('targeted_reminders_written',v_created);
+END $f$;
+REVOKE ALL ON FUNCTION private.be_parcel_followup_reminder_tick_v1() FROM PUBLIC,anon,authenticated;
+
 CREATE OR REPLACE FUNCTION public.be_parcel_bulk_followup_decide_v1(
  p_batch_id uuid,p_decision text,p_reason text
 ) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER
@@ -212,6 +271,25 @@ BEGIN
  THEN RAISE EXCEPTION 'Independent reviewer required'; END IF;
  INSERT INTO public.be_parcel_bulk_followup_decisions_v1(batch_id,decision,reason,decided_by)
  VALUES(p_batch_id,p_decision,btrim(p_reason),v_actor);
+ IF p_decision IN ('REJECTED','CANCELLED') THEN
+   UPDATE public.be_parcel_followup_tasks_v1 t
+   SET status='CANCELLED',resolved_at=now(),resolved_by=v_actor,
+       resolution_note=left(p_decision||': '||btrim(p_reason),1000)
+   WHERE t.notification_request_id=p_batch_id AND t.status IN ('OPEN','ACKNOWLEDGED');
+   INSERT INTO public.be_app_notifications(
+     target_user_id,title,message,body,is_read,created_at,event_key,event_type,
+     notification_type,source_table,source_key,waybill_no,category,priority,metadata)
+   SELECT DISTINCT t.assigned_user_id::text,
+    'Parcel task '||lower(p_decision)||' / တာဝန်ပယ်ဖျက်ထားသည်',
+    'Way ID: '||t.original_delivery_way_id||E'\\nManager decision: '||p_decision||E'\\nReason: '||btrim(p_reason),
+    'Original parcel history is unchanged. Follow-up assignment was '||lower(p_decision),
+    false,now(),'BE_PARCEL_BATCH_REVIEW:'||t.id::text,
+    'PARCEL_FOLLOWUP','PARCEL_BATCH_REVIEW_'||t.id::text,
+    'be_parcel_followup_tasks_v1',t.id::text,t.original_delivery_way_id,
+    'operations','NORMAL',jsonb_build_object('batch_id',p_batch_id,'decision',p_decision)
+   FROM public.be_parcel_followup_tasks_v1 t WHERE t.notification_request_id=p_batch_id
+   ON CONFLICT(event_key) DO NOTHING;
+ END IF;
  -- Decision concerns follow-up task review, NOT proof of delivery or COD approval.
  RETURN jsonb_build_object('batch_id',p_batch_id,'review_decision',p_decision);
 END $f$;
