@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public.be_finance_cashier_way_receipts_v1 (
  exception_note text,
  created_by uuid NOT NULL,
  created_at timestamptz NOT NULL DEFAULT now(),
- UNIQUE(work_date,delivery_way_id),
+ UNIQUE(delivery_way_id),
  CHECK(exception_note IS NULL OR length(btrim(exception_note))>=8)
 );
 ALTER TABLE public.be_finance_cashier_way_receipts_v1 ENABLE ROW LEVEL SECURITY;
@@ -112,7 +112,7 @@ BEGIN
  p.rider_code,p.rider_name,p.driver_code,p.driver_name,p.helper_code,p.helper_name,p.vehicle_code,
  d.actual_collect data_entry_actual_collect,d.cod_amount data_entry_cod_amount,
  d.item_price,d.delivery_fee,
- c.id receipt_id,c.worker_role cashier_worker_role,c.worker_code cashier_worker_code,
+ c.id receipt_id,c.work_date cashier_receipt_work_date,c.worker_role cashier_worker_role,c.worker_code cashier_worker_code,
  c.cashier_actual_mmk,c.payment_method,c.evidence_reference,c.created_at cashier_registered_at,
  c.exception_note,c.created_by cashier_user_id,
  f.settlement_status finance_settlement_status,f.settled_amount finance_settled_amount,
@@ -131,21 +131,23 @@ BEGIN
  WHERE d1.delivery_way_id=a.delivery_way_id
  ORDER BY d1.updated_at DESC NULLS LAST LIMIT 1) d ON true
  LEFT JOIN public.be_finance_cashier_way_receipts_v1 c
- ON c.work_date=a.work_date AND c.delivery_way_id=a.delivery_way_id
+ ON c.delivery_way_id=a.delivery_way_id
  LEFT JOIN public.be_finance_cod_settlements_v48 f ON f.delivery_way_id=a.delivery_way_id
  LEFT JOIN public.be_field_finance_settlements_v1 fs
  ON fs.work_date=a.work_date AND fs.wayplan_id=p.wayplan_id
  ), visible AS (
  SELECT j.*,
  CASE WHEN j.cashier_actual_mmk IS NULL THEN NULL
-      WHEN coalesce(j.data_entry_actual_collect,j.data_entry_cod_amount) IS NULL THEN NULL
-      ELSE j.cashier_actual_mmk-coalesce(j.data_entry_actual_collect,j.data_entry_cod_amount)
+      WHEN coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount) IS NULL THEN NULL
+      ELSE j.cashier_actual_mmk-coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount)
  END difference_mmk,
  CASE WHEN NOT j.listed_in_wayplan THEN 'NOT_LISTED_IN_WAYPLAN'
  WHEN NOT j.wayplan_team_assigned THEN 'NO_WORKER_ASSIGNED'
+ WHEN j.receipt_id IS NULL AND (j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED') THEN 'FINANCE_SETTLED_CASHIER_UNRECORDED'
  WHEN j.receipt_id IS NULL THEN 'MISSING_CASHIER_RECEIPT'
- WHEN coalesce(j.data_entry_actual_collect,j.data_entry_cod_amount) IS NULL THEN 'DATA_ENTRY_AMOUNT_MISSING'
- WHEN j.cashier_actual_mmk<>coalesce(j.data_entry_actual_collect,j.data_entry_cod_amount) THEN 'AMOUNT_DIFFERENCE'
+ WHEN j.cashier_receipt_work_date<>j.work_date THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
+ WHEN coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount) IS NULL THEN 'DATA_ENTRY_AMOUNT_MISSING'
+ WHEN j.cashier_actual_mmk<>coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount) THEN 'AMOUNT_DIFFERENCE'
  WHEN j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED' THEN 'FINANCE_RECORDED_CHECK_EVIDENCE'
  ELSE 'CASHIER_RECORDED_FINANCE_PENDING' END sync_status
  FROM joined j
@@ -159,11 +161,12 @@ BEGIN
  SELECT jsonb_build_object('ways',count(*),
  'listed_in_wayplan',count(*) filter(where r->>'listed_in_wayplan'='true'),
  'not_listed_in_wayplan',count(*) filter(where r->>'listed_in_wayplan'='false'),
- 'missing_cashier',count(*) filter(where r->>'sync_status'='MISSING_CASHIER_RECEIPT'),
+ 'missing_cashier',count(*) filter(where r->>'receipt_id' IS NULL),
+ 'finance_settled_cashier_unrecorded',count(*) filter(where r->>'sync_status'='FINANCE_SETTLED_CASHIER_UNRECORDED'),
  'cashier_recorded',count(*) filter(where r->>'receipt_id' IS NOT NULL),
  'finance_settled',count(*) filter(where r->>'finance_settlement_status'='SETTLED'),
  'cashier_total_mmk',coalesce(sum((r->>'cashier_actual_mmk')::numeric),0),
- 'data_entry_total_mmk',coalesce(sum(coalesce((r->>'data_entry_actual_collect')::numeric,(r->>'data_entry_cod_amount')::numeric)),0),
+ 'data_entry_total_mmk',coalesce(sum(coalesce(nullif((r->>'data_entry_actual_collect')::numeric,0),(r->>'data_entry_cod_amount')::numeric)),0),
  'difference_recorded_mmk',coalesce(sum((r->>'difference_mmk')::numeric),0))
  INTO v_summ FROM jsonb_array_elements(v_rows) r;
  RETURN jsonb_build_object('ok',true,'from',p_from,'to',p_to,
