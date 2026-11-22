@@ -47,6 +47,12 @@ END $f$;
 REVOKE ALL ON FUNCTION public.be_parcel_hr_directory_v2() FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.be_parcel_hr_directory_v2() TO authenticated;
 
+-- v1 singleton key must be widened to support multiple ways in a single batch.
+DROP INDEX IF EXISTS public.be_followup_task_request_recipient_idx;
+CREATE UNIQUE INDEX IF NOT EXISTS be_followup_task_request_way_recipient_v2
+ ON public.be_parcel_followup_tasks_v1(notification_request_id,original_delivery_way_id,assigned_user_id)
+ WHERE notification_request_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS public.be_parcel_bulk_followup_batches_v1 (
  request_id uuid PRIMARY KEY,
  created_by uuid NOT NULL,
