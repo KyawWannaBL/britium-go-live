@@ -20,7 +20,7 @@ BEGIN
     FOR SELECT TO authenticated USING (
       (SELECT auth.uid()) IS NOT NULL
       AND lower(replace(public.be_current_role(),'-','_'))
-        IN ('superadmin','super_admin','app_owner','sys','admin')
+        IN ('superadmin','super_admin')
     )$pol$,t);
  END LOOP;
 END $$;
