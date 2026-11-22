@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 type Person = {auth_user_id:string;full_name:string;email:string;department:string;role_code:string};
 const departments=[
  ["OPERATIONS","Operations / လုပ်ငန်းလည်ပတ်ရေး"],
+ ["FIELD_TEAM","Rider / Driver / Helper — ပို့ဆောင်ရေးအဖွဲ့"],
  ["WAREHOUSE","Warehouse / ဂိုဒေါင်"],
  ["CUSTOMER_SERVICE","Customer Service / ဖောက်သည်ဝန်ဆောင်မှု"],
  ["FINANCE","Finance / ဘဏ္ဍာရေး"],
@@ -71,6 +72,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  };
  async function send(){
   setResult("");setError("");
+  if(scope==="DEPARTMENT"&&available.length>20 && !window.confirm(`Send the task notification to ${available.length} members of ${department}? / ဌာနရှိဝန်ထမ်း ${available.length} ဦးထံ ပို့ရန်အတည်ပြုပါ။`))return;
   if(!allowed||!user){setError("An authorized Superadmin or Operation Manager session is required.");return;}
   if(scope==="PERSON"&&!recipient){setError("Select an individual recipient.");return;}
   if(!due||!en.trim()||!my.trim()){setError("Choose a deadline and complete both English/Myanmar messages.");return;}
@@ -106,7 +108,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
       <option value="">Choose employee / ဝန်ထမ်းရွေးပါ</option>
       {available.map(p=><option value={p.auth_user_id} key={p.auth_user_id}>{p.full_name} — {p.email}</option>)}
      </select>
-    </label>:<p className="rounded bg-amber-50 p-2 text-xs text-amber-800">Recipients: {available.length} active users in {department}; maximum 40. No other departments are notified.</p>}
+    </label>:<p className="rounded bg-amber-50 p-2 text-xs text-amber-800">Recipients: {available.length} active users in {department}; maximum 80. This is sent only after confirmation. No other departments are notified.</p>}
    <label className="text-xs font-medium">Predefined message / ကြိုတင်သတ်မှတ်စာ
     <select className={input} value={template} onChange={e=>choice(e.target.value)}>
      {templates.map(t=><option value={t[0]} key={t[0]}>{t[1]}</option>)}
