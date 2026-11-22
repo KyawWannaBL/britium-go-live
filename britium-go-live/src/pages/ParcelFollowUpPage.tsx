@@ -56,7 +56,7 @@ export default function ParcelFollowUpPage(){
  const [error,setError]=useState("");
  const [message,setMessage]=useState("");
  const [printBusy,setPrintBusy]=useState(false);
- const allowed = ["superadmin","super-admin","app-owner","sys","admin"].includes((profile?.role||"").toLowerCase());
+ const allowed = ["superadmin","super-admin"].includes((profile?.role||"").toLowerCase());
  const pageSize=75;
 
  const makeQuery=useCallback(()=>{
