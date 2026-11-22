@@ -38,7 +38,7 @@ export const templates=[
  "Please investigate the outstanding parcel task, provide supporting evidence and update the responsible manager promptly.",
  "ကျန်ရှိနေသော ပါဆယ်လုပ်ငန်းတာဝန်ကို အမြန်စစ်ဆေးပြီး အထောက်အထားနှင့်တကွ တာဝန်ရှိမန်နေဂျာထံ ချက်ချင်းအကြောင်းပြန်ပါ။"]
 ] as const;
-const input="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm";
+const input="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900";
 const isAllowed=(role:string)=>["superadmin","super-admin","operation-manager","operation_manager","operations-manager","operations_manager"].includes(role.toLowerCase());
 export default function ParcelActionComposer({wayId}:{wayId:string}){
  const {profile,user}=useAuth();
@@ -48,7 +48,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  const [template,setTemplate]=useState<string>("LOCATION_AND_CUSTODY");
  const [en,setEn]=useState(templates[5][2] as string);
  const [my,setMy]=useState(templates[5][3] as string);
- const [due,setDue]=useState("");
+ const [due,setDue]=useState(()=>{const d=new Date(Date.now()+24*3600000);const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);return local.toISOString().slice(0,16);});
  const [people,setPeople]=useState<Person[]>([]);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
@@ -92,7 +92,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
   if(!data?.already_sent){setRequestId(crypto.randomUUID());}
  }
  if(!allowed)return <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Only Superadmin / Operation Manager can send new follow-up notifications. / Superadmin နှင့် Operation Manager များသာ အသိပေးချက်အသစ် ပို့နိုင်သည်။</p>;
- return <section className="space-y-3 rounded-xl border bg-white p-4" aria-label="Bilingual parcel action notifications">
+ return <section className="space-y-3 rounded-xl border border-slate-300 bg-white p-4 text-slate-900" aria-label="Bilingual parcel action notifications">
   <div><h3 className="font-semibold">Send action notification / လုပ်ငန်းတာဝန် အသိပေးချက်ပို့ရန်</h3>
    <p className="text-xs text-slate-500">Way ID: <strong>{wayId}</strong> · One person or selected department only; no broadcast to all staff.</p></div>
   <div className="grid gap-3 md:grid-cols-2">
