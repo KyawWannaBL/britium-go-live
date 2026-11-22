@@ -422,14 +422,20 @@ export function FinancePortalLivePage({section="overview"}:{section?:"overview"|
   const state = useRows(
     async () => {
       // These sections must fail independently: a heavy COD request should never hide today's drops.
+      // Each workflow tab loads only the source needed for that workflow.
+      // Field signatures use their own RPC below and must not wait for a heavy COD query.
       const [centerResult, liveResult] = await Promise.allSettled([
-        supabase.rpc("be_finance_portal_center"),
-        supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
-          p_work_date: null,
-          p_vehicle: null,
-          p_worker: null,
-          p_status: null,
-        }),
+        section==="wayplans"
+          ? Promise.resolve({data:{ok:true,cod_rows:[],finance_summary:{},settlement_queue:0},error:null})
+          : supabase.rpc("be_finance_portal_center"),
+        section==="overview"
+          ? supabase.rpc("be_finance_live_wayplan_dashboard_v1", {
+              p_work_date: null,
+              p_vehicle: null,
+              p_worker: null,
+              p_status: null,
+            })
+          : Promise.resolve({data:{ok:true,rows:[]},error:null}),
       ]);
       const center = centerResult.status === "fulfilled" && !centerResult.value.error && centerResult.value.data?.ok !== false ? centerResult.value.data : null;
       const live = liveResult.status === "fulfilled" && !liveResult.value.error && liveResult.value.data?.ok !== false ? liveResult.value.data : null;
@@ -488,7 +494,7 @@ export function FinancePortalLivePage({section="overview"}:{section?:"overview"|
     setSettlements(Array.isArray(data?.rows) ? data.rows : []);
   }
 
-  useEffect(() => { void loadSettlements(); }, [settlementDate]);
+  useEffect(() => { if(section==="wayplans") void loadSettlements(); }, [settlementDate,section]);
 
   async function signFinance(row:any) {
     setSettlementBusy(row.wayplan_id);
