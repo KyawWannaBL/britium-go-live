@@ -1,9 +1,9 @@
-import {useEffect,useRef,useState} from "react";
+import {useEffect,useRef,useState,type KeyboardEvent} from "react";
 import {useSearchParams} from "react-router-dom";
 import {
  LayoutDashboard,WalletCards,ClipboardCheck,FileCheck2,FileBarChart2,
  Building2,SlidersHorizontal,ArrowRight,ShieldCheck,CalendarRange,
- CheckCircle2,Search,BookOpen,ChevronDown,RefreshCcw
+ CheckCircle2,Search,BookOpen,ChevronDown
 } from "lucide-react";
 import {FinancePortalLivePage} from "./EnterpriseLiveCenterPages";
 import BranchFinanceOversight from "@/components/finance/BranchFinanceOversight";
@@ -45,7 +45,7 @@ export default function FinancePortalPage(){
   setParams(previous=>{const copy=new URLSearchParams(previous);copy.set("tab",next);return copy;},{replace:true});
  };
  useEffect(()=>{document.title="Finance Workspace | Britium Express";},[]);
- const onTabKey=(event:React.KeyboardEvent<HTMLButtonElement>,index:number)=>{
+ const onTabKey=(event:KeyboardEvent<HTMLButtonElement>,index:number)=>{
   if(!["ArrowLeft","ArrowRight","Home","End"].includes(event.key))return;
   event.preventDefault();
   const n=event.key==="Home"?0:event.key==="End"?sections.length-1:
