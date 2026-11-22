@@ -77,7 +77,7 @@ SELECT
   coalesce(h.merchant_name, l.merchant_name) AS merchant_name,
   coalesce(h.delivery_township, l.ledger_township) AS destination_township,
   coalesce(h.recipient_address, l.delivery_address) AS destination_address,
-  coalesce(h.cod_amount, f.expected_cod, 0) AS expected_cod_mmk,
+  coalesce(f.expected_cod, h.cod_amount) AS expected_cod_mmk,
   l.item_price AS item_price_mmk, l.delivery_fee AS delivery_fee_mmk,
   coalesce(o.override_provider_code, c.provider_code, o.automatic_provider_code)
     AS recorded_provider_code,
