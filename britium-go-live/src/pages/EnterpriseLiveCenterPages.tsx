@@ -546,9 +546,13 @@ export function FinancePortalLivePage({section="overview"}:{section?:"overview"|
   }),{totalWays:0,dropped:0,failed:0,left:0,opening:0,cash:0,mobile:0,collected:0});
 
   return (
-    <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
+    <main style={{ background: C.bg, color: C.text, padding: "8px 0 16px", borderRadius: 16 }}>
       <div style={{ display: "grid", gap: 16 }}>
-        {section==="overview"&&<Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />}
+        {section==="overview"&&<div style={{display:"flex",flexWrap:"wrap",justifyContent:"space-between",alignItems:"center",gap:12,padding:"4px 2px"}}>
+          <p style={{margin:0,fontSize:13,color:C.sub}}>Live dashboard · Financial health & Wayplan collection</p>
+          <button type="button" style={btn("blue")} disabled={state.loading}
+           onClick={async()=>{await state.load();setCollectionRefresh(value=>value+1);}}>↻ Refresh live metrics</button>
+         </div>}
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.data?.partial_error && <div role="alert" style={{ color: C.gold, padding: 12 }}>{state.data.partial_error}</div>}
         {section==="wayplans"&&<div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>}
