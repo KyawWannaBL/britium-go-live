@@ -89,7 +89,7 @@ export default function ParcelFollowUpPage(){
    else setTasks((data||[]) as Task[]);
  },[tab]);
  useEffect(()=>{void load();},[load]);
- useEffect(()=>{void loadTasks();},[loadTasks]);
+ useEffect(()=>{void loadTasks();const timer=window.setInterval(()=>void loadTasks(),60_000);return ()=>window.clearInterval(timer);},[loadTasks]);
  useEffect(()=>{setPage(0);setSelected(null);},[tab,from,to,way,provider]);
  useEffect(()=>{
   if(!allowed)return;
