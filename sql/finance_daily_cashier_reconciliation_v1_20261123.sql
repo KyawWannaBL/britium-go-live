@@ -181,17 +181,28 @@ BEGIN
  )
  SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY v.work_date,v.wayplan_id,v.delivery_way_id),'[]'::jsonb)
  INTO v_rows FROM visible v;
- SELECT jsonb_build_object('ways',count(*),
- 'listed_in_wayplan',count(*) filter(where r->>'listed_in_wayplan'='true'),
- 'not_listed_in_wayplan',count(*) filter(where r->>'listed_in_wayplan'='false'),
- 'missing_cashier',count(*) filter(where r->>'receipt_id' IS NULL),
- 'finance_settled_cashier_unrecorded',count(*) filter(where r->>'sync_status'='FINANCE_SETTLED_CASHIER_UNRECORDED'),
- 'cashier_recorded',count(*) filter(where r->>'receipt_id' IS NOT NULL),
- 'finance_settled',count(*) filter(where r->>'finance_settlement_status'='SETTLED'),
- 'cashier_total_mmk',coalesce(sum((r->>'cashier_actual_mmk')::numeric),0),
- 'data_entry_total_mmk',coalesce(sum(coalesce(nullif((r->>'data_entry_actual_collect')::numeric,0),(r->>'data_entry_cod_amount')::numeric)),0),
- 'difference_recorded_mmk',coalesce(sum((r->>'difference_mmk')::numeric),0))
- INTO v_summ FROM jsonb_array_elements(v_rows) r;
+ WITH expanded AS (SELECT r FROM jsonb_array_elements(v_rows) r),
+ by_way AS (
+ SELECT r->>'delivery_way_id' way_id,
+ bool_or(r->>'listed_in_wayplan'='true') listed_in_wayplan,
+ bool_or(r->>'receipt_id' IS NOT NULL) cashier_seen,
+ bool_or(r->>'finance_settlement_status'='SETTLED') finance_seen,
+ max(coalesce(nullif((r->>'data_entry_actual_collect')::numeric,0),
+ (r->>'data_entry_cod_amount')::numeric)) expected_one_way
+ FROM expanded GROUP BY 1)
+ SELECT jsonb_build_object(
+ 'ways',(SELECT count(*) FROM by_way),
+ 'dated_way_rows',(SELECT count(*) FROM expanded),
+ 'listed_in_wayplan',(SELECT count(*) FROM by_way WHERE listed_in_wayplan),
+ 'not_listed_in_wayplan',(SELECT count(*) FROM by_way WHERE NOT listed_in_wayplan),
+ 'missing_cashier',(SELECT count(*) FROM by_way WHERE NOT cashier_seen),
+ 'finance_settled_cashier_unrecorded',(SELECT count(*) FROM by_way WHERE finance_seen AND NOT cashier_seen),
+ 'cashier_recorded',(SELECT count(*) FROM by_way WHERE cashier_seen),
+ 'finance_settled',(SELECT count(*) FROM by_way WHERE finance_seen),
+ 'cashier_total_mmk',(SELECT coalesce(sum((r->>'cashier_actual_mmk')::numeric),0) FROM expanded),
+ 'data_entry_total_mmk',(SELECT coalesce(sum(expected_one_way),0) FROM by_way),
+ 'difference_recorded_mmk',(SELECT coalesce(sum((r->>'difference_mmk')::numeric),0) FROM expanded))
+ INTO v_summ;
  RETURN jsonb_build_object('ok',true,'from',p_from,'to',p_to,
  'rows',v_rows,'summary',v_summ,
  'notes','Cashier receipt is independent of finance settlement; missing means not recorded in this register, not proven loss.');
