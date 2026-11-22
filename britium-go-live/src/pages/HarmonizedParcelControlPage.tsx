@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
 
 type Parcel = {
   delivery_way_id: string;
@@ -175,6 +176,7 @@ export default function HarmonizedParcelControlPage() {
           ["Last evidence",when(selected.last_evidence_at)],
         ].map(([key,val])=><div key={String(key)}><dt className="text-xs text-slate-500">{key}</dt><dd className="break-all text-sm font-medium">{display(val)}</dd></div>)}
       </dl>
+      <GroundEvidenceReviewPanel wayId={selected.delivery_way_id}/>
     </section>}
   </div>;
 }
