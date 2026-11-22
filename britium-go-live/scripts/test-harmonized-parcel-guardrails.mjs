@@ -13,6 +13,7 @@ const claims = repoRead('sql/harmonized_ground_outcome_claims_v1_20261122.sql');
 const policies = repoRead('sql/harmonized_ground_claim_elevated_access_v1_20261122.sql');
 const custody = repoRead('sql/harmonized_custody_events_v1_20261122.sql');
 const page = read('src/pages/HarmonizedParcelControlPage.tsx');
+const exportHelper = read('src/lib/parcelReportExport.ts');
 const review = read('src/components/parcel/GroundEvidenceReviewPanel.tsx');
 const followup = read('src/pages/ParcelFollowUpPage.tsx');
 const actionSql = repoRead('sql/harmonized_parcel_followup_tasks_v1_20261122.sql');
@@ -63,10 +64,11 @@ must(page,[
  /delivery_way_id/,
  /exception_flags/,
  /return_scan_count/,
- /Export loaded page/,
- /CSV|csv/,
- /safe\.replace\(\/"/
+ /Export Excel/,
+ /Export PDF/,
+ /downloadParcelXlsx/
 ], 'parcel monitor UI');
+must(exportHelper,[/sanitizeExcel/,/renderParcelPdf/,/Report Context/], 'parcel report export guards');
 must(review,[
  /UNREVIEWED/,
  /NEEDS_EVIDENCE/,
