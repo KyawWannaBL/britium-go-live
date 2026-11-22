@@ -203,6 +203,7 @@ export default function DailyCashierSettlementPanel({mode="finance",client}:{mod
    <div className="flex justify-between gap-2"><h3 className="font-semibold">Cashier intake — {selected.delivery_way_id}</h3>
     <button className="rounded border px-2 py-1 text-xs" onClick={()=>setSelected(null)}>Close</button></div>
    <p className="text-sm">Wayplan: {selected.wayplan_id||"Not recorded"} · Assigned: {selected.wayplan_team_assigned?"Yes":"No"} · Registered amount: {money(Number(selected.data_entry_actual_collect||0)>0?selected.data_entry_actual_collect:selected.data_entry_cod_amount)}</p>
+   {selected.finance_settlement_status==="SETTLED"&&<p className="rounded bg-amber-100 p-2 text-xs text-amber-900">Finance already marked this Way as SETTLED. Enter an explanatory reference in Exception reason before recording historical cashier evidence; this will not change the existing settlement.</p>}
    <div className="grid gap-3 md:grid-cols-3">
     <label className="text-xs font-semibold">Actual collected MMK / အမှန်လက်ခံငွေ
      <input type="number" min="0" step="0.01" value={collected} onChange={e=>setCollected(e.target.value)} className={input}/></label>
