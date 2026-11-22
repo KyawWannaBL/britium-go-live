@@ -32,7 +32,7 @@ export default function HrReportExportPanel({employees,documents}:{employees:HrR
  const depts=useMemo(()=>Array.from(new Set(employees.map(r=>field(r,"department")).filter(Boolean))).sort(),[employees]);
  const branches=useMemo(()=>Array.from(new Set(employees.map(r=>field(r,"branch_code")).filter(Boolean))).sort(),[employees]);
  const types=useMemo(()=>Array.from(new Set(documents.map(r=>field(r,"document_type")).filter(Boolean))).sort(),[documents]);
- const codes=useMemo(()=>new Map(employees.map(r=>[field(r,"employee_code"),r])),[employees]);
+ const codes=useMemo(()=>new Map<string,HrRow>(employees.map((r):[string,HrRow]=>[field(r,"employee_code"),r])),[employees]);
  const cols=(kind==="employee"?employeeColumns:documentColumns) as readonly (readonly [string,string])[];
  const selectedCols=cols.filter(c=>fields.includes(c[0]));
  const rows=useMemo(()=>{
