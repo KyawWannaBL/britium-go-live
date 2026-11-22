@@ -3,7 +3,7 @@ import {useSearchParams} from "react-router-dom";
 import {
  LayoutDashboard,WalletCards,ClipboardCheck,FileCheck2,FileBarChart2,
  Building2,SlidersHorizontal,ArrowRight,ShieldCheck,CalendarRange,
- CheckCircle2,Search,BookOpen,ChevronDown
+ CheckCircle2,Search,BookOpen,ChevronDown,ArrowUpRight,RefreshCw,AlertTriangle
 } from "lucide-react";
 import {FinancePortalLivePage} from "./EnterpriseLiveCenterPages";
 import BranchFinanceOversight from "@/components/finance/BranchFinanceOversight";
@@ -37,6 +37,7 @@ export default function FinancePortalPage(){
  const [params,setParams]=useSearchParams();
  const active:FinanceTab=valid(params.get("tab"))?params.get("tab") as FinanceTab:"overview";
  const [showHelp,setShowHelp]=useState(false);
+ const [showActions,setShowActions]=useState(true);
  const [viewKey,setViewKey]=useState(0);
  const tabsRef=useRef<Array<HTMLButtonElement|null>>([]);
  const current=sections.find(s=>s.id===active)!;
@@ -121,6 +122,24 @@ export default function FinancePortalPage(){
      <CheckCircle2 size={15} className="text-emerald-300"/>{current.action}
     </span>
    </div>
+   <section aria-label="Finance quick actions" className="mb-5 overflow-hidden rounded-2xl border border-slate-700/70 bg-[#10293e]">
+    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
+     <div><h2 className="text-sm font-bold text-white">Quick actions <span className="ml-2 font-normal text-slate-400">/ Frequently used tasks</span></h2><p className="mt-1 text-xs text-slate-400">Choose a task to open the existing source-backed workflow. No financial entry is submitted by navigation.</p></div>
+     <button type="button" onClick={()=>setShowActions(v=>!v)} aria-expanded={showActions} className="inline-flex items-center gap-2 rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold hover:bg-white/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400">{showActions?"Hide shortcuts":"Show shortcuts"}<ChevronDown size={14} className={showActions?"rotate-180 transition-transform":"transition-transform"}/></button>
+    </div>
+    {showActions&&<div className="grid gap-2 p-3 sm:grid-cols-2 xl:grid-cols-4">
+     {([
+      ["cashier","Register actual receipt","Way ID · amount · payment evidence",WalletCards,"#34d399"],
+      ["field","Clear team settlement","Signatures · Wayplan · authorization",ClipboardCheck,"#fbbf24"],
+      ["cod","Review COD differences","Expected vs collected · exceptions",AlertTriangle,"#a78bfa"],
+      ["reports","Download daily report","Date range · worker · PDF / Excel",FileBarChart2,"#67e8f9"]
+     ] as const).map(([tab,title,subtitle,QuickIcon,color])=><button key={tab} type="button" onClick={()=>setTab(tab)} className="group flex items-center gap-3 rounded-xl border border-white/10 bg-white/[.04] px-3 py-3 text-left transition-all duration-200 hover:-translate-y-0.5 hover:border-white/25 hover:bg-white/[.08] focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-400">
+      <span className="rounded-lg p-2.5" style={{backgroundColor:color+"1c",color}}><QuickIcon size={19}/></span>
+      <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-white">{title}</span><span className="mt-1 block text-[11px] text-slate-400">{subtitle}</span></span>
+      <ArrowUpRight size={15} className="shrink-0 text-slate-500 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5"/>
+     </button>)}
+    </div>}
+   </section>
    <div className="mb-4 rounded-xl border border-sky-400/15 bg-[#0f2a41] px-4 py-3">
     <div className="flex flex-wrap items-center gap-3">
      <span className="flex items-center gap-2 text-xs font-semibold text-sky-300"><Search size={15}/> Workflow guide</span>
@@ -131,6 +150,10 @@ export default function FinancePortalPage(){
      {guidance[active].steps.map((step,i)=><li key={step} className="flex items-start gap-2"><span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-sky-400/30 text-[10px] text-sky-200">{i+1}</span><span>{step}</span></li>)}
     </ol>
    </div>
+   {active==="reports"&&<div className="mb-4 grid gap-3 rounded-xl border border-cyan-400/20 bg-cyan-400/[.05] p-4 md:grid-cols-2">
+    <div><div className="flex items-center gap-2 text-sm font-semibold text-cyan-200"><CalendarRange size={17}/> Settlement posting date</div><p className="mt-1 text-xs leading-relaxed text-slate-300">Use for daily, weekly or custom-period reports based on the Finance SETTLED timestamp. Set the date range within the report panel.</p></div>
+    <div><div className="flex items-center gap-2 text-sm font-semibold text-cyan-200"><RefreshCw size={17}/> Cashier / dispatch accountability</div><p className="mt-1 text-xs leading-relaxed text-slate-300">Use for Wayplan-team matching, physically received amounts and missing receipts. It is a different date basis from settlement posting.</p></div>
+   </div>}
    <div id={"finance-panel-"+active} role="tabpanel" aria-labelledby={"finance-tab-"+active} className="animate-in fade-in slide-in-from-bottom-1 duration-300">
     {active==="overview"&&<FinancePortalLivePage section="overview"/>}
     {active==="cashier"&&<DailyCashierSettlementPanel mode="finance"/>}
