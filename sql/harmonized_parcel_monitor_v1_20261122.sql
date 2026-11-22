@@ -105,6 +105,22 @@ SELECT
   f.settlement_reference, f.settled_at,
   coalesce(r.return_scan_count,0) AS return_scan_count,
   r.last_return_scanned_at,
+  array_remove(ARRAY[
+    CASE WHEN upper(coalesce(f.settlement_status,''))='SETTLED'
+      AND h.item_status IN ('READY_FOR_DELIVERY','SUBMITTED','DELIVERY_FAILED','RETURN_TO_SENDER')
+      AND l.delivered_at IS NULL THEN 'SETTLEMENT_OUTCOME_CONFLICT'::text END,
+    CASE WHEN coalesce(r.return_scan_count,0)>0 AND h.item_status='READY_FOR_DELIVERY'
+      THEN 'RETURN_SCAN_READY_STATUS_CONFLICT'::text END,
+    CASE WHEN upper(coalesce(f.settlement_status,''))='PENDING_REMITTANCE'
+      THEN 'COD_REMITTANCE_REVIEW'::text END,
+    CASE WHEN h.item_status IN ('DELIVERY_FAILED','RETURN_TO_SENDER')
+      THEN 'FAILED_OR_RTO_PHYSICAL_DISPOSITION_REVIEW'::text END,
+    CASE WHEN c.physically_handed_over_at IS NULL AND
+       coalesce(o.override_provider_code,c.provider_code,o.automatic_provider_code) IS NOT NULL
+       THEN 'PROVIDER_HANDOVER_EVIDENCE_GAP'::text END,
+    CASE WHEN f.delivery_way_id IS NULL
+      THEN 'FINANCE_COD_COVERAGE_REVIEW_NOT_PROOF_OF_DEBT'::text END
+  ], NULL::text) AS exception_flags,
   CASE
     WHEN h.delivery_way_id IS NULL THEN 'WAREHOUSE_RECORD_UNMATCHED'
     -- A settled finance row does not prove physical delivery; reconcile against POD and origin event.
