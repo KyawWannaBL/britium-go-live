@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
+import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 import { downloadParcelXlsx,openParcelPrintWindow,renderParcelPdf,fromMyanmarDay,untilMyanmarDay } from "@/lib/parcelReportExport";
 
 type Parcel = {
@@ -59,6 +61,7 @@ export default function HarmonizedParcelControlPage() {
   const [merchant,setMerchant]=useState("");
   const [busyExport,setBusyExport]=useState(false);
   const [selected, setSelected] = useState<Parcel | null>(null);
+  const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [count, setCount] = useState<number | null>(null);
@@ -142,6 +145,9 @@ export default function HarmonizedParcelControlPage() {
     finally{setBusyExport(false);}
   }
 
+  const chosen=Object.values(batchSelected);
+  const toggle=(p:Parcel,checked:boolean)=>setBatchSelected(old=>{const next={...old};if(checked)next[p.delivery_way_id]=p;else delete next[p.delivery_way_id];return next;});
+  const currentPageSelected=rows.length>0&&rows.every(p=>!!batchSelected[p.delivery_way_id]);
   return <div className="space-y-5 p-4 md:p-6 text-slate-800">
     <header className="space-y-1">
       <h1 className="text-2xl font-bold">Harmonized Parcel Control Center</h1>
@@ -192,11 +198,17 @@ export default function HarmonizedParcelControlPage() {
     </div>
     {error && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
     <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="flex flex-wrap gap-2 border-b bg-slate-50 p-3 text-xs">
+        <label className="flex items-center gap-2"><input type="checkbox" checked={currentPageSelected} onChange={e=>{const add=e.target.checked;setBatchSelected(old=>{const next={...old};rows.forEach(p=>{if(add)next[p.delivery_way_id]=p;else delete next[p.delivery_way_id]});return next;});}}/> Select loaded page / လက်ရှိစာမျက်နှာမှအားလုံး</label>
+        <span className="font-semibold">{chosen.length} Ways selected across pages</span>
+        <button className="rounded border px-2 py-1" onClick={()=>setBatchSelected({})}>Clear</button>
+      </div>
       <table className="min-w-[1250px] w-full text-left text-sm">
-        <thead className="bg-slate-100 text-xs uppercase tracking-wide"><tr>
+        <thead className="bg-slate-100 text-xs uppercase tracking-wide"><tr><th className="px-3 py-3">Select</th>
           {["Way ID", "Merchant / destination", "Recorded provider", "Custody evidence", "Warehouse", "Wayplan", "Delivery / proof", "COD (MMK)", "Finance", "Attention", "Action / တာဝန်ပေး"].map(h=><th key={h} className="whitespace-nowrap px-3 py-3">{h}</th>)}
         </tr></thead>
         <tbody className="divide-y">{rows.map(row=><tr key={row.delivery_way_id} className="hover:bg-slate-50">
+          <td className="px-3 py-3"><input type="checkbox" aria-label={"Select "+row.delivery_way_id} checked={!!batchSelected[row.delivery_way_id]} onChange={e=>toggle(row,e.target.checked)}/></td>
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
           <td className="px-3 py-3">{display(row.merchant_name)}<div><N>{display(row.destination_township)}</N></div></td>
           <td className="px-3 py-3">{display(row.recorded_provider_code)}</td>
@@ -219,6 +231,7 @@ export default function HarmonizedParcelControlPage() {
         <button disabled={loading || count === null || (page+1)*pageSize >= count} onClick={()=>setPage(p=>p+1)} className="rounded border px-3 py-2 disabled:opacity-50">Next</button>
       </div>
     </div>
+    {chosen.length>0&&<ParcelBulkFollowUpPanel selected={chosen} onClear={()=>setBatchSelected({})}/>}
     {selected && <section aria-label="Parcel evidence details" className="rounded-xl border bg-white p-5">
       <div className="flex justify-between gap-3"><h2 className="text-lg font-bold">Way ID: {selected.delivery_way_id}</h2><button onClick={()=>setSelected(null)} className="rounded border px-3 py-1">Close</button></div>
       <p className="mt-2 text-sm text-amber-800">Evidence snapshot only — not a complete event timeline until event ingestion is activated.</p>
@@ -237,6 +250,12 @@ export default function HarmonizedParcelControlPage() {
           ["Last evidence",when(selected.last_evidence_at)],
         ].map(([key,val])=><div key={String(key)}><dt className="text-xs text-slate-500">{key}</dt><dd className="break-all text-sm font-medium">{display(val)}</dd></div>)}
       </dl>
+      <div className="rounded-lg border bg-slate-50 p-3">
+       <h3 className="font-semibold">Last evidenced process / နောက်ဆုံးဆောင်ရွက်မှု</h3>
+       <p className="text-sm">{parcelNextAction(selected).last}</p>
+       <p className="text-sm font-semibold text-amber-900">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
+       <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((stage,i)=><span key={stage} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100 text-blue-900":"bg-white text-slate-500")}>{i+1}. {stage}</span>)}</div>
+      </div>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
       <GroundEvidenceReviewPanel wayId={selected.delivery_way_id}/>
     </section>}

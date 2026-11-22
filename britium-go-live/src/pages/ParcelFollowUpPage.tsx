@@ -2,9 +2,12 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
+import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 
 type Parcel = {
   delivery_way_id: string; warehouse_record_created_at: string | null; destination_township: string|null;
+  wayplan_id:string|null; delivered_at:string|null;rider_proof_present:boolean|null;
   merchant_name:string|null; recorded_provider_code:string|null;
   warehouse_status:string|null; dispatch_scanned:boolean|null;
   verified_dispatch_scanned_at:string|null; physically_handed_over_at:string|null;
@@ -20,7 +23,7 @@ type Task = {
 };
 type Staff={auth_user_id:string;full_name:string|null;email:string|null;department:string|null};
 const columns = [
- "delivery_way_id","warehouse_record_created_at","destination_township","merchant_name",
+ "delivery_way_id","warehouse_record_created_at","destination_township","merchant_name","wayplan_id","delivered_at","rider_proof_present",
  "recorded_provider_code","warehouse_status","dispatch_scanned","verified_dispatch_scanned_at",
  "physically_handed_over_at","finance_settlement_status","attention_category","exception_flags",
  "last_evidence_at","expected_cod_mmk","settled_cod_mmk","return_scan_count"
@@ -48,6 +51,7 @@ export default function ParcelFollowUpPage(){
  const [tasks,setTasks]=useState<Task[]>([]);
  const [staff,setStaff]=useState<Staff[]>([]);
  const [selected,setSelected]=useState<Parcel|null>(null);
+ const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
  const [assignee,setAssignee]=useState("");
  const [department,setDepartment]=useState("Operations");
  const [type,setType]=useState("POD_VERIFICATION");
@@ -107,7 +111,7 @@ export default function ParcelFollowUpPage(){
  },[allowed]);
  const age=(v:string|null) => v ? Math.max(0,Math.floor((Date.now()-new Date(v).getTime())/86400000)) : null;
  const queue = rows.filter(r=>r.attention_category!=="MONITOR").length;
- const overdue=tasks.filter(t=>t.status!=="RESOLVED" && new Date(t.due_at).getTime()<Date.now()).length;
+ const overdue=tasks.filter(t=>!["RESOLVED","CANCELLED"].includes(t.status) && new Date(t.due_at).getTime()<Date.now()).length;
  const gateRows=rows.filter(r=>r.recorded_provider_code==="H.TERMINAL DROP-OFF").length;
 
  async function allFiltered(){
@@ -126,6 +130,7 @@ export default function ParcelFollowUpPage(){
  }
  const reportColumns: {key:keyof Parcel;heading:string}[]=[
   {key:"delivery_way_id",heading:"Original Way ID"}, {key:"warehouse_record_created_at",heading:"Registered"},
+  {key:"wayplan_id",heading:"Wayplan / လမ်းကြောင်း"},
   {key:"merchant_name",heading:"Merchant"}, {key:"destination_township",heading:"Destination"},
   {key:"recorded_provider_code",heading:"Provider (recorded)"}, {key:"warehouse_status",heading:"Application status"},
   {key:"dispatch_scanned",heading:"Actual dispatch scan evidenced"}, {key:"verified_dispatch_scanned_at",heading:"Actual scan timestamp"},
@@ -163,8 +168,8 @@ export default function ParcelFollowUpPage(){
    if(!pop)throw new Error("Browser blocked PDF preview. Allow popups and retry.");
    const data=await allFiltered();if(!data.length)throw new Error("No rows match the selected filters.");
    if(data.length>2000)throw new Error("PDF print is limited to 2,000 rows for readability; narrow the date range.");
-   const headings=["Way ID","Merchant","Destination","Provider","App Status","Finance","Last evidence","Exceptions"];
-   const body=data.map(p=>[p.delivery_way_id,p.merchant_name,p.destination_township,p.recorded_provider_code,p.warehouse_status,p.finance_settlement_status,p.last_evidence_at,(p.exception_flags||[]).join("; ")].map(v=>"<td>"+esc(v??"Not recorded")+"</td>").join(""));
+   const headings=["Way ID","Wayplan","Merchant","Destination","Provider","App Status","Finance","Last evidence","Next required","Exceptions"];
+   const body=data.map(p=>[p.delivery_way_id,p.wayplan_id,p.merchant_name,p.destination_township,p.recorded_provider_code,p.warehouse_status,p.finance_settlement_status,p.last_evidence_at,parcelNextAction(p).next,(p.exception_flags||[]).join("; ")].map(v=>"<td>"+esc(v??"Not recorded")+"</td>").join(""));
    pop.document.open();
    pop.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Britium Parcel Follow-Up</title><style>@page{size:A3 landscape;margin:12mm}body{font:11px Arial,"Noto Sans Myanmar",sans-serif;color:#16293c}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:5px;overflow-wrap:anywhere}th{background:#0e2942;color:white}thead{display:table-header-group}tr{break-inside:avoid}button{padding:10px;background:#0e2942;color:white;border:0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h2>BRITIUM EXPRESS — Parcel Follow-Up</h2><p>Registration timeline (Myanmar Time): '+esc(from)+' to '+esc(to)+' | '+data.length+' rows | '+esc(tab)+'</p><p><b>Notice:</b> Dispatch assumed complete for planning only. App records and COD flags do not independently verify physical handover, delivery or payment.</p><table><thead><tr>'+headings.map(h=>"<th>"+esc(h)+"</th>").join("")+'</tr></thead><tbody>'+body.map(x=>"<tr>"+x+"</tr>").join("")+'</tbody></table></body></html>');
    pop.document.close();pop.focus();
@@ -191,6 +196,9 @@ export default function ParcelFollowUpPage(){
     .update(patch).eq("id",t.id).eq("status",t.status);
   if(e)setError(e.message);else{setMessage("Task updated. This does not change parcel outcome or settlement.");void loadTasks();}
  }
+ const chosen=Object.values(batchSelected);
+ const pageSelected=rows.length>0&&rows.every(p=>!!batchSelected[p.delivery_way_id]);
+ const toggle=(p:Parcel,checked:boolean)=>setBatchSelected(old=>{const next={...old};if(checked)next[p.delivery_way_id]=p;else delete next[p.delivery_way_id];return next;});
  return <main className="space-y-5 p-4 text-slate-800 md:p-6">
   <div><h1 className="text-2xl font-bold">Parcel Status & Follow-Up Center</h1>
    <p className="text-sm text-slate-600">Track original Way IDs, review idle work, target accountable staff, and export evidence for an exact registration timeline.</p>
@@ -220,15 +228,21 @@ export default function ParcelFollowUpPage(){
     <h2 className="p-4 font-semibold">{tab==="My alerts"?"My assigned follow-up tasks / ကျွန်ုပ်၏တာဝန်များ":"Team alerts / ဌာနအဖွဲ့တာဝန်များ"}</h2>
     <table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-slate-100"><tr>{["Way ID","Department","Task","Due","Status","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{tasks.map(t=><tr key={t.id} className="border-t">
      <td className="p-3 font-semibold">{t.original_delivery_way_id}</td><td className="p-3">{t.assigned_department}</td><td className="p-3">{t.task_type}: {t.task_note}</td>
-     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{t.status!=="RESOLVED"&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
-     <td className="p-3">{user?.id===t.assigned_user_id&&t.status!=="RESOLVED"&&<div className="flex gap-1">
+     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{!["RESOLVED","CANCELLED"].includes(t.status)&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
+     <td className="p-3">{user?.id===t.assigned_user_id&&!["RESOLVED","CANCELLED"].includes(t.status)&&<div className="flex gap-1">
        {t.status==="OPEN"&&<button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"ACKNOWLEDGED")}>Acknowledge</button>}
        <button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"RESOLVED")}>Resolve with evidence</button>
      </div>}</td></tr>)}</tbody></table></div>:
    <>
-    <div className="overflow-x-auto rounded-xl border bg-white"><table className="min-w-[1240px] w-full text-left text-sm">
-     <thead className="bg-slate-100"><tr>{["Original Way ID","Merchant / Township","Provider (recorded)","App warehouse","Actual dispatch scan","Finance","Last evidence / idle","Exception / action"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
+    <div className="overflow-x-auto rounded-xl border bg-white">
+      <div className="flex flex-wrap gap-3 border-b bg-slate-50 p-3 text-xs">
+       <label className="flex items-center gap-2"><input type="checkbox" checked={pageSelected} onChange={e=>setBatchSelected(old=>{const next={...old};rows.forEach(p=>{if(e.target.checked)next[p.delivery_way_id]=p;else delete next[p.delivery_way_id]});return next;})}/> Select page / လက်ရှိစာမျက်နှာအားလုံး</label>
+       <span>{chosen.length} Ways selected across pages</span>
+       <button className="rounded border px-2 py-1" onClick={()=>setBatchSelected({})}>Clear selection</button>
+      </div><table className="min-w-[1240px] w-full text-left text-sm">
+     <thead className="bg-slate-100"><tr><th className="p-3">Select</th>{["Original Way ID","Merchant / Township","Provider (recorded)","App warehouse","Actual dispatch scan","Finance","Last evidence / idle","Exception / action","Next process / ဆက်လက်လုပ်ငန်း"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
      <tbody>{rows.map(p=><tr key={p.delivery_way_id} className="border-t hover:bg-slate-50">
+      <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
       <td className="p-3">{p.recorded_provider_code||"Unverified"}</td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
@@ -236,6 +250,7 @@ export default function ParcelFollowUpPage(){
       <td className="p-3">{p.finance_settlement_status||"Not recorded"}</td>
       <td className="p-3">{stamp(p.last_evidence_at)}<div className="text-xs text-slate-500">{age(p.last_evidence_at)==null?"Aging unknown":age(p.last_evidence_at)+" days since latest recorded source"}</div></td>
       <td className="p-3 text-xs">{(p.exception_flags||[]).join("; ")||p.attention_category||"Review"}</td>
+      <td className="p-3 text-xs"><div className="font-semibold">{parcelNextAction(p).last}</div><div className="mt-1 text-amber-800">{parcelNextAction(p).next}</div></td>
      </tr>)}</tbody></table>
      {!rows.length&&!loading&&<p className="p-5 text-sm text-slate-500">No visible parcel records in this filter; check UAT access or dates.</p>}
     </div>
@@ -243,9 +258,15 @@ export default function ParcelFollowUpPage(){
       <div className="flex gap-2"><button disabled={page===0||loading} onClick={()=>setPage(p=>Math.max(p-1,0))} className="rounded border px-3 py-2 disabled:opacity-40">Previous</button>
       <button disabled={loading||count==null||(page+1)*pageSize>=count} onClick={()=>setPage(p=>p+1)} className="rounded border px-3 py-2 disabled:opacity-40">Next</button></div>
     </div>
+    {chosen.length>0&&<ParcelBulkFollowUpPanel selected={chosen} onClear={()=>setBatchSelected({})} onSent={()=>void loadTasks()}/>}
     {selected&&<section className="space-y-3 rounded-xl border bg-white p-4">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Follow up: {selected.delivery_way_id}</h2><button className="rounded border px-3 py-1" onClick={()=>setSelected(null)}>Close</button></div>
       <p className="text-sm">Destination: {selected.destination_township||"Unverified"} · Last evidence: {stamp(selected.last_evidence_at)} · Recorded provider: {selected.recorded_provider_code||"Unverified"}</p>
+      <div className="rounded-lg bg-slate-50 p-3 text-sm">
+       <strong>Last recorded / နောက်ဆုံးဆောင်ရွက်မှု:</strong> {parcelNextAction(selected).last}
+       <p className="mt-2 font-semibold text-amber-800">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
+       <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((name,i)=><span key={name} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100":"bg-white")}>{i+1}. {name}</span>)}</div>
+      </div>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
      </section>}
    </>}

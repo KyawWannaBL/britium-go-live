@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 
-type Person = {auth_user_id:string;full_name:string;email:string;department:string;role_code:string};
-const departments=[
+export type Person = {employee_code:string;employee_name:string;employee_department:string;department_key:string;employee_role:string;branch_code:string;email:string|null;auth_user_id:string|null;account_linked:boolean;active:boolean};
+export const departments=[
  ["OPERATIONS","Operations / လုပ်ငန်းလည်ပတ်ရေး"],
  ["FIELD_TEAM","Rider / Driver / Helper — ပို့ဆောင်ရေးအဖွဲ့"],
  ["WAREHOUSE","Warehouse / ဂိုဒေါင်"],
@@ -13,9 +13,11 @@ const departments=[
  ["THIRD_PARTY","Third-Party Providers / ပြင်ပဝန်ဆောင်မှု"],
  ["MERCHANT_RELATIONS","Merchant Relations / ဆိုင်များဆက်သွယ်ရေး"],
  ["ADMIN_HR","Administration & HR / စီမံခန့်ခွဲရေး"],
- ["MARKETING","Marketing / ဈေးကွက်ရှာဖွေရေး"]
+ ["MARKETING","Marketing / ဈေးကွက်ရှာဖွေရေး"],
+ ["BUSINESS_DEVELOPMENT","Business Development / လုပ်ငန်းဖွံ့ဖြိုးရေး"],
+ ["UNASSIGNED","Other / Unassigned HR employees — သတ်မှတ်ဌာနမရှိသေးသူများ"]
 ] as const;
-const templates=[
+export const templates=[
  ["POD_VERIFICATION","Request delivery proof / ပို့ဆောင်မှုအထောက်အထား",
  "Please verify actual delivery and attach signed proof, date and collection evidence as soon as possible.",
  "အမှန်တကယ်ပို့ဆောင်ပြီးစီးမှုကို စစ်ဆေးပြီး လက်မှတ်ပါအထောက်အထား၊ နေ့စွဲနှင့် ငွေကောက်ခံမှုအထောက်အထားတို့ကို အမြန်ဆုံးတင်ပြပါ။"],
@@ -38,7 +40,7 @@ const templates=[
  "Please investigate the outstanding parcel task, provide supporting evidence and update the responsible manager promptly.",
  "ကျန်ရှိနေသော ပါဆယ်လုပ်ငန်းတာဝန်ကို အမြန်စစ်ဆေးပြီး အထောက်အထားနှင့်တကွ တာဝန်ရှိမန်နေဂျာထံ ချက်ချင်းအကြောင်းပြန်ပါ။"]
 ] as const;
-const input="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm";
+const input="w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-900";
 const isAllowed=(role:string)=>["superadmin","super-admin","operation-manager","operation_manager","operations-manager","operations_manager"].includes(role.toLowerCase());
 export default function ParcelActionComposer({wayId}:{wayId:string}){
  const {profile,user}=useAuth();
@@ -48,7 +50,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  const [template,setTemplate]=useState<string>("LOCATION_AND_CUSTODY");
  const [en,setEn]=useState(templates[5][2] as string);
  const [my,setMy]=useState(templates[5][3] as string);
- const [due,setDue]=useState("");
+ const [due,setDue]=useState(()=>{const d=new Date(Date.now()+24*3600000);const local=new Date(d.getTime()-d.getTimezoneOffset()*60000);return local.toISOString().slice(0,16);});
  const [people,setPeople]=useState<Person[]>([]);
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
@@ -59,12 +61,13 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  const allowed=isAllowed(profile?.role||"");
  const load=useCallback(async()=>{
   if(!allowed)return;
-  const {data,error:e}=await (supabase as any).rpc("be_parcel_alert_directory_v1");
+  const {data,error:e}=await (supabase as any).rpc("be_parcel_hr_directory_v2");
   if(e){setError("Staff directory unavailable: "+e.message);setPeople([]);}
   else{setPeople((data||[]) as Person[]);setLoaded(true);}
  },[allowed]);
  useEffect(()=>{void load();},[load]);
- const available=useMemo(()=>people.filter(p=>p.department===department),[people,department]);
+ const available=useMemo(()=>people.filter(p=>p.department_key===department&&p.active),[people,department]);
+ const sendable=available.filter(p=>p.account_linked && !!p.auth_user_id);
  const choice=(key:string)=>{
   setTemplate(key);
   const t=templates.find(x=>x[0]===key);
@@ -72,15 +75,16 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
  };
  async function send(){
   setResult("");setError("");
-  if(scope==="DEPARTMENT"&&available.length>20 && !window.confirm(`Send the task notification to ${available.length} members of ${department}? / ဌာနရှိဝန်ထမ်း ${available.length} ဦးထံ ပို့ရန်အတည်ပြုပါ။`))return;
+  if(scope==="DEPARTMENT"&&department==="UNASSIGNED"){setError("Unassigned HR employees require individual selection.");return;}
+  if(scope==="DEPARTMENT"&&!window.confirm(`Send to ${sendable.length} linked Admin/HR staff in ${department}? / HR တွင်အကောင့်ချိတ်ဆက်ထားသောဝန်ထမ်း ${sendable.length} ဦးထံ ပို့ရန်အတည်ပြုပါ။`))return;
   if(!allowed||!user){setError("An authorized Superadmin or Operation Manager session is required.");return;}
   if(scope==="PERSON"&&!recipient){setError("Select an individual recipient.");return;}
   if(!due||!en.trim()||!my.trim()){setError("Choose a deadline and complete both English/Myanmar messages.");return;}
   setBusy(true);
-  const {data,error:e}=await (supabase as any).rpc("be_parcel_send_targeted_alert_v1",{
-   p_way_id:wayId,p_department:department,p_recipient_scope:scope,
-   p_recipient_user_id:scope==="PERSON"?recipient:null,p_task_type:template,
-   p_message_en:en.trim(),p_message_my:my.trim(),
+  const {data,error:e}=await (supabase as any).rpc("be_parcel_bulk_followup_send_v1",{
+   p_items:[{way_id:wayId}],p_department:department,p_scope:scope,
+   p_recipient_id:scope==="PERSON"?recipient:null,p_default_type:template,
+   p_message_en:en.trim(),p_message_my:my.trim(),p_wayplan:null,
    p_due_at:new Date(due).toISOString(),p_request_id:requestId
   });
   setBusy(false);
@@ -91,7 +95,7 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
   if(!data?.already_sent){setRequestId(crypto.randomUUID());}
  }
  if(!allowed)return <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Only Superadmin / Operation Manager can send new follow-up notifications. / Superadmin နှင့် Operation Manager များသာ အသိပေးချက်အသစ် ပို့နိုင်သည်။</p>;
- return <section className="space-y-3 rounded-xl border bg-white p-4" aria-label="Bilingual parcel action notifications">
+ return <section className="space-y-3 rounded-xl border border-slate-300 bg-white p-4 text-slate-900" aria-label="Bilingual parcel action notifications">
   <div><h3 className="font-semibold">Send action notification / လုပ်ငန်းတာဝန် အသိပေးချက်ပို့ရန်</h3>
    <p className="text-xs text-slate-500">Way ID: <strong>{wayId}</strong> · One person or selected department only; no broadcast to all staff.</p></div>
   <div className="grid gap-3 md:grid-cols-2">
@@ -106,9 +110,9 @@ export default function ParcelActionComposer({wayId}:{wayId:string}){
    {scope==="PERSON"?<label className="text-xs font-medium">Employee / ဝန်ထမ်း
      <select className={input} value={recipient} onChange={e=>setRecipient(e.target.value)}>
       <option value="">Choose employee / ဝန်ထမ်းရွေးပါ</option>
-      {available.map(p=><option value={p.auth_user_id} key={p.auth_user_id}>{p.full_name} — {p.email}</option>)}
+      {available.map(p=><option disabled={!p.account_linked||!p.auth_user_id} value={p.auth_user_id||""} key={p.employee_code||p.employee_name}>{p.employee_name} ({p.employee_code||"HR"}) — {p.branch_code} — {p.account_linked? p.email : "Account linking required / အကောင့်ချိတ်ရန်လို"}</option>)}
      </select>
-    </label>:<p className="rounded bg-amber-50 p-2 text-xs text-amber-800">Recipients: {available.length} active users in {department}; maximum 80. This is sent only after confirmation. No other departments are notified.</p>}
+    </label>:<p className="rounded bg-amber-50 p-2 text-xs text-amber-800">Admin/HR: {available.length} active staff, {sendable.length} linked recipients. This is sent only after confirmation. Only HR-linked recipients in the selected department are notified.</p>}
    <label className="text-xs font-medium">Predefined message / ကြိုတင်သတ်မှတ်စာ
     <select className={input} value={template} onChange={e=>choice(e.target.value)}>
      {templates.map(t=><option value={t[0]} key={t[0]}>{t[1]}</option>)}
