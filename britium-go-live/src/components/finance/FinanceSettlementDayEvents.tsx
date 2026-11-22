@@ -57,13 +57,13 @@ export default function FinanceSettlementDayEvents(){
  const exportRows=visible.map(r=>({...r,listed_in_wayplan:r.listed_in_wayplan?"Yes":"No",team_assigned:r.team_assigned?"Yes":"No"})) as Record<string,unknown>[];
  async function excel(){
   try{if(!exportRows.length)throw Error("No records match filters");
-   await downloadParcelXlsx(exportRows,columns,from,to,"Britium_Finance_Settled_Events_"+from+"_to_"+to+".xlsx");
+   await downloadParcelXlsx(exportRows,columns,from,to,"Britium_Finance_Settled_Events_"+from+"_to_"+to+".xlsx","Britium Express — Finance Settled Events","Finance SETTLED date (Myanmar)");
   }catch(e){setError(String(e instanceof Error?e.message:e));}
  }
  function pdf(){
   const w=openParcelPrintWindow();
   try{if(!w)throw Error("Pop-up window blocked");if(!exportRows.length)throw Error("No matching rows");
-   renderParcelPdf(w,exportRows,columns,from,to);
+   renderParcelPdf(w,exportRows,columns,from,to,"Britium Express — Finance Settled Events","Finance SETTLED date (Myanmar)");
   }catch(e){w?.close();setError(String(e instanceof Error?e.message:e));}
  }
  return <section className="space-y-3 rounded-xl border border-blue-300 bg-white p-4 text-slate-900">
