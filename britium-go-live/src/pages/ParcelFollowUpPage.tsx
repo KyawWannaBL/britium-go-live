@@ -26,8 +26,8 @@ const columns = [
 ].join(",");
 const tabs = ["All parcels","Idle / exceptions","Gate finance queue","My alerts"] as const;
 const taskTypes=["POD_VERIFICATION","PROVIDER_HANDOVER","RTO_CONFIRMATION","COD_RECONCILIATION","GATE_SETTLEMENT","LOCATION_AND_CUSTODY","OTHER_REVIEW"];
-const isoDate = (v:string) => v ? new Date(v+"T00:00:00").toISOString() : null;
-const isoToExclusive = (v:string) => {if(!v)return null;const d=new Date(v+"T00:00:00");d.setDate(d.getDate()+1);return d.toISOString();};
+const isoDate = (v:string) => v ? new Date(v+"T00:00:00Z").toISOString() : null;
+const isoToExclusive = (v:string) => {if(!v)return null;const d=new Date(v+"T00:00:00Z");d.setDate(d.getDate()+1);return d.toISOString();};
 const esc = (v:unknown) => String(v??"").replace(/[&<>"']/g,ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]||ch));
 const money = (v:number|null|undefined) => v == null ? "Not recorded" : Number(v).toLocaleString("en-US");
 const stamp = (v:string|null|undefined) => v ? new Date(v).toLocaleString() : "Not evidenced";
@@ -149,17 +149,18 @@ export default function ParcelFollowUpPage(){
   }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setPrintBusy(false);}
  }
  async function pdf(){
+  // Open the print tab synchronously with the click to avoid popup-blocker failures.
+  const pop=window.open("","_blank");
   setPrintBusy(true);setError("");try{
+   if(!pop)throw new Error("Browser blocked PDF preview. Allow popups and retry.");
    const data=await allFiltered();if(!data.length)throw new Error("No rows match the selected filters.");
    if(data.length>2000)throw new Error("PDF print is limited to 2,000 rows for readability; narrow the date range.");
-   const pop=window.open("","_blank");
-   if(!pop)throw new Error("Browser blocked PDF preview. Allow popups and retry.");
    const headings=["Way ID","Merchant","Destination","Provider","App Status","Finance","Last evidence","Exceptions"];
    const body=data.map(p=>[p.delivery_way_id,p.merchant_name,p.destination_township,p.recorded_provider_code,p.warehouse_status,p.finance_settlement_status,p.last_evidence_at,(p.exception_flags||[]).join("; ")].map(v=>"<td>"+esc(v??"Not recorded")+"</td>").join(""));
    pop.document.open();
    pop.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Britium Parcel Follow-Up</title><style>@page{size:A3 landscape;margin:12mm}body{font:11px Arial,"Noto Sans Myanmar",sans-serif;color:#16293c}table{width:100%;border-collapse:collapse}th,td{border:1px solid #cbd5e1;padding:5px;overflow-wrap:anywhere}th{background:#0e2942;color:white}thead{display:table-header-group}tr{break-inside:avoid}button{padding:10px;background:#0e2942;color:white;border:0}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button><h2>BRITIUM EXPRESS — Parcel Follow-Up</h2><p>Registration timeline: '+esc(from)+' to '+esc(to)+' | '+data.length+' rows | '+esc(tab)+'</p><p><b>Notice:</b> Dispatch assumed complete for planning only. App records and COD flags do not independently verify physical handover, delivery or payment.</p><table><thead><tr>'+headings.map(h=>"<th>"+esc(h)+"</th>").join("")+'</tr></thead><tbody>'+body.map(x=>"<tr>"+x+"</tr>").join("")+'</tbody></table></body></html>');
    pop.document.close();pop.focus();
-  }catch(e){setError(e instanceof Error?e.message:String(e));}finally{setPrintBusy(false);}
+  }catch(e){pop?.close();setError(e instanceof Error?e.message:String(e));}finally{setPrintBusy(false);}
  }
  async function createTask(){
   if(!selected||!user||!allowed||!assignee||!due||note.trim().length<8){setError("Select an authorized staff member, due date and task instructions.");return;}
@@ -208,7 +209,7 @@ export default function ParcelFollowUpPage(){
     <h2 className="p-4 font-semibold">My assigned follow-up tasks</h2>
     <table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-slate-100"><tr>{["Way ID","Department","Task","Due","Status","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{tasks.map(t=><tr key={t.id} className="border-t">
      <td className="p-3 font-semibold">{t.original_delivery_way_id}</td><td className="p-3">{t.assigned_department}</td><td className="p-3">{t.task_type}: {t.task_note}</td>
-     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{t.status!=="RESOLVED"&&new Date(t.due_at)<new Date()?" · OVERDUE":""}</td>
+     <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{t.status!=="RESOLVED"&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
      <td className="p-3">{user?.id===t.assigned_user_id&&t.status!=="RESOLVED"&&<div className="flex gap-1">
        {t.status==="OPEN"&&<button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"ACKNOWLEDGED")}>Acknowledge</button>}
        <button className="rounded border px-2 py-1" onClick={()=>void markTask(t,"RESOLVED")}>Resolve with evidence</button>
