@@ -59,14 +59,14 @@ CREATE TRIGGER be_parcel_followup_change_guard_v1 BEFORE UPDATE
 CREATE POLICY be_followup_select_v1 ON public.be_parcel_followup_tasks_v1 FOR SELECT TO authenticated
 USING ((SELECT auth.uid()) IN (assigned_user_id,created_by)
  OR replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-  IN ('superadmin','super_admin'));
+  IN ('superadmin','super_admin','operation_manager','operations_manager'));
 
 CREATE POLICY be_followup_create_v1 ON public.be_parcel_followup_tasks_v1 FOR INSERT TO authenticated
 WITH CHECK (
   (SELECT auth.uid())=created_by
   AND status='OPEN'
   AND replace(lower(coalesce(public.be_current_role(),'')),'-','_')
-     IN ('superadmin','super_admin')
+     IN ('superadmin','super_admin','operation_manager','operations_manager')
   AND EXISTS (SELECT 1 FROM public.be_data_entry_parcel_details d WHERE d.delivery_way_id=original_delivery_way_id
    AND coalesce(d.parcel_status,'') <> 'duplicate_archived')
   AND EXISTS (SELECT 1 FROM public.be_user_account_registry u WHERE u.auth_user_id=assigned_user_id
