@@ -162,7 +162,10 @@ LEFT JOIN ledger l USING (delivery_way_id)
 LEFT JOIN custody c USING (delivery_way_id)
 LEFT JOIN provider_override o USING (delivery_way_id)
 LEFT JOIN finance f USING (delivery_way_id)
-LEFT JOIN returns r USING (delivery_way_id);
+LEFT JOIN returns r USING (delivery_way_id)
+WHERE (SELECT auth.uid()) IS NOT NULL
+  AND lower(replace(public.be_current_role(),'-','_'))
+    IN ('superadmin','super_admin','app_owner','sys','admin');
 
 COMMENT ON VIEW public.be_v_harmonized_parcel_monitor_v1 IS
 'Read-only way-level reconciliation of warehouse, provider custody, override and finance evidence. NO_PROVIDER_CUSTODY_RECORD is not a parcel-loss finding. Routing/provider labels do not confirm physical custody.';
