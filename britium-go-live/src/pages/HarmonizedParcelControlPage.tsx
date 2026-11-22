@@ -89,7 +89,12 @@ export default function HarmonizedParcelControlPage() {
   }), [rows]);
   const exportCsv = () => {
     const keys: (keyof Parcel)[] = ["delivery_way_id","merchant_name","destination_township","recorded_provider_code","provider_custody_evidence","warehouse_status","wayplan_id","physically_handed_over_at","delivered_at","finance_settlement_status","expected_cod_mmk","settled_cod_mmk","attention_category"];
-    const csv = [keys.join(","), ...rows.map(row => keys.map(k => '"' + String(row[k] ?? "").replace(/"/g, '""') + '"').join(","))].join("\r\n");
+    const escapeCell = (value: unknown) => {
+      const raw = String(value ?? "");
+      const safe = /^[\s]*[=+@-]/.test(raw) ? "\'" + raw : raw;
+      return '"' + safe.replace(/"/g, '""') + '"';
+    };
+    const csv = [keys.join(","), ...rows.map(row => keys.map(k => escapeCell(row[k])).join(","))].join("\r\n");
     const url = URL.createObjectURL(new Blob([csv], { type:"text/csv;charset=utf-8" }));
     const link = document.createElement("a"); link.href=url; link.download="britium-parcel-monitor-page.csv"; link.click(); URL.revokeObjectURL(url);
   };
