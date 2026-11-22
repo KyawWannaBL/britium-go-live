@@ -542,7 +542,7 @@ export function FinancePortalLivePage({section="overview"}:{section?:"overview"|
   return (
     <main style={{ minHeight: "100vh", background: C.bg, color: C.text, padding: 20 }}>
       <div style={{ display: "grid", gap: 16 }}>
-        {section==="overview"&&<Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />} />
+        {section==="overview"&&<Header tag="FINANCE OPERATIONS" title="Finance Portal" subtitle="Live Wayplan financial control, COD settlement, cash/mobile collection and end-of-day personal settlement." loading={state.loading} onRefresh={async () => { await Promise.all([state.load(),loadSettlements()]); setCollectionRefresh(value=>value+1); }} />}
         {state.error && <div style={{ border: `1px solid ${C.red}`, color: C.red, borderRadius: 14, padding: 12 }}>{state.error}</div>}
         {state.data?.partial_error && <div role="alert" style={{ color: C.gold, padding: 12 }}>{state.data.partial_error}</div>}
         {section==="wayplans"&&<div style={{display:"flex",gap:12,flexWrap:"wrap"}}><button type="button" style={btn("gold")} onClick={()=>document.getElementById("financial-settlement")?.scrollIntoView({behavior:"smooth"})}>Financial Settlement — Sign &amp; Clear</button><Link to="/rider-settlement" style={{color:C.gold,padding:10}}>Rider / Driver / Helper signatures</Link></div>}
