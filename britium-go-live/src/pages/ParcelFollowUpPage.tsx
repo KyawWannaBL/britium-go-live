@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
 
 type Parcel = {
   delivery_way_id: string; warehouse_record_created_at: string | null; destination_township: string|null;
@@ -24,7 +25,7 @@ const columns = [
  "physically_handed_over_at","finance_settlement_status","attention_category","exception_flags",
  "last_evidence_at","expected_cod_mmk","settled_cod_mmk","return_scan_count"
 ].join(",");
-const tabs = ["All parcels","Idle / exceptions","Gate finance queue","My alerts"] as const;
+const tabs = ["All parcels","Idle / exceptions","Gate finance queue","My alerts","Team alerts"] as const;
 const taskTypes=["POD_VERIFICATION","PROVIDER_HANDOVER","RTO_CONFIRMATION","COD_RECONCILIATION","GATE_SETTLEMENT","LOCATION_AND_CUSTODY","OTHER_REVIEW"];
 // Date filters follow Myanmar operational calendar days (UTC+06:30), not UTC midnight.
 const isoDate = (v:string) => v ? new Date(v+"T00:00:00+06:30").toISOString() : null;
@@ -41,6 +42,8 @@ export default function ParcelFollowUpPage(){
  const [to,setTo]=useState(new Date().toISOString().slice(0,10));
  const [way,setWay]=useState("");
  const [provider,setProvider]=useState("");
+ const [warehouseFilter,setWarehouseFilter]=useState("");
+ const [merchant,setMerchant]=useState("");
  const [rows,setRows]=useState<Parcel[]>([]);
  const [tasks,setTasks]=useState<Task[]>([]);
  const [staff,setStaff]=useState<Staff[]>([]);
@@ -65,13 +68,15 @@ export default function ParcelFollowUpPage(){
   if(to)q=q.lt("warehouse_record_created_at",isoToExclusive(to));
   if(way.trim())q=q.ilike("delivery_way_id","%"+way.trim().replace(/[%_,]/g,"")+"%");
   if(provider.trim())q=q.eq("recorded_provider_code",provider);
+  if(warehouseFilter)q=q.eq("warehouse_status",warehouseFilter);
+  if(merchant.trim())q=q.ilike("merchant_name","%"+merchant.trim().replace(/[%_,]/g,"")+"%");
   if(tab==="Idle / exceptions")q=q.neq("attention_category","MONITOR");
   if(tab==="Gate finance queue")q=q.eq("recorded_provider_code","H.TERMINAL DROP-OFF");
   return q;
- },[from,to,way,provider,tab]);
+ },[from,to,way,provider,warehouseFilter,merchant,tab]);
 
  const load=useCallback(async()=>{
-  if(tab==="My alerts"){setRows([]);setCount(null);return;}
+  if(tab==="My alerts"||tab==="Team alerts"){setRows([]);setCount(null);return;}
   if(from&&to&&from>to){setError("Start date must be on or before end date.");return;}
   setLoading(true);setError("");
   const {data,count:total,error:e}=await makeQuery().order("warehouse_record_created_at",{ascending:false})
@@ -85,10 +90,11 @@ export default function ParcelFollowUpPage(){
  const loadTasks=useCallback(async()=>{
    const q=(supabase.from("be_parcel_followup_tasks_v1" as never) as any).select("id,original_delivery_way_id,assigned_user_id,assigned_department,task_type,task_note,created_at,due_at,status,acknowledged_at,resolved_at,resolution_note")
      .order("due_at",{ascending:true}).limit(250);
+   if(tab==="My alerts"&&user?.id)q.eq("assigned_user_id",user.id);
    const {data,error:e}=await q;
    if(e){if(tab==="My alerts")setError("Alert inbox unavailable until UAT task schema is activated: "+e.message);setTasks([]);}
    else setTasks((data||[]) as Task[]);
- },[tab]);
+ },[tab,user?.id]);
  useEffect(()=>{void load();},[load]);
  useEffect(()=>{void loadTasks();const timer=window.setInterval(()=>void loadTasks(),60_000);return ()=>window.clearInterval(timer);},[loadTasks]);
  useEffect(()=>{setPage(0);setSelected(null);},[tab,from,to,way,provider]);
@@ -195,19 +201,22 @@ export default function ParcelFollowUpPage(){
   <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
    {([["Loaded parcels",rows.length],["Review flagged (loaded page)",queue],["Known gate assignments (page)",gateRows],["Overdue in-app alerts",overdue]] as const).map(([label,value])=><div key={label} className="rounded-xl border bg-white p-4"><p className="text-xs text-slate-500">{label}</p><p className="text-2xl font-bold">{value}</p></div>)}
   </div>
-  {tab!=="My alerts"&&<div className="flex flex-wrap items-end gap-2 rounded-xl border bg-white p-4">
+  {tab!=="My alerts"&&tab!=="Team alerts"&&<div className="flex flex-wrap items-end gap-2 rounded-xl border bg-white p-4">
     <label className="text-xs">From registered date<input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Through registered date<input type="date" value={to} onChange={e=>setTo(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Original Way ID<input value={way} onChange={e=>setWay(e.target.value)} placeholder="Search Way ID" className="block rounded border p-2"/></label>
     <label className="text-xs">Recorded provider<input value={provider} onChange={e=>setProvider(e.target.value)} placeholder="e.g. ROYAL EXPRESS" className="block rounded border p-2"/></label>
+    <label className="text-xs">Merchant / ကုန်သည်<input value={merchant} onChange={e=>setMerchant(e.target.value)} placeholder="Merchant name" className="block rounded border p-2"/></label>
+    <label className="text-xs">Status / အခြေအနေ<select value={warehouseFilter} onChange={e=>setWarehouseFilter(e.target.value)} className="block rounded border p-2"><option value="">All</option>{["READY_FOR_DELIVERY","DELIVERY_FAILED","RETURN_TO_SENDER","SUBMITTED"].map(v=><option key={v}>{v}</option>)}</select></label>
     <button onClick={()=>void load()} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Refresh</button>
     <button disabled={printBusy} onClick={()=>void excel()} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Export Excel</button>
     <button disabled={printBusy} onClick={()=>void pdf()} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Print / Save as PDF</button>
+    <button className="rounded border px-4 py-2 text-sm" onClick={()=>{setFrom("");setTo("");setWay("");setProvider("");setMerchant("");setWarehouseFilter("");setTab("All parcels");}}>Clear filters / ရှင်းရန်</button>
    </div>}
   {error&&<p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
   {message&&<p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
-  {tab==="My alerts"?<div className="overflow-x-auto rounded-xl border bg-white">
-    <h2 className="p-4 font-semibold">My assigned follow-up tasks</h2>
+  {(tab==="My alerts"||tab==="Team alerts")?<div className="overflow-x-auto rounded-xl border bg-white">
+    <h2 className="p-4 font-semibold">{tab==="My alerts"?"My assigned follow-up tasks / ကျွန်ုပ်၏တာဝန်များ":"Team alerts / ဌာနအဖွဲ့တာဝန်များ"}</h2>
     <table className="min-w-[900px] w-full text-left text-sm"><thead className="bg-slate-100"><tr>{["Way ID","Department","Task","Due","Status","Action"].map(x=><th key={x} className="p-3">{x}</th>)}</tr></thead><tbody>{tasks.map(t=><tr key={t.id} className="border-t">
      <td className="p-3 font-semibold">{t.original_delivery_way_id}</td><td className="p-3">{t.assigned_department}</td><td className="p-3">{t.task_type}: {t.task_note}</td>
      <td className="p-3">{stamp(t.due_at)}</td><td className="p-3">{t.status}{t.status!=="RESOLVED"&&new Date(t.due_at).getTime()<Date.now()?" · OVERDUE":""}</td>
@@ -219,7 +228,7 @@ export default function ParcelFollowUpPage(){
     <div className="overflow-x-auto rounded-xl border bg-white"><table className="min-w-[1240px] w-full text-left text-sm">
      <thead className="bg-slate-100"><tr>{["Original Way ID","Merchant / Township","Provider (recorded)","App warehouse","Actual dispatch scan","Finance","Last evidence / idle","Exception / action"].map(h=><th key={h} className="p-3">{h}</th>)}</tr></thead>
      <tbody>{rows.map(p=><tr key={p.delivery_way_id} className="border-t hover:bg-slate-50">
-      <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button></td>
+      <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
       <td className="p-3">{p.recorded_provider_code||"Unverified"}</td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
       <td className="p-3">{p.verified_dispatch_scanned_at?stamp(p.verified_dispatch_scanned_at):"Not evidenced (assumed complete only)"}</td>
@@ -236,14 +245,7 @@ export default function ParcelFollowUpPage(){
     {selected&&<section className="space-y-3 rounded-xl border bg-white p-4">
       <div className="flex items-center justify-between"><h2 className="font-semibold">Follow up: {selected.delivery_way_id}</h2><button className="rounded border px-3 py-1" onClick={()=>setSelected(null)}>Close</button></div>
       <p className="text-sm">Destination: {selected.destination_township||"Unverified"} · Last evidence: {stamp(selected.last_evidence_at)} · Recorded provider: {selected.recorded_provider_code||"Unverified"}</p>
-      {allowed?<div className="grid gap-3 md:grid-cols-2">
-       <label className="text-xs">Responsible employee (existing active account)<select value={assignee} onChange={e=>{setAssignee(e.target.value);const a=staff.find(s=>s.auth_user_id===e.target.value);if(a?.department)setDepartment(a.department);}} className="block w-full rounded border p-2"><option value="">Select employee</option>{staff.map(a=><option key={a.auth_user_id} value={a.auth_user_id}>{a.full_name||a.email||a.auth_user_id} · {a.department||"Unassigned department"}</option>)}</select></label>
-       <label className="text-xs">Responsible department<input value={department} onChange={e=>setDepartment(e.target.value)} className="block w-full rounded border p-2"/></label>
-       <label className="text-xs">Action type<select className="block w-full rounded border p-2" value={type} onChange={e=>setType(e.target.value)}>{taskTypes.map(x=><option key={x} value={x}>{x}</option>)}</select></label>
-       <label className="text-xs">Due by<input type="datetime-local" value={due} onChange={e=>setDue(e.target.value)} className="block w-full rounded border p-2"/></label>
-       <label className="text-xs md:col-span-2">Instructions (min 8 characters)<textarea value={note} onChange={e=>setNote(e.target.value)} className="block w-full rounded border p-2" rows={2} placeholder="Specify required proof and what must be completed" /></label>
-       <button disabled={!assignee||!due||note.trim().length<8} className="rounded bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" onClick={()=>void createTask()}>Assign targeted in-app alert</button>
-      </div>:<p className="text-sm text-amber-800">Superadmin-level assignment required. Assigned staff may acknowledge tasks in My alerts.</p>}
+      <ParcelActionComposer wayId={selected.delivery_way_id}/>
      </section>}
    </>}
  </main>;
