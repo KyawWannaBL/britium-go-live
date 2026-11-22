@@ -14,7 +14,9 @@ RETURNS text LANGUAGE sql IMMUTABLE SECURITY INVOKER SET search_path=pg_catalog 
   WHEN lower(coalesce(p_department,'')) ~ 'merchant|ဆိုင်' THEN 'MERCHANT_RELATIONS'
   WHEN lower(coalesce(p_department,'')) ~ 'admin|hr|စီမံ' OR lower(coalesce(p_role,'')) ~ 'admin|human_resource' THEN 'ADMIN_HR'
   WHEN lower(coalesce(p_department,'')) ~ 'market|ဈေးကွက်' OR lower(coalesce(p_role,'')) ~ 'marketing' THEN 'MARKETING'
-  ELSE 'OPERATIONS' END
+  WHEN lower(coalesce(p_role,'')) ~ 'rider|driver|helper' THEN 'FIELD_TEAM'
+  WHEN lower(coalesce(p_department,'')) ~ 'operation|လုပ်ငန်း' OR lower(coalesce(p_role,'')) ~ 'operation|supervisor|dispatch' THEN 'OPERATIONS'
+  ELSE 'UNASSIGNED' END
 $fn$;
 REVOKE ALL ON FUNCTION public.be_parcel_department_key_v1(text,text) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.be_parcel_department_key_v1(text,text) TO authenticated;
@@ -63,7 +65,7 @@ BEGIN
    OR NOT EXISTS(SELECT 1 FROM public.be_v_warehouse_lifecycle_v39 w WHERE w.delivery_way_id=trim(p_way_id))
    THEN RAISE EXCEPTION 'Unknown warehouse Way ID'; END IF;
  IF p_department NOT IN ('OPERATIONS','WAREHOUSE','CUSTOMER_SERVICE','FINANCE','BRANCH',
-     'THIRD_PARTY','MERCHANT_RELATIONS','ADMIN_HR','MARKETING')
+     'THIRD_PARTY','MERCHANT_RELATIONS','ADMIN_HR','MARKETING','FIELD_TEAM')
    THEN RAISE EXCEPTION 'Invalid department'; END IF;
  IF p_task_type NOT IN ('POD_VERIFICATION','PROVIDER_HANDOVER','RTO_CONFIRMATION',
      'COD_RECONCILIATION','GATE_SETTLEMENT','LOCATION_AND_CUSTODY','OTHER_REVIEW')
@@ -93,7 +95,7 @@ BEGIN
    v_dept:=v_user.department_key;
    IF v_dept<>p_department THEN CONTINUE; END IF;
    v_total:=v_total+1;
-   IF v_total>40 THEN RAISE EXCEPTION 'Department has more than 40 users; select an individual'; END IF;
+   IF v_total>80 THEN RAISE EXCEPTION 'Department exceeds 80 recipients; choose individuals or a smaller team'; END IF;
    INSERT INTO public.be_parcel_followup_tasks_v1(
        original_delivery_way_id,assigned_user_id,assigned_department,task_type,
        task_note,created_by,due_at,notification_request_id)
@@ -127,5 +129,5 @@ REVOKE ALL ON FUNCTION public.be_parcel_send_targeted_alert_v1(text,text,text,uu
 GRANT EXECUTE ON FUNCTION public.be_parcel_send_targeted_alert_v1(text,text,text,uuid,text,text,text,timestamptz,uuid)
  TO authenticated;
 COMMENT ON FUNCTION public.be_parcel_send_targeted_alert_v1(text,text,text,uuid,text,text,text,timestamptz,uuid)
- IS 'Atomic Way ID task + exact recipient in-app notification, bilingual, idempotent, 40-recipient cap, no financial posting.';
+ IS 'Atomic Way ID task + exact recipient in-app notification, bilingual, idempotent, 80-recipient cap, no financial posting.';
 COMMIT;
