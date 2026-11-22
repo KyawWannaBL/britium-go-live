@@ -1,0 +1,21 @@
+name: Parcel Direct-Link and SPA Routing Checks
+on:
+  pull_request:
+    paths:
+      - 'britium-go-live/vercel.json'
+      - 'britium-go-live/index.html'
+      - 'britium-go-live/scripts/test-vercel-parcel-deep-links.mjs'
+      - '.github/workflows/parcel-deep-link-checks.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-parcel-deep-links:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test direct-link rewrites and HashRouter normalization
+        run: node britium-go-live/scripts/test-vercel-parcel-deep-links.mjs
