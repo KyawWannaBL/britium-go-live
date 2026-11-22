@@ -124,7 +124,12 @@ BEGIN
  (nullif(btrim(coalesce(p.rider_code,'')),'') IS NOT NULL OR
  nullif(btrim(coalesce(p.driver_code,'')),'') IS NOT NULL OR
  nullif(btrim(coalesce(p.helper_code,'')),'') IS NOT NULL)
- THEN true ELSE false END wayplan_team_assigned
+ THEN true ELSE false END wayplan_team_assigned,
+ CASE WHEN c.id IS NULL THEN NULL
+      ELSE (c.worker_role='RIDER' AND upper(coalesce(p.rider_code,''))=upper(c.worker_code))
+        OR (c.worker_role='DRIVER' AND upper(coalesce(p.driver_code,''))=upper(c.worker_code))
+        OR (c.worker_role='HELPER' AND upper(coalesce(p.helper_code,''))=upper(c.worker_code))
+ END cashier_worker_is_assigned
  FROM all_ways a LEFT JOIN planned p USING(work_date,delivery_way_id)
  LEFT JOIN LATERAL (
  SELECT d1.* FROM public.be_data_entry_parcel_details d1
@@ -146,6 +151,8 @@ BEGIN
  WHEN j.receipt_id IS NULL AND (j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED') THEN 'FINANCE_SETTLED_CASHIER_UNRECORDED'
  WHEN j.receipt_id IS NULL THEN 'MISSING_CASHIER_RECEIPT'
  WHEN j.cashier_receipt_work_date<>j.work_date THEN 'CASHIER_RECEIPT_DIFFERENT_DATE'
+ WHEN j.receipt_id IS NOT NULL AND NOT coalesce(j.cashier_worker_is_assigned,false)
+ THEN 'RECEIPT_WORKER_NOT_ASSIGNED'
  WHEN coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount) IS NULL THEN 'DATA_ENTRY_AMOUNT_MISSING'
  WHEN j.cashier_actual_mmk<>coalesce(nullif(j.data_entry_actual_collect,0),j.data_entry_cod_amount) THEN 'AMOUNT_DIFFERENCE'
  WHEN j.finance_settlement_status='SETTLED' OR j.wayplan_finance_status='CLEARED' THEN 'FINANCE_RECORDED_CHECK_EVIDENCE'
