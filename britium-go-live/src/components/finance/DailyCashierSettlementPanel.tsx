@@ -73,6 +73,24 @@ export default function DailyCashierSettlementPanel({mode="finance"}:{mode?:"fin
  const sumCash=view.reduce((sum,r)=>sum+Number(r.cashier_actual_mmk||0),0);
  const sumFinance=view.reduce((sum,r)=>sum+Number(r.finance_settled_amount||0),0);
  const mismatch=view.filter(r=>r.sync_status==="AMOUNT_DIFFERENCE").length;
+ const teamSummary=useMemo(()=>{
+  const result=new Map<string,{role:string;code:string;ways:Set<string>;missing:Set<string>;cashier:number;settled:number}>();
+  for(const r of view){
+   for(const [role,code] of [["Rider",r.rider_code],["Driver",r.driver_code],["Helper",r.helper_code]] as [string,string|null][]){
+    if(!code)continue;
+    const key=role+":"+code;
+    const x=result.get(key)||{role,code,ways:new Set<string>(),missing:new Set<string>(),cashier:0,settled:0};
+    if(!x.ways.has(r.delivery_way_id)){
+      x.ways.add(r.delivery_way_id);
+      if(!r.receipt_id)x.missing.add(r.delivery_way_id);
+      x.cashier+=Number(r.cashier_actual_mmk||0);
+      x.settled+=Number(r.finance_settled_amount||0);
+    }
+    result.set(key,x);
+   }
+  }
+  return Array.from(result.values()).sort((a,b)=>b.missing.size-a.missing.size||a.code.localeCompare(b.code));
+ },[view]);
  const workers=useMemo(()=>Array.from(new Set(records.flatMap(r=>[r.rider_code,r.driver_code,r.helper_code,r.cashier_worker_code]).filter((s):s is string=>!!s))).sort(),[records]);
  function choose(r:Way){
   setSelected(r);setCollected("");setReference("");setReason("");setPayment("CASH");
@@ -146,6 +164,18 @@ export default function DailyCashierSettlementPanel({mode="finance"}:{mode?:"fin
      ["Cashier received",money(sumCash)],["Existing Finance settled",money(sumFinance)]] as [string,number|string][]).map(([label,value])=>
     <div key={label} className="rounded-lg border bg-slate-50 p-3"><p className="text-xs text-slate-500">{label}</p><strong className="text-lg">{value}</strong></div>)}
   </div>
+  <details className="rounded-lg border border-slate-200" open={mode==="finance"}>
+   <summary className="cursor-pointer bg-slate-100 p-3 text-sm font-semibold">By Rider / Driver / Helper — assigned Ways and missing cashier receipts / ဝန်ထမ်းအလိုက်စာရင်း</summary>
+   <div className="max-h-72 overflow-auto"><table className="w-full min-w-[650px] text-left text-xs">
+    <thead className="sticky top-0 bg-slate-200"><tr>{["Role","Worker","Assigned Ways","Missing cashier","Cashier MMK","Finance settled MMK"].map(x=><th className="p-2" key={x}>{x}</th>)}</tr></thead>
+    <tbody>{teamSummary.map(w=><tr key={w.role+":"+w.code} className="border-t">
+     <td className="p-2">{w.role}</td><td className="p-2 font-semibold">{w.code}</td>
+     <td className="p-2">{w.ways.size}</td><td className="p-2">{w.missing.size}</td>
+     <td className="p-2">{money(w.cashier)}</td><td className="p-2">{money(w.settled)}</td>
+    </tr>)}</tbody>
+   </table></div>
+   <p className="p-2 text-xs text-slate-600">Shared Wayplan Ways appear under each assigned team member; person totals should not be summed to calculate company-wide cash totals.</p>
+  </details>
   {error&&<p role="alert" className="rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
   {notice&&<p role="status" className="rounded bg-green-50 p-3 text-sm text-green-800">{notice}</p>}
   <div className="max-h-[540px] overflow-auto rounded-lg border">
