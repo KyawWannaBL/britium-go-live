@@ -1,6 +1,7 @@
 import {useCallback,useEffect,useMemo,useState} from "react";
 import {supabase} from "@/integrations/supabase/client";
 import {exportFinanceExcel,printFinancePdf,type FinanceReport} from "@/lib/financeReportExports";
+import PotentialIncomeGap from "./PotentialIncomeGap";
 
 type Row={
  delivery_way_id:string; merchant_id:string|null; created_at:string|null;
@@ -136,6 +137,7 @@ export default function DeliveryIncomeReport({language="en"}:{language?:"en"|"my
    {!loading&&!visible.length&&!error&&<p className="p-4 text-sm text-slate-400">{t("No ways found for selected filters.","ရွေးထားသော စစ်ထုတ်ချက်အတွက် Way ID မတွေ့ပါ။")}</p>}
   </div>
   {visible.length>500&&<p className="text-xs text-slate-400">{t("Showing the first 500 rows in the table; exports include all filtered loaded rows.","ဇယားတွင် ပထမ ၅၀၀ ကို ပြသထားပြီး Export တွင် စစ်ထုတ်ထားသော row အားလုံး ပါဝင်သည်။")}</p>}
+  <PotentialIncomeGap registrations={visible} language={language} loading={loading}/>
   <p className="text-xs text-slate-400">{t("Provider category is provisional from route mode / gate station; verify against third-party custody and invoices. Date filter is Data Entry registration date (Myanmar), not Finance settlement date.","Provider အမျိုးအစားသည် route/station မှ ခန့်မှန်းဖော်ပြမှုသာ ဖြစ်သည်။ တရားဝင် အပ်နှံပြေစာနှင့် တိုက်ဆိုင်စစ်ဆေးပါ။ ရက်စွဲမှာ စာရင်းသွင်းရက် ဖြစ်ပြီး ငွေရှင်းရက် မဟုတ်ပါ။")}</p>
  </section>;
 }
