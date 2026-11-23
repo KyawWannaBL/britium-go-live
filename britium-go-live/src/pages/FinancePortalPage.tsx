@@ -3,7 +3,7 @@ import {useSearchParams} from "react-router-dom";
 import {
  LayoutDashboard,WalletCards,ClipboardCheck,FileCheck2,FileBarChart2,
  Building2,SlidersHorizontal,ArrowRight,ShieldCheck,CalendarRange,
- CheckCircle2,Search,BookOpen,ChevronDown,ArrowUpRight,RefreshCw,AlertTriangle,TrendingUp
+ CheckCircle2,Search,BookOpen,ChevronDown,ArrowUpRight,RefreshCw,AlertTriangle,TrendingUp,ChevronLeft,ChevronRight
 } from "lucide-react";
 import {FinancePortalLivePage} from "./EnterpriseLiveCenterPages";
 import BranchFinanceOversight from "@/components/finance/BranchFinanceOversight";
@@ -49,6 +49,9 @@ export default function FinancePortalPage(){
  const [showActions,setShowActions]=useState(true);
  const [viewKey,setViewKey]=useState(0);
  const tabsRef=useRef<Array<HTMLButtonElement|null>>([]);
+ const tabStripRef=useRef<HTMLElement|null>(null);
+ const moveTabs=(direction:-1|1)=>tabStripRef.current?.scrollBy({left:direction*360,behavior:"smooth"});
+ useEffect(()=>{tabsRef.current[sections.findIndex(s=>s.id===active)]?.scrollIntoView({block:"nearest",inline:"nearest",behavior:"smooth"});},[active]);
  const current=sections.find(s=>s.id===active)!;
  const Icon=current.icon;
  const setTab=(next:FinanceTab)=>{
@@ -109,7 +112,15 @@ export default function FinancePortalPage(){
    </div>
   </div>
   <div className="sticky top-0 z-20 border-b border-slate-700/60 bg-[#0b2235]/95 shadow-lg shadow-black/10 backdrop-blur-xl">
-   <nav role="tablist" aria-label="Finance workflow sections" className="mx-auto flex max-w-[1800px] gap-1 overflow-x-auto px-3 py-2 md:px-7">
+   <div className="mx-auto max-w-[1800px]">
+    <div className="flex items-center justify-between gap-2 border-b border-white/10 px-3 py-2 md:px-7">
+     <span className="text-xs font-medium text-sky-200">{language==="my"?"Finance Tab အားလုံးကြည့်ရန် အောက်ပါ Scrollbar သို့မဟုတ် မြားခလုတ်များကို အသုံးပြုပါ။":"Scroll horizontally or use the arrows to see all Finance tabs"}</span>
+     <div className="flex shrink-0 gap-2">
+      <button type="button" onClick={()=>moveTabs(-1)} aria-label="Scroll finance tabs left" className="rounded-lg border border-sky-400/40 bg-sky-400/10 p-2 text-sky-100 transition-colors hover:bg-sky-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300"><ChevronLeft size={20}/></button>
+      <button type="button" onClick={()=>moveTabs(1)} aria-label="Scroll finance tabs right" className="rounded-lg border border-sky-400/40 bg-sky-400/10 p-2 text-sky-100 transition-colors hover:bg-sky-400/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-sky-300"><ChevronRight size={20}/></button>
+     </div>
+    </div>
+   <nav ref={tabStripRef} role="tablist" aria-label="Finance workflow sections" tabIndex={0} style={{scrollbarWidth:"auto",scrollbarColor:"#38bdf8 #102c43"}} className="flex w-full gap-1 overflow-x-scroll overscroll-x-contain scroll-smooth px-3 pb-3 pt-2 md:px-7 [&::-webkit-scrollbar]:h-3 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-track]:bg-[#102c43] [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-sky-400">
     {sections.map((section,index)=>{
      const TabIcon=section.icon;
      const selected=section.id===active;
@@ -122,6 +133,7 @@ export default function FinancePortalPage(){
      </button>;
     })}
    </nav>
+   </div>
   </div>
   <div className="mx-auto max-w-[1800px] px-3 pt-5 md:px-7">
    <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-700/70 bg-gradient-to-r from-[#102f49] to-[#0d253b] px-5 py-4">
