@@ -9,24 +9,45 @@ import { Capacitor } from "@capacitor/core";
 const DEFAULT_SUPABASE_URL = "https://dltavabvjwocknkyvwgz.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRsdGF2YWJ2andvY2tua3l2d2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzExMTMxOTQsImV4cCI6MjA4NjY4OTE5NH0.7-9BK6L9dpCYIB-pp1WOeQxCI1DVxnSykoTRXNUHYIo";
 
-const directSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL).trim();
+// Production continues using the existing same-origin proxy. UAT must instead
+// use its OWN Vercel VITE_SUPABASE_URL and matching publishable/anon key.
+// The former UAT build used a production /supabase rewrite regardless of its
+// configured project, causing the visible "Invalid API key" error.
 const isNativeApp = Capacitor.isNativePlatform();
-// The native WebView's origin is capacitor://localhost, so it cannot use a
-// relative /supabase URL. Route native API calls through the public Britium
-// HTTPS domain rather than contacting supabase.co directly. This keeps Auth,
-// REST, Realtime and Storage on the same network path as the working web app.
-// The canonical origin is not a secret; VITE_NATIVE_SUPABASE_PROXY_URL allows
-// a controlled future migration without rewriting app code.
+const browserHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+const isUatBuild = !isNativeApp && (
+  import.meta.env.VITE_UAT_MODE === "true" ||
+  /^britium-uat(?:[-.]|$)/.test(browserHost)
+);
+const configuredUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, "");
+const configuredAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+const isValidUatUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(configuredUrl);
+const isProductionProject = configuredUrl === DEFAULT_SUPABASE_URL;
+const isUatConfigured = isValidUatUrl && !isProductionProject && Boolean(configuredAnonKey);
+const directSupabaseUrl = isUatBuild
+  ? (isUatConfigured ? configuredUrl : "")
+  : (configuredUrl || DEFAULT_SUPABASE_URL);
+
+// Native WebViews cannot use a relative proxy. Leave the existing native
+// production gateway unchanged.
 const nativeProxyUrl = String(
   import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
 ).trim().replace(/\/+$/, "");
-const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
+const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp && !isUatBuild;
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
   : shouldUseWebProxy
     ? `${window.location.origin}/supabase`
     : directSupabaseUrl;
-const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+const supabaseAnonKey = isUatBuild
+  ? (isUatConfigured ? configuredAnonKey : "")
+  : (configuredAnonKey || DEFAULT_SUPABASE_ANON_KEY);
+
+if (isUatBuild && !isUatConfigured) {
+  console.error(
+    "[Britium UAT] Isolated VITE_SUPABASE_URL and matching VITE_SUPABASE_ANON_KEY are required. Production Supabase fallback is disabled."
+  );
+}
 
 if (isNativeApp) {
   console.info("[Britium Supabase] Native app using Britium HTTPS API gateway.");
@@ -68,4 +89,4 @@ export default supabase;
 // Resolves Vite build error for connection status checks
 
 // Resolves Vite build error for connection status checks
-export const isSupabaseConfigured = Boolean(directSupabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = isUatBuild ? isUatConfigured : Boolean(directSupabaseUrl && supabaseAnonKey);
