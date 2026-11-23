@@ -19,9 +19,9 @@ const isUatBuild = !isNativeApp && (
   import.meta.env.VITE_UAT_MODE === "true" ||
   /^britium-uat(?:[-.]|$)/.test(browserHost)
 );
-const configuredUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim().replace(/\\/+$/, "");
+const configuredUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim().replace(/\/+$/, "");
 const configuredAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
-const isValidUatUrl = /^https:\/\/[a-z0-9-]+\\.supabase\\.co$/i.test(configuredUrl);
+const isValidUatUrl = /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(configuredUrl);
 const isProductionProject = configuredUrl === DEFAULT_SUPABASE_URL;
 const isUatConfigured = isValidUatUrl && !isProductionProject && Boolean(configuredAnonKey);
 const directSupabaseUrl = isUatBuild
@@ -32,7 +32,7 @@ const directSupabaseUrl = isUatBuild
 // production gateway unchanged.
 const nativeProxyUrl = String(
   import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
-).trim().replace(/\\/+$/, "");
+).trim().replace(/\/+$/, "");
 const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp && !isUatBuild;
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
