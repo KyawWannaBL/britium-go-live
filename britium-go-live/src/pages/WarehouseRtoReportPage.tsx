@@ -122,6 +122,51 @@ export default function WarehouseRtoReportPage(){
   }
 
 
+  function printRtoReport(){
+    const report=document.getElementById("rto-print-document");
+    if(!report||!visible.length){setMessage("No RTO records are available to print.");return;}
+    // Print in an isolated browsing context: the app shell's flex/grid widths and
+    // global waybill print rules must never scale the merchant report to a narrow strip.
+    const frame=document.createElement("iframe");
+    frame.setAttribute("title","Britium RTO printable report");
+    frame.setAttribute("aria-hidden","true");
+    frame.style.cssText="position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none";
+    const css=String.raw`@page{size:A4 portrait;margin:12mm}
+      *,*::before,*::after{box-sizing:border-box}
+      html,body{width:100%;height:auto;overflow:visible;margin:0;padding:0;background:#fff;color:#111827;
+        font:10pt Arial,"Noto Sans Myanmar",sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+      #rto-print-document{display:block!important;position:static!important;width:100%!important;max-width:none!important;
+        margin:0!important;padding:0!important;transform:none!important;overflow:visible!important}
+      h1{font-size:18pt;line-height:1.25;margin:0 0 3mm;font-weight:800}
+      h2{font-size:12pt;line-height:1.3;margin:0 0 3mm;font-weight:700;overflow-wrap:anywhere}
+      p{line-height:1.45;margin:2mm 0 3mm;overflow-wrap:anywhere}
+      .print-meta{display:flex;flex-wrap:wrap;gap:2mm 7mm;justify-content:space-between;margin:0 0 4mm;font-size:9pt}
+      .rto-print-card{display:block;width:100%;break-inside:avoid;page-break-inside:avoid;
+        border:1px solid #cbd5e1;border-radius:4px;margin:0 0 6mm;padding:3mm;background:#fff}
+      table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:9pt;margin:2mm 0}
+      th,td{border:1px solid #cbd5e1;padding:5px 6px;text-align:left;vertical-align:top;
+        white-space:normal;overflow-wrap:anywhere;word-break:normal}
+      th{background:#e5edf5!important;font-weight:700}
+      .print-subhead{font-weight:700;margin:3mm 0 2mm}
+      .print-attempts{width:100%}
+      tr{break-inside:avoid;page-break-inside:avoid}
+      @media screen{body{padding:12mm;max-width:210mm;margin:auto}}
+      @media print{body{padding:0!important;margin:0!important} .rto-print-card{box-shadow:none}}
+    `;
+    const documentHtml='<!doctype html><html lang="en"><head><meta charset="utf-8"/><title>Britium Express RTO Report</title><style>'+css+'</style></head><body>'+report.outerHTML+'</body></html>';
+    let cleaned=false;
+    const cleanup=()=>{if(cleaned)return;cleaned=true;frame.remove();};
+    frame.onload=()=>{
+      const w=frame.contentWindow;
+      if(!w){cleanup();setMessage("Print window was unavailable.");return;}
+      w.addEventListener("afterprint",cleanup,{once:true});
+      const ready=frame.contentDocument?.fonts?.ready||Promise.resolve();
+      void Promise.resolve(ready).then(()=>{if(cleaned)return;w.focus();w.print();});
+    };
+    document.body.appendChild(frame);
+    frame.srcdoc=documentHtml;
+  }
+
   const printDate=generatedAt||new Date().toISOString();
   const controls="min-h-11 w-full rounded-xl border border-slate-400 bg-white px-3 py-2 text-slate-900 placeholder:text-slate-500";
   return <main data-rto-report="true" className="min-h-screen min-w-0 bg-[#061524] p-3 text-slate-100 md:p-5">
@@ -155,7 +200,7 @@ export default function WarehouseRtoReportPage(){
         <div className="flex flex-wrap gap-2">
           <button type="button" disabled={loading} onClick={()=>void load()} className="rounded-xl border border-[#31506a] bg-[#12314a] px-4 py-2.5 text-sm font-bold"><RefreshCw size={15} className={"mr-2 inline "+(loading?"animate-spin":"")}/>Refresh</button>
           <button type="button" disabled={!visible.length} onClick={exportCsv} className="rounded-xl bg-[#f6b84b] px-4 py-2.5 text-sm font-extrabold text-[#061524] disabled:opacity-40"><Download size={15} className="mr-2 inline"/>Merchant CSV</button>
-          <button type="button" disabled={!visible.length} onClick={()=>window.print()} className="rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-extrabold text-[#061524] disabled:opacity-40"><Printer size={15} className="mr-2 inline"/>Print full report / PDF</button>
+          <button type="button" disabled={!visible.length} onClick={printRtoReport} className="rounded-xl bg-cyan-500 px-4 py-2.5 text-sm font-extrabold text-[#061524] disabled:opacity-40"><Printer size={15} className="mr-2 inline"/>Print full report / PDF</button>
         </div>
       </div>
       {message&&<div role="alert" className="mt-3 rounded-lg border border-rose-500 bg-rose-950/30 p-3 text-sm text-rose-200">{message}</div>}
