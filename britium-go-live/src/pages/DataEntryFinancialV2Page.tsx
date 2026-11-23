@@ -1106,7 +1106,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <DataEntryLocationEditor
                 pickupId={row.pickup_id}
                 parcelSequence={row.parcel_sequence}
-                deliveryWayId={row.delivery_way_id}
+                deliveryWayId={row.delivery_way_id || (row.pickup_id && row.parcel_sequence > 0 ? canonicalWayId(row.pickup_id, row.parcel_sequence) : "")}
                 address={row.delivery_address}
                 township={row.township}
                 ward={row.sourceWard}

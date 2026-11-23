@@ -6,6 +6,9 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const editor = readFileSync(resolve(root, "src/components/workflow/DataEntryLocationEditor.tsx"), "utf8");
 const service = readFileSync(resolve(root, "src/lib/deliveryLocationService.ts"), "utf8");
+const page = readFileSync(resolve(root, "src/pages/DataEntryFinancialV2Page.tsx"), "utf8");
+assert.match(page, /deliveryWayId=\{row\.delivery_way_id \|\| \(row\.pickup_id && row\.parcel_sequence > 0 \? canonicalWayId\(row\.pickup_id, row\.parcel_sequence\) : ""\)\}/, "New parcels need canonical Way ID for location save before registration");
+
 
 const selection = editor.slice(editor.indexOf("function setPinAtMapCenter()"), editor.indexOf("function moveMapByPixels("));
 assert.match(selection, /manualPinTargetRef\.current === "PIN"/, "A dragged/tapped marker must be honored before the map center");
