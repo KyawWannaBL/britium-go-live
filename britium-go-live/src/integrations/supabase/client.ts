@@ -20,13 +20,30 @@ const isNativeApp = Capacitor.isNativePlatform();
 const nativeProxyUrl = String(
   import.meta.env.VITE_NATIVE_SUPABASE_PROXY_URL || "https://www.britiumexpress.com/supabase"
 ).trim().replace(/\/+$/, "");
-const shouldUseWebProxy = import.meta.env.PROD && typeof window !== "undefined" && !isNativeApp;
+// Only the public production domains have a proxy pinned to the production
+// Supabase project in vercel.json. A UAT/preview hostname must connect directly
+// to the Supabase project specified by its own VITE_* build variables.
+const webHost = typeof window !== "undefined" ? window.location.hostname.toLowerCase() : "";
+const isProductionWebHost = webHost === "www.britiumexpress.com" || webHost === "britiumexpress.com";
+const shouldUseWebProxy = import.meta.env.PROD && isProductionWebHost && !isNativeApp;
+const isNonProductionWeb = import.meta.env.PROD && !isNativeApp && !isProductionWebHost;
+const configuredSupabaseUrl = String(import.meta.env.VITE_SUPABASE_URL || "").trim();
+const configuredSupabaseKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || "").trim();
+const missingPreviewConfiguration = isNonProductionWeb && (!configuredSupabaseUrl || !configuredSupabaseKey);
+const directUrlForEnvironment = isNonProductionWeb
+  ? (configuredSupabaseUrl || "https://placeholder.supabase.co")
+  : directSupabaseUrl;
 const supabaseUrl = isNativeApp
   ? nativeProxyUrl
   : shouldUseWebProxy
     ? `${window.location.origin}/supabase`
-    : directSupabaseUrl;
-const supabaseAnonKey = String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+    : directUrlForEnvironment;
+const supabaseAnonKey = isNonProductionWeb
+  ? (configuredSupabaseKey || "missing-preview-publishable-key")
+  : String(import.meta.env.VITE_SUPABASE_ANON_KEY || DEFAULT_SUPABASE_ANON_KEY).trim();
+if (missingPreviewConfiguration) {
+  console.error("[Britium Supabase] Preview/UAT is missing its own VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY. Authentication intentionally remains unavailable until both are configured for the same Supabase project.");
+}
 
 if (isNativeApp) {
   console.info("[Britium Supabase] Native app using Britium HTTPS API gateway.");
@@ -34,7 +51,7 @@ if (isNativeApp) {
 
 const authStorageKey = (() => {
   try {
-    const projectRef = new URL(directSupabaseUrl).hostname.split(".")[0];
+    const projectRef = new URL(directUrlForEnvironment).hostname.split(".")[0];
     if (projectRef) return `sb-${projectRef}-auth-token`;
   } catch {
     // The missing configuration warning below handles invalid URLs.
@@ -68,4 +85,4 @@ export default supabase;
 // Resolves Vite build error for connection status checks
 
 // Resolves Vite build error for connection status checks
-export const isSupabaseConfigured = Boolean(directSupabaseUrl && supabaseAnonKey);
+export const isSupabaseConfigured = Boolean(!missingPreviewConfiguration && directUrlForEnvironment && supabaseAnonKey);
