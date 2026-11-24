@@ -288,33 +288,49 @@ export default function WarehousePendingParcelsPage(){
           {exportMessage&&<p role="status" className="mt-2 text-xs font-semibold text-cyan-300">{exportMessage}</p>}
         </section>
         <div className="overflow-auto">
-          <table className="w-full min-w-[1450px] border-collapse text-sm">
+          <table className="w-full min-w-[1700px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
-              {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
+              {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Provider (auto)","Change provider","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
               {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
-                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}<button type="button" onClick={()=>setProviderReviewRow(r)} className="mt-1 block text-xs font-semibold text-cyan-300 underline">Review provider</button></td>
+                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
                 <td className="p-2"><span className="rounded border border-slate-700 px-2 py-1 text-xs font-bold">{r._pendingType}</span></td>
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
                 <td className="p-2">{txt(r.recipient_name)}<div className="text-xs text-slate-400">{txt(r.recipient_phone || r.phone_number)}</div></td>
                 <td className="p-2">{txt(r.delivery_township)}</td>
+                <td className="p-2"><span className="font-bold text-emerald-300">{r._providerEffectiveTemporary}</span>
+                  {r._providerManual&&<div className="text-[10px] text-cyan-300">Manual exception · audited</div>}
+                  {r._providerNeedsReview&&<div className="text-[10px] text-amber-300">Township not matched — verify destination</div>}
+                </td>
+                <td className="p-2">
+                  <select aria-label={"Provider exception for "+txt(r.delivery_way_id||r.waybill_no)}
+                    value={providerReviewRow===r?providerChoice:r._providerEffectiveTemporary}
+                    onChange={e=>{
+                      if(e.target.value===r._providerEffectiveTemporary){setProviderReviewRow(null);return;}
+                      setProviderChoice(e.target.value);setProviderReviewRow(r);
+                    }}
+                    className="min-h-10 w-[180px] rounded-md border border-slate-400 bg-white p-2 text-xs font-semibold text-slate-900">
+                    {availableProviders.map(x=><option key={x} value={x}>{x}</option>)}
+                  </select>
+                  {providerReviewRow===r&&<button type="button" onClick={()=>setProviderReviewRow(null)} className="mt-1 block text-xs text-cyan-300 underline">Cancel correction</button>}
+                </td>
                 <td className="p-2">{fmt(r.inbound_scan_at)}</td>
                 <td className={"p-2 font-black "+(r._overdue?"text-red-300":"text-cyan-300")}><Clock3 className="mr-1 inline h-4 w-4"/>{Number(r._ageHours||0).toFixed(1)} h</td>
                 <td className="max-w-[260px] p-2">{txt(r.pending_return_reason_name || r.last_exception_reason) || "-"}</td>
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
               </tr>)}
-              {!visible.length && <tr><td colSpan={12} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
+              {!visible.length && <tr><td colSpan={14} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
-      {providerReviewRow&&<section className="rounded-xl border border-cyan-600/40 bg-white p-3 text-slate-900">
+      {providerReviewRow&&<section id="provider-exception-editor" className="rounded-xl border border-cyan-600/40 bg-white p-3 text-slate-900">
         <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-bold">Provider review · {txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)}</h2><button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>setProviderReviewRow(null)}>Close</button></div>
-        <ProviderTerritoryReview key={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} wayId={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} township={txt(providerReviewRow.delivery_township)||null} recordedProvider={txt(providerReviewRow.recorded_provider_code)||null} onChanged={()=>void load()}/>
+        <ProviderTerritoryReview key={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} wayId={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} township={txt(providerReviewRow.delivery_township)||null} region={txt(providerReviewRow._providerRegion)||null} initialProvider={providerChoice} recordedProvider={txt(providerReviewRow.recorded_provider_code)||null} onChanged={()=>{setProviderReviewRow(null);void load(true);}}/>
       </section>}
     </div>
   </main>;
