@@ -1,4 +1,5 @@
 import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
+import PickupPhotoPolicyControl from "@/components/PickupPhotoPolicyControl";
 import { CorporateDataEntryBinding } from "@/components/tariff/CorporateTariffPanel";
 import { scopeReadySequences } from "@/lib/waybillPublicationScope";
 import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
@@ -3625,6 +3626,8 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" className="rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-black text-[#06101e] disabled:opacity-40" disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} onClick={()=>void saveAll()}><Save size={13} className="mr-1 inline"/>Save All</button>
           </div>
         </header>
+
+        <PickupPhotoPolicyControl />
 
         {message?<div className="rounded-xl border border-[#ff6b6b]/35 bg-[#3a1e28] p-3 text-[12px] text-[#ff9aa2]"><AlertTriangle size={15} className="mr-2 inline"/>{message}</div>:null}
 
