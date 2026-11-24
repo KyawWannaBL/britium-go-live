@@ -114,6 +114,7 @@ export default function WarehousePendingParcelsPage(){
 
   const merchantOptions=useMemo(()=>[...new Set(pending.map(r=>txt(r.merchant_name||r.merchant_code)).filter(Boolean))].sort(),[pending]);
   const townshipOptions=useMemo(()=>[...new Set(pending.map(r=>txt(r.delivery_township)).filter(Boolean))].sort(),[pending]);
+  const warehouseStatuses=useMemo(()=>[...new Set(pending.map(r=>txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase()||"UNKNOWN"))].sort(),[pending]);
   const validDates=!fromDate||!toDate||fromDate<=toDate;
   const visible=useMemo(()=>pending.filter((r:any)=>{
     const t=dateBasis==="return"?(r.last_return_scan_at||r.return_scan_3_at||r.return_scan_2_at||r.return_scan_1_at):r.inbound_scan_at;
@@ -125,14 +126,13 @@ export default function WarehousePendingParcelsPage(){
     if(township!=="ALL"&&txt(r.delivery_township)!==township)return false;
     if(age==="OVERDUE"&&!r._overdue)return false;
     if(age==="RECENT"&&r._overdue)return false;
-    if(status==="WITHOUT"&&hasActiveWayplan(r))return false;
-    if(status==="WITH"&&!hasActiveWayplan(r))return false;
+    if(status!=="ALL"&&(txt(r.warehouse_scan_status||r.warehouse_status).toUpperCase()||"UNKNOWN")!==status)return false;
     const q=query.trim().toLowerCase();
     return !q||[r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
   }),[pending,query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
   const incomplete=sourceCount!==null&&sourceCount>rows.length;
   const canExport=validDates&&!loading&&!message&&!exportBusy&&!incomplete&&visible.length>0;
-  const criteria=["Date basis: "+(dateBasis==="return"?"last return scan":"inbound scan"),"Dates: "+(fromDate||"All")+" through "+(toDate||"All")+" (Myanmar)","Type: "+kind,"Merchant: "+merchant,"Township: "+township,"Age: "+age,"Wayplan status: "+status,"Search: "+(query||"All")].join("; ");
+  const criteria=["Date basis: "+(dateBasis==="return"?"last return scan":"inbound scan"),"Dates: "+(fromDate||"All")+" through "+(toDate||"All")+" (Myanmar)","Type: "+kind,"Merchant: "+merchant,"Township: "+township,"Age: "+age,"Warehouse status: "+status,"Search: "+(query||"All")].join("; ");
   const reportFields=[
     {key:"alert",label:"Alert"},{key:"way",label:"Delivery Way ID"},{key:"pickup",label:"Pickup ID"},{key:"type",label:"Type"},
     {key:"merchant",label:"Merchant"},{key:"merchantCode",label:"Merchant Code"},{key:"recipient",label:"Recipient"},{key:"phone",label:"Phone"},
@@ -228,7 +228,7 @@ export default function WarehousePendingParcelsPage(){
             <label className="text-xs font-bold text-slate-300">Merchant<select value={merchant} onChange={e=>setMerchant(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All merchants</option>{merchantOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
             <label className="text-xs font-bold text-slate-300">Township<select value={township} onChange={e=>setTownship(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All townships</option>{townshipOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
             <label className="text-xs font-bold text-slate-300">Pending age<select value={age} onChange={e=>setAge(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All ages</option><option value="OVERDUE">48+ hours overdue</option><option value="RECENT">Under 48 hours</option></select></label>
-            <label className="text-xs font-bold text-slate-300">Wayplan status<select value={status} onChange={e=>setStatus(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All pending</option><option value="WITHOUT">Not in wayplan</option><option value="WITH">In active wayplan</option></select></label>
+            <label className="text-xs font-bold text-slate-300">Warehouse status<select value={status} onChange={e=>setStatus(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All warehouse states</option>{warehouseStatuses.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
           </div>
           {!validDates&&<p role="alert" className="mt-2 text-sm font-semibold text-rose-300">From date cannot be after To date.</p>}
           {incomplete&&<p role="alert" className="mt-2 text-sm font-semibold text-rose-300">Snapshot may be incomplete. Exports disabled; refresh or investigate data source.</p>}
