@@ -110,8 +110,8 @@ export default function WarehousePendingParcelsPage(){
         const parts:any[]=[];
         for(let i=0;i<ids.length;i+=1900){
           const answer=await (supabase as any).rpc("be_parcel_temp_provider_batch_v1",{p_way_ids:ids.slice(i,i+1900)});
-          if(answer.error)throw answer.error;
-          parts.push(answer.data?.items||{});
+          if(answer.error){console.warn("Provisional provider lookup unavailable",answer.error.message);parts.push({});}
+          else parts.push(answer.data?.items||{});
         }
         setProvisionalByWay(Object.assign({},...parts));
       }else setProvisionalByWay({});
