@@ -2,13 +2,15 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import ProviderCorrectionQueue from "@/components/parcel/ProviderCorrectionQueue";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 
 type Parcel = {
   delivery_way_id: string; warehouse_record_created_at: string | null; destination_township: string|null;
   wayplan_id:string|null; delivered_at:string|null;rider_proof_present:boolean|null;
-  merchant_name:string|null; recorded_provider_code:string|null;
+  merchant_name:string|null; recorded_provider_code:string|null; automatic_provider_code:string|null; override_provider_code:string|null;
   warehouse_status:string|null; dispatch_scanned:boolean|null;
   verified_dispatch_scanned_at:string|null; physically_handed_over_at:string|null;
   finance_settlement_status:string|null; attention_category:string|null;
@@ -24,7 +26,7 @@ type Task = {
 type Staff={auth_user_id:string;full_name:string|null;email:string|null;department:string|null};
 const columns = [
  "delivery_way_id","warehouse_record_created_at","destination_township","merchant_name","wayplan_id","delivered_at","rider_proof_present",
- "recorded_provider_code","warehouse_status","dispatch_scanned","verified_dispatch_scanned_at",
+ "recorded_provider_code","automatic_provider_code","override_provider_code","warehouse_status","dispatch_scanned","verified_dispatch_scanned_at",
  "physically_handed_over_at","finance_settlement_status","attention_category","exception_flags",
  "last_evidence_at","expected_cod_mmk","settled_cod_mmk","return_scan_count"
 ].join(",");
@@ -45,6 +47,7 @@ export default function ParcelFollowUpPage(){
  const [to,setTo]=useState(new Date().toISOString().slice(0,10));
  const [way,setWay]=useState("");
  const [provider,setProvider]=useState("");
+ const [providerOptions,setProviderOptions]=useState<string[]>([]);
  const [warehouseFilter,setWarehouseFilter]=useState("");
  const [merchant,setMerchant]=useState("");
  const [rows,setRows]=useState<Parcel[]>([]);
@@ -65,6 +68,16 @@ export default function ParcelFollowUpPage(){
  const [printBusy,setPrintBusy]=useState(false);
  const allowed = ["superadmin","super-admin","operation-manager","operation_manager","operations-manager","operations_manager"].includes((profile?.role||"").toLowerCase());
  useEffect(()=>{if(!allowed)setTab("My alerts");},[allowed]);
+ useEffect(()=>{
+  if(!allowed)return;
+  let active=true;
+  void (supabase.from("be_data_entry_service_providers") as any)
+    .select("provider_code").eq("is_active",true).order("provider_code")
+    .then(({data,error}:{data:{provider_code:string}[]|null;error:any})=>{
+      if(active&&!error)setProviderOptions((data||[]).map(p=>p.provider_code));
+    });
+  return ()=>{active=false;};
+ },[allowed]);
  const pageSize=75;
 
  const makeQuery=useCallback(()=>{
@@ -132,7 +145,7 @@ export default function ParcelFollowUpPage(){
   {key:"delivery_way_id",heading:"Original Way ID"}, {key:"warehouse_record_created_at",heading:"Registered"},
   {key:"wayplan_id",heading:"Wayplan / လမ်းကြောင်း"},
   {key:"merchant_name",heading:"Merchant"}, {key:"destination_township",heading:"Destination"},
-  {key:"recorded_provider_code",heading:"Provider (recorded)"}, {key:"warehouse_status",heading:"Application status"},
+  {key:"recorded_provider_code",heading:"Provider (recorded)"},{key:"automatic_provider_code",heading:"Provider (temporary suggestion)"},{key:"override_provider_code",heading:"Approved override"}, {key:"warehouse_status",heading:"Application status"},
   {key:"dispatch_scanned",heading:"Actual dispatch scan evidenced"}, {key:"verified_dispatch_scanned_at",heading:"Actual scan timestamp"},
   {key:"physically_handed_over_at",heading:"Physical handover"}, {key:"attention_category",heading:"Priority review"},
   {key:"exception_flags",heading:"Exception flags"}, {key:"finance_settlement_status",heading:"Finance status"},
@@ -214,7 +227,7 @@ export default function ParcelFollowUpPage(){
     <label className="text-xs">From registered date<input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Through registered date<input type="date" value={to} onChange={e=>setTo(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Original Way ID<input value={way} onChange={e=>setWay(e.target.value)} placeholder="Search Way ID" className="block rounded border p-2"/></label>
-    <label className="text-xs">Recorded provider<input value={provider} onChange={e=>setProvider(e.target.value)} placeholder="e.g. ROYAL EXPRESS" className="block rounded border p-2"/></label>
+    <label className="text-xs">Recorded provider<select value={provider} onChange={e=>setProvider(e.target.value)} className="block min-h-10 rounded border bg-white p-2"><option value="">All recorded providers</option>{providerOptions.map(code=><option key={code} value={code}>{code}</option>)}</select></label>
     <label className="text-xs">Merchant / ကုန်သည်<input value={merchant} onChange={e=>setMerchant(e.target.value)} placeholder="Merchant name" className="block rounded border p-2"/></label>
     <label className="text-xs">Status / အခြေအနေ<select value={warehouseFilter} onChange={e=>setWarehouseFilter(e.target.value)} className="block rounded border p-2"><option value="">All</option>{["READY_FOR_DELIVERY","DELIVERY_FAILED","RETURN_TO_SENDER","SUBMITTED"].map(v=><option key={v}>{v}</option>)}</select></label>
     <button onClick={()=>void load()} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Refresh</button>
@@ -222,6 +235,7 @@ export default function ParcelFollowUpPage(){
     <button disabled={printBusy} onClick={()=>void pdf()} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Print / Save as PDF</button>
     <button className="rounded border px-4 py-2 text-sm" onClick={()=>{setFrom("");setTo("");setWay("");setProvider("");setMerchant("");setWarehouseFilter("");setTab("All parcels");}}>Clear filters / ရှင်းရန်</button>
    </div>}
+  <ProviderCorrectionQueue />
   {error&&<p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
   {message&&<p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
   {(tab==="My alerts"||tab==="Team alerts")?<div className="overflow-x-auto rounded-xl border bg-white">
@@ -245,7 +259,7 @@ export default function ParcelFollowUpPage(){
       <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
-      <td className="p-3">{p.recorded_provider_code||"Unverified"}</td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
+      <td className="p-3"><div className="font-semibold">{p.recorded_provider_code||"Unverified"}</div><div className="mt-1 text-xs text-slate-500">Territory suggestion: {p.automatic_provider_code||"Needs review"}</div>{p.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {p.override_provider_code}</div>}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>Review / Correct</button></td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
       <td className="p-3">{p.verified_dispatch_scanned_at?stamp(p.verified_dispatch_scanned_at):"Not evidenced (assumed complete only)"}</td>
       <td className="p-3">{p.finance_settlement_status||"Not recorded"}</td>
       <td className="p-3">{stamp(p.last_evidence_at)}<div className="text-xs text-slate-500">{age(p.last_evidence_at)==null?"Aging unknown":age(p.last_evidence_at)+" days since latest recorded source"}</div></td>
@@ -267,6 +281,7 @@ export default function ParcelFollowUpPage(){
        <p className="mt-2 font-semibold text-amber-800">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
        <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((name,i)=><span key={name} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100":"bg-white")}>{i+1}. {name}</span>)}</div>
       </div>
+      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
      </section>}
    </>}

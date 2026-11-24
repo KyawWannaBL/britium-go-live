@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
 import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
@@ -59,6 +60,7 @@ function isPendingForWayplan(row:any){
 
 export default function WarehousePendingParcelsPage(){
   const [rows,setRows]=useState<any[]>([]);
+  const [providerReviewRow,setProviderReviewRow]=useState<any|null>(null);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
@@ -250,7 +252,7 @@ export default function WarehousePendingParcelsPage(){
             <tbody>
               {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
-                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
+                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}<button type="button" onClick={()=>setProviderReviewRow(r)} className="mt-1 block text-xs font-semibold text-cyan-300 underline">Review provider</button></td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
                 <td className="p-2"><span className="rounded border border-slate-700 px-2 py-1 text-xs font-bold">{r._pendingType}</span></td>
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
@@ -267,6 +269,10 @@ export default function WarehousePendingParcelsPage(){
           </table>
         </div>
       </section>
+      {providerReviewRow&&<section className="rounded-xl border border-cyan-600/40 bg-white p-3 text-slate-900">
+        <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-bold">Provider review · {txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)}</h2><button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>setProviderReviewRow(null)}>Close</button></div>
+        <ProviderTerritoryReview key={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} wayId={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} township={txt(providerReviewRow.delivery_township)||null} recordedProvider={txt(providerReviewRow.recorded_provider_code)||null} onChanged={()=>void load()}/>
+      </section>}
     </div>
   </main>;
 }
