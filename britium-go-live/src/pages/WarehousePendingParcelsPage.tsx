@@ -6,7 +6,8 @@ import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview
 import {loadTerritoryLookup,territoryProvider,DEFAULT_PROVIDER_CODES} from "@/lib/providerTerritory";
 import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
 
-const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
+const myanmarDateFormatter = new Intl.DateTimeFormat("en-GB",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"});
+const fmt = (v:any) => v ? (Number.isFinite(new Date(v).getTime()) ? myanmarDateFormatter.format(new Date(v)) : "Invalid Date") : "-";
 const txt = (v:any) => String(v ?? "").trim();
 
 function hoursSince(raw:any){
@@ -209,6 +210,7 @@ export default function WarehousePendingParcelsPage(){
     if(format==="pdf"&&!windowForPrint){setExportMessage("Please allow pop-ups to save the PDF.");return;}
     setExportBusy(true);setExportMessage("");
     try{
+      await new Promise<void>(resolve=>setTimeout(resolve,0));
       const report=exportRows();
       if(format==="pdf"){
         if(report.length>2000)throw new Error("PDF is limited to 2,000 parcels. Apply narrower filters or use Excel.");
@@ -290,7 +292,7 @@ export default function WarehousePendingParcelsPage(){
             <div className="text-xs text-slate-300"><strong className="text-amber-300">{visible.length}</strong> matching parcels · <strong className="text-rose-300">{visible.filter(r=>r._overdue).length}</strong> overdue · Last refresh: {updatedAt?fmt(updatedAt):"—"}</div>
             <div className="flex flex-wrap items-center gap-2">
               <button type="button" onClick={clearFilters} className="min-h-10 rounded-lg border border-slate-500 px-3 text-xs font-bold text-white hover:bg-slate-700">Clear filters</button>
-              <button type="button" onClick={()=>void exportReport("excel")} disabled={!canExport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>Download Excel</button>
+              <button type="button" onClick={()=>void exportReport("excel")} disabled={!canExport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>{exportBusy?"Preparing report…":"Download Excel"}</button>
               <button type="button" onClick={()=>void exportReport("pdf")} disabled={!canExport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-40"><FileText className="h-4 w-4"/>PDF / Print</button>
             </div>
           </div>
