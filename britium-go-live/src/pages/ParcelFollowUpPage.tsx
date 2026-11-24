@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import {loadTerritoryLookup,territoryProvider} from "@/lib/providerTerritory";
 import ProviderCorrectionQueue from "@/components/parcel/ProviderCorrectionQueue";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
@@ -48,12 +49,21 @@ export default function ParcelFollowUpPage(){
  const [way,setWay]=useState("");
  const [provider,setProvider]=useState("");
  const [providerOptions,setProviderOptions]=useState<string[]>([]);
+ useEffect(()=>{
+  let active=true;
+  void loadTerritoryLookup().then(map=>{if(active){setTerritoryMaster(map);setTerritoryLoaded(true);}}).catch(e=>{console.warn("Provider master could not load",e);if(active)setTerritoryLoaded(false);});
+  return ()=>{active=false;};
+ },[]);
+
  const [warehouseFilter,setWarehouseFilter]=useState("");
  const [merchant,setMerchant]=useState("");
  const [rows,setRows]=useState<Parcel[]>([]);
  const [tasks,setTasks]=useState<Task[]>([]);
  const [staff,setStaff]=useState<Staff[]>([]);
  const [selected,setSelected]=useState<Parcel|null>(null);
+ const [territoryMaster,setTerritoryMaster]=useState(new Map<string,string>());
+ const [manualProvider,setManualProvider]=useState("");
+ const [territoryLoaded,setTerritoryLoaded]=useState(false);
  const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
  const [assignee,setAssignee]=useState("");
  const [department,setDepartment]=useState("Operations");
@@ -259,7 +269,16 @@ export default function ParcelFollowUpPage(){
       <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
-      <td className="p-3"><div className="font-semibold">{p.recorded_provider_code||"Unverified"}</div><div className="mt-1 text-xs text-slate-500">Territory suggestion: {p.automatic_provider_code||"Needs review"}</div>{p.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {p.override_provider_code}</div>}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>Review / Correct</button></td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
+      <td className="p-3"><div className="font-semibold">Auto: {territoryLoaded?territoryProvider(p.destination_township,null,territoryMaster).code:"Loading territory..."}</div>
+        <div className="text-xs text-slate-500">Recorded: {p.recorded_provider_code||"Unverified"}</div>
+        {p.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {p.override_provider_code}</div>}
+        <select disabled={!territoryLoaded} aria-label={"Change provider for "+p.delivery_way_id}
+          value={selected?.delivery_way_id===p.delivery_way_id&&manualProvider?manualProvider:territoryProvider(p.destination_township,null,territoryMaster).code}
+          onChange={e=>{if(e.target.value!==territoryProvider(p.destination_township,null,territoryMaster).code){setManualProvider(e.target.value);setSelected(p);}else{setManualProvider("");setSelected(null);}}}
+          className="mt-1 block min-h-9 w-44 rounded border bg-white px-2 text-xs text-slate-900">
+          {providerOptions.map(code=><option key={code} value={code}>{code}</option>)}
+        </select>
+      </td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
       <td className="p-3">{p.verified_dispatch_scanned_at?stamp(p.verified_dispatch_scanned_at):"Not evidenced (assumed complete only)"}</td>
       <td className="p-3">{p.finance_settlement_status||"Not recorded"}</td>
       <td className="p-3">{stamp(p.last_evidence_at)}<div className="text-xs text-slate-500">{age(p.last_evidence_at)==null?"Aging unknown":age(p.last_evidence_at)+" days since latest recorded source"}</div></td>
@@ -281,7 +300,7 @@ export default function ParcelFollowUpPage(){
        <p className="mt-2 font-semibold text-amber-800">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
        <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((name,i)=><span key={name} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100":"bg-white")}>{i+1}. {name}</span>)}</div>
       </div>
-      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
+      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} initialProvider={manualProvider||territoryProvider(selected.destination_township,null,territoryMaster).code} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
      </section>}
    </>}

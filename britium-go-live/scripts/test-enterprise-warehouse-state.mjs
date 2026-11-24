@@ -15,10 +15,11 @@ async function mount(file,rows){
  let result={data:{ok:true,rows},error:null},interval;
  const module={exports:{}};
  const mockRequire=name=>{
-  if(name.includes('supabase/client'))return {supabase:{rpc:async()=>{if(result instanceof Error)throw result;return result;}}};
+  if(name.includes('supabase/client'))return {supabase:{rpc:async()=>{if(result instanceof Error)throw result;return result;},from:()=>({select:()=>({eq:()=>({order:async()=>({data:[],error:null})})})})}};
   if(name==='@/contexts/AuthContext')return {useAuth:()=>({profile:{role:'warehouse'}})};
   if(name==='@/lib/portalRegistry')return {normalizeRole:v=>v};
   if(name==='@/components/parcel/ProviderTerritoryReview')return {default:()=>null};
+  if(name==='@/lib/providerTerritory')return {loadTerritoryLookup:async()=>new Map(),territoryProvider:()=>({code:'ROYAL EXPRESS',reason:'OUTSIDE_CORE_ROYAL',region:'Other',needsReview:false}),DEFAULT_PROVIDER_CODES:['BRITIUM','NPT BRANCH','MDY BRANCH','DK DELIVERY','ROYAL EXPRESS','H.TERMINAL DROP-OFF']};
   if(name==='@/lib/parcelReportExport')return {downloadParcelXlsx:async()=>{},openParcelPrintWindow:()=>null,renderParcelPdf:()=>{},fromMyanmarDay:()=>null,untilMyanmarDay:()=>null};
   if(name==='react-router-dom')return {Link:({children,...props})=>React.createElement('a',props,children)};
   if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
@@ -55,3 +56,37 @@ for(const file of [pageFile,alertFile]){
   try{await view.refresh(new Error('Warehouse network disconnected'));assert.match(view.text(),file===pageFile?/D-AUDIT-001/:/WAREHOUSE ALERT: 1 pending parcel/);}finally{await view.close();}
  });
 }
+
+test('territory provider defaults classify all three direct territories, Royal and gate without manual review',()=>{
+ const module={exports:{}};
+ const source=fs.readFileSync('src/lib/providerTerritory.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+ vm.runInNewContext(code,{module,exports:module.exports,require:(name)=>{
+  if(name==='@/integrations/supabase/client')return {supabase:{}};
+  return require(name);
+ },console});
+ const {territoryProvider,normalizeTownship}=module.exports;
+ const lookup=new Map([
+  [normalizeTownship('လှိုင်'),'Yangon'],
+  [normalizeTownship('ချမ်းမြသာစည်'),'Mandalay'],
+  [normalizeTownship('လယ်ဝေး'),'Naypyitaw'],
+  [normalizeTownship('တပ်ကုန်း'),'Naypyitaw'],
+  [normalizeTownship('မော်လမြိုင်'),'Mon'],
+ ]);
+ for(const [value,expected] of [
+  ['လှိုင်','BRITIUM'],
+  ['ချမ်းမြသာစည်','MDY BRANCH'],
+  ['မန္တလေး','MDY BRANCH'],
+  ['လယ်ဝေး','NPT BRANCH'],
+  ['တပ်ကုန်း','NPT BRANCH'],
+  ['နေပြည်တော်','NPT BRANCH'],
+  ['မော်လမြိုင်','ROYAL EXPRESS'],
+  ['မုံရွာ (Royal)','ROYAL EXPRESS'],
+  ['ဂိတ်ချ','H.TERMINAL DROP-OFF'],
+  ['MDY-L01-A1 · ထုံးဘို · 8000 MMK','MDY BRANCH']
+ ]){
+  const got=territoryProvider(value,null,lookup);
+  assert.equal(got.code,expected,value+' provider auto classification');
+  assert.equal(got.needsReview,false,value+' should not need review');
+ }
+});

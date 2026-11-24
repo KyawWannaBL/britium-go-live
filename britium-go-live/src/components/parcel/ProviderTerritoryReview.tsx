@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import {loadTerritoryLookup,territoryProvider} from "@/lib/providerTerritory";
 
 type Provider = { provider_code:string; provider_type:string; is_active:boolean };
 type Route = { provider_code?:string|null; reason?:string|null; matched_destination?:string|null; selection_mode?:string|null };
@@ -18,9 +19,9 @@ const descriptions:Record<string,string> = {
 };
 
 export default function ProviderTerritoryReview({
-  wayId, township, recordedProvider, onChanged
+  wayId, township, region, initialProvider, recordedProvider, onChanged
 }:{
-  wayId:string; township:string|null; recordedProvider:string|null;
+  wayId:string; township:string|null; region?:string|null; initialProvider?:string|null; recordedProvider:string|null;
   onChanged?:()=>void;
 }) {
   const {profile}=useAuth();
@@ -28,6 +29,7 @@ export default function ProviderTerritoryReview({
   const [provisional,setProvisional]=useState<Provisional|null>(null);
   const [providers,setProviders]=useState<Provider[]>([]);
   const [route,setRoute]=useState<Route|null>(null);
+  const [territoryDefault,setTerritoryDefault]=useState("");
   const [preview,setPreview]=useState<Preview|null>(null);
   const [chosen,setChosen]=useState("");
   const [reason,setReason]=useState("");
@@ -41,12 +43,13 @@ export default function ProviderTerritoryReview({
   const load=useCallback(async()=>{
     setLoading(true);setError("");setInfo("");
     try {
-      const [catalog,territory,effective,temporary]=await Promise.all([
+      const [catalog,territory,effective,temporary,master]=await Promise.all([
         (supabase.from("be_data_entry_service_providers") as any)
           .select("provider_code,provider_type,is_active").eq("is_active",true).order("provider_code"),
         (supabase as any).rpc("be_data_entry_service_provider_route_v17",{p_township:township||""}),
         (supabase as any).rpc("be_effective_parcel_provider_preview_v1",{p_way_id:wayId}),
-        (supabase as any).rpc("be_parcel_temp_provider_snapshot_v1",{p_way_id:wayId})
+        (supabase as any).rpc("be_parcel_temp_provider_snapshot_v1",{p_way_id:wayId}),
+        loadTerritoryLookup()
       ]);
       if(catalog.error)throw catalog.error;
       if(territory.error)throw territory.error;
@@ -56,6 +59,8 @@ export default function ProviderTerritoryReview({
       setCanRequestChange(previewAllowed);
       const list=(catalog.data||[]) as Provider[];
       const suggested=(territory.data||{}) as Route;
+      const resolved=territoryProvider(township,region,master);
+      setTerritoryDefault(resolved.code);
       const current=(effective.data||{}) as Preview;
       const tempAllowed=!temporary.error&&temporary.data?.ok===true;
       const tempValue=tempAllowed?(temporary.data as Provisional):null;
@@ -63,20 +68,20 @@ export default function ProviderTerritoryReview({
       setRoute(suggested);
       setPreview(previewAllowed?current:null);
       setProvisional(tempValue);
-      setChosen(String(tempValue?.provisional_provider||(previewAllowed?current.effective_provider:null)||suggested.provider_code||""));
+      setChosen(String(initialProvider||tempValue?.provisional_provider||resolved.code));
       if(!tempAllowed)setInfo("Temporary provider lookup unavailable for this waybill; canonical provider controls remain unchanged.");
       if(!previewAllowed&&tempAllowed)setInfo("Effective provider assignment is restricted. Territory and provisional classification remain available for review.");
     } catch(e:any) {setCanRequestChange(false);setError(e?.message||"Provider information unavailable");}
     finally{setLoading(false);}
-  },[wayId,township]);
+  },[wayId,township,region,initialProvider]);
 
   useEffect(()=>{void load();},[load]);
-  const suggested=String(route?.provider_code||preview?.default_provider||"");
+  const suggested=territoryDefault||String(route?.provider_code||preview?.default_provider||"");
   const effective=preview?String(preview.effective_provider||""):"";
   const provisionalValue=String(provisional?.provisional_provider||"");
   const unavailable=Boolean(chosen)&&!providers.some(p=>p.provider_code===chosen);
   const isChanged=Boolean(chosen)&&chosen!==effective;
-  const temporaryChanged=Boolean(chosen)&&chosen!==provisionalValue;
+  const temporaryChanged=Boolean(chosen)&&chosen!==(provisionalValue||territoryDefault);
   const canSave=canSaveTemporary&&temporaryChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
   const canRequest=canRequestChange&&isChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
   const ordered=[...providers].sort((a,b)=>{
@@ -121,19 +126,19 @@ export default function ProviderTerritoryReview({
   }
   return <section aria-label="Territory provider review" className="space-y-3 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4 text-sm">
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <h3 className="font-bold text-slate-900">Temporary Provider Review / ဝန်ဆောင်မှုပေးသူ စစ်ဆေးရန်</h3>
+      <h3 className="font-bold text-slate-900">Provider exception (only when needed) / ဝန်ဆောင်မှုပေးသူ ပြင်ဆင်ရန်</h3>
       <button type="button" disabled={busy||loading} onClick={()=>void load()} className="rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-semibold">Refresh suggestion</button>
     </div>
     <p className="text-xs leading-5 text-slate-600">Territory-based provisional classification is for operational tracking only, not physical handover evidence. Authorized Operations can save it immediately with audit; permanent provider changes require separate maker-checker approval. Wayplan, COD, tariffs and custody records are preserved.</p>
     <dl className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-3">
       <div><dt className="text-xs text-slate-500">Recorded provider</dt><dd className="font-bold">{recordedProvider||"Unverified"}</dd></div>
-      <div><dt className="text-xs text-slate-500">Territory suggested</dt><dd className="font-bold text-blue-900">{loading?"Checking...":suggested||"Review required"}</dd></div>
+      <div><dt className="text-xs text-slate-500">Automatically assigned (territory)</dt><dd className="font-bold text-blue-900">{loading?"Checking...":suggested||"Review required"}</dd></div>
       <div><dt className="text-xs text-slate-500">Current effective</dt><dd className="font-bold">{loading?"Checking...":effective||(canRequestChange?"Unverified":"Restricted — use Operations") }</dd></div>
-      <div><dt className="text-xs text-slate-500">Temporary classification</dt><dd className="font-bold text-indigo-800">{provisionalValue||"Not yet reviewed"}</dd></div>
+      <div><dt className="text-xs text-slate-500">Temporary classification</dt><dd className="font-bold text-indigo-800">{provisionalValue||territoryDefault||"Not available"}</dd></div>
     </dl>
     {provisional?.provisional_reason&&<p className="rounded-lg border border-indigo-200 bg-indigo-50 p-2 text-xs text-indigo-900">Temporary selection reason: {provisional.provisional_reason} · {provisional.reviewed_at?new Date(provisional.reviewed_at).toLocaleString():""}</p>}
     {recordedProvider&&effective&&recordedProvider!==effective&&<p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-semibold text-amber-900">Recorded provider differs from current effective routing. The recorded value is historical evidence and is not silently overwritten; investigate the discrepancy before treating this parcel as reconciled.</p>}
-    <p className="text-xs text-slate-500">Destination: {township||"Unknown"} · Routing basis: {route?.reason||"Unverified"} {route?.matched_destination?"· Matched: "+route.matched_destination:""}</p>
+    <p className="text-xs text-slate-500">Destination: {township||"Unknown"} · Territory: {region||"Township master"} · Operational default: {territoryDefault||"Checking"} {route?.matched_destination?"· Matched: "+route.matched_destination:""}</p>
     {preview?.requires_manual_pricing_review&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">Provider-specific tariff unavailable. Finance/pricing review is needed before commercial changes.</p>}
     <label className="block text-xs font-bold text-slate-700">Confirm or correct provider
       <select value={chosen} disabled={loading||busy} onChange={e=>{setChosen(e.target.value);setConfirmed(false);setInfo("");}} className="mt-1 block min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900">

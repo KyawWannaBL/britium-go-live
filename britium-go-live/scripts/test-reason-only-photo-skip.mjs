@@ -16,7 +16,7 @@ function production(name,env){return Function(...Object.keys(env),extract(name)+
 const text=v=>String(v??'').trim();
 const row={pickup_id:'P1020-TEST-001',parcel_sequence:1,photoTemporaryWaiver:true,photoTemporaryWaiverReason:'None',photoReviewed:true,proof_ref:'',proof_url:'',calculation:{},recipient_name:'A',recipient_phone:'09123456789',delivery_address:'Address',photoBypassReason:''};
 let calls=[],patches=[];
-const env={rows:[row],selectedPickup:{pickup_id:row.pickup_id},tariffOptions:[],receiverQuoteMismatch:()=>null,updateRow:(i,p)=>patches.push(p),routeForRow:()=>({providerCode:'BRITIUM'}),handoffStationReady:()=>true,supabase:{rpc:async(name,args)=>{calls.push({name,args});return {data:{ok:true,persisted:true}};}},payload:r=>({pickup_id:r.pickup_id,parcel_sequence:r.parcel_sequence}),requestId:()=> 'test',envelope:v=>({ok:v.ok,data:{}}),envelopeMessage:()=>'',text,setPickups:()=>{}};
+const env={photoRequired:true,rows:[row],selectedPickup:{pickup_id:row.pickup_id},tariffOptions:[],receiverQuoteMismatch:()=>null,updateRow:(i,p)=>patches.push(p),routeForRow:()=>({providerCode:'BRITIUM'}),handoffStationReady:()=>true,supabase:{rpc:async(name,args)=>{calls.push({name,args});return {data:{ok:true,persisted:true}};}},payload:r=>({pickup_id:r.pickup_id,parcel_sequence:r.parcel_sequence}),requestId:()=> 'test',envelope:v=>({ok:v.ok,data:{}}),envelopeMessage:()=>'',text,setPickups:()=>{}};
 assert.equal(await production('saveRow',env)(0),true,'An audited skip must save without a stored photo reference');
 assert.equal(calls[0]?.name,'be_data_entry_financial_v2_save','Skipped-photo save reaches server validation');
 calls=[];patches=[];

@@ -1,8 +1,9 @@
 // @ts-nocheck
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import {loadTerritoryLookup,territoryProvider,DEFAULT_PROVIDER_CODES} from "@/lib/providerTerritory";
 import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
@@ -61,6 +62,12 @@ function isPendingForWayplan(row:any){
 export default function WarehousePendingParcelsPage(){
   const [rows,setRows]=useState<any[]>([]);
   const [providerReviewRow,setProviderReviewRow]=useState<any|null>(null);
+  const [providerChoice,setProviderChoice]=useState("");
+  const [territories,setTerritories]=useState(new Map<string,string>());
+  const [territoryError,setTerritoryError]=useState("");
+  const [territoryLoading,setTerritoryLoading]=useState(true);
+  const [provisionalByWay,setProvisionalByWay]=useState<Record<string,{provider:string;reason:string}>>({});
+  const [availableProviders,setAvailableProviders]=useState<string[]>([...DEFAULT_PROVIDER_CODES]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
@@ -72,18 +79,44 @@ export default function WarehousePendingParcelsPage(){
   const [township,setTownship]=useState("ALL");
   const [age,setAge]=useState("ALL");
   const [status,setStatus]=useState("ALL");
+  const [tablePage,setTablePage]=useState(0);
   const [exportBusy,setExportBusy]=useState(false);
   const [exportMessage,setExportMessage]=useState("");
   const [sourceCount,setSourceCount]=useState<number|null>(null);
   const [updatedAt,setUpdatedAt]=useState("");
 
 
+  useEffect(()=>{
+    let alive=true;
+    void Promise.all([
+      loadTerritoryLookup(),
+      (supabase.from("be_data_entry_service_providers") as any)
+        .select("provider_code").eq("is_active",true).order("provider_code")
+    ]).then(([map,catalog])=>{
+      if(!alive)return;
+      setTerritories(map);setTerritoryError("");setTerritoryLoading(false);
+      if(!catalog.error)setAvailableProviders((catalog.data||[]).map((x:any)=>String(x.provider_code)));
+    }).catch((e:any)=>{if(alive){setTerritoryError(e?.message||"Township master unavailable");setTerritoryLoading(false);}});
+    return ()=>{alive=false;};
+  },[]);
+
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
     try{
       const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
-      setRows(Array.isArray(data?.rows)?data.rows:[]);
+      const snapshotRows=Array.isArray(data?.rows)?data.rows:[];
+      setRows(snapshotRows);
+      const ids=[...new Set(snapshotRows.map((x:any)=>txt(x.delivery_way_id||x.waybill_no)).filter(Boolean))];
+      if(ids.length){
+        const parts:any[]=[];
+        for(let i=0;i<ids.length;i+=1900){
+          const answer=await (supabase as any).rpc("be_parcel_temp_provider_batch_v1",{p_way_ids:ids.slice(i,i+1900)});
+          if(answer.error){console.warn("Provisional provider lookup unavailable",answer.error.message);parts.push({});}
+          else parts.push(answer.data?.items||{});
+        }
+        setProvisionalByWay(Object.assign({},...parts));
+      }else setProvisionalByWay({});
       setSourceCount(Number.isFinite(Number(data?.stats?.total_ways))?Number(data.stats.total_ways):null);
       setUpdatedAt(new Date().toISOString());
       setMessage("");
@@ -106,8 +139,17 @@ export default function WarehousePendingParcelsPage(){
     const failedReturn = Boolean(row.next_attempt_priority)
       || Number(row.return_attempt_count || row.physical_return_scan_count || 0)>0
       || returnedAfterDispatch(row);
-    return {...row,_ageHours:ageHours,_overdue:ageHours>=48,_pendingType:failedReturn?"FAILED RETURN / REPLAN":"NEW INBOUND"};
-  }).sort((a:any,b:any)=>b._ageHours-a._ageHours),[rows]);
+    const territory=territoryProvider(row.delivery_township||row.township,row.delivery_region||row.destination_region,territories);
+    const selected=provisionalByWay[txt(row.delivery_way_id||row.waybill_no)]?.provider;
+    return {...row,_ageHours:ageHours,_overdue:ageHours>=48,
+      _pendingType:failedReturn?"FAILED RETURN / REPLAN":"NEW INBOUND",
+      _suggestedProvider:territory.code,_providerRegion:territory.region,
+      _providerNeedsReview:territories.size>0&&territory.needsReview,
+      _providerEffectiveTemporary:selected||territory.code,
+      _providerManual:Boolean(selected),
+      _providerReason:territory.reason
+    };
+  }).sort((a:any,b:any)=>b._ageHours-a._ageHours),[rows,territories,provisionalByWay]);
 
   const overdue=useMemo(()=>pending.filter((r:any)=>r._overdue),[pending]);
   const inboundPending=useMemo(()=>pending.filter((r:any)=>r._pendingType==="NEW INBOUND"),[pending]);
@@ -132,6 +174,13 @@ export default function WarehousePendingParcelsPage(){
     const q=query.trim().toLowerCase();
     return !q||[r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
   }),[pending,query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
+  // Keep interaction responsive with large backlogs. Exports still use every
+  // filtered row; only the displayed table is paginated.
+  const pageSize=100;
+  const totalPages=Math.max(1,Math.ceil(visible.length/pageSize));
+  const activePage=Math.min(tablePage,totalPages-1);
+  const displayedRows=visible.slice(activePage*pageSize,(activePage+1)*pageSize);
+  useEffect(()=>{setTablePage(0);setProviderReviewRow(null);},[query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
   const incomplete=sourceCount!==null&&sourceCount>rows.length;
   const canExport=validDates&&!loading&&!message&&!exportBusy&&!incomplete&&visible.length>0;
   const criteria=["Date basis: "+(dateBasis==="return"?"last return scan":"inbound scan"),"Dates: "+(fromDate||"All")+" through "+(toDate||"All")+" (Myanmar)","Type: "+kind,"Merchant: "+merchant,"Township: "+township,"Age: "+age,"Warehouse status: "+status,"Search: "+(query||"All")].join("; ");
@@ -140,7 +189,8 @@ export default function WarehousePendingParcelsPage(){
     {key:"merchant",label:"Merchant"},{key:"merchantCode",label:"Merchant Code"},{key:"recipient",label:"Recipient"},{key:"phone",label:"Phone"},
     {key:"township",label:"Township"},{key:"inbound",label:"Inbound Scan (Myanmar)"},{key:"age",label:"Pending Age Hours"},
     {key:"reason",label:"Failed Reason"},{key:"returned",label:"Last Return (Myanmar)"},{key:"attempts",label:"Return Attempts"},
-    {key:"wayplan",label:"Wayplan"},{key:"wayplanStatus",label:"Wayplan Status"}
+    {key:"wayplan",label:"Wayplan"},{key:"wayplanStatus",label:"Wayplan Status"},
+    {key:"suggestedProvider",label:"Territory Default"},{key:"temporaryProvider",label:"Provider (provisional)"},{key:"providerBasis",label:"Provider Basis"}
   ];
   const exportRows=()=>visible.map(r=>({
     alert:r._overdue?"48H+":"",way:txt(r.delivery_way_id||r.waybill_no),pickup:txt(r.pickup_id),type:r._pendingType,
@@ -149,7 +199,8 @@ export default function WarehousePendingParcelsPage(){
     inbound:fmt(r.inbound_scan_at),age:Number(r._ageHours||0).toFixed(1),
     reason:txt(r.pending_return_reason_name||r.last_exception_reason),returned:fmt(r.last_return_scan_at),
     attempts:Number(r.return_attempt_count||r.physical_return_scan_count||0),
-    wayplan:txt(r.active_wayplan_id)||"NOT IN WAYPLAN",wayplanStatus:txt(r.active_wayplan_status)||"NOT IN WAYPLAN"
+    wayplan:txt(r.active_wayplan_id)||"NOT IN WAYPLAN",wayplanStatus:txt(r.active_wayplan_status)||"NOT IN WAYPLAN",
+    suggestedProvider:r._suggestedProvider,temporaryProvider:r._providerEffectiveTemporary,providerBasis:r._providerManual?"AUDITED_OVERRIDE":r._providerReason
   }));
   function clearFilters(){setQuery("");setFromDate("");setToDate("");setDateBasis("inbound");setKind("ALL");setMerchant("ALL");setTownship("ALL");setAge("ALL");setStatus("ALL");setExportMessage("");}
   async function exportReport(format:"excel"|"pdf"){
@@ -195,6 +246,7 @@ export default function WarehousePendingParcelsPage(){
         </div>
       </div>}
 
+      {territoryError && <div role="alert" className="mb-4 rounded-lg bg-amber-950 p-3 text-amber-200">Township master unavailable; provider suggestions may use Royal fallback. Refresh before making changes. {territoryError}</div>}
       {message && <div className="mb-4 rounded-lg border border-red-700 bg-red-950/30 p-3 text-red-200">{message}</div>}
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -244,35 +296,70 @@ export default function WarehousePendingParcelsPage(){
           </div>
           {exportMessage&&<p role="status" className="mt-2 text-xs font-semibold text-cyan-300">{exportMessage}</p>}
         </section>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+          <span>Showing {visible.length?activePage*pageSize+1:0}–{Math.min(visible.length,(activePage+1)*pageSize)} of {visible.length} filtered parcels · Excel/PDF include all matching rows</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={activePage===0} onClick={()=>{setTablePage(n=>Math.max(0,n-1));setProviderReviewRow(null);}} className="rounded border border-slate-500 px-3 py-2 font-semibold disabled:opacity-30">Previous</button>
+            <span>Page {activePage+1} / {totalPages}</span>
+            <button type="button" disabled={activePage+1>=totalPages} onClick={()=>{setTablePage(n=>Math.min(totalPages-1,n+1));setProviderReviewRow(null);}} className="rounded border border-slate-500 px-3 py-2 font-semibold disabled:opacity-30">Next</button>
+          </div>
+        </div>
         <div className="overflow-auto">
-          <table className="w-full min-w-[1450px] border-collapse text-sm">
+          <table className="w-full min-w-[1700px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
-              {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
+              {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Provider (auto)","Change provider","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
-              {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
+              {displayedRows.map((r:any,i:number)=><Fragment key={txt(r.delivery_way_id)+i}><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
-                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}<button type="button" onClick={()=>setProviderReviewRow(r)} className="mt-1 block text-xs font-semibold text-cyan-300 underline">Review provider</button></td>
+                <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
                 <td className="p-2"><span className="rounded border border-slate-700 px-2 py-1 text-xs font-bold">{r._pendingType}</span></td>
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
                 <td className="p-2">{txt(r.recipient_name)}<div className="text-xs text-slate-400">{txt(r.recipient_phone || r.phone_number)}</div></td>
                 <td className="p-2">{txt(r.delivery_township)}</td>
+                <td className="p-2"><span className="font-bold text-emerald-300">{territoryLoading?"Loading territory...":territoryError?"Provider unavailable":r._providerEffectiveTemporary}</span>
+                  {r._providerManual&&<div className="text-[10px] text-cyan-300">Manual exception · audited</div>}
+                  {r._providerNeedsReview&&<div className="text-[10px] text-amber-300">Township not matched — verify destination</div>}
+                </td>
+                <td className="p-2">
+                  <select disabled={territoryLoading||!!territoryError} aria-label={"Provider exception for "+txt(r.delivery_way_id||r.waybill_no)}
+                    value={providerReviewRow===r?providerChoice:r._providerEffectiveTemporary}
+                    onChange={e=>{
+                      if(e.target.value===r._providerEffectiveTemporary){setProviderReviewRow(null);return;}
+                      setProviderChoice(e.target.value);setProviderReviewRow(r);
+                    }}
+                    className="min-h-10 w-[180px] rounded-md border border-slate-400 bg-white p-2 text-xs font-semibold text-slate-900">
+                    {availableProviders.map(x=><option key={x} value={x}>{x}</option>)}
+                  </select>
+                  {providerReviewRow===r&&<button type="button" onClick={()=>setProviderReviewRow(null)} className="mt-1 block text-xs text-cyan-300 underline">Cancel correction</button>}
+                </td>
                 <td className="p-2">{fmt(r.inbound_scan_at)}</td>
                 <td className={"p-2 font-black "+(r._overdue?"text-red-300":"text-cyan-300")}><Clock3 className="mr-1 inline h-4 w-4"/>{Number(r._ageHours||0).toFixed(1)} h</td>
                 <td className="max-w-[260px] p-2">{txt(r.pending_return_reason_name || r.last_exception_reason) || "-"}</td>
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
-              </tr>)}
-              {!visible.length && <tr><td colSpan={12} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
+              </tr>
+              {providerReviewRow===r&&<tr className="border-b border-cyan-500/50 bg-white text-slate-900">
+                <td colSpan={14} className="p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <strong>Exceptional provider correction · {txt(r.delivery_way_id||r.waybill_no)}</strong>
+                    <button type="button" onClick={()=>setProviderReviewRow(null)} className="text-sm font-semibold text-blue-700 underline">Close</button>
+                  </div>
+                  <ProviderTerritoryReview key={txt(r.delivery_way_id||r.waybill_no)+"-"+providerChoice}
+                    wayId={txt(r.delivery_way_id||r.waybill_no)}
+                    township={txt(r.delivery_township)||null} region={txt(r._providerRegion)||null}
+                    initialProvider={providerChoice} recordedProvider={txt(r.recorded_provider_code)||null}
+                    onChanged={()=>{setProviderReviewRow(null);void load(true);}}/>
+                </td>
+              </tr>}
+              </Fragment>)}
+              {!visible.length && <tr><td colSpan={14} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
-      {providerReviewRow&&<section className="rounded-xl border border-cyan-600/40 bg-white p-3 text-slate-900">
-        <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-bold">Provider review · {txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)}</h2><button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>setProviderReviewRow(null)}>Close</button></div>
-        <ProviderTerritoryReview key={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} wayId={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} township={txt(providerReviewRow.delivery_township)||null} recordedProvider={txt(providerReviewRow.recorded_provider_code)||null} onChanged={()=>void load()}/>
-      </section>}
+
     </div>
   </main>;
 }
