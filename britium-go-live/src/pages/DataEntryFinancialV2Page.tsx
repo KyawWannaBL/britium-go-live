@@ -1,4 +1,5 @@
 import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
+import PickupPhotoPolicyControl from "@/components/PickupPhotoPolicyControl";
 import { CorporateDataEntryBinding } from "@/components/tariff/CorporateTariffPanel";
 import { scopeReadySequences } from "@/lib/waybillPublicationScope";
 import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
@@ -707,7 +708,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
-const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, deleteRegistration, tariffOptions, providerOptions, tierAccess, locationReloadToken, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
+const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, deleteRegistration, tariffOptions, providerOptions, tierAccess, locationReloadToken, photoRequired = true, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
   const [deleteOpen,setDeleteOpen]=useState(false);
   const [deleteReason,setDeleteReason]=useState("");
   useEffect(()=>{setDeleteOpen(false);setDeleteReason("")},[row.pickup_id,row.parcel_sequence]);
@@ -731,7 +732,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const [photoZoom, setPhotoZoom] = useState(1);
   const [photoRotation, setPhotoRotation] = useState(0);
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
-  const photoReady = Boolean(row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
+  const photoReady = Boolean(!photoRequired || row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
   const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
   const saveBlocked = row.waybillPublished || busy || row.checking || row.skipped || row.calculating || row.calculationFailed || row.calculation?.validation_status === "ERROR" || !photoReady || !routeReady(row,tariffOptions);
   const statusText = row.saved ? "REGISTERED" : row.skipped ? "PENDING" : row.calculating ? "CALCULATING" : "DRAFT";
@@ -756,7 +757,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
           </div>
           <div className="flex flex-wrap gap-1.5">
             <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${statusClass}`}>{statusText}</span>
-            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${photoReady?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>PHOTO {photoReady?"READY":"CHECK"}</span>
+            <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${photoReady?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>PHOTO {!photoRequired?"OPTIONAL":photoReady?"READY":"CHECK"}</span>
             <span className={`rounded-full border px-2 py-1 text-[9px] font-black ${locationReady?"border-emerald-400/40 bg-emerald-400/10 text-emerald-200":"border-amber-300/40 bg-amber-400/10 text-amber-200"}`}>LOCATION {locationReady?"READY":row.locationStatus.replaceAll("_"," ")}</span>
           </div>
         </div>
@@ -766,7 +767,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
         <div className={fullMode?"space-y-4 p-4":"flex flex-col gap-3 p-3"}>
           <details open={fullMode || !photoReady} className={`order-1 rounded-xl border ${fullMode?"border-[#8d7b55] bg-[#bfb6a2]":"border-[#31506a] bg-[#071b2b]"}`}>
             <summary className="cursor-pointer list-none px-3 py-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-200">
-              Photo Verification & Evidence · {photoReady?"READY":"ACTION REQUIRED"}
+              Photo Verification & Evidence · {!photoRequired?"TEMPORARILY OPTIONAL":photoReady?"READY":"ACTION REQUIRED"}
             </summary>
             <div className="border-t border-[#31506a] p-3">
               {row.photoUnavailableAcknowledged ? (
@@ -1452,6 +1453,7 @@ export default function DataEntryFinancialV2Page() {
   const [dataEntryTab,setDataEntryTab]=useState<"ENTRY"|"STAFF_PROGRESS"|"RECONCILIATION"|"DATA_TOOLS">("ENTRY");
   const [toolDrawer,setToolDrawer]=useState<"BATCH"|"CONTRACT"|"EXPORT"|null>(null);
   const [rows,setRows]=useState<ParcelRow[]>([]);
+  const [photoRequired,setPhotoRequired]=useState(true);
   const [rowsPickupId,setRowsPickupId]=useState("");
   const [bulkImportDrafts,setBulkImportDrafts]=useState<Record<string,BulkImportDraft>>({});
   const [bulkImportOrder,setBulkImportOrder]=useState<string[]>([]);
@@ -1545,8 +1547,8 @@ export default function DataEntryFinancialV2Page() {
     !row.isAdditionalRegistration &&
     !row.photoUnavailableAcknowledged &&
     !row.photoReviewed &&
-    !row.photoTemporaryWaiver
-  ),[rows]);
+    !row.photoTemporaryWaiver && photoRequired
+  ),[rows,photoRequired]);
   const [dailyGridDate,setDailyGridDate]=useState(()=>new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date()));
   const [dailyRegistered,setDailyRegistered]=useState<any[]>([]);
   const [dailyGridBusy,setDailyGridBusy]=useState(false);
@@ -2248,7 +2250,7 @@ export default function DataEntryFinancialV2Page() {
       updateRow(index,{message:"No stored parcel photo exists. Enter a reason and select Skip Photo, or upload a photo before saving."});
       return false;
     }
-    if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver && !row.photoReviewed) {
+    if (photoRequired && !row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver && !row.photoReviewed) {
       updateRow(index, {
         message:
           "Approve the parcel photo or record a reason to skip it before Save.",
@@ -2375,7 +2377,7 @@ export default function DataEntryFinancialV2Page() {
     if(!text(row.recipient_phone)) return "Recipient phone needs clarification";
     if(!text(row.delivery_address)) return "Delivery address needs clarification";
     if(row.calculationFailed || row.calculation?.validation_status==="ERROR") return row.message||"Financial calculation needs correction. Recalculate this parcel.";
-    if(!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged&&!row.photoTemporaryWaiver) return "Photo approval required";
+    if(photoRequired&&!row.isAdditionalRegistration&&!row.photoReviewed&&!row.photoUnavailableAcknowledged&&!row.photoTemporaryWaiver) return "Photo approval required";
     if(row.photoTemporaryWaiver&&!row.photoTemporaryWaiverReason.trim()) return "Photo skip reason is required";
     if(row.photoUnavailableAcknowledged&&(!row.importedFromOs||!row.sourceFileName||row.photoBypassReason.trim().length<10)) return "OS evidence source or reason is incomplete";
     const route=routeForRow(row,tariffOptions);
@@ -3509,6 +3511,7 @@ export default function DataEntryFinancialV2Page() {
           </div>
 
           {rows.slice(pageStart,pageStart+1).map((row)=><ParcelEditor
+            photoRequired={photoRequired}
             key={row.pickup_id+":"+row.parcel_sequence}
             row={row}
             selectedPaymentType={selectedPickup?.payment_type || "COD"}
@@ -3625,6 +3628,8 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" className="rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-black text-[#06101e] disabled:opacity-40" disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} onClick={()=>void saveAll()}><Save size={13} className="mr-1 inline"/>Save All</button>
           </div>
         </header>
+
+        <PickupPhotoPolicyControl onRuleChange={setPhotoRequired}/>
 
         {message?<div className="rounded-xl border border-[#ff6b6b]/35 bg-[#3a1e28] p-3 text-[12px] text-[#ff9aa2]"><AlertTriangle size={15} className="mr-2 inline"/>{message}</div>:null}
 
