@@ -56,3 +56,37 @@ for(const file of [pageFile,alertFile]){
   try{await view.refresh(new Error('Warehouse network disconnected'));assert.match(view.text(),file===pageFile?/D-AUDIT-001/:/WAREHOUSE ALERT: 1 pending parcel/);}finally{await view.close();}
  });
 }
+
+test('territory provider defaults classify all three direct territories, Royal and gate without manual review',()=>{
+ const module={exports:{}};
+ const source=fs.readFileSync('src/lib/providerTerritory.ts','utf8');
+ const code=ts.transpileModule(source,{compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS}}).outputText;
+ vm.runInNewContext(code,{module,exports:module.exports,require:(name)=>{
+  if(name==='@/integrations/supabase/client')return {supabase:{}};
+  return require(name);
+ },console});
+ const {territoryProvider,normalizeTownship}=module.exports;
+ const lookup=new Map([
+  [normalizeTownship('လှိုင်'),'Yangon'],
+  [normalizeTownship('ချမ်းမြသာစည်'),'Mandalay'],
+  [normalizeTownship('လယ်ဝေး'),'Naypyitaw'],
+  [normalizeTownship('တပ်ကုန်း'),'Naypyitaw'],
+  [normalizeTownship('မော်လမြိုင်'),'Mon'],
+ ]);
+ for(const [value,expected] of [
+  ['လှိုင်','BRITIUM'],
+  ['ချမ်းမြသာစည်','MDY BRANCH'],
+  ['မန္တလေး','MDY BRANCH'],
+  ['လယ်ဝေး','NPT BRANCH'],
+  ['တပ်ကုန်း','NPT BRANCH'],
+  ['နေပြည်တော်','NPT BRANCH'],
+  ['မော်လမြိုင်','ROYAL EXPRESS'],
+  ['မုံရွာ (Royal)','ROYAL EXPRESS'],
+  ['ဂိတ်ချ','H.TERMINAL DROP-OFF'],
+  ['MDY-L01-A1 · ထုံးဘို · 8000 MMK','MDY BRANCH']
+ ]){
+  const got=territoryProvider(value,null,lookup);
+  assert.equal(got.code,expected,value+' provider auto classification');
+  assert.equal(got.needsReview,false,value+' should not need review');
+ }
+});
