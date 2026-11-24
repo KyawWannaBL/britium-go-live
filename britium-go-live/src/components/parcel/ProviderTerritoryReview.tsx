@@ -62,7 +62,7 @@ export default function ProviderTerritoryReview({
 
   useEffect(()=>{void load();},[load]);
   const suggested=String(route?.provider_code||preview?.default_provider||"");
-  const effective=String(preview?.effective_provider||recordedProvider||"");
+  const effective=preview?String(preview.effective_provider||""):"";
   const unavailable=Boolean(chosen)&&!providers.some(p=>p.provider_code===chosen);
   const isChanged=Boolean(chosen)&&chosen!==effective;
   const canRequest=canRequestChange&&isChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
@@ -96,7 +96,7 @@ export default function ProviderTerritoryReview({
     <dl className="grid gap-2 rounded-lg border bg-white p-3 sm:grid-cols-3">
       <div><dt className="text-xs text-slate-500">Recorded provider</dt><dd className="font-bold">{recordedProvider||"Unverified"}</dd></div>
       <div><dt className="text-xs text-slate-500">Territory suggested</dt><dd className="font-bold text-blue-900">{loading?"Checking...":suggested||"Review required"}</dd></div>
-      <div><dt className="text-xs text-slate-500">Current effective</dt><dd className="font-bold">{loading?"Checking...":effective||"Unverified"}</dd></div>
+      <div><dt className="text-xs text-slate-500">Current effective</dt><dd className="font-bold">{loading?"Checking...":effective||(canRequestChange?"Unverified":"Restricted — use Operations") }</dd></div>
     </dl>
     {recordedProvider&&effective&&recordedProvider!==effective&&<p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-semibold text-amber-900">Recorded provider differs from current effective routing. The recorded value is historical evidence and is not silently overwritten; investigate the discrepancy before treating this parcel as reconciled.</p>}
     <p className="text-xs text-slate-500">Destination: {township||"Unknown"} · Routing basis: {route?.reason||"Unverified"} {route?.matched_destination?"· Matched: "+route.matched_destination:""}</p>
