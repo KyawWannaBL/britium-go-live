@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import ProviderCorrectionQueue from "@/components/parcel/ProviderCorrectionQueue";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 
@@ -234,6 +235,7 @@ export default function ParcelFollowUpPage(){
     <button disabled={printBusy} onClick={()=>void pdf()} className="rounded border px-4 py-2 text-sm disabled:opacity-50">Print / Save as PDF</button>
     <button className="rounded border px-4 py-2 text-sm" onClick={()=>{setFrom("");setTo("");setWay("");setProvider("");setMerchant("");setWarehouseFilter("");setTab("All parcels");}}>Clear filters / ရှင်းရန်</button>
    </div>}
+  <ProviderCorrectionQueue />
   {error&&<p role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">{error}</p>}
   {message&&<p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">{message}</p>}
   {(tab==="My alerts"||tab==="Team alerts")?<div className="overflow-x-auto rounded-xl border bg-white">
