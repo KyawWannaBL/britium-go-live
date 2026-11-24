@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 import { downloadParcelXlsx,openParcelPrintWindow,renderParcelPdf,fromMyanmarDay,untilMyanmarDay } from "@/lib/parcelReportExport";
@@ -211,7 +212,7 @@ export default function HarmonizedParcelControlPage() {
           <td className="px-3 py-3"><input type="checkbox" aria-label={"Select "+row.delivery_way_id} checked={!!batchSelected[row.delivery_way_id]} onChange={e=>toggle(row,e.target.checked)}/></td>
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
           <td className="px-3 py-3">{display(row.merchant_name)}<div><N>{display(row.destination_township)}</N></div></td>
-          <td className="px-3 py-3">{display(row.recorded_provider_code)}</td>
+          <td className="px-3 py-3">{display(row.recorded_provider_code)}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(row)}>Review / Correct</button></td>
           <td className="px-3 py-3">{display(row.provider_custody_evidence)}</td>
           <td className="px-3 py-3">{display(row.warehouse_status)}<div><N>{row.dispatch_scanned ? "Dispatch scanned" : "Dispatch not evidenced"}</N></div></td>
           <td className="px-3 py-3">{display(row.wayplan_id)}</td>
@@ -256,6 +257,7 @@ export default function HarmonizedParcelControlPage() {
        <p className="text-sm font-semibold text-amber-900">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
        <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((stage,i)=><span key={stage} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100 text-blue-900":"bg-white text-slate-500")}>{i+1}. {stage}</span>)}</div>
       </div>
+      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
       <GroundEvidenceReviewPanel wayId={selected.delivery_way_id}/>
     </section>}
