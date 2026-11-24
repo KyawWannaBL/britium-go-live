@@ -18,6 +18,7 @@ async function mount(file,rows){
   if(name.includes('supabase/client'))return {supabase:{rpc:async()=>{if(result instanceof Error)throw result;return result;}}};
   if(name==='@/contexts/AuthContext')return {useAuth:()=>({profile:{role:'warehouse'}})};
   if(name==='@/lib/portalRegistry')return {normalizeRole:v=>v};
+  if(name==='@/lib/parcelReportExport')return {downloadParcelXlsx:async()=>{},openParcelPrintWindow:()=>null,renderParcelPdf:()=>{},fromMyanmarDay:()=>null,untilMyanmarDay:()=>null};
   if(name==='react-router-dom')return {Link:({children,...props})=>React.createElement('a',props,children)};
   if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
   return require(name);
