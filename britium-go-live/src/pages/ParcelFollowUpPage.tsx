@@ -46,6 +46,7 @@ export default function ParcelFollowUpPage(){
  const [to,setTo]=useState(new Date().toISOString().slice(0,10));
  const [way,setWay]=useState("");
  const [provider,setProvider]=useState("");
+ const [providerOptions,setProviderOptions]=useState<string[]>([]);
  const [warehouseFilter,setWarehouseFilter]=useState("");
  const [merchant,setMerchant]=useState("");
  const [rows,setRows]=useState<Parcel[]>([]);
@@ -66,6 +67,16 @@ export default function ParcelFollowUpPage(){
  const [printBusy,setPrintBusy]=useState(false);
  const allowed = ["superadmin","super-admin","operation-manager","operation_manager","operations-manager","operations_manager"].includes((profile?.role||"").toLowerCase());
  useEffect(()=>{if(!allowed)setTab("My alerts");},[allowed]);
+ useEffect(()=>{
+  if(!allowed)return;
+  let active=true;
+  void (supabase.from("be_data_entry_service_providers") as any)
+    .select("provider_code").eq("is_active",true).order("provider_code")
+    .then(({data,error}:{data:{provider_code:string}[]|null;error:any})=>{
+      if(active&&!error)setProviderOptions((data||[]).map(p=>p.provider_code));
+    });
+  return ()=>{active=false;};
+ },[allowed]);
  const pageSize=75;
 
  const makeQuery=useCallback(()=>{
@@ -215,7 +226,7 @@ export default function ParcelFollowUpPage(){
     <label className="text-xs">From registered date<input type="date" value={from} onChange={e=>setFrom(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Through registered date<input type="date" value={to} onChange={e=>setTo(e.target.value)} className="block rounded border p-2"/></label>
     <label className="text-xs">Original Way ID<input value={way} onChange={e=>setWay(e.target.value)} placeholder="Search Way ID" className="block rounded border p-2"/></label>
-    <label className="text-xs">Recorded provider<input value={provider} onChange={e=>setProvider(e.target.value)} placeholder="e.g. ROYAL EXPRESS" className="block rounded border p-2"/></label>
+    <label className="text-xs">Recorded provider<select value={provider} onChange={e=>setProvider(e.target.value)} className="block min-h-10 rounded border bg-white p-2"><option value="">All recorded providers</option>{providerOptions.map(code=><option key={code} value={code}>{code}</option>)}</select></label>
     <label className="text-xs">Merchant / ကုန်သည်<input value={merchant} onChange={e=>setMerchant(e.target.value)} placeholder="Merchant name" className="block rounded border p-2"/></label>
     <label className="text-xs">Status / အခြေအနေ<select value={warehouseFilter} onChange={e=>setWarehouseFilter(e.target.value)} className="block rounded border p-2"><option value="">All</option>{["READY_FOR_DELIVERY","DELIVERY_FAILED","RETURN_TO_SENDER","SUBMITTED"].map(v=><option key={v}>{v}</option>)}</select></label>
     <button onClick={()=>void load()} className="rounded bg-slate-900 px-4 py-2 text-sm text-white">Refresh</button>
