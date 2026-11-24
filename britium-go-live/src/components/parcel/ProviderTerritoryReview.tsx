@@ -81,7 +81,7 @@ export default function ProviderTerritoryReview({
   const canRequest=canRequestChange&&isChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
   const ordered=[...providers].sort((a,b)=>{
     const ai=preferred.indexOf(a.provider_code),bi=preferred.indexOf(b.provider_code);
-    return (ai<0?999:ai)-(bi<0?999)||a.provider_code.localeCompare(b.provider_code);
+    return (ai<0?999:ai)-(bi<0?999:bi)||a.provider_code.localeCompare(b.provider_code);
   });
   async function saveTemporary(){
     if(!canSave)return;
