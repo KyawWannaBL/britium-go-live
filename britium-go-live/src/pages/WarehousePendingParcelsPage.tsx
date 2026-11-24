@@ -65,6 +65,7 @@ export default function WarehousePendingParcelsPage(){
   const [providerChoice,setProviderChoice]=useState("");
   const [territories,setTerritories]=useState(new Map<string,string>());
   const [territoryError,setTerritoryError]=useState("");
+  const [territoryLoading,setTerritoryLoading]=useState(true);
   const [provisionalByWay,setProvisionalByWay]=useState<Record<string,{provider:string;reason:string}>>({});
   const [availableProviders,setAvailableProviders]=useState<string[]>([...DEFAULT_PROVIDER_CODES]);
   const [loading,setLoading]=useState(true);
@@ -92,9 +93,9 @@ export default function WarehousePendingParcelsPage(){
         .select("provider_code").eq("is_active",true).order("provider_code")
     ]).then(([map,catalog])=>{
       if(!alive)return;
-      setTerritories(map);setTerritoryError("");
+      setTerritories(map);setTerritoryError("");setTerritoryLoading(false);
       if(!catalog.error)setAvailableProviders((catalog.data||[]).map((x:any)=>String(x.provider_code)));
-    }).catch((e:any)=>{if(alive)setTerritoryError(e?.message||"Township master unavailable");});
+    }).catch((e:any)=>{if(alive){setTerritoryError(e?.message||"Township master unavailable");setTerritoryLoading(false);}});
     return ()=>{alive=false;};
   },[]);
 
@@ -301,12 +302,12 @@ export default function WarehousePendingParcelsPage(){
                 <td className="p-2">{txt(r.merchant_name || r.merchant_code)}</td>
                 <td className="p-2">{txt(r.recipient_name)}<div className="text-xs text-slate-400">{txt(r.recipient_phone || r.phone_number)}</div></td>
                 <td className="p-2">{txt(r.delivery_township)}</td>
-                <td className="p-2"><span className="font-bold text-emerald-300">{r._providerEffectiveTemporary}</span>
+                <td className="p-2"><span className="font-bold text-emerald-300">{territoryLoading?"Loading territory...":territoryError?"Provider unavailable":r._providerEffectiveTemporary}</span>
                   {r._providerManual&&<div className="text-[10px] text-cyan-300">Manual exception · audited</div>}
                   {r._providerNeedsReview&&<div className="text-[10px] text-amber-300">Township not matched — verify destination</div>}
                 </td>
                 <td className="p-2">
-                  <select aria-label={"Provider exception for "+txt(r.delivery_way_id||r.waybill_no)}
+                  <select disabled={territoryLoading||!!territoryError} aria-label={"Provider exception for "+txt(r.delivery_way_id||r.waybill_no)}
                     value={providerReviewRow===r?providerChoice:r._providerEffectiveTemporary}
                     onChange={e=>{
                       if(e.target.value===r._providerEffectiveTemporary){setProviderReviewRow(null);return;}
