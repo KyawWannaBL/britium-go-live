@@ -51,7 +51,7 @@ export default function ParcelFollowUpPage(){
  const [providerOptions,setProviderOptions]=useState<string[]>([]);
  useEffect(()=>{
   let active=true;
-  void loadTerritoryLookup().then(map=>{if(active)setTerritoryMaster(map);}).catch(e=>console.warn("Provider master could not load",e));
+  void loadTerritoryLookup().then(map=>{if(active){setTerritoryMaster(map);setTerritoryLoaded(true);}}).catch(e=>{console.warn("Provider master could not load",e);if(active)setTerritoryLoaded(false);});
   return ()=>{active=false;};
  },[]);
 
@@ -63,6 +63,7 @@ export default function ParcelFollowUpPage(){
  const [selected,setSelected]=useState<Parcel|null>(null);
  const [territoryMaster,setTerritoryMaster]=useState(new Map<string,string>());
  const [manualProvider,setManualProvider]=useState("");
+ const [territoryLoaded,setTerritoryLoaded]=useState(false);
  const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
  const [assignee,setAssignee]=useState("");
  const [department,setDepartment]=useState("Operations");
@@ -268,10 +269,10 @@ export default function ParcelFollowUpPage(){
       <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
-      <td className="p-3"><div className="font-semibold">Auto: {territoryProvider(p.destination_township,null,territoryMaster).code}</div>
+      <td className="p-3"><div className="font-semibold">Auto: {territoryLoaded?territoryProvider(p.destination_township,null,territoryMaster).code:"Loading territory..."}</div>
         <div className="text-xs text-slate-500">Recorded: {p.recorded_provider_code||"Unverified"}</div>
         {p.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {p.override_provider_code}</div>}
-        <select aria-label={"Change provider for "+p.delivery_way_id}
+        <select disabled={!territoryLoaded} aria-label={"Change provider for "+p.delivery_way_id}
           value={selected?.delivery_way_id===p.delivery_way_id&&manualProvider?manualProvider:territoryProvider(p.destination_township,null,territoryMaster).code}
           onChange={e=>{if(e.target.value!==territoryProvider(p.destination_township,null,territoryMaster).code){setManualProvider(e.target.value);setSelected(p);}else{setManualProvider("");setSelected(null);}}}
           className="mt-1 block min-h-9 w-44 rounded border bg-white px-2 text-xs text-slate-900">
