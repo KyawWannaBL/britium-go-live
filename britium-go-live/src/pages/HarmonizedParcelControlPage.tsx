@@ -66,9 +66,10 @@ export default function HarmonizedParcelControlPage() {
   const [selected, setSelected] = useState<Parcel | null>(null);
   const [territoryMaster,setTerritoryMaster]=useState(new Map<string,string>());
   const [manualProvider,setManualProvider]=useState("");
+  const [territoryLoaded,setTerritoryLoaded]=useState(false);
   useEffect(()=>{
     let active=true;
-    void loadTerritoryLookup().then(map=>{if(active)setTerritoryMaster(map);}).catch(e=>console.warn("Territory lookup unavailable",e));
+    void loadTerritoryLookup().then(map=>{if(active){setTerritoryMaster(map);setTerritoryLoaded(true);}}).catch(e=>{console.warn("Territory lookup unavailable",e);if(active)setTerritoryLoaded(false);});
     return ()=>{active=false;};
   },[]);
   const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
@@ -223,10 +224,10 @@ export default function HarmonizedParcelControlPage() {
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
           <td className="px-3 py-3">{display(row.merchant_name)}<div><N>{display(row.destination_township)}</N></div></td>
           <td className="px-3 py-3">
-            <div className="font-semibold">Auto: {territoryProvider(row.destination_township,null,territoryMaster).code}</div>
+            <div className="font-semibold">Auto: {territoryLoaded?territoryProvider(row.destination_township,null,territoryMaster).code:"Loading territory..."}</div>
             <div className="text-xs text-slate-500">Recorded: {display(row.recorded_provider_code)}</div>
             {row.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {row.override_provider_code}</div>}
-            <select aria-label={"Change provider for "+row.delivery_way_id}
+            <select disabled={!territoryLoaded} aria-label={"Change provider for "+row.delivery_way_id}
               value={selected?.delivery_way_id===row.delivery_way_id&&manualProvider?manualProvider:territoryProvider(row.destination_township,null,territoryMaster).code}
               onChange={e=>{if(e.target.value!==territoryProvider(row.destination_township,null,territoryMaster).code){setManualProvider(e.target.value);setSelected(row);}else{setManualProvider("");setSelected(null);}}}
               className="mt-1 block min-h-9 w-44 rounded border bg-white px-2 text-xs text-slate-900">
