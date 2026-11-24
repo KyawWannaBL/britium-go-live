@@ -119,6 +119,9 @@ const YANGON_BRITIUM_OUTREACH_SERVICE_AREA = keySet([
   "လှိုင်သာယာ", "လှိုင်သာယာ (အရှေ့)", "လှိုင်သာယာ (အနောက်)",
   "Thanlyin", "Syriam", "သန်လျင်",
   "Thongwa", "Thone Gwa", "သုံးခွ",
+  "South Dagon", "North Dagon", "East Dagon", "Dagon Seikkan", "Dagon Seik Kan",
+  "တောင်ဒဂုံ", "မြောက်ဒဂုံ", "အရှေ့ဒဂုံ", "ဒဂုံဆိပ်ကမ်း",
+  "ဒဂုံမြို့သစ်တောင်ပိုင်း", "ဒဂုံမြို့သစ်မြောက်ပိုင်း", "ဒဂုံမြို့သစ်အရှေ့ပိုင်း", "ဒဂုံမြို့သစ်ဆိပ်ကမ်း",
 ]);
 
 export function stripServiceProviderDecoration(value: unknown): string {
