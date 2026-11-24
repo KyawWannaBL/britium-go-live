@@ -79,6 +79,7 @@ export default function WarehousePendingParcelsPage(){
   const [township,setTownship]=useState("ALL");
   const [age,setAge]=useState("ALL");
   const [status,setStatus]=useState("ALL");
+  const [tablePage,setTablePage]=useState(0);
   const [exportBusy,setExportBusy]=useState(false);
   const [exportMessage,setExportMessage]=useState("");
   const [sourceCount,setSourceCount]=useState<number|null>(null);
@@ -173,6 +174,13 @@ export default function WarehousePendingParcelsPage(){
     const q=query.trim().toLowerCase();
     return !q||[r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
   }),[pending,query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
+  // Keep interaction responsive with large backlogs. Exports still use every
+  // filtered row; only the displayed table is paginated.
+  const pageSize=100;
+  const totalPages=Math.max(1,Math.ceil(visible.length/pageSize));
+  const activePage=Math.min(tablePage,totalPages-1);
+  const displayedRows=visible.slice(activePage*pageSize,(activePage+1)*pageSize);
+  useEffect(()=>{setTablePage(0);setProviderReviewRow(null);},[query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
   const incomplete=sourceCount!==null&&sourceCount>rows.length;
   const canExport=validDates&&!loading&&!message&&!exportBusy&&!incomplete&&visible.length>0;
   const criteria=["Date basis: "+(dateBasis==="return"?"last return scan":"inbound scan"),"Dates: "+(fromDate||"All")+" through "+(toDate||"All")+" (Myanmar)","Type: "+kind,"Merchant: "+merchant,"Township: "+township,"Age: "+age,"Warehouse status: "+status,"Search: "+(query||"All")].join("; ");
@@ -288,13 +296,21 @@ export default function WarehousePendingParcelsPage(){
           </div>
           {exportMessage&&<p role="status" className="mt-2 text-xs font-semibold text-cyan-300">{exportMessage}</p>}
         </section>
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-300">
+          <span>Showing {visible.length?activePage*pageSize+1:0}–{Math.min(visible.length,(activePage+1)*pageSize)} of {visible.length} filtered parcels · Excel/PDF include all matching rows</span>
+          <div className="flex items-center gap-2">
+            <button type="button" disabled={activePage===0} onClick={()=>{setTablePage(n=>Math.max(0,n-1));setProviderReviewRow(null);}} className="rounded border border-slate-500 px-3 py-2 font-semibold disabled:opacity-30">Previous</button>
+            <span>Page {activePage+1} / {totalPages}</span>
+            <button type="button" disabled={activePage+1>=totalPages} onClick={()=>{setTablePage(n=>Math.min(totalPages-1,n+1));setProviderReviewRow(null);}} className="rounded border border-slate-500 px-3 py-2 font-semibold disabled:opacity-30">Next</button>
+          </div>
+        </div>
         <div className="overflow-auto">
           <table className="w-full min-w-[1700px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
               {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Provider (auto)","Change provider","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
-              {visible.map((r:any,i:number)=><Fragment key={txt(r.delivery_way_id)+i}><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
+              {displayedRows.map((r:any,i:number)=><Fragment key={txt(r.delivery_way_id)+i}><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
                 <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
