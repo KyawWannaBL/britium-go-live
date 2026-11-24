@@ -15,10 +15,11 @@ async function mount(file,rows){
  let result={data:{ok:true,rows},error:null},interval;
  const module={exports:{}};
  const mockRequire=name=>{
-  if(name.includes('supabase/client'))return {supabase:{rpc:async()=>{if(result instanceof Error)throw result;return result;}}};
+  if(name.includes('supabase/client'))return {supabase:{rpc:async()=>{if(result instanceof Error)throw result;return result;},from:()=>({select:()=>({eq:()=>({order:async()=>({data:[],error:null})})})})}};
   if(name==='@/contexts/AuthContext')return {useAuth:()=>({profile:{role:'warehouse'}})};
   if(name==='@/lib/portalRegistry')return {normalizeRole:v=>v};
   if(name==='@/components/parcel/ProviderTerritoryReview')return {default:()=>null};
+  if(name==='@/lib/providerTerritory')return {loadTerritoryLookup:async()=>new Map(),territoryProvider:()=>({code:'ROYAL EXPRESS',reason:'OUTSIDE_CORE_ROYAL',region:'Other',needsReview:false}),DEFAULT_PROVIDER_CODES:['BRITIUM','NPT BRANCH','MDY BRANCH','DK DELIVERY','ROYAL EXPRESS','H.TERMINAL DROP-OFF']};
   if(name==='@/lib/parcelReportExport')return {downloadParcelXlsx:async()=>{},openParcelPrintWindow:()=>null,renderParcelPdf:()=>{},fromMyanmarDay:()=>null,untilMyanmarDay:()=>null};
   if(name==='react-router-dom')return {Link:({children,...props})=>React.createElement('a',props,children)};
   if(name==='lucide-react')return new Proxy({},{get:()=>()=>null});
