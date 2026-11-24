@@ -31,6 +31,7 @@ export default function ProviderTerritoryReview({
   const [error,setError]=useState("");
   const [info,setInfo]=useState("");
   const [confirmed,setConfirmed]=useState(false);
+  const [canRequestChange,setCanRequestChange]=useState(false);
 
   const load=useCallback(async()=>{
     setLoading(true);setError("");setInfo("");
@@ -43,16 +44,19 @@ export default function ProviderTerritoryReview({
       ]);
       if(catalog.error)throw catalog.error;
       if(territory.error)throw territory.error;
-      if(effective.error)throw effective.error;
-      if(effective.data?.ok===false)throw new Error(effective.data.error||"Provider preview not available for this parcel");
+      // Warehouse viewers may inspect suggestions without parcel-provider edit authority.
+      // The server will always enforce permissions for review and requests.
+      const previewAllowed=!effective.error&&effective.data?.ok!==false;
+      setCanRequestChange(previewAllowed);
       const list=(catalog.data||[]) as Provider[];
       const suggested=(territory.data||{}) as Route;
       const current=(effective.data||{}) as Preview;
       setProviders(list);
       setRoute(suggested);
-      setPreview(current);
-      setChosen(String(current.effective_provider||suggested.provider_code||""));
-    } catch(e:any) {setError(e?.message||"Provider information unavailable");}
+      setPreview(previewAllowed?current:null);
+      setChosen(String((previewAllowed?current.effective_provider:null)||suggested.provider_code||""));
+      if(!previewAllowed)setInfo("Territory suggestion is view-only for this account. Ask Operations or Super Admin to submit a correction.");
+    } catch(e:any) {setCanRequestChange(false);setError(e?.message||"Provider information unavailable");}
     finally{setLoading(false);}
   },[wayId,township]);
 
@@ -61,7 +65,7 @@ export default function ProviderTerritoryReview({
   const effective=String(preview?.effective_provider||recordedProvider||"");
   const unavailable=Boolean(chosen)&&!providers.some(p=>p.provider_code===chosen);
   const isChanged=Boolean(chosen)&&chosen!==effective;
-  const canRequest=isChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
+  const canRequest=canRequestChange&&isChanged&&!unavailable&&!busy&&!loading&&reason.trim().length>=12&&confirmed&&!error;
   const ordered=[...providers].sort((a,b)=>{
     const ai=preferred.indexOf(a.provider_code),bi=preferred.indexOf(b.provider_code);
     return (ai<0?999:ai)-(bi<0?999)||a.provider_code.localeCompare(b.provider_code);
@@ -104,7 +108,7 @@ export default function ProviderTerritoryReview({
       </select>
     </label>
     {chosen&&<p className="text-xs text-slate-600">{chosen===effective?"Selected provider matches current effective provider. No correction needed.":chosen===suggested?"Matches system territory suggestion.":"Manual correction differs from territory suggestion; document the operational reason."}</p>}
-    {isChanged&&<div className="space-y-2">
+    {isChanged&&canRequestChange&&<div className="space-y-2">
       <label className="block text-xs font-bold text-slate-700">Reason and supporting reference (minimum 12 characters)
         <textarea value={reason} maxLength={600} onChange={e=>setReason(e.target.value)} placeholder="Actual branch / territory / terminal / dispatch instruction, document reference..." rows={2} className="mt-1 w-full rounded-lg border border-slate-300 bg-white p-3 text-sm"/>
       </label>
