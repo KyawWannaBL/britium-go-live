@@ -7,7 +7,7 @@ import { supabase } from "@/integrations/supabase/client";
  * This UI is informational for staff. Only the designated Super Admin can
  * change the rule; the server rechecks both account identity and role.
  */
-export default function PickupPhotoPolicyControl() {
+export default function PickupPhotoPolicyControl({onRuleChange}:{onRuleChange?:(required:boolean)=>void}) {
   const [required,setRequired]=useState<boolean|null>(null);
   const [admin,setAdmin]=useState(false);
   const [loading,setLoading]=useState(true);
@@ -25,6 +25,7 @@ export default function PickupPhotoPolicyControl() {
       ]);
       if(rule.error)throw rule.error;
       setRequired(rule.data!==false);
+      onRuleChange?.(rule.data!==false);
       setAdmin(String(user.data.user?.email||"").toLowerCase()==="superadmin@britiumexpress.com");
       setError("");
     }catch(e:any){setRequired(null);setError(e?.message||"Pickup photo rule could not be loaded.");}
@@ -40,7 +41,7 @@ export default function PickupPhotoPolicyControl() {
       });
       if(error)throw error;
       if(data?.ok!==true)throw new Error(data?.error||"The Super Admin rule was not updated.");
-      setRequired(nextRequired);setReason("");setConfirmed(false);
+      setRequired(nextRequired);onRuleChange?.(nextRequired);setReason("");setConfirmed(false);
       setNote(nextRequired?"Mandatory pickup photos restored.":"Temporary photo-optional rule activated.");
     }catch(e:any){setError(e?.message||"Could not change pickup photo rule.");}
     finally{setBusy(false);}
