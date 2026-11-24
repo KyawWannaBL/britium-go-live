@@ -35,12 +35,12 @@ export function territoryProvider(township:unknown,region:unknown,lookup:Territo
 }
 export async function loadTerritoryLookup():Promise<TerritoryLookup>{
  if(!cache)cache=(async()=>{
-  const {data,error}=await (supabase.from("be_masterdata_townships") as any)
-   .select("township_name,township_mm,township_name_en,township_name_mm,city,region")
-   .range(0,999);
-  if(error)throw error;
+  // The township master is intentionally RLS-protected. Fetch only the
+  // reference names/regions via the authenticated read-only RPC.
+  const {data,error}=await (supabase as any).rpc("be_provider_township_territories_v1");
+  if(error||data?.ok!==true)throw error||new Error("Township reference unavailable");
   const map=new Map<string,string>();
-  for(const t of (data||[]) as MasterTownship[]){
+  for(const t of (data.rows||[]) as MasterTownship[]){
    const region=canonicalRegion(t.region)||canonicalRegion(t.city)||String(t.region||"Other");
    for(const field of [t.township_name,t.township_mm,t.township_name_en,t.township_name_mm]){
     const k=normalizeTownship(field);if(k&&!map.has(k))map.set(k,region);
