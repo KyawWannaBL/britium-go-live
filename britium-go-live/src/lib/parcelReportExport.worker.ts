@@ -20,4 +20,5 @@ async function build(rows:ReportRow[],labels:{key:string;label:string}[],from:st
  const bytes=XLSX.write(wb,{bookType:"xlsx",type:"array"});
  return bytes;
 }
-self.onmessage=async ({data})=>{try{const bytes=await build(data.rows,data.labels,data.from,data.to,data.reportTitle,data.dateBasis);self.postMessage({bytes},{transfer:[bytes]});}catch(e){self.postMessage({error:e instanceof Error?e.message:String(e)});}};
+const workerScope=self as unknown as {onmessage:((event:MessageEvent)=>void)|null;postMessage:(message:unknown,transfer?:Transferable[])=>void};
+workerScope.onmessage=async ({data})=>{try{const bytes=await build(data.rows,data.labels,data.from,data.to,data.reportTitle,data.dateBasis);workerScope.postMessage({bytes},[bytes]);}catch(e){workerScope.postMessage({error:e instanceof Error?e.message:String(e)});}};
