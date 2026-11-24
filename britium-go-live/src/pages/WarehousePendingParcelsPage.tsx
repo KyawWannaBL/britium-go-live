@@ -293,7 +293,7 @@ export default function WarehousePendingParcelsPage(){
               {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Provider (auto)","Change provider","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
-              {visible.map((r:any,i:number)=><React.Fragment key={txt(r.delivery_way_id)+i}><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
+              {visible.map((r:any,i:number)=><><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
                 <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
@@ -336,7 +336,7 @@ export default function WarehousePendingParcelsPage(){
                     onChanged={()=>{setProviderReviewRow(null);void load(true);}}/>
                 </td>
               </tr>}
-              </React.Fragment>)}
+              </>)}
               {!visible.length && <tr><td colSpan={14} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
