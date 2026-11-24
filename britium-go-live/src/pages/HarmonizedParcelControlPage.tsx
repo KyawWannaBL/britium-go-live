@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import ProviderCorrectionQueue from "@/components/parcel/ProviderCorrectionQueue";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 import { downloadParcelXlsx,openParcelPrintWindow,renderParcelPdf,fromMyanmarDay,untilMyanmarDay } from "@/lib/parcelReportExport";
@@ -197,6 +198,7 @@ export default function HarmonizedParcelControlPage() {
       <button onClick={()=>void exportPdf()} disabled={busyExport} className="rounded-lg border px-4 py-2 text-sm disabled:opacity-50">Export PDF</button>
       <button onClick={()=>{setSearch("");setMerchant("");setProvider("ALL");setWarehouseFilter("");setFrom("");setTo("");setTab("All");}} className="rounded-lg border px-4 py-2 text-sm">Clear filters</button>
     </div>
+    <ProviderCorrectionQueue />
     {error && <div role="alert" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">{error}</div>}
     <div className="overflow-x-auto rounded-xl border bg-white">
       <div className="flex flex-wrap gap-2 border-b bg-slate-50 p-3 text-xs">
