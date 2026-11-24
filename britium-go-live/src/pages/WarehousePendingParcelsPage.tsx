@@ -1,7 +1,8 @@
 // @ts-nocheck
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search } from "lucide-react";
+import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
 const txt = (v:any) => String(v ?? "").trim();
@@ -61,6 +62,19 @@ export default function WarehousePendingParcelsPage(){
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
+  const [fromDate,setFromDate]=useState("");
+  const [toDate,setToDate]=useState("");
+  const [dateBasis,setDateBasis]=useState("inbound");
+  const [kind,setKind]=useState("ALL");
+  const [merchant,setMerchant]=useState("ALL");
+  const [township,setTownship]=useState("ALL");
+  const [age,setAge]=useState("ALL");
+  const [status,setStatus]=useState("ALL");
+  const [exportBusy,setExportBusy]=useState(false);
+  const [exportMessage,setExportMessage]=useState("");
+  const [sourceCount,setSourceCount]=useState<number|null>(null);
+  const [updatedAt,setUpdatedAt]=useState("");
+
 
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
@@ -68,6 +82,8 @@ export default function WarehousePendingParcelsPage(){
       const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
       setRows(Array.isArray(data?.rows)?data.rows:[]);
+      setSourceCount(Number.isFinite(Number(data?.stats?.total_ways))?Number(data.stats.total_ways):null);
+      setUpdatedAt(new Date().toISOString());
       setMessage("");
     }catch(e:any){
       setMessage(e?.message || "Could not load pending Warehouse parcels.");
@@ -95,15 +111,62 @@ export default function WarehousePendingParcelsPage(){
   const inboundPending=useMemo(()=>pending.filter((r:any)=>r._pendingType==="NEW INBOUND"),[pending]);
   const failedPending=useMemo(()=>pending.filter((r:any)=>r._pendingType!=="NEW INBOUND"),[pending]);
 
-  const visible=useMemo(()=>{
+
+  const merchantOptions=useMemo(()=>[...new Set(pending.map(r=>txt(r.merchant_name||r.merchant_code)).filter(Boolean))].sort(),[pending]);
+  const townshipOptions=useMemo(()=>[...new Set(pending.map(r=>txt(r.delivery_township)).filter(Boolean))].sort(),[pending]);
+  const validDates=!fromDate||!toDate||fromDate<=toDate;
+  const visible=useMemo(()=>pending.filter((r:any)=>{
+    const t=dateBasis==="return"?(r.last_return_scan_at||r.return_scan_3_at||r.return_scan_2_at||r.return_scan_1_at):r.inbound_scan_at;
+    const millis=t?new Date(t).getTime():NaN;
+    const start=fromMyanmarDay(fromDate),end=untilMyanmarDay(toDate);
+    if((start||end)&&(!Number.isFinite(millis)||(start&&millis<new Date(start).getTime())||(end&&millis>=new Date(end).getTime())))return false;
+    if(kind!=="ALL"&&r._pendingType!==kind)return false;
+    if(merchant!=="ALL"&&txt(r.merchant_name||r.merchant_code)!==merchant)return false;
+    if(township!=="ALL"&&txt(r.delivery_township)!==township)return false;
+    if(age==="OVERDUE"&&!r._overdue)return false;
+    if(age==="RECENT"&&r._overdue)return false;
+    if(status==="WITHOUT"&&hasActiveWayplan(r))return false;
+    if(status==="WITH"&&!hasActiveWayplan(r))return false;
     const q=query.trim().toLowerCase();
-    if(!q) return pending;
-    return pending.filter((r:any)=>[
-      r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,
-      r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,
-      r.pending_return_reason_name,r.last_exception_reason
-    ].join(" ").toLowerCase().includes(q));
-  },[pending,query]);
+    return !q||[r.delivery_way_id,r.waybill_no,r.pickup_id,r.merchant_name,r.merchant_code,r.recipient_name,r.recipient_phone,r.phone_number,r.delivery_township,r.pending_return_reason_name,r.last_exception_reason].join(" ").toLowerCase().includes(q);
+  }),[pending,query,fromDate,toDate,dateBasis,kind,merchant,township,age,status]);
+  const incomplete=sourceCount!==null&&sourceCount>rows.length;
+  const canExport=validDates&&!loading&&!message&&!exportBusy&&!incomplete&&visible.length>0;
+  const criteria=["Date basis: "+(dateBasis==="return"?"last return scan":"inbound scan"),"Dates: "+(fromDate||"All")+" through "+(toDate||"All")+" (Myanmar)","Type: "+kind,"Merchant: "+merchant,"Township: "+township,"Age: "+age,"Wayplan status: "+status,"Search: "+(query||"All")].join("; ");
+  const reportFields=[
+    {key:"alert",label:"Alert"},{key:"way",label:"Delivery Way ID"},{key:"pickup",label:"Pickup ID"},{key:"type",label:"Type"},
+    {key:"merchant",label:"Merchant"},{key:"merchantCode",label:"Merchant Code"},{key:"recipient",label:"Recipient"},{key:"phone",label:"Phone"},
+    {key:"township",label:"Township"},{key:"inbound",label:"Inbound Scan (Myanmar)"},{key:"age",label:"Pending Age Hours"},
+    {key:"reason",label:"Failed Reason"},{key:"returned",label:"Last Return (Myanmar)"},{key:"attempts",label:"Return Attempts"},
+    {key:"wayplan",label:"Wayplan"},{key:"wayplanStatus",label:"Wayplan Status"}
+  ];
+  const exportRows=()=>visible.map(r=>({
+    alert:r._overdue?"48H+":"",way:txt(r.delivery_way_id||r.waybill_no),pickup:txt(r.pickup_id),type:r._pendingType,
+    merchant:txt(r.merchant_name||r.merchant_code),merchantCode:txt(r.merchant_code),
+    recipient:txt(r.recipient_name),phone:txt(r.recipient_phone||r.phone_number),township:txt(r.delivery_township),
+    inbound:fmt(r.inbound_scan_at),age:Number(r._ageHours||0).toFixed(1),
+    reason:txt(r.pending_return_reason_name||r.last_exception_reason),returned:fmt(r.last_return_scan_at),
+    attempts:Number(r.return_attempt_count||r.physical_return_scan_count||0),
+    wayplan:txt(r.active_wayplan_id)||"NOT IN WAYPLAN",wayplanStatus:txt(r.active_wayplan_status)||"NOT IN WAYPLAN"
+  }));
+  function clearFilters(){setQuery("");setFromDate("");setToDate("");setDateBasis("inbound");setKind("ALL");setMerchant("ALL");setTownship("ALL");setAge("ALL");setStatus("ALL");setExportMessage("");}
+  async function exportReport(format:"excel"|"pdf"){
+    if(!canExport)return;
+    const windowForPrint=format==="pdf"?openParcelPrintWindow():null;
+    if(format==="pdf"&&!windowForPrint){setExportMessage("Please allow pop-ups to save the PDF.");return;}
+    setExportBusy(true);setExportMessage("");
+    try{
+      const report=exportRows();
+      if(format==="pdf"){
+        if(report.length>2000)throw new Error("PDF is limited to 2,000 parcels. Apply narrower filters or use Excel.");
+        renderParcelPdf(windowForPrint!,report,reportFields,fromDate,toDate,"Britium Express — Warehouse Pending Parcels",criteria);
+      }else{
+        await downloadParcelXlsx(report,reportFields,fromDate,toDate,"Britium_Warehouse_Pending_"+new Date().toISOString().slice(0,10)+".xlsx","Britium Express — Warehouse Pending Parcels",criteria);
+      }
+      setExportMessage(format==="pdf"?"Print-ready PDF report opened.":"Excel exported: "+report.length+" matching pending parcels.");
+    }catch(e:any){if(windowForPrint&&!windowForPrint.closed)windowForPrint.close();setExportMessage(e?.message||"Export failed.");}
+    finally{setExportBusy(false);}
+  }
 
   return <main className="min-h-screen bg-[#07111e] p-6 text-slate-100">
     <div className="mx-auto max-w-[1800px]">
