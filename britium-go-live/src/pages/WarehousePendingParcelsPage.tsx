@@ -219,6 +219,29 @@ export default function WarehousePendingParcelsPage(){
           </div>
         </div>
 
+        <section aria-label="Warehouse Pending Report Filters" className="mb-4 rounded-xl border border-slate-700 bg-[#132c41] p-3">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6">
+            <label className="text-xs font-bold text-slate-300">Date basis<select value={dateBasis} onChange={e=>setDateBasis(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="inbound">Inbound scan</option><option value="return">Last return scan</option></select></label>
+            <label className="text-xs font-bold text-slate-300">From (Myanmar)<input type="date" value={fromDate} onChange={e=>setFromDate(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"/></label>
+            <label className="text-xs font-bold text-slate-300">To (Myanmar)<input type="date" min={fromDate||undefined} value={toDate} onChange={e=>setToDate(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"/></label>
+            <label className="text-xs font-bold text-slate-300">Pending type<select value={kind} onChange={e=>setKind(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All types</option><option value="NEW INBOUND">New inbound</option><option value="FAILED RETURN / REPLAN">Failed return / replan</option></select></label>
+            <label className="text-xs font-bold text-slate-300">Merchant<select value={merchant} onChange={e=>setMerchant(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All merchants</option>{merchantOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-300">Township<select value={township} onChange={e=>setTownship(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All townships</option>{townshipOptions.map(value=><option key={value} value={value}>{value}</option>)}</select></label>
+            <label className="text-xs font-bold text-slate-300">Pending age<select value={age} onChange={e=>setAge(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All ages</option><option value="OVERDUE">48+ hours overdue</option><option value="RECENT">Under 48 hours</option></select></label>
+            <label className="text-xs font-bold text-slate-300">Wayplan status<select value={status} onChange={e=>setStatus(e.target.value)} className="mt-1 block min-h-10 w-full rounded-lg bg-white px-2 text-slate-950"><option value="ALL">All pending</option><option value="WITHOUT">Not in wayplan</option><option value="WITH">In active wayplan</option></select></label>
+          </div>
+          {!validDates&&<p role="alert" className="mt-2 text-sm font-semibold text-rose-300">From date cannot be after To date.</p>}
+          {incomplete&&<p role="alert" className="mt-2 text-sm font-semibold text-rose-300">Snapshot may be incomplete. Exports disabled; refresh or investigate data source.</p>}
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-slate-700 pt-3">
+            <div className="text-xs text-slate-300"><strong className="text-amber-300">{visible.length}</strong> matching parcels · <strong className="text-rose-300">{visible.filter(r=>r._overdue).length}</strong> overdue · Last refresh: {updatedAt?fmt(updatedAt):"—"}</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={clearFilters} className="min-h-10 rounded-lg border border-slate-500 px-3 text-xs font-bold text-white hover:bg-slate-700">Clear filters</button>
+              <button type="button" onClick={()=>void exportReport("excel")} disabled={!canExport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white disabled:opacity-40"><FileSpreadsheet className="h-4 w-4"/>Download Excel</button>
+              <button type="button" onClick={()=>void exportReport("pdf")} disabled={!canExport} className="inline-flex min-h-10 items-center gap-2 rounded-lg bg-red-600 px-3 text-xs font-bold text-white disabled:opacity-40"><FileText className="h-4 w-4"/>PDF / Print</button>
+            </div>
+          </div>
+          {exportMessage&&<p role="status" className="mt-2 text-xs font-semibold text-cyan-300">{exportMessage}</p>}
+        </section>
         <div className="overflow-auto">
           <table className="w-full min-w-[1450px] border-collapse text-sm">
             <thead><tr className="bg-amber-400 text-left text-slate-950">
