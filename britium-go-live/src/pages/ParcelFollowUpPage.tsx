@@ -9,7 +9,7 @@ import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parc
 type Parcel = {
   delivery_way_id: string; warehouse_record_created_at: string | null; destination_township: string|null;
   wayplan_id:string|null; delivered_at:string|null;rider_proof_present:boolean|null;
-  merchant_name:string|null; recorded_provider_code:string|null;
+  merchant_name:string|null; recorded_provider_code:string|null; automatic_provider_code:string|null; override_provider_code:string|null;
   warehouse_status:string|null; dispatch_scanned:boolean|null;
   verified_dispatch_scanned_at:string|null; physically_handed_over_at:string|null;
   finance_settlement_status:string|null; attention_category:string|null;
@@ -25,7 +25,7 @@ type Task = {
 type Staff={auth_user_id:string;full_name:string|null;email:string|null;department:string|null};
 const columns = [
  "delivery_way_id","warehouse_record_created_at","destination_township","merchant_name","wayplan_id","delivered_at","rider_proof_present",
- "recorded_provider_code","warehouse_status","dispatch_scanned","verified_dispatch_scanned_at",
+ "recorded_provider_code","automatic_provider_code","override_provider_code","warehouse_status","dispatch_scanned","verified_dispatch_scanned_at",
  "physically_handed_over_at","finance_settlement_status","attention_category","exception_flags",
  "last_evidence_at","expected_cod_mmk","settled_cod_mmk","return_scan_count"
 ].join(",");
@@ -133,7 +133,7 @@ export default function ParcelFollowUpPage(){
   {key:"delivery_way_id",heading:"Original Way ID"}, {key:"warehouse_record_created_at",heading:"Registered"},
   {key:"wayplan_id",heading:"Wayplan / လမ်းကြောင်း"},
   {key:"merchant_name",heading:"Merchant"}, {key:"destination_township",heading:"Destination"},
-  {key:"recorded_provider_code",heading:"Provider (recorded)"}, {key:"warehouse_status",heading:"Application status"},
+  {key:"recorded_provider_code",heading:"Provider (recorded)"},{key:"automatic_provider_code",heading:"Provider (temporary suggestion)"},{key:"override_provider_code",heading:"Approved override"}, {key:"warehouse_status",heading:"Application status"},
   {key:"dispatch_scanned",heading:"Actual dispatch scan evidenced"}, {key:"verified_dispatch_scanned_at",heading:"Actual scan timestamp"},
   {key:"physically_handed_over_at",heading:"Physical handover"}, {key:"attention_category",heading:"Priority review"},
   {key:"exception_flags",heading:"Exception flags"}, {key:"finance_settlement_status",heading:"Finance status"},
@@ -246,7 +246,7 @@ export default function ParcelFollowUpPage(){
       <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
-      <td className="p-3">{p.recorded_provider_code||"Unverified"}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>Review / Correct</button></td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
+      <td className="p-3"><div className="font-semibold">{p.recorded_provider_code||"Unverified"}</div><div className="mt-1 text-xs text-slate-500">Territory suggestion: {p.automatic_provider_code||"Needs review"}</div>{p.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {p.override_provider_code}</div>}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>Review / Correct</button></td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
       <td className="p-3">{p.verified_dispatch_scanned_at?stamp(p.verified_dispatch_scanned_at):"Not evidenced (assumed complete only)"}</td>
       <td className="p-3">{p.finance_settlement_status||"Not recorded"}</td>
       <td className="p-3">{stamp(p.last_evidence_at)}<div className="text-xs text-slate-500">{age(p.last_evidence_at)==null?"Aging unknown":age(p.last_evidence_at)+" days since latest recorded source"}</div></td>
