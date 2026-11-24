@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import GroundEvidenceReviewPanel from "@/components/parcel/GroundEvidenceReviewPanel";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import {loadTerritoryLookup,territoryProvider} from "@/lib/providerTerritory";
 import ProviderCorrectionQueue from "@/components/parcel/ProviderCorrectionQueue";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
@@ -63,6 +64,13 @@ export default function HarmonizedParcelControlPage() {
   const [merchant,setMerchant]=useState("");
   const [busyExport,setBusyExport]=useState(false);
   const [selected, setSelected] = useState<Parcel | null>(null);
+  const [territoryMaster,setTerritoryMaster]=useState(new Map<string,string>());
+  const [manualProvider,setManualProvider]=useState("");
+  useEffect(()=>{
+    let active=true;
+    void loadTerritoryLookup().then(map=>{if(active)setTerritoryMaster(map);}).catch(e=>console.warn("Territory lookup unavailable",e));
+    return ()=>{active=false;};
+  },[]);
   const [batchSelected,setBatchSelected]=useState<Record<string,Parcel>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -214,7 +222,17 @@ export default function HarmonizedParcelControlPage() {
           <td className="px-3 py-3"><input type="checkbox" aria-label={"Select "+row.delivery_way_id} checked={!!batchSelected[row.delivery_way_id]} onChange={e=>toggle(row,e.target.checked)}/></td>
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
           <td className="px-3 py-3">{display(row.merchant_name)}<div><N>{display(row.destination_township)}</N></div></td>
-          <td className="px-3 py-3"><div className="font-semibold">{display(row.recorded_provider_code)}</div><div className="mt-1 text-xs text-slate-500">Territory suggestion: {display(row.automatic_provider_code)}</div>{row.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {row.override_provider_code}</div>}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(row)}>Review / Correct</button></td>
+          <td className="px-3 py-3">
+            <div className="font-semibold">Auto: {territoryProvider(row.destination_township,null,territoryMaster).code}</div>
+            <div className="text-xs text-slate-500">Recorded: {display(row.recorded_provider_code)}</div>
+            {row.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {row.override_provider_code}</div>}
+            <select aria-label={"Change provider for "+row.delivery_way_id}
+              value={selected?.delivery_way_id===row.delivery_way_id&&manualProvider?manualProvider:territoryProvider(row.destination_township,null,territoryMaster).code}
+              onChange={e=>{if(e.target.value!==territoryProvider(row.destination_township,null,territoryMaster).code){setManualProvider(e.target.value);setSelected(row);}else{setManualProvider("");setSelected(null);}}}
+              className="mt-1 block min-h-9 w-44 rounded border bg-white px-2 text-xs text-slate-900">
+              {providers.filter(code=>code!=="ALL").map(code=><option key={code} value={code}>{code}</option>)}
+            </select>
+          </td>
           <td className="px-3 py-3">{display(row.provider_custody_evidence)}</td>
           <td className="px-3 py-3">{display(row.warehouse_status)}<div><N>{row.dispatch_scanned ? "Dispatch scanned" : "Dispatch not evidenced"}</N></div></td>
           <td className="px-3 py-3">{display(row.wayplan_id)}</td>
@@ -241,7 +259,7 @@ export default function HarmonizedParcelControlPage() {
       <dl className="mt-4 grid gap-4 md:grid-cols-2">
         {[
           ["Merchant", selected.merchant_name],["Destination township", selected.destination_township],
-          ["Assigned provider (recorded)",selected.recorded_provider_code],["Territory suggestion (temporary)",selected.automatic_provider_code],["Approved provider override",selected.override_provider_code],
+          ["Assigned provider (recorded)",selected.recorded_provider_code],["Territory auto-provider",territoryProvider(selected.destination_township,null,territoryMaster).code],["Approved provider override",selected.override_provider_code],
           ["Actual provider evidence",selected.physically_recorded_provider],
           ["Custody assessment",selected.provider_custody_evidence],
           ["Physical handover timestamp",when(selected.physically_handed_over_at)],
@@ -259,7 +277,7 @@ export default function HarmonizedParcelControlPage() {
        <p className="text-sm font-semibold text-amber-900">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
        <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((stage,i)=><span key={stage} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100 text-blue-900":"bg-white text-slate-500")}>{i+1}. {stage}</span>)}</div>
       </div>
-      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
+      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} initialProvider={manualProvider||territoryProvider(selected.destination_township,null,territoryMaster).code} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
       <GroundEvidenceReviewPanel wayId={selected.delivery_way_id}/>
     </section>}
