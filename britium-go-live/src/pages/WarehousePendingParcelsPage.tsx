@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
+import {loadTerritoryLookup,territoryProvider,DEFAULT_PROVIDER_CODES} from "@/lib/providerTerritory";
 import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
 
 const fmt = (v:any) => v ? new Date(v).toLocaleString("en-GB",{timeZone:"Asia/Yangon"}) : "-";
@@ -61,6 +62,11 @@ function isPendingForWayplan(row:any){
 export default function WarehousePendingParcelsPage(){
   const [rows,setRows]=useState<any[]>([]);
   const [providerReviewRow,setProviderReviewRow]=useState<any|null>(null);
+  const [providerChoice,setProviderChoice]=useState("");
+  const [territories,setTerritories]=useState(new Map<string,string>());
+  const [territoryError,setTerritoryError]=useState("");
+  const [provisionalByWay,setProvisionalByWay]=useState<Record<string,{provider:string;reason:string}>>({});
+  const [availableProviders,setAvailableProviders]=useState<string[]>([...DEFAULT_PROVIDER_CODES]);
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [query,setQuery]=useState("");
@@ -78,12 +84,37 @@ export default function WarehousePendingParcelsPage(){
   const [updatedAt,setUpdatedAt]=useState("");
 
 
+  useEffect(()=>{
+    let alive=true;
+    void Promise.all([
+      loadTerritoryLookup(),
+      (supabase.from("be_data_entry_service_providers") as any)
+        .select("provider_code").eq("is_active",true).order("provider_code")
+    ]).then(([map,catalog])=>{
+      if(!alive)return;
+      setTerritories(map);setTerritoryError("");
+      if(!catalog.error)setAvailableProviders((catalog.data||[]).map((x:any)=>String(x.provider_code)));
+    }).catch((e:any)=>{if(alive)setTerritoryError(e?.message||"Township master unavailable");});
+    return ()=>{alive=false;};
+  },[]);
+
   const load=useCallback(async(quiet=false)=>{
     if(!quiet) setLoading(true);
     try{
       const {data,error}=await (supabase as any).rpc("be_warehouse_scan_lifecycle_snapshot_v164");
       if(error || data?.ok === false) throw new Error(error?.message || data?.error || data?.message || "Could not load pending Warehouse parcels.");
-      setRows(Array.isArray(data?.rows)?data.rows:[]);
+      const snapshotRows=Array.isArray(data?.rows)?data.rows:[];
+      setRows(snapshotRows);
+      const ids=[...new Set(snapshotRows.map((x:any)=>txt(x.delivery_way_id||x.waybill_no)).filter(Boolean))];
+      if(ids.length){
+        const parts:any[]=[];
+        for(let i=0;i<ids.length;i+=1900){
+          const answer=await (supabase as any).rpc("be_parcel_temp_provider_batch_v1",{p_way_ids:ids.slice(i,i+1900)});
+          if(answer.error)throw answer.error;
+          parts.push(answer.data?.items||{});
+        }
+        setProvisionalByWay(Object.assign({},...parts));
+      }else setProvisionalByWay({});
       setSourceCount(Number.isFinite(Number(data?.stats?.total_ways))?Number(data.stats.total_ways):null);
       setUpdatedAt(new Date().toISOString());
       setMessage("");
@@ -106,8 +137,17 @@ export default function WarehousePendingParcelsPage(){
     const failedReturn = Boolean(row.next_attempt_priority)
       || Number(row.return_attempt_count || row.physical_return_scan_count || 0)>0
       || returnedAfterDispatch(row);
-    return {...row,_ageHours:ageHours,_overdue:ageHours>=48,_pendingType:failedReturn?"FAILED RETURN / REPLAN":"NEW INBOUND"};
-  }).sort((a:any,b:any)=>b._ageHours-a._ageHours),[rows]);
+    const territory=territoryProvider(row.delivery_township||row.township,row.delivery_region||row.destination_region,territories);
+    const selected=provisionalByWay[txt(row.delivery_way_id||row.waybill_no)]?.provider;
+    return {...row,_ageHours:ageHours,_overdue:ageHours>=48,
+      _pendingType:failedReturn?"FAILED RETURN / REPLAN":"NEW INBOUND",
+      _suggestedProvider:territory.code,_providerRegion:territory.region,
+      _providerNeedsReview:territories.size>0&&territory.needsReview,
+      _providerEffectiveTemporary:selected||territory.code,
+      _providerManual:Boolean(selected),
+      _providerReason:territory.reason
+    };
+  }).sort((a:any,b:any)=>b._ageHours-a._ageHours),[rows,territories,provisionalByWay]);
 
   const overdue=useMemo(()=>pending.filter((r:any)=>r._overdue),[pending]);
   const inboundPending=useMemo(()=>pending.filter((r:any)=>r._pendingType==="NEW INBOUND"),[pending]);
@@ -140,7 +180,8 @@ export default function WarehousePendingParcelsPage(){
     {key:"merchant",label:"Merchant"},{key:"merchantCode",label:"Merchant Code"},{key:"recipient",label:"Recipient"},{key:"phone",label:"Phone"},
     {key:"township",label:"Township"},{key:"inbound",label:"Inbound Scan (Myanmar)"},{key:"age",label:"Pending Age Hours"},
     {key:"reason",label:"Failed Reason"},{key:"returned",label:"Last Return (Myanmar)"},{key:"attempts",label:"Return Attempts"},
-    {key:"wayplan",label:"Wayplan"},{key:"wayplanStatus",label:"Wayplan Status"}
+    {key:"wayplan",label:"Wayplan"},{key:"wayplanStatus",label:"Wayplan Status"},
+    {key:"suggestedProvider",label:"Territory Default"},{key:"temporaryProvider",label:"Provider (provisional)"},{key:"providerBasis",label:"Provider Basis"}
   ];
   const exportRows=()=>visible.map(r=>({
     alert:r._overdue?"48H+":"",way:txt(r.delivery_way_id||r.waybill_no),pickup:txt(r.pickup_id),type:r._pendingType,
@@ -149,7 +190,8 @@ export default function WarehousePendingParcelsPage(){
     inbound:fmt(r.inbound_scan_at),age:Number(r._ageHours||0).toFixed(1),
     reason:txt(r.pending_return_reason_name||r.last_exception_reason),returned:fmt(r.last_return_scan_at),
     attempts:Number(r.return_attempt_count||r.physical_return_scan_count||0),
-    wayplan:txt(r.active_wayplan_id)||"NOT IN WAYPLAN",wayplanStatus:txt(r.active_wayplan_status)||"NOT IN WAYPLAN"
+    wayplan:txt(r.active_wayplan_id)||"NOT IN WAYPLAN",wayplanStatus:txt(r.active_wayplan_status)||"NOT IN WAYPLAN",
+    suggestedProvider:r._suggestedProvider,temporaryProvider:r._providerEffectiveTemporary,providerBasis:r._providerManual?"AUDITED_OVERRIDE":r._providerReason
   }));
   function clearFilters(){setQuery("");setFromDate("");setToDate("");setDateBasis("inbound");setKind("ALL");setMerchant("ALL");setTownship("ALL");setAge("ALL");setStatus("ALL");setExportMessage("");}
   async function exportReport(format:"excel"|"pdf"){
@@ -195,6 +237,7 @@ export default function WarehousePendingParcelsPage(){
         </div>
       </div>}
 
+      {territoryError && <div role="alert" className="mb-4 rounded-lg bg-amber-950 p-3 text-amber-200">Township master unavailable; provider suggestions may use Royal fallback. Refresh before making changes. {territoryError}</div>}
       {message && <div className="mb-4 rounded-lg border border-red-700 bg-red-950/30 p-3 text-red-200">{message}</div>}
 
       <section className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
