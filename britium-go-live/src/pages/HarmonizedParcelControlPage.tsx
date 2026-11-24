@@ -12,7 +12,7 @@ type Parcel = {
   warehouse_record_created_at: string | null;
   merchant_name: string | null;
   destination_township: string | null;
-  recorded_provider_code: string | null;
+  recorded_provider_code: string | null; automatic_provider_code: string | null; override_provider_code: string | null;
   physically_recorded_provider: string | null;
   provider_custody_evidence: string | null;
   warehouse_status: string | null;
@@ -31,7 +31,7 @@ type Parcel = {
 };
 
 const selectColumns = [
-  "delivery_way_id","warehouse_record_created_at","merchant_name","destination_township","recorded_provider_code",
+  "delivery_way_id","warehouse_record_created_at","merchant_name","destination_township","recorded_provider_code","automatic_provider_code","override_provider_code",
   "physically_recorded_provider","provider_custody_evidence","warehouse_status",
   "dispatch_scanned","wayplan_id","physically_handed_over_at","delivered_at",
   "rider_proof_present","finance_settlement_status","expected_cod_mmk",
@@ -104,7 +104,7 @@ export default function HarmonizedParcelControlPage() {
   const exportCols=[
     {key:"delivery_way_id",label:"Way ID"},{key:"warehouse_record_created_at",label:"Registration (source)"},
     {key:"merchant_name",label:"Merchant"},{key:"destination_township",label:"Destination township"},
-    {key:"recorded_provider_code",label:"Recorded provider"},{key:"provider_custody_evidence",label:"Custody evidence"},
+    {key:"recorded_provider_code",label:"Recorded provider"},{key:"automatic_provider_code",label:"Territory suggested"},{key:"override_provider_code",label:"Approved override"},{key:"provider_custody_evidence",label:"Custody evidence"},
     {key:"warehouse_status",label:"Warehouse status"},{key:"wayplan_id",label:"Wayplan"},
     {key:"physically_handed_over_at",label:"Physical handover"},{key:"delivered_at",label:"Delivery timestamp"},
     {key:"rider_proof_present",label:"Proof reference present"},
@@ -212,7 +212,7 @@ export default function HarmonizedParcelControlPage() {
           <td className="px-3 py-3"><input type="checkbox" aria-label={"Select "+row.delivery_way_id} checked={!!batchSelected[row.delivery_way_id]} onChange={e=>toggle(row,e.target.checked)}/></td>
           <td className="px-3 py-3"><button onClick={()=>setSelected(row)} className="font-semibold text-blue-700 underline">{row.delivery_way_id}</button></td>
           <td className="px-3 py-3">{display(row.merchant_name)}<div><N>{display(row.destination_township)}</N></div></td>
-          <td className="px-3 py-3">{display(row.recorded_provider_code)}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(row)}>Review / Correct</button></td>
+          <td className="px-3 py-3"><div className="font-semibold">{display(row.recorded_provider_code)}</div><div className="mt-1 text-xs text-slate-500">Territory suggestion: {display(row.automatic_provider_code)}</div>{row.override_provider_code&&<div className="text-xs text-emerald-700">Approved override: {row.override_provider_code}</div>}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(row)}>Review / Correct</button></td>
           <td className="px-3 py-3">{display(row.provider_custody_evidence)}</td>
           <td className="px-3 py-3">{display(row.warehouse_status)}<div><N>{row.dispatch_scanned ? "Dispatch scanned" : "Dispatch not evidenced"}</N></div></td>
           <td className="px-3 py-3">{display(row.wayplan_id)}</td>
@@ -239,7 +239,7 @@ export default function HarmonizedParcelControlPage() {
       <dl className="mt-4 grid gap-4 md:grid-cols-2">
         {[
           ["Merchant", selected.merchant_name],["Destination township", selected.destination_township],
-          ["Assigned provider (recorded)",selected.recorded_provider_code],
+          ["Assigned provider (recorded)",selected.recorded_provider_code],["Territory suggestion (temporary)",selected.automatic_provider_code],["Approved provider override",selected.override_provider_code],
           ["Actual provider evidence",selected.physically_recorded_provider],
           ["Custody assessment",selected.provider_custody_evidence],
           ["Physical handover timestamp",when(selected.physically_handed_over_at)],
