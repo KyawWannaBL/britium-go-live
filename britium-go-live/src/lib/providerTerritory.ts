@@ -15,7 +15,17 @@ const canonicalRegion=(raw:unknown)=>{
 };
 export function territoryProvider(township:unknown,region:unknown,lookup:TerritoryLookup):TerritoryProvider{
  const key=normalizeTownship(township);
- const resolved=canonicalRegion(region)||lookup.get(key)||canonicalRegion(township);
+ const label=String(township||"");
+ // Preserve explicitly registered service channels. These are parcel
+ // classification hints, not a change to underlying tariffs or custody.
+ if(key.includes("ဂိတ်ချ")||key.includes("highwayterminal")||key.includes("gatedropoff"))
+   return {code:"H.TERMINAL DROP-OFF",region:"Highway terminal",matched:true,needsReview:false,reason:"EXPLICIT_GATE_DROPOFF"};
+ if(/royal/i.test(label))
+   return {code:"ROYAL EXPRESS",region:"Royal service",matched:true,needsReview:false,reason:"EXPLICIT_ROYAL_SERVICE_LABEL"};
+ if(/^mdy[-\s]/i.test(label))
+   return {code:"MDY BRANCH",region:"Mandalay",matched:true,needsReview:false,reason:"MANDALAY_EXPLICIT_AREA_CODE"};
+ const resolved=canonicalRegion(region)||lookup.get(key)||canonicalRegion(township)
+    ||(key.includes("လှိုင်သာယာ")?"Yangon":"");
  if(resolved==="Yangon")return {code:"BRITIUM",region:resolved,matched:true,needsReview:false,reason:"YANGON_DIRECT"};
  if(resolved==="Mandalay")return {code:"MDY BRANCH",region:resolved,matched:true,needsReview:false,reason:"MANDALAY_BRANCH_DEFAULT_DK_OPTIONAL"};
  if(resolved==="Naypyitaw")return {code:"NPT BRANCH",region:resolved,matched:true,needsReview:false,reason:"NPT_BRANCH_ALL_TOWNSHIPS"};
