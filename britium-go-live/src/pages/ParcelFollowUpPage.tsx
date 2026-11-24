@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import ParcelActionComposer from "@/components/parcel/ParcelActionComposer";
+import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
 import ParcelBulkFollowUpPanel from "@/components/parcel/ParcelBulkFollowUpPanel";
 import { parcelNextAction,evidencedStage,parcelWorkflowStages } from "@/lib/parcelOperationalSteps";
 
@@ -245,7 +246,7 @@ export default function ParcelFollowUpPage(){
       <td className="p-3"><input aria-label={"Select "+p.delivery_way_id} type="checkbox" checked={!!batchSelected[p.delivery_way_id]} onChange={e=>toggle(p,e.target.checked)}/></td>
       <td className="p-3"><button className="font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>{p.delivery_way_id}</button><button className="mt-1 block rounded border px-2 py-1 text-xs text-blue-700" onClick={()=>setSelected(p)}>Notify / အကြောင်းကြား</button></td>
       <td className="p-3">{p.merchant_name||"—"}<div className="text-xs text-slate-500">{p.destination_township||"—"}</div></td>
-      <td className="p-3">{p.recorded_provider_code||"Unverified"}</td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
+      <td className="p-3">{p.recorded_provider_code||"Unverified"}<button type="button" className="mt-1 block text-xs font-semibold text-blue-700 underline" onClick={()=>setSelected(p)}>Review / Correct</button></td><td className="p-3">{p.warehouse_status||"Unknown"}</td>
       <td className="p-3">{p.verified_dispatch_scanned_at?stamp(p.verified_dispatch_scanned_at):"Not evidenced (assumed complete only)"}</td>
       <td className="p-3">{p.finance_settlement_status||"Not recorded"}</td>
       <td className="p-3">{stamp(p.last_evidence_at)}<div className="text-xs text-slate-500">{age(p.last_evidence_at)==null?"Aging unknown":age(p.last_evidence_at)+" days since latest recorded source"}</div></td>
@@ -267,6 +268,7 @@ export default function ParcelFollowUpPage(){
        <p className="mt-2 font-semibold text-amber-800">Next required / ဆက်လက်ဆောင်ရွက်ရန်: {parcelNextAction(selected).next}</p>
        <div className="mt-2 flex flex-wrap gap-1">{parcelWorkflowStages.map((name,i)=><span key={name} className={"rounded px-2 py-1 text-xs "+(i<=evidencedStage(selected)?"bg-blue-100":"bg-white")}>{i+1}. {name}</span>)}</div>
       </div>
+      <ProviderTerritoryReview key={selected.delivery_way_id} wayId={selected.delivery_way_id} township={selected.destination_township} recordedProvider={selected.recorded_provider_code} onChanged={()=>void load()}/>
       <ParcelActionComposer wayId={selected.delivery_way_id}/>
      </section>}
    </>}
