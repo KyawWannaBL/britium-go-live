@@ -293,7 +293,7 @@ export default function WarehousePendingParcelsPage(){
               {["Alert","Delivery Way","Pickup","Type","Merchant","Recipient","Township","Provider (auto)","Change provider","Inbound Scan","Pending Age","Failed Reason","Last Return","Wayplan"].map(h=><th key={h} className="p-2">{h}</th>)}
             </tr></thead>
             <tbody>
-              {visible.map((r:any,i:number)=><tr key={txt(r.delivery_way_id)+i} className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
+              {visible.map((r:any,i:number)=><React.Fragment key={txt(r.delivery_way_id)+i}><tr className={"border-b border-slate-800 "+(r._overdue?"bg-red-950/25":"")}>
                 <td className="p-2">{r._overdue?<span className="rounded bg-red-500 px-2 py-1 text-xs font-black text-white">48H+</span>:<span className="text-slate-500">-</span>}</td>
                 <td className="p-2 font-black text-amber-300">{txt(r.delivery_way_id || r.waybill_no)}</td>
                 <td className="p-2">{txt(r.pickup_id)}</td>
@@ -322,16 +322,27 @@ export default function WarehousePendingParcelsPage(){
                 <td className="max-w-[260px] p-2">{txt(r.pending_return_reason_name || r.last_exception_reason) || "-"}</td>
                 <td className="p-2">{fmt(r.last_return_scan_at)}</td>
                 <td className="p-2">{txt(r.active_wayplan_id) || <span className="font-black text-red-300">NOT IN WAYPLAN</span>}</td>
-              </tr>)}
+              </tr>
+              {providerReviewRow===r&&<tr className="border-b border-cyan-500/50 bg-white text-slate-900">
+                <td colSpan={14} className="p-4">
+                  <div className="mb-2 flex items-center justify-between">
+                    <strong>Exceptional provider correction · {txt(r.delivery_way_id||r.waybill_no)}</strong>
+                    <button type="button" onClick={()=>setProviderReviewRow(null)} className="text-sm font-semibold text-blue-700 underline">Close</button>
+                  </div>
+                  <ProviderTerritoryReview key={txt(r.delivery_way_id||r.waybill_no)+"-"+providerChoice}
+                    wayId={txt(r.delivery_way_id||r.waybill_no)}
+                    township={txt(r.delivery_township)||null} region={txt(r._providerRegion)||null}
+                    initialProvider={providerChoice} recordedProvider={txt(r.recorded_provider_code)||null}
+                    onChanged={()=>{setProviderReviewRow(null);void load(true);}}/>
+                </td>
+              </tr>}
+              </React.Fragment>)}
               {!visible.length && <tr><td colSpan={14} className="p-12 text-center text-slate-400">{loading?"Loading...":"No pending Warehouse parcels match the current filter."}</td></tr>}
             </tbody>
           </table>
         </div>
       </section>
-      {providerReviewRow&&<section id="provider-exception-editor" className="rounded-xl border border-cyan-600/40 bg-white p-3 text-slate-900">
-        <div className="mb-3 flex items-center justify-between gap-2"><h2 className="font-bold">Provider review · {txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)}</h2><button type="button" className="rounded-lg border px-3 py-2 text-xs font-semibold" onClick={()=>setProviderReviewRow(null)}>Close</button></div>
-        <ProviderTerritoryReview key={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} wayId={txt(providerReviewRow.delivery_way_id||providerReviewRow.waybill_no)} township={txt(providerReviewRow.delivery_township)||null} region={txt(providerReviewRow._providerRegion)||null} initialProvider={providerChoice} recordedProvider={txt(providerReviewRow.recorded_provider_code)||null} onChanged={()=>{setProviderReviewRow(null);void load(true);}}/>
-      </section>}
+
     </div>
   </main>;
 }
