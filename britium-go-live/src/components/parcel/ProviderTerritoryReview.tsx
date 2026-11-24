@@ -94,6 +94,7 @@ export default function ProviderTerritoryReview({
       <div><dt className="text-xs text-slate-500">Territory suggested</dt><dd className="font-bold text-blue-900">{loading?"Checking...":suggested||"Review required"}</dd></div>
       <div><dt className="text-xs text-slate-500">Current effective</dt><dd className="font-bold">{loading?"Checking...":effective||"Unverified"}</dd></div>
     </dl>
+    {recordedProvider&&effective&&recordedProvider!==effective&&<p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-2 text-xs font-semibold text-amber-900">Recorded provider differs from current effective routing. The recorded value is historical evidence and is not silently overwritten; investigate the discrepancy before treating this parcel as reconciled.</p>}
     <p className="text-xs text-slate-500">Destination: {township||"Unknown"} · Routing basis: {route?.reason||"Unverified"} {route?.matched_destination?"· Matched: "+route.matched_destination:""}</p>
     {preview?.requires_manual_pricing_review&&<p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs font-semibold text-amber-900">Provider-specific tariff unavailable. Finance/pricing review is needed before commercial changes.</p>}
     <label className="block text-xs font-bold text-slate-700">Confirm or correct provider
