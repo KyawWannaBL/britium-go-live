@@ -165,8 +165,7 @@ begin
   if to_regprocedure('public.be_sync_rider_proofs_to_data_entry()') is not null then perform public.be_sync_rider_proofs_to_data_entry(); end if;
   return jsonb_build_object('ok',true,'action','verify_pickup','pickup_id',v_pickup_id,'mobile_status','PICKUP_VERIFIED','submitted_count',v_submitted_count,'expected_count',v_expected_count,'total_actual_weight_kg',v_total_weight,'partial_verification',false,'pickup_verified',true,'ready_for_collection',true,'data_entry_status','PENDING_REVIEW','close_verification_screen',true,'clear_verification_form',true,'ready_for_next_pickup',true,'message',format('All %s authoritative parcel proofs submitted successfully.',v_expected_count));
 end;
-$function$
-
+$function$;
 
 CREATE OR REPLACE FUNCTION public.be_data_entry_create_waybill_from_rows(p_pickup_id text, p_rows jsonb, p_actor_email text)
  RETURNS jsonb
@@ -507,5 +506,4 @@ begin
     'canonical_pickup_preserved', true
   );
 end
-$function$
-
+$function$;
