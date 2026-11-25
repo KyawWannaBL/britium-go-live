@@ -206,7 +206,11 @@ function computeDataEntryServiceProvider(
   const candidateKeys = new Set((explicitTownship
     ? [inputKey]
     : [inputKey,compactLocationKey(postal.township),compactLocationKey(postal.townshipMm)]).filter(Boolean));
+  const fullRoyalNames = ["ဒဂုံမြို့သစ်တောင်ပိုင်းမြို့နယ်","ဒဂုံမြို့သစ်အရှေ့ပိုင်းမြို့နယ်","ဒဂုံမြို့သစ်မြောက်ပိုင်းမြို့နယ်","ဒဂုံဆိပ်ကမ်းမြို့သစ်"];
+  const fullLabelKey = (value: unknown) => String(value ?? "").normalize("NFC").replace(/\s+/g,"");
+  const fullRoyal = fullRoyalNames.includes(fullLabelKey(raw)) ? tariffOptions.find(option => option.provider_code === "ROYAL EXPRESS" && fullLabelKey(option.destination_name) === fullLabelKey(raw)) : undefined;
   const exactMatches = explicitTownship?directMatches:matchingTariffs(cleanTownship, postal, tariffOptions);
+  if (fullRoyal && !exactMatches.includes(fullRoyal)) exactMatches.push(fullRoyal);
 
   let providerCode: DataEntryProviderCode = "";
   let reason: DataEntryProviderRouting["reason"] = "UNRESOLVED";
@@ -218,7 +222,7 @@ function computeDataEntryServiceProvider(
     || exactMatches.length > 0;
 
   const requested = String(options.requestedProvider || dataEntryProviderHint(raw)).trim().toUpperCase();
-  const explicitRoyalDagon = Boolean(dagonTownship && dagonTownship !== "ဒဂုံ" && requested === "ROYAL EXPRESS" && preferredTariff(exactMatches, "ROYAL EXPRESS"));
+  const explicitRoyalDagon = Boolean(fullRoyal || (dagonTownship && dagonTownship !== "ဒဂုံ" && requested === "ROYAL EXPRESS" && preferredTariff(exactMatches, "ROYAL EXPRESS")));
   if (explicitRoyalDagon) {
     providerCode = "ROYAL EXPRESS";
     reason = "EXPLICIT_ROYAL_DAGON";
@@ -285,9 +289,9 @@ function computeDataEntryServiceProvider(
     }
   }
 
-  const option = preferredTariff(exactMatches, providerCode);
+  const option = explicitRoyalDagon && fullRoyal ? fullRoyal : preferredTariff(exactMatches, providerCode);
   const prefersMyanmar = /[\u1000-\u109f]/.test(raw || String(deliveryAddress ?? ""));
-  const township = dagonTownship || option?.destination_name
+  const township = explicitRoyalDagon && option ? option.destination_name : dagonTownship || option?.destination_name
     || (explicitTownship ? cleanTownship : (prefersMyanmar ? postal.townshipMm : postal.township))
     || cleanTownship;
 
