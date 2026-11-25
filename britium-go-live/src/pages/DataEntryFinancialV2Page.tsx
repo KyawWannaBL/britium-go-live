@@ -265,13 +265,17 @@ function resolveImportedDestination(value: unknown,address: unknown,itemPrice: u
 function routeForRow(row: ParcelRow, options: TariffOption[]): DataEntryProviderRouting {
   return resolveDataEntryServiceProvider(row.township,row.delivery_address,options,{
     fallbackUnknownToRoyal:true,
-    itemPrice:row.item_price,
+    itemPrice:row.item_price, requestedProvider:row.service_provider_code,
   });
 }
 function automaticDeliveryCharge(row: ParcelRow, options: TariffOption[]): number | null {
   if (row.amount_entry_type !== "ITEM_PRICE_PLUS_DECLARED_DELIVERY") return null;
-  if (num(row.delivery_charges) > 0) return null;
   const route = routeForRow(row, options);
+  if (route.providerCode === "ROYAL EXPRESS" && route.reason === "EXPLICIT_ROYAL_DAGON" && route.option && !row.waybillPublished) {
+    const rate = tariffRate(route.option as TariffOption,row.customer_tier);
+    return Number.isFinite(rate) && rate > 0 && num(row.delivery_charges) !== rate ? rate : null;
+  }
+  if (num(row.delivery_charges) > 0) return null;
   if (route.providerCode !== "BRITIUM" || !route.option) return null;
   const approved = tariffRate(route.option as TariffOption, row.customer_tier);
   return Number.isFinite(approved) && approved > 0 ? approved : null;
@@ -588,8 +592,8 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   const [providerFilter, setProviderFilter] = useState(() => row.service_provider_code || "ALL");
   const route = useMemo(()=>resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{
     fallbackUnknownToRoyal:true,
-    itemPrice:row.item_price,
-  }),[row.township,row.delivery_address,row.item_price,tariffOptions]);
+    itemPrice:row.item_price, requestedProvider:row.service_provider_code,
+  }),[row.township,row.delivery_address,row.item_price,row.service_provider_code,tariffOptions]);
   useEffect(()=>{if(!open)setProviderFilter(row.service_provider_code||"ALL");},[row.service_provider_code,open]);
   const query = text(draftTownship).trim().toLowerCase();
   const [debouncedTownshipQuery,setDebouncedTownshipQuery]=useState(query);
@@ -619,10 +623,12 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   const choose = (option: TariffOption) => {
     const nextRoute=resolveDataEntryServiceProvider(option.destination_name,row.delivery_address,tariffOptions,{
       fallbackUnknownToRoyal:true,
-      itemPrice:row.item_price,
+      itemPrice:row.item_price, requestedProvider:option.provider_code,
     });
+    const dagonRate = ["တောင်ဒဂုံ","အရှေ့ဒဂုံ","မြောက်ဒဂုံ","ဒဂုံဆိပ်ကမ်း"].includes(nextRoute.township) && nextRoute.option && ["BRITIUM","ROYAL EXPRESS"].includes(nextRoute.providerCode) ? tariffRate(nextRoute.option as TariffOption,row.customer_tier) : null;
     updateRow(index, {
       ...routingPatch(nextRoute,{...row,township:option.destination_name}),
+      ...(dagonRate != null && !row.waybillPublished && row.amount_entry_type !== "EXACT_COLLECTION_AMOUNT" ? {delivery_charges:dagonRate,calculation:{}} : {}),
       message: `${providerRoutingMessage(nextRoute)} Approved tariff ${serviceProviderOfficeLabel(option.provider_code, option.provider_name)} · Rack ${option.rack_code || "—"} was applied.`,
     });
     setOpen(false);
@@ -651,7 +657,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
             updateRow(index,{township:"ဂိတ်ချ",service_provider_code:"H.TERMINAL DROP-OFF",deliveryRegion:"OUTSIDE_CORE",deliveryMode:"HIGHWAY_BUS_STATION",locationStatus:"NOT_REQUIRED",handoffStationCode:"OTHER",handoffStationName:"",delivery_charges:"",calculation:{},message:"Enter the highway terminal name and delivery charge."});setOpen(false);
           }}>Highway terminal drop-off / အဝေးပြေးဂိတ်ချ</button>
           <button type="button" onClick={() => { setProviderFilter("ALL"); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === "ALL" ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>ALL</button>
-          {(providerOptions as ProviderOption[]).filter((provider) => ["ROYAL EXPRESS","MDY BRANCH","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
+          {(providerOptions as ProviderOption[]).filter((provider) => ["BRITIUM","ROYAL EXPRESS","MDY BRANCH","DK DELIVERY","NPT BRANCH","H.TERMINAL DROP-OFF","GRS"].includes(provider.provider_code)).map((provider) => (
             <button key={provider.provider_code} type="button" onClick={() => { setProviderFilter(provider.provider_code); setOpen(true); }} className={`rounded-full border px-2.5 py-1 text-[9px] font-black ${providerFilter === provider.provider_code ? "border-cyan-300 bg-cyan-400/20 text-cyan-100" : "border-[#2a5272] text-[#8db4ce]"}`}>
               {serviceProviderOfficeLabel(provider.provider_code, provider.display_name)} · {provider.active_tariff_count}
             </button>
@@ -725,7 +731,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   };
   const pickupPaymentType = selectedPaymentType || "COD";
   const type = row.amount_entry_type as AmountType;
-  const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,tariffOptions]);
+  const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,row.service_provider_code,tariffOptions]);
   const stationReady = handoffStationReady(row,route);
   const tierRule = tierAccess?.tier_rules?.[row.customer_tier] || {};
   const [photoPreviewOpen, setPhotoPreviewOpen] = useState(false);
@@ -824,7 +830,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                               </Field>
                               <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions}/>
                               <Field label="လက်ခံသူလိပ်စာ / Full Address">
-                                <BufferedDataEntryInput multiline rows={3} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`} style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
+                                <BufferedDataEntryInput multiline rows={3} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`} style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
                               </Field>
                               <div className="grid grid-cols-2 gap-3">
                                 <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
@@ -940,7 +946,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                     value={row.delivery_address}
                     onCommit={(value)=>{
                       const delivery_address=value;
-                      const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+                      const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});
                       updateRow(index,nextRoute.providerCode?{
                         delivery_address,
                         ...routingPatch(nextRoute,{...row,delivery_address}),
@@ -1697,7 +1703,7 @@ export default function DataEntryFinancialV2Page() {
         const delivery_address=row.delivery_address||text(match.recipient_address);
         const township=row.township||text(match.township);
         const candidate={...row,recipient_name,delivery_address,township};
-        const route=resolveDataEntryServiceProvider(township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+        const route=resolveDataEntryServiceProvider(township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});
         const filled=[
           !row.recipient_name&&Boolean(recipient_name)?"recipient name":"",
           !row.delivery_address&&Boolean(delivery_address)?"address":"",
@@ -1909,7 +1915,7 @@ export default function DataEntryFinancialV2Page() {
       row.registrationExists=Boolean(registration||row.registrationExists);
       row.registrationVersion=text(registration?.updated_at||row.registrationVersion);
       row.waybillPublished=Boolean(registration?.published||row.waybillPublished);
-      const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price});
+      const route=resolveDataEntryServiceProvider(row.township,row.delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});
       const option=route.option as TariffOption|null;
       if(!route.providerCode) return row;
       return {
@@ -2093,7 +2099,7 @@ export default function DataEntryFinancialV2Page() {
     const row=rows[index]; if(!row || row.skipped) return false;
     const autoDelivery=automaticDeliveryCharge(row,tariffOptions);
     const pricingRow=autoDelivery==null?row:{...row,delivery_charges:autoDelivery};
-    updateRow(index,{calculating:true,calculation:{},message:autoDelivery==null?"":`Approved Britium delivery tariff ${money(autoDelivery)} applied automatically.`,...(autoDelivery==null?{}:{delivery_charges:autoDelivery})});
+    updateRow(index,{calculating:true,calculation:{},message:autoDelivery==null?"":`Approved provider delivery tariff ${money(autoDelivery)} applied automatically.`,...(autoDelivery==null?{}:{delivery_charges:autoDelivery})});
     try{
       const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:payload(pricingRow,selectedPickup)}));
       if(r.error) throw r.error;
