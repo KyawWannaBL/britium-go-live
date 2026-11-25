@@ -625,7 +625,7 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
       fallbackUnknownToRoyal:true,
       itemPrice:row.item_price, requestedProvider:option.provider_code,
     });
-    const dagonRate = ["တောင်ဒဂုံ","အရှေ့ဒဂုံ","မြောက်ဒဂုံ","ဒဂုံဆိပ်ကမ်း"].includes(nextRoute.township) && nextRoute.option && ["BRITIUM","ROYAL EXPRESS"].includes(nextRoute.providerCode) ? tariffRate(nextRoute.option as TariffOption,row.customer_tier) : null;
+    const dagonRate = (["တောင်ဒဂုံ","အရှေ့ဒဂုံ","မြောက်ဒဂုံ","ဒဂုံဆိပ်ကမ်း"].includes(nextRoute.township) || nextRoute.reason === "EXPLICIT_ROYAL_DAGON") && nextRoute.option && ["BRITIUM","ROYAL EXPRESS"].includes(nextRoute.providerCode) ? tariffRate(nextRoute.option as TariffOption,row.customer_tier) : null;
     updateRow(index, {
       ...routingPatch(nextRoute,{...row,township:option.destination_name}),
       ...(dagonRate != null && !row.waybillPublished && row.amount_entry_type !== "EXACT_COLLECTION_AMOUNT" ? {delivery_charges:dagonRate,calculation:{}} : {}),
