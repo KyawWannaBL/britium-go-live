@@ -57,6 +57,7 @@ export type DataEntryProviderRouting = {
     | "MANDALAY_DK_SERVICE_AREA"
     | "MANDALAY_BRANCH_SERVICE_AREA"
     | "NAYPYITAW_BRANCH_SERVICE_AREA"
+    | "EXPLICIT_ROYAL_DAGON"
     | "EXACT_BRITIUM_ROUTE"
     | "OUTSIDE_CORE_ROYAL_DEFAULT"
     | "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE"
@@ -187,7 +188,7 @@ function computeDataEntryServiceProvider(
   townshipValue: unknown,
   deliveryAddress: unknown,
   tariffOptions: DataEntryProviderTariffOption[],
-  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown } = {},
+  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown; requestedProvider?: unknown } = {},
 ): DataEntryProviderRouting {
   const raw = String(townshipValue ?? "").trim();
   let cleanTownship = stripServiceProviderDecoration(raw);
@@ -216,7 +217,14 @@ function computeDataEntryServiceProvider(
   const recognizedDestination = isAyeyarwadyRegion || postal.matchLevel !== "UNRESOLVED"
     || exactMatches.length > 0;
 
-  if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
+  const requested = String(options.requestedProvider || dataEntryProviderHint(raw)).trim().toUpperCase();
+  const explicitRoyalDagon = Boolean(dagonTownship && dagonTownship !== "ဒဂုံ" && requested === "ROYAL EXPRESS" && preferredTariff(exactMatches, "ROYAL EXPRESS"));
+  if (explicitRoyalDagon) {
+    providerCode = "ROYAL EXPRESS";
+    reason = "EXPLICIT_ROYAL_DAGON";
+    routeRegion = "YANGON";
+    deliveryMode = "ROYAL_EXPRESS";
+  } else if ([...candidateKeys].some((candidate) => NAYPYITAW_ROYAL_EXCEPTIONS.has(candidate))) {
     routeRegion = "OUTSIDE_CORE";
     reason = "NAYPYITAW_EXCEPTION_OUTSIDE_CORE";
   } else if ([...candidateKeys].some((candidate) => MANDALAY_BRANCH_SERVICE_AREA.has(candidate))) {
@@ -299,11 +307,11 @@ function computeDataEntryServiceProvider(
 const routingCache = new WeakMap<DataEntryProviderTariffOption[], Map<string, DataEntryProviderRouting>>();
 export function resolveDataEntryServiceProvider(
   township: unknown, address: unknown, tariffs: DataEntryProviderTariffOption[],
-  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown } = {},
+  options: { fallbackUnknownToRoyal?: boolean; itemPrice?: unknown; ward?: unknown; postalCode?: unknown; requestedProvider?: unknown } = {},
 ): DataEntryProviderRouting {
   let cache = routingCache.get(tariffs);
   if (!cache) { cache = new Map(); routingCache.set(tariffs, cache); }
-  const key = JSON.stringify([township, address, options.itemPrice, options.ward, options.postalCode]);
+  const key = JSON.stringify([township, address, options.itemPrice, options.ward, options.postalCode, options.requestedProvider]);
   const existing = cache.get(key);
   if (existing) return existing;
   const result = computeDataEntryServiceProvider(township, address, tariffs, options);
@@ -326,6 +334,7 @@ export function providerRoutingMessage(route: DataEntryProviderRouting): string 
     case "MANDALAY_BRANCH_SERVICE_AREA": return "Mandalay service area · Britium Mandalay Branch Office selected automatically.";
     case "NAYPYITAW_BRANCH_SERVICE_AREA": return "Naypyitaw service area · NPT Branch selected automatically.";
     case "NAYPYITAW_EXCEPTION_OUTSIDE_CORE": return "Tatkon / Lewe are outside the NPT Branch area; the item-price routing rule applies.";
+    case "EXPLICIT_ROYAL_DAGON": return "Royal Express explicitly selected for this Dagon township.";
     case "EXACT_BRITIUM_ROUTE": return "Britium service area · Britium Express selected automatically.";
     case "OUTSIDE_CORE_ROYAL_DEFAULT": return "Outside Yangon/Britium outreach, Mandalay, and eligible Naypyitaw · Royal Express selected automatically.";
     case "OUTSIDE_CORE_ROYAL_WITH_ITEM_PRICE": return "Outside the active core areas · item price present · Royal Express selected; Google Map is not required.";
