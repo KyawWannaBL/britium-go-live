@@ -256,18 +256,33 @@ export default function WayplanCommandCenterPage() {
       let handoffSelection:Record<string,boolean>={};
       try {
         const requested=JSON.parse(window.sessionStorage.getItem("be_wayplan_handoff_ids_v150") || "[]");
-        const requestedSet=new Set((Array.isArray(requested)?requested:[]).map((id:any)=>text(id).toUpperCase()));
+        const requestedSet=new Set<string>((Array.isArray(requested)?requested:[]).map((id:any)=>text(id).toUpperCase()).filter(Boolean));
+        const matched=new Set<string>();
         queueRows.forEach((row:any)=>{
           const id=text(row.delivery_way_id);
-          if(id && requestedSet.has(id.toUpperCase())) handoffSelection[id]=true;
+          if(id && requestedSet.has(id.toUpperCase())){
+            handoffSelection[id]=true;
+            matched.add(id.toUpperCase());
+          }
         });
+        const unmatched=Array.from(requestedSet).filter(id=>!matched.has(id));
         const notice=window.sessionStorage.getItem("be_wayplan_handoff_notice_v150") || "";
-        if(Object.keys(handoffSelection).length){
-          setMessage(notice || `${Object.keys(handoffSelection).length} Warehouse handoff way(s) are preselected for Wayplan creation.`);
-          setFiltersExpanded(false);
+        if(requestedSet.size){
+          setMessage(
+            (notice || Object.keys(handoffSelection).length+" Warehouse handoff way(s) were found in the selected queue.")+
+            (unmatched.length ? " "+unmatched.length+" staged way(s) are not in "+selectedRegion+
+              " Wayplan queue. Select the correct branch/region. Outside-core third-party parcels require a supported provider-transfer Wayplan; no dispatch has been recorded." : "")
+          );
+          if(matched.size)setFiltersExpanded(false);
         }
-        window.sessionStorage.removeItem("be_wayplan_handoff_ids_v150");
-        window.sessionStorage.removeItem("be_wayplan_handoff_notice_v150");
+        // Keep region-mismatched IDs for the next region switch rather than silently
+        // losing the Warehouse handoff. Successful selections are removed.
+        if(unmatched.length){
+          window.sessionStorage.setItem("be_wayplan_handoff_ids_v150",JSON.stringify(unmatched));
+        }else{
+          window.sessionStorage.removeItem("be_wayplan_handoff_ids_v150");
+          window.sessionStorage.removeItem("be_wayplan_handoff_notice_v150");
+        }
       } catch {}
 
       setRegions(Array.isArray(regionRows) ? regionRows : []);

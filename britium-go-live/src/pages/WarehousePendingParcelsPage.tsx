@@ -2,6 +2,7 @@
 import React, { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock3, PackageSearch, RefreshCw, Search, FileSpreadsheet, FileText } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import ProviderTransferPanel from "@/components/parcel/ProviderTransferPanel";
 import ProviderTerritoryReview from "@/components/parcel/ProviderTerritoryReview";
 import {loadTerritoryLookup,territoryProvider,DEFAULT_PROVIDER_CODES} from "@/lib/providerTerritory";
 import { downloadParcelXlsx, openParcelPrintWindow, renderParcelPdf, fromMyanmarDay, untilMyanmarDay } from "@/lib/parcelReportExport";
@@ -260,6 +261,8 @@ export default function WarehousePendingParcelsPage(){
           <div className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">{label}</div>
         </div>)}
       </section>
+
+      <ProviderTransferPanel onDraftCreated={() => void load(true)} />
 
       <section className="rounded-xl border border-slate-800 bg-[#0B2133] p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
