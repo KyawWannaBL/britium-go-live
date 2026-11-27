@@ -251,6 +251,11 @@ function money(value: unknown): string {
   const n = Number(value);
   return Number.isFinite(n) ? n.toLocaleString("en-US") + " Ks" : text(value);
 }
+const MAX_DATA_ENTRY_WEIGHT_KG = 1000;
+function parcelWeightError(weightKg: ParcelRow["weight_kg"]): string {
+  if (!(Number(weightKg) > MAX_DATA_ENTRY_WEIGHT_KG)) return "";
+  return `Enter the measured parcel weight in kilograms (maximum ${MAX_DATA_ENTRY_WEIGHT_KG.toLocaleString("en-US")} kg). Check for a value entered in grams or copied from Item Price.`;
+}
 function requestId(prefix: string): string {
   const id = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
@@ -721,7 +726,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const [deleteOpen,setDeleteOpen]=useState(false);
   const [deleteReason,setDeleteReason]=useState("");
   useEffect(()=>{setDeleteOpen(false);setDeleteReason("")},[row.pickup_id,row.parcel_sequence]);
-  const c = row.calculation || {};
+  const weightError = parcelWeightError(row.weight_kg);
+  const c = weightError ? {} : row.calculation || {};
   const deliverySurplus = Math.max(0,Number(c.delivery_difference||0));
   const approvedSurplusForBritium = Math.min(deliverySurplus,Math.max(0,Number(row.merchant_payable_charges||0)));
   const totalBritiumEntitlement = Number(c.net_system_delivery_charge||0)+approvedSurplusForBritium;
@@ -743,7 +749,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const displayProofUrl = dataEntryProofDisplayUrl(row.proof_url);
   const photoReady = Boolean(!photoRequired || row.photoReviewed || row.isAdditionalRegistration || row.photoUnavailableAcknowledged || row.photoTemporaryWaiver);
   const locationReady = Boolean(!route.mapRequired || row.locationStatus==="SYNCED");
-  const saveBlocked = row.waybillPublished || busy || row.checking || row.skipped || row.calculating || row.calculationFailed || row.calculation?.validation_status === "ERROR" || !photoReady || !routeReady(row,tariffOptions);
+  const saveBlocked = Boolean(weightError) || row.waybillPublished || busy || row.checking || row.skipped || row.calculating || row.calculationFailed || row.calculation?.validation_status === "ERROR" || !photoReady || !routeReady(row,tariffOptions);
   const statusText = row.saved ? "REGISTERED" : row.skipped ? "PENDING" : row.calculating ? "CALCULATING" : "DRAFT";
   const statusClass = row.saved
     ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
@@ -836,7 +842,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                                 <BufferedDataEntryInput multiline rows={3} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`} style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
                               </Field>
                               <div className="grid grid-cols-2 gap-3">
-                                <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
+                                <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/>{weightError && <p role="alert" className="text-xs text-rose-300">{weightError}</p>}</Field>
                                 {!isExact(type)&&type!=="DELIVERY_CHARGE_ONLY"?<Field label="Item Price"><BufferedDataEntryInput type="number" className={inputClass} value={row.item_price} onCommit={(value)=>updateRow(index,{item_price:value===""?"":Number(value)})}/></Field>:<div/>}
                               </div>
                               {!isExact(type)?<Field label="Deli Fee (OS)"><BufferedDataEntryInput type="number" className={inputClass} value={row.delivery_charges} onCommit={(value)=>updateRow(index,{delivery_charges:value===""?"":Number(value)})}/></Field>:null}
@@ -962,6 +968,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
               <Field label="အလေးချိန် / Weight (kg)">
                 <BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/>
+                {weightError && <p role="alert" className="text-xs text-rose-300">{weightError}</p>}
               </Field>
 
               <Field label="ဝန်ဆောင်မှု / Service Type">
@@ -1086,6 +1093,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <div className="flex justify-between gap-4"><span>Item Price</span><b>{money(row.item_price)}</b></div>
                 <div className="flex justify-between gap-4"><span>Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
                 <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+                <div className="flex justify-between gap-4"><span>Weight Surcharge</span><b>{money(c.weight_surcharge)}</b></div>
                 <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
                 <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
                 <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
@@ -1100,6 +1108,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Item Price</span><b>{money(row.item_price)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Weight Surcharge</span><b>{money(c.weight_surcharge)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
@@ -2100,6 +2109,11 @@ export default function DataEntryFinancialV2Page() {
   async function calculateRow(index:number):Promise<boolean>{
     if(!selectedPickup) return false;
     const row=rows[index]; if(!row || row.skipped) return false;
+    const weightError=parcelWeightError(row.weight_kg);
+    if(weightError){
+      updateRow(index,{calculation:{},calculationFailed:true,message:weightError});
+      return false;
+    }
     const autoDelivery=automaticDeliveryCharge(row,tariffOptions);
     const pricingRow=autoDelivery==null?row:{...row,delivery_charges:autoDelivery};
     updateRow(index,{calculating:true,calculation:{},message:autoDelivery==null?"":`Approved provider delivery tariff ${money(autoDelivery)} applied automatically.`,...(autoDelivery==null?{}:{delivery_charges:autoDelivery})});
@@ -2244,9 +2258,9 @@ export default function DataEntryFinancialV2Page() {
 
   async function saveRow(index:number):Promise<boolean>{
     const prior = rows[index];
-    const quoteError = prior && Object.keys(prior.calculation || {}).length
+    const quoteError = prior && (parcelWeightError(prior.weight_kg) || (Object.keys(prior.calculation || {}).length
       ? receiverQuoteMismatch(prior, prior.calculation)
-      : null;
+      : null));
     if (quoteError) {
       updateRow(index,{calculation:{},calculationFailed:true,message:quoteError});
       return false;
@@ -2336,6 +2350,8 @@ export default function DataEntryFinancialV2Page() {
           const row=sourceRows[index];
           if(row.skipped) continue;
           try{
+            const weightError=parcelWeightError(row.weight_kg);
+            if(weightError) throw new Error(weightError);
             const r=await calculateWithTimeoutRetry<any>(()=>(supabase as any).rpc("be_data_entry_financial_v2_calculate",{p_payload:JSON.parse(sourcePayloads[index])}));
             if(r.error) throw r.error;
             const e=envelope(r.data);
@@ -2382,6 +2398,8 @@ export default function DataEntryFinancialV2Page() {
 
   function rowSaveObstacle(row:ParcelRow):string {
     if(row.skipped) return "Pending clarification";
+    const weightError=parcelWeightError(row.weight_kg);
+    if(weightError) return weightError;
     if(!text(row.recipient_name)) return "Recipient name needs clarification";
     if(!text(row.recipient_phone)) return "Recipient phone needs clarification";
     if(!text(row.delivery_address)) return "Delivery address needs clarification";
@@ -2932,7 +2950,9 @@ export default function DataEntryFinancialV2Page() {
     try{
       const workingRows=await synchronizePendingLocationsForWaybill(rows);
       const saveResult=await persistAllRows("SAVE_ALL_BEFORE_GENERATE_WAYBILL",onlySequence===undefined?workingRows:workingRows.filter(row=>row.parcel_sequence===onlySequence));
-      const readySequences=scopeReadySequences(await authoritativeReadySequences(selectedPickupId),onlySequence);
+      const blockedWeights=new Set(workingRows.filter(row=>parcelWeightError(row.weight_kg)).map(row=>row.parcel_sequence));
+      const readySequences=scopeReadySequences(await authoritativeReadySequences(selectedPickupId),onlySequence)
+        .filter(sequence=>!blockedWeights.has(sequence));
       if(!readySequences.length){
         const blockers=currentReadinessSummary(workingRows);
         const held=Number(saveResult?.held_count||0);
