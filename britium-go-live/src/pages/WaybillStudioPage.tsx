@@ -218,13 +218,7 @@ function waybillTownshipOnly(row: PrintRow): string {
 
 function recipientLocation(row: PrintRow, type: DocType) {
   const d = normalized(row, type);
-  const address = String(d.recipientAddress || "").trim();
-  const township = String(d.township || "").trim();
-  if (!township) return address;
-  if (!address) return township;
-  const addressKey = normalizedLocationKey(address);
-  const townshipKey = normalizedLocationKey(township);
-  return townshipKey && addressKey.includes(townshipKey) ? address : `${address}, ${township}`;
+  return d.recipientAddress.trim() || d.township.trim();
 }
 
 function normalized(row: PrintRow, type: DocType) {
@@ -279,6 +273,7 @@ function render4x3(row: PrintRow, type: DocType) {
         <p class="recipient"><b>Recipient:</b> <strong>${esc(d.recipient)}</strong></p>
         <p class="phone">${esc(d.recipientPhone)}</p>
         <p class="address">${esc(recipientLocation(row, type))}</p>
+        ${d.remarks ? `<p class="address-remarks">Remarks: ${esc(d.remarks)}</p>` : ""}
       </section>
       <section class="w43-money">
         <div class="money-row"><span>Item Price:</span><b>${money(d.itemPrice)}</b></div>
@@ -302,7 +297,11 @@ function render4x2(row: PrintRow, type: DocType) {
       </header>
       <div class="w42-body">
         <div class="vertical-label">Recipient :</div>
-        <section class="w42-person"><strong>${esc(d.recipient)}</strong><b>${esc(d.recipientPhone)}</b><p>${esc(recipientLocation(row, type))}</p></section>
+        <section class="w42-person">
+          <strong>${esc(d.recipient)}</strong><b>${esc(d.recipientPhone)}</b>
+          <p>${esc(recipientLocation(row, type))}</p>
+          ${d.remarks ? `<p class="address-remarks">Remarks: ${esc(d.remarks)}</p>` : ""}
+        </section>
         <section class="w42-money">
           <div class="money-row"><span>Item Price :</span><b>${money(d.itemPrice)}</b></div>
           <div class="money-row"><span>Deli Fee :</span><b>${money(d.deliveryFee)}</b></div>
@@ -528,6 +527,7 @@ function sharedLabelCss() {
     .full-finance .cod-box strong { align-self: flex-end; font-size: 24pt; }
     .full-remarks { flex: 1; padding-top: 4mm; }
     .full-remarks span { margin-left: 3mm; }
+    .address-remarks, .full-remarks span { white-space: pre-line; overflow-wrap: anywhere; }
   
     /* BRITIUM_WAYBILL_4X6_LAYOUT_V6: exact 4in x 6in thermal layout */
     .be-4x6 {
