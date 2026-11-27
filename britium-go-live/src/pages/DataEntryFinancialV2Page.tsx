@@ -1,3 +1,4 @@
+import { royalTariffDestinationKey } from "@/lib/royalTariffDestination";
 import { persistDataEntryDrafts } from "@/lib/persistDataEntryDrafts";
 import PickupPhotoPolicyControl from "@/components/PickupPhotoPolicyControl";
 import { CorporateDataEntryBinding } from "@/components/tariff/CorporateTariffPanel";
@@ -615,7 +616,9 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   };
   const matches = useMemo(()=>(tariffOptions as TariffOption[])
     .filter((option) => providerFilter === "ALL" || option.provider_code === providerFilter)
-    .filter((option) => !debouncedTownshipQuery || option.destination_name.toLowerCase().includes(debouncedTownshipQuery) || option.provider_name.toLowerCase().includes(debouncedTownshipQuery))
+    .filter((option) => !debouncedTownshipQuery || option.destination_name.toLowerCase().includes(debouncedTownshipQuery) || option.provider_name.toLowerCase().includes(debouncedTownshipQuery)
+      || (option.provider_code === "ROYAL EXPRESS" && Boolean(royalTariffDestinationKey(debouncedTownshipQuery))
+        && royalTariffDestinationKey(option.destination_name).includes(royalTariffDestinationKey(debouncedTownshipQuery))))
     .slice(0, 18),[providerFilter,debouncedTownshipQuery,tariffOptions]);
   const selected = useMemo(()=>(tariffOptions as TariffOption[]).find((option) =>
     option.destination_name === row.township && (!row.service_provider_code || option.provider_code === row.service_provider_code)

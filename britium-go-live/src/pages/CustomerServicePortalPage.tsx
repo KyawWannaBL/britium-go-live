@@ -108,6 +108,14 @@ export default function CustomerServicePortalPage() {
   const [rebookDate, setRebookDate] = useState("");
   const [rebookConfirmation, setRebookConfirmation] = useState("");
   const [rebookBusy, setRebookBusy] = useState(false);
+  const [appointmentLoading, setAppointmentLoading] = useState(false);
+  const [appointmentFeedback, setAppointmentFeedback] = useState<{ text: string; error: boolean } | null>(null);
+  const selectedWay = selectedParcel?.delivery_way_id;
+  const todayInMyanmar = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Yangon", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const appointmentClosed = selectedParcel && /^(DELIVERED|COMPLETED|RTO|RETURN_TO_SENDER|RETURNED_TO_SENDER|CANCELLED|CANCELED|SETTLED)$/i
+    .test(String(selectedParcel.parcel_status ?? ""));
   const [history, setHistory] = useState<CustomerVoiceHistory | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -156,21 +164,32 @@ export default function CustomerServicePortalPage() {
 
   useEffect(() => { void load(""); }, []);
 
-  async function openParcel(row: CustomerServiceParcelRow) {
-    // Open immediately; the appointment lookup must never block parcel support.
-    setSelectedParcel(row);
+  useEffect(() => {
+    if (!selectedWay) return;
+    let current = true;
     setExistingAppointment("");
     setRebookDate("");
     setRebookConfirmation("");
+    setAppointmentFeedback(null);
+    setAppointmentLoading(true);
     void supabase.from("be_delivery_reschedules_v71")
-      .select("requested_delivery_date").eq("delivery_way_id",row.delivery_way_id)
-      .eq("status","ACTIVE").maybeSingle()
-      .then(({data:appointment,error:appointmentError})=>{
-        if(!appointmentError && appointment?.requested_delivery_date) {
-          setExistingAppointment(String(appointment.requested_delivery_date));
-          setRebookDate(String(appointment.requested_delivery_date));
+      .select("requested_delivery_date").eq("delivery_way_id", selectedWay)
+      .eq("status", "ACTIVE").maybeSingle()
+      .then(({ data, error }) => {
+        if (!current) return;
+        setAppointmentLoading(false);
+        if (error) {
+          setAppointmentFeedback({ error: true, text: "Could not load the current appointment. " + error.message });
+        } else if (data?.requested_delivery_date) {
+          setExistingAppointment(data.requested_delivery_date);
+          setRebookDate(data.requested_delivery_date >= todayInMyanmar ? data.requested_delivery_date : "");
         }
       });
+    return () => { current = false; };
+  }, [selectedWay, todayInMyanmar]);
+
+  async function openParcel(row: CustomerServiceParcelRow) {
+    setSelectedParcel(row);
     setNotice("");
     setActionNote("");
     setEscalationReason("");
@@ -246,27 +265,29 @@ export default function CustomerServicePortalPage() {
   }
 
   async function saveCustomerAppointment() {
-    if(!selectedParcel || !existingAppointment) return;
-    if(!rebookDate || rebookConfirmation.trim().length<12) {
-      setError("Select the revised delivery date and record the customer's confirmation (12+ characters).");
+    if (!selectedWay || rebookBusy || appointmentLoading || appointmentClosed) return;
+    if (!rebookDate || rebookDate < todayInMyanmar || rebookConfirmation.trim().length < 12) {
+      setAppointmentFeedback({ error: true, text: "Choose today or a later date and record the customer's confirmation (12+ characters)." });
       return;
     }
     setRebookBusy(true);
-    setError("");
+    setAppointmentFeedback(null);
     try {
-      const {data,error:rpcError}=await (supabase as any).rpc("be_cs_change_delivery_appointment_v218",{
-        p_way_id:selectedParcel.delivery_way_id,
-        p_new_delivery_date:rebookDate,
-        p_customer_confirmation:rebookConfirmation.trim(),
+      const { data, error } = await supabase.rpc("be_cs_change_delivery_appointment_v218", {
+        p_way_id: selectedWay,
+        p_new_delivery_date: rebookDate,
+        p_customer_confirmation: rebookConfirmation.trim(),
       });
-      if(rpcError) throw rpcError;
-      if(data?.ok===false) throw new Error(data?.error||"Customer date revision rejected");
-      setExistingAppointment(String(data?.requested_delivery_date||rebookDate));
-      setNotice(`CS delivery appointment updated for ${selectedParcel.delivery_way_id} to ${rebookDate}. Physical Warehouse Return Scan is still mandatory.`);
+      if (error || data?.ok !== true || !data.requested_delivery_date) {
+        throw new Error(error?.message || "The appointment was not saved.");
+      }
+      setExistingAppointment(data.requested_delivery_date);
+      setRebookDate(data.requested_delivery_date);
       setRebookConfirmation("");
+      setAppointmentFeedback({ error: false, text: `Customer-confirmed appointment saved for ${data.requested_delivery_date} (Myanmar time).` });
       await load();
-    } catch(e:any) {
-      setError(e?.message||"Customer date revision failed");
+    } catch (error) {
+      setAppointmentFeedback({ error: true, text: error instanceof Error ? error.message : "The appointment could not be saved." });
     } finally {
       setRebookBusy(false);
     }
@@ -334,34 +355,40 @@ export default function CustomerServicePortalPage() {
       </section>
 
       {selectedParcel && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.62)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }} onClick={() => setSelectedParcel(null)}>
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.62)", zIndex: 1000, display: "flex", justifyContent: "flex-end" }} onClick={() => { if (!rebookBusy) setSelectedParcel(null); }}>
           <aside onClick={(e) => e.stopPropagation()} style={{ width: "min(920px,96vw)", height: "100vh", overflowY: "auto", background: C.bg, borderLeft: `1px solid ${C.border}`, padding: 18 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
               <div><div style={{ color: C.gold, fontSize: 12, fontWeight: 900 }}>PARCEL SUPPORT RECORD</div><h2 style={{ margin: "4px 0" }}>{selectedParcel.delivery_way_id}</h2></div>
-              <button onClick={() => setSelectedParcel(null)} style={{ background: "transparent", color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8 }}><X size={18}/></button>
+              <button onClick={() => { if (!rebookBusy) setSelectedParcel(null); }} style={{ background: "transparent", color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8 }}><X size={18}/></button>
             </div>
 
-            {existingAppointment && (
-              <section style={{background:C.panel,border:`1px solid ${C.gold}`,borderRadius:16,padding:14,marginTop:14}}>
-                <h3 style={{marginTop:0}}>Customer-confirmed delivery date / ရက်ချိန်းပြင်ဆင်ရန်</h3>
-                <p style={{color:C.sub}}>Current date: <strong style={{color:C.gold}}>{existingAppointment}</strong>. A confirmed date change does NOT bypass Warehouse Return Scan, Supervisor release or Dispatch Scan.</p>
-                <label style={{display:"block",marginBottom:8}}>Revised customer delivery date
-                  <input type="date" value={rebookDate}
-                    min={new Intl.DateTimeFormat("en-CA",{timeZone:"Asia/Yangon",year:"numeric",month:"2-digit",day:"2-digit"}).format(new Date())}
-                    onChange={e=>setRebookDate(e.target.value)}
+            {!appointmentClosed && (
+              <form onSubmit={event => { event.preventDefault(); void saveCustomerAppointment(); }}
+                style={{ background:C.panel, border:`1px solid ${C.gold}`, borderRadius:16, padding:14, marginTop:14 }}>
+                <h3 style={{marginTop:0}}>Delivery appointment / ပို့ဆောင်ရက်ချိန်း</h3>
+                <p style={{color:C.sub}}>
+                  {appointmentLoading ? "Loading the current appointment…" : existingAppointment
+                    ? `Current appointment is ${existingAppointment} (Myanmar time).`
+                    : "Set the delivery date agreed with the customer."}
+                  {" "}Physical Warehouse Return Scan is still mandatory for parcels coming back from the field.
+                </p>
+                <label style={{display:"block",marginBottom:8}}>Customer-confirmed delivery date
+                  <input type="date" required value={rebookDate} min={todayInMyanmar}
+                    disabled={appointmentLoading || rebookBusy} onChange={e=>setRebookDate(e.target.value)}
                     style={{display:"block",padding:10,background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8}}/>
                 </label>
                 <label style={{display:"block"}}>Customer confirmation / Customer အတည်ပြုချက်
-                  <textarea value={rebookConfirmation} rows={2} onChange={e=>setRebookConfirmation(e.target.value)}
-                    placeholder="Record who confirmed and when; do not replace the rider's failed reason"
+                  <textarea value={rebookConfirmation} required minLength={12} maxLength={1000} rows={2} disabled={appointmentLoading || rebookBusy}
+                    onChange={e=>setRebookConfirmation(e.target.value)} placeholder="Record who confirmed the date and when"
                     style={{display:"block",width:"100%",padding:10,background:C.bg,color:C.text,border:`1px solid ${C.border}`,borderRadius:8}}/>
                 </label>
-                <button type="button" disabled={rebookBusy || !rebookDate || rebookDate===existingAppointment || rebookConfirmation.trim().length<12}
-                  onClick={()=>void saveCustomerAppointment()}
-                  style={{marginTop:10,padding:"10px 15px",background:C.gold,color:C.bg,border:0,borderRadius:9,fontWeight:800,opacity:rebookBusy?0.6:1}}>
-                  {rebookBusy?"Saving...":"Confirm revised appointment"}
+                {appointmentFeedback && <p role={appointmentFeedback.error ? "alert" : "status"}
+                  style={{color:appointmentFeedback.error ? C.red : C.green}}>{appointmentFeedback.text}</p>}
+                <button type="submit" disabled={appointmentLoading || rebookBusy || !rebookDate || rebookDate===existingAppointment || rebookConfirmation.trim().length < 12}
+                  style={{marginTop:10,padding:"10px 15px",background:C.gold,color:C.bg,border:0,borderRadius:9,fontWeight:800}}>
+                  {rebookBusy ? "Saving…" : existingAppointment ? "Save revised date" : "Create appointment"}
                 </button>
-              </section>
+              </form>
             )}
 
             <section style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 16, padding: 14, marginTop: 14 }}>

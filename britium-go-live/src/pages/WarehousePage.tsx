@@ -17,6 +17,7 @@ import {
 
 import WarehouseCameraScanner from "@/components/warehouse/WarehouseCameraScanner";
 import WarehouseReviewedBatch from "@/components/warehouse/WarehouseReviewedBatch";
+import MerchantReturnQueue from "@/components/warehouse/MerchantReturnQueue";
 import WarehouseCustodyMonitor from "@/components/warehouse/WarehouseCustodyMonitor";
 import { WarehouseReportedHistory, reportedDateMatches } from "@/components/warehouse/WarehouseReportedHistory";
 import { warehouseQueueStatus } from "@/lib/warehouseStatus";
@@ -48,6 +49,9 @@ export default function WarehousePage() {
   const warehouseCode = isBranchManager ? `${String(profile?.branch_code || "").trim().toUpperCase()}-MAIN` : "YGN-MAIN";
   const isFinanceReadOnly = ["finance","finance-user","accountant"].includes(currentRole);
   const [loading, setLoading] = useState(true);
+  const [showMerchantReturns,setShowMerchantReturns]=useState(false);
+  const canRecordMerchantReturn = ["superadmin","super-admin","admin","operation-manager","operations-manager",
+    "branch-manager","warehouse","warehouse-staff","warehouse-supervisor","warehouse-lead","sorter","supervisor"].includes(currentRole);
   const [showCustodyMonitor,setShowCustodyMonitor]=useState(false);
   const canInspectCrossLedger=["superadmin","super-admin","admin","finance"].includes(currentRole);
   const [snapshotLoadError, setSnapshotLoadError] = useState(false);
@@ -300,26 +304,12 @@ export default function WarehousePage() {
         const filed = fieldReturnForScan(tracking) || fieldReturnForScan(displayId);
         const submittedReason = String(filed?.pending_return_reason_code || "").trim().toUpperCase();
         const resolvedReason = submittedReason || String(reason || "").trim().toUpperCase();
-        let effectiveRescheduleDate = rescheduleDate || String(filed?.requested_delivery_date || filed?.next_attempt_date || "").slice(0, 10);
-        // Reuse the date already submitted by the rider where possible.
-        if (resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" && !effectiveRescheduleDate) {
-          const prior = await supabase.from("be_delivery_reschedules_v71")
-            .select("requested_delivery_date")
-            .eq("delivery_way_id", String(filed?.canonical_delivery_way_id || filed?.delivery_way_id || tracking))
-            .order("requested_at", { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          if (!prior.error && prior.data?.requested_delivery_date) {
-            effectiveRescheduleDate = String(prior.data.requested_delivery_date).slice(0, 10);
-          }
-          if (!effectiveRescheduleDate) {
-            throw new Error("The rider's dedicated delivery date could not be retrieved. Please confirm it before this return scan.");
-          }
-        }
+        const effectiveRescheduleDate = rescheduleDate ||
+          String(filed?.requested_delivery_date || filed?.next_attempt_date || "").slice(0, 10);
         res = await (supabase as any).rpc("be_warehouse_return_scan_v71", {
           p_tracking_no: tracking,
           p_reason_code: resolvedReason || null,
-          p_delivery_date: resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" ? effectiveRescheduleDate : null,
+          p_delivery_date: resolvedReason === "CUSTOMER_REQUESTED_RESCHEDULE" ? effectiveRescheduleDate || null : null,
           p_actor_email: email,
           // This field is only a warehouse-specific observation, not a replacement.
           p_remark: remark || null,
@@ -748,6 +738,12 @@ export default function WarehousePage() {
           </button>
         </div>
       </div>
+
+      <button type="button" className="rounded-xl border border-amber-500 px-4 py-2 text-sm font-bold text-amber-300"
+        aria-expanded={showMerchantReturns} onClick={() => setShowMerchantReturns(value => !value)}>
+        Returns to Merchant / ကုန်သည်ထံ ပြန်အပ်ခြင်း
+      </button>
+      {showMerchantReturns && <MerchantReturnQueue readOnly={!canRecordMerchantReturn} />}
 
       {showCustodyMonitor&&canInspectCrossLedger&&<div className="mb-5"><WarehouseCustodyMonitor/></div>}
       {message && (
