@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
     links: [
       { name: "CS Command", path: "/cs-command", icon: HeadphonesIcon },
       { name: "CS Portal", path: "/cs-portal", icon: HeadphonesIcon },
+      { name: "Provider Custody", path: "/provider-custody", icon: Truck },
       { name: "3rd Party Confirmations", path: "/cs-third-party", icon: Truck },
       { name: "Exceptions", path: "/exceptions", icon: AlertTriangle },
     ],
@@ -127,6 +128,7 @@ const NAV_GROUPS: NavGroup[] = [
       { name: "Supervisor", path: "/supervisor", icon: ShieldCheck },
       { name: "Supervisor Pickup", path: "/supervisor-pickup", icon: UserCheck },
       { name: "Supervisor Wayplan", path: "/supervisor-wayplan", icon: CheckSquare },
+      { name: "Bird’s Eye Reporting Hub", path: "/parcel-lifecycle-report", icon: FileSpreadsheet },
       { name: "Exec Ops", path: "/exec-ops", icon: Command },
     ],
   },

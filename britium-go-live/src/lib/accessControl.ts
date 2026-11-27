@@ -12,6 +12,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/go-live-control', rule('management', 'director', 'operations-admin')],
   ['/go-live-readiness', rule('management', 'director', 'operations-admin')],
   ['/analytics', rule('management', 'director', 'operations', 'operations-admin', 'finance', 'supervisor')],
+  ['/parcel-lifecycle-report', rule('management', 'director', 'finance', 'finance-user', 'accountant', 'finance-admin', 'finance-manager', 'accounts')],
   ['/reporting', rule('management', 'director', 'operations', 'operations-admin', 'finance', 'supervisor')],
 
   ['/finance/data-entry-review', rule('finance', 'finance-user', 'accountant')],
@@ -38,6 +39,7 @@ const PATH_ROLES: Array<[string, Set<string>]> = [
   ['/pickup-form', rule('customer-service', 'cs', 'support', 'data-entry', 'encoder', 'supervisor', 'operations', 'operations-admin', 'branch-office', 'branch-manager')],
 
   ['/parcel-follow-up', rule('management','director','operation-manager','operations','operations-admin','operations-manager','supervisor','warehouse','warehouse-staff','finance','finance-user','accountant','customer-service','cs','support','branch-manager','branch-admin','branch-staff','rider','driver','helper','marketing','data-entry','admin')],
+  ['/provider-custody', rule('operation-manager', 'operations-manager', 'customer-service', 'cs', 'support')],
   ['/parcel-control', rule('management','director','operation-manager','operations','operations-admin','operations-manager','supervisor','warehouse','warehouse-staff','finance','finance-user','accountant','customer-service','cs','support','branch-manager')],
   ['/warehouse', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin', 'finance', 'finance-user', 'accountant')],
   ['/wayplan-view', rule('warehouse', 'warehouse-staff', 'sorter', 'supervisor', 'operations', 'operations-admin')],
