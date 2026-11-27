@@ -22,6 +22,10 @@ export function territoryProvider(township:unknown,region:unknown,lookup:Territo
    return {code:"H.TERMINAL DROP-OFF",region:"Highway terminal",matched:true,needsReview:false,reason:"EXPLICIT_GATE_DROPOFF"};
  if(/royal/i.test(label))
    return {code:"ROYAL EXPRESS",region:"Royal service",matched:true,needsReview:false,reason:"EXPLICIT_ROYAL_SERVICE_LABEL"};
+ // Four Dagon townships are Britium's default Yangon territory. Explicit
+ // Royal service labels above remain an intentional, reviewable exception.
+ if (/(တောင်ဒဂုံ|မြောက်ဒဂုံ|အရှေ့ဒဂုံ|ဒဂုံဆိပ်ကမ်း|ဒဂုံ(?:မြို့)?သစ်(?:\s|‌)*(?:တောင်|မြောက်|အရှေ့|ဆိပ်ကမ်း)|(?:south|north|east)\s*dagon|dagon\s*(?:seikkan|seik kan|seikkan township))/i.test(label))
+   return {code:"BRITIUM",region:"Yangon",matched:true,needsReview:false,reason:"DAGON_BRITIUM_DEFAULT"};
  if(/^mdy[-\s]/i.test(label))
    return {code:"MDY BRANCH",region:"Mandalay",matched:true,needsReview:false,reason:"MANDALAY_EXPLICIT_AREA_CODE"};
  const resolved=canonicalRegion(region)||lookup.get(key)||canonicalRegion(township)
