@@ -4,7 +4,9 @@ import PickupPhotoPolicyControl from "@/components/PickupPhotoPolicyControl";
 import { CorporateDataEntryBinding } from "@/components/tariff/CorporateTariffPanel";
 import { scopeReadySequences } from "@/lib/waybillPublicationScope";
 import DeliveryAddressHistory from "@/components/DeliveryAddressHistory";
+import { revisedFeePolicyApplies } from "@/lib/revisedFeePolicy";
 import BufferedDataEntryInput from "@/components/BufferedDataEntryInput";
+import { formatRecipientAddress, mergeAddressLandmarks } from "@/lib/recipientAddress";
 import { locationReadiness } from "@/lib/dataEntryLocationReadiness";
 import { calculateWithTimeoutRetry } from "@/lib/dataEntryCalculationRetry";
 import { consecutivePendingBatches } from "@/lib/dataEntryPendingBatches";
@@ -144,6 +146,9 @@ type ParcelRow = {
   recipient_phone: string;
   township: string;
   delivery_address: string;
+  merchantLabelAddress?: string;
+  addressLandmarks?: string[];
+  addressNeedsReview?: boolean;
   weight_kg: number | "";
   evidenceWeightKg?: number | "";
   customer_tier: string;
@@ -193,6 +198,14 @@ type ParcelRow = {
   historyMatchCount?: number;
   historyMatchWayId?: string;
   historyMatchedAt?: string;
+};
+
+type ImportedLocationUpdate = {
+  pickupId: string;
+  parcelSequence: number;
+  patch: Partial<ParcelRow>;
+  expectedStatuses?: DataEntryLocationResolution[];
+  address?: Pick<ParcelRow, "delivery_address" | "township">;
 };
 
 type BulkImportDraft = {
@@ -467,6 +480,27 @@ function payload(row: ParcelRow, pickup: Pickup) {
   return p;
 }
 
+function addressLabelPatch(label: string, row: Pick<ParcelRow, "township" | "remarks" | "addressLandmarks">) {
+  const formatted = formatRecipientAddress(label, row.township);
+  return {
+    merchantLabelAddress: label,
+    delivery_address: formatted.address,
+    remarks: mergeAddressLandmarks(row.remarks, row.addressLandmarks ?? [], formatted.landmarks),
+    addressLandmarks: formatted.landmarks,
+    addressNeedsReview: formatted.needsReview,
+  };
+}
+
+function prepareDraftAddress(row: ParcelRow): ParcelRow {
+  if (row.saved || row.waybillPublished || row.merchantLabelAddress !== undefined || !row.delivery_address) return row;
+  const address = addressLabelPatch(row.delivery_address, row);
+  return {
+    ...row,
+    ...address,
+    ...(address.delivery_address !== row.delivery_address ? { locationCandidate: null, locationStatus: "PENDING" } : {}),
+  };
+}
+
 function parcelRowFromProof(
   pickup: Pickup,
   tierAccess: MerchantTierAccess,
@@ -491,7 +525,7 @@ function parcelRowFromProof(
   const temporaryPhotoWaiver=Boolean(proof.raw_payload?.photo_skipped || proof.raw_payload?.temporary_photo_waiver);
   const temporaryPhotoWaiverReason=text(proof.raw_payload?.photo_skip_reason || proof.raw_payload?.temporary_photo_waiver_reason);
   const photoEvidenceMode:ParcelRow["photoEvidenceMode"]=storedPhotoMode==="OS_SOFTCOPY"?"OS_SOFTCOPY":"PICKER_PHOTO";
-  return {
+  return prepareDraftAddress({
     pickup_id:pickup.pickup_id,
     parcel_sequence:sequence,
     delivery_way_id:text(proof.delivery_way_id)||canonicalWayId(pickup.pickup_id,sequence),
@@ -503,7 +537,9 @@ function parcelRowFromProof(
     recipient_name:text(proof.recipient_name),
     recipient_phone:text(proof.recipient_phone||proof.contact_no_1),
     township:text(proof.township||pickup.township),
-    delivery_address:text(proof.delivery_address||proof.recipient_address),
+    delivery_address:text(proof.saved_at
+      ? proof.recipient_address ?? proof.delivery_address
+      : proof.delivery_address || proof.recipient_address),
     weight_kg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
     evidenceWeightKg:proof.actual_weight_kg??proof.parcel_weight_kg??proof.weight_kg??"",
     customer_tier:customerTier,
@@ -552,7 +588,7 @@ function parcelRowFromProof(
     registrationExists:Boolean(proof.saved_at),
     registrationVersion:text(proof.__registrationUpdatedAt||proof.updated_at),
     waybillPublished:Boolean(proof.is_printed||proof.printed_at||["PRINTED","PUBLISHED","CREATED"].includes(text(proof.print_status).toUpperCase())),
-  };
+  });
 }
 
 // Cached operational edits may survive refresh; photo decisions always come from the current evidence.
@@ -560,8 +596,13 @@ function mergePickupEvidence(previous:Partial<ParcelRow>, fresh:ParcelRow):Parce
   const editedWeight=previous.evidenceWeightKg!==undefined && previous.weight_kg!==undefined
     && String(previous.weight_kg)!==String(previous.evidenceWeightKg);
   const weight=editedWeight?previous.weight_kg!:fresh.weight_kg;
-  return {
+  return prepareDraftAddress({
     ...fresh,...previous,
+    ...(previous.delivery_address !== undefined ? {
+      merchantLabelAddress: previous.merchantLabelAddress,
+      addressLandmarks: previous.addressLandmarks,
+      addressNeedsReview: previous.addressNeedsReview,
+    } : {}),
     pickup_id:fresh.pickup_id,parcel_sequence:fresh.parcel_sequence,delivery_way_id:fresh.delivery_way_id,
     registrationExists:fresh.registrationExists,registrationVersion:fresh.registrationVersion,waybillPublished:fresh.waybillPublished,
     proof_url:fresh.proof_url,proof_ref:fresh.proof_ref,photo_status:fresh.photo_status,
@@ -571,7 +612,7 @@ function mergePickupEvidence(previous:Partial<ParcelRow>, fresh:ParcelRow):Parce
     photoUnavailableAcknowledged:fresh.photoUnavailableAcknowledged,
     weight_kg:weight,evidenceWeightKg:fresh.evidenceWeightKg,
     ...(String(weight)!==String(previous.weight_kg)?{calculation:{}}:{}),
-  };
+  });
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -717,6 +758,44 @@ function TownshipTariffField({ row, index, updateRow, tariffOptions, providerOpt
   );
 }
 
+function keepAddressActionTarget(event: React.PointerEvent<HTMLDivElement>) {
+  if (!event.isPrimary || event.button !== 0) return;
+  const input = document.activeElement;
+  if (!(input instanceof HTMLTextAreaElement) || !input.hasAttribute("data-recipient-address-input")) return;
+  const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("button[data-address-action]") : null;
+  // Address blur can resize the form between pointer down and up. Keep the pressed action as the target.
+  if (button && !button.disabled) button.setPointerCapture(event.pointerId);
+}
+
+function RecipientAddressFields({ row, inputClass, disabled, onLabel, onFinal }: {
+  row: ParcelRow;
+  inputClass: string;
+  disabled: boolean;
+  onLabel: (value: string) => void;
+  onFinal: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Field label="ပါဆယ်ပေါ်ရှိ လိပ်စာ / Address on parcel label">
+        <BufferedDataEntryInput multiline rows={2} className={inputClass} data-recipient-address-input
+          value={row.merchantLabelAddress ?? row.delivery_address} disabled={disabled} onCommit={onLabel} />
+      </Field>
+      <div className="rounded-lg border-2 border-amber-400 bg-amber-100 p-2.5 text-slate-950">
+        <label>
+          <span className="mb-1 block text-xs font-bold">စီစဉ်ထားသော လိပ်စာ / Final recipient address</span>
+          <BufferedDataEntryInput multiline rows={2} className={inputClass} data-recipient-address-input
+            value={row.delivery_address} disabled={disabled} onCommit={onFinal} />
+        </label>
+        <p className="mt-1 text-xs">
+          {row.addressNeedsReview
+            ? "Review the order and move any remaining directions into Remarks before saving."
+            : "Review or edit before saving. This address is used on the waybill."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calculate, save, saveAndNext, saveDraft, validateInput, skip, busy, reviewPhoto, togglePhotoWaiver, lookupPhoneHistory, deleteRegistration, tariffOptions, providerOptions, tierAccess, locationReloadToken, photoRequired = true, fullMode = false, selectedPaymentType = "COD", onMapFocusChange }: any) {
   const [deleteOpen,setDeleteOpen]=useState(false);
   const [deleteReason,setDeleteReason]=useState("");
@@ -725,14 +804,34 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
   const deliverySurplus = Math.max(0,Number(c.delivery_difference||0));
   const approvedSurplusForBritium = Math.min(deliverySurplus,Math.max(0,Number(row.merchant_payable_charges||0)));
   const totalBritiumEntitlement = Number(c.net_system_delivery_charge||0)+approvedSurplusForBritium;
+  const revisedFees = revisedFeePolicyApplies();
   const feeElection = /\[COD_FEE_ELECTION:(COLLECT|WAIVE)\]/.exec(text(row.remarks))?.[1] || "UNSELECTED";
   const feeReason = /\[COD_FEE_REASON:([^\]\r\n]*)\]/.exec(text(row.remarks))?.[1] || "";
+  const applyRecipientAddress = (patch: Partial<ParcelRow>) => {
+    const candidate = { ...row, ...patch };
+    const route = routeForRow(candidate, tariffOptions);
+    updateRow(index, { ...patch, ...routingPatch(route, candidate), message: providerRoutingMessage(route) });
+  };
+  const addressFields = (
+    <RecipientAddressFields row={row} inputClass={inputClass}
+      disabled={row.waybillPublished || busy || row.checking || row.calculating}
+      onLabel={value => applyRecipientAddress(addressLabelPatch(value, row))}
+      onFinal={value => applyRecipientAddress({
+        merchantLabelAddress: row.merchantLabelAddress ?? row.delivery_address,
+        delivery_address: value.trim(),
+        addressNeedsReview: false,
+      })}
+    />
+  );
   const writeFeeChoice = (choice:string, reason:string) => {
     const clean=text(row.remarks).replace(/\s*\[COD_FEE_ELECTION:(?:COLLECT|WAIVE)\]/g,"").replace(/\s*\[COD_FEE_REASON:[^\]\r\n]*\]/g,"").trim();
     const entries=choice==="UNSELECTED"?"":` [COD_FEE_ELECTION:${choice}]${choice==="WAIVE"&&reason.trim()?` [COD_FEE_REASON:${reason.trim().replace(/[\]\r\n]/g," ")}]`:""}`;
     updateRow(index,{remarks:(clean+entries).trim(),message:"COD fee instruction recorded in remarks. Finance must approve and post any fee separately."});
   };
   const pickupPaymentType = selectedPaymentType || "COD";
+  const feePreview = codFeePreview(c.cod_amount, pickupPaymentType);
+  const codFeeAmount = revisedFees && !row.saved && !row.waybillPublished ? 0 : c.cod_service_fee_amount ?? (revisedFees ? null : feePreview.amount);
+  const codFeeStatus = revisedFees && !row.saved && !row.waybillPublished ? "No separate COD service fee" : text(c.cod_fee_policy_status) || (revisedFees ? "" : feePreview.status);
   const type = row.amount_entry_type as AmountType;
   const route = useMemo(()=>routeForRow(row,tariffOptions),[row.township,row.delivery_address,row.item_price,row.service_provider_code,tariffOptions]);
   const stationReady = handoffStationReady(row,route);
@@ -832,9 +931,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                                 <BufferedDataEntryInput className={inputClass} value={row.recipient_name} onCommit={(value)=>updateRow(index,{recipient_name:value})}/>
                               </Field>
                               <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions}/>
-                              <Field label="လက်ခံသူလိပ်စာ / Full Address">
-                                <BufferedDataEntryInput multiline rows={3} className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`} style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }} value={row.delivery_address} onCommit={(value)=>{const delivery_address=value;const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});updateRow(index,{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});}}/>
-                              </Field>
+                              {addressFields}
                               <div className="grid grid-cols-2 gap-3">
                                 <Field label="Weight (kg)"><BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/></Field>
                                 {!isExact(type)&&type!=="DELIVERY_CHARGE_ONLY"?<Field label="Item Price"><BufferedDataEntryInput type="number" className={inputClass} value={row.item_price} onCommit={(value)=>updateRow(index,{item_price:value===""?"":Number(value)})}/></Field>:<div/>}
@@ -843,8 +940,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                               {isExact(type)?<Field label="Final COD to Collect"><BufferedDataEntryInput type="number" className={inputClass} value={row.merchant_stated_total_amount} onCommit={(value)=>updateRow(index,{merchant_stated_total_amount:value===""?"":Number(value)})}/></Field>:null}
                               <Field label="Remarks"><BufferedDataEntryInput multiline rows={2} className={inputClass} value={row.remarks} onCommit={(value)=>updateRow(index,{remarks:value})}/></Field>
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                                <button type="button" onClick={()=>validateInput(index)} disabled={busy||row.checking||row.calculating} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">CHECK INPUT</button>
-                                <button type="button" onClick={()=>void saveDraft(index)} disabled={busy||row.checking||row.calculating||row.saved} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">SAVE DRAFT</button>
+                                <button type="button" data-address-action onClick={()=>validateInput(index)} disabled={busy||row.checking||row.calculating} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">CHECK INPUT</button>
+                                <button type="button" data-address-action onClick={()=>void saveDraft(index)} disabled={busy||row.checking||row.calculating||row.saved} className="rounded-lg border border-[#2a5272] px-3 py-2 text-[10px] font-black text-white disabled:opacity-40">SAVE DRAFT</button>
                                 <button type="button" onClick={()=>{setPhotoPreviewOpen(false);setPhotoRotation(0);}} className="rounded-lg bg-[#f6b84b] px-3 py-2 text-[10px] font-black text-[#061524]">DONE / CLOSE</button>
                               </div>
                             </div>
@@ -939,26 +1036,7 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
               <TownshipTariffField row={row} index={index} updateRow={updateRow} tariffOptions={tariffOptions} providerOptions={providerOptions} />
 
-              <div className="sm:col-span-2">
-                <Field label="လက်ခံသူလိပ်စာ / Full Address">
-                  <BufferedDataEntryInput
-                    multiline
-                    rows={2}
-                    className={`${inputClass} !bg-white !text-black placeholder:!text-slate-500 caret-black border-slate-300 focus:border-blue-500 focus:ring-blue-500`}
-                    style={{ backgroundColor: "#ffffff", color: "#000000", WebkitTextFillColor: "#000000", colorScheme: "light" }}
-                    value={row.delivery_address}
-                    onCommit={(value)=>{
-                      const delivery_address=value;
-                      const nextRoute=resolveDataEntryServiceProvider(row.township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});
-                      updateRow(index,nextRoute.providerCode?{
-                        delivery_address,
-                        ...routingPatch(nextRoute,{...row,delivery_address}),
-                        message:providerRoutingMessage(nextRoute),
-                      }:{delivery_address,...routingPatch(nextRoute,{...row,delivery_address}),message:providerRoutingMessage(nextRoute)});
-                    }}
-                  />
-                </Field>
-              </div>
+              <div className="sm:col-span-2">{addressFields}</div>
 
               <Field label="အလေးချိန် / Weight (kg)">
                 <BufferedDataEntryInput type="number" step="0.01" className={inputClass} value={row.weight_kg} onCommit={(value)=>updateRow(index,{weight_kg:value===""?"":Number(value)})}/>
@@ -1067,7 +1145,16 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
             <p className="mt-2 text-[10px] text-cyan-100">Britium entitlement shown here includes the allocated surplus. Save/recalculate after selection; this does not change receiver COD.</p>
           </div> : null}
 
-          {!isExact(type) ? <div className="rounded-xl border border-cyan-300/35 bg-[#102a3c] p-3 text-xs" data-cod-fee-election="true">
+          {revisedFees ? <div className="grid gap-2 sm:grid-cols-2">
+            <details className="rounded-lg border border-emerald-500/40 bg-emerald-950/50 p-2 text-xs text-emerald-100">
+              <summary className="cursor-pointer font-bold">COD service fee · Removed</summary>
+              <p className="pt-2">No separate COD service fee applies to cash advance or pay on delivery from 27 Nov 2026.</p>
+            </details>
+            <details className="rounded-lg border border-emerald-500/40 bg-emerald-950/50 p-2 text-xs text-emerald-100">
+              <summary className="cursor-pointer font-bold">KBZ Pay merchant fee · Waived</summary>
+              <p className="pt-2">Britium’s charges on KBZ Pay advances and merchant COD payouts are temporarily waived.</p>
+            </details>
+          </div> : !isExact(type) ? <div className="rounded-xl border border-cyan-300/35 bg-[#102a3c] p-3 text-xs" data-cod-fee-election="true">
             <label className="mb-2 block font-bold text-cyan-100">COD collection service fee · operator instruction</label>
             <select aria-label="Collect COD service fee" className={`${inputClass} !bg-white !text-black`} value={feeElection} disabled={row.waybillPublished||busy} onChange={e=>writeFeeChoice(e.target.value,feeReason)}>
               <option value="UNSELECTED">Select fee instruction</option>
@@ -1086,8 +1173,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
                 <div className="flex justify-between gap-4"><span>Item Price</span><b>{money(row.item_price)}</b></div>
                 <div className="flex justify-between gap-4"><span>Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
                 <div className="flex justify-between gap-4"><span>Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
-                <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
-                <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Service Fee</span><b>{money(codFeeAmount)}</b></div>
+                <div className="flex justify-between gap-4"><span>COD Fee Policy</span><b>{codFeeStatus || "—"}</b></div>
                 <div className="flex justify-between gap-4"><span>Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
                 <div className="flex justify-between gap-4"><span>Delivery Difference</span><b>{money(c.delivery_difference)}</b></div>
                 <div className="mt-2 flex justify-between gap-4 border-t border-[#8d7b55] pt-2 text-[13px]"><span className="font-black">Merchant Settlement (not customer total)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
@@ -1100,8 +1187,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Item Price</span><b>{money(row.item_price)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Customer Delivery Charge</span><b>{money(c.effective_declared_delivery_charge ?? row.delivery_charges)}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Base Delivery Tariff</span><b>{money(c.base_tariff)}</b></div>
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount)}</b></div>
-              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{text(c.cod_fee_policy_status)||codFeePreview(c.cod_amount,pickupPaymentType).status}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Service Fee</span><b>{money(codFeeAmount)}</b></div>
+              <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">COD Fee Policy</span><b>{codFeeStatus || "—"}</b></div>
               <div className="flex justify-between gap-4"><span className="text-[#8db4ce]">Britium Entitlement</span><b>{money(totalBritiumEntitlement)}</b></div>
               <div className="mt-2 flex justify-between gap-4 border-t border-[#31506a] pt-2"><span className="font-black text-[#8db4ce]">Merchant Settlement (internal)</span><b>{money(c.merchant_final_settlement_amount)}</b></div>
             </div>
@@ -1146,8 +1233,8 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <MoneyBox label="Receiver Total to Collect" value={c.cod_amount} highlight />
                 <MoneyBox label="Customer Delivery Charge" value={c.effective_declared_delivery_charge ?? c.delivery_charges ?? row.delivery_charges} />
-                <MoneyBox label="COD Service Fee" value={c.cod_service_fee_amount ?? codFeePreview(c.cod_amount,pickupPaymentType).amount} />
-                <MoneyBox label="COD Fee Policy" value={c.cod_fee_policy_status || codFeePreview(c.cod_amount,pickupPaymentType).status} />
+                <MoneyBox label="COD Service Fee" value={codFeeAmount} />
+                <MoneyBox label="COD Fee Policy" value={codFeeStatus || "—"} />
                 <MoneyBox label="Backend Surcharges" value={c.backend_calculated_delivery_surcharges} />
                 <MoneyBox label="Base Tariff" value={c.base_tariff} />
                 <MoneyBox label="Weight Surcharge" value={c.weight_surcharge} />
@@ -1176,19 +1263,19 @@ const ParcelEditor = memo(function ParcelEditor({ row, index, updateRow, calcula
 
       <div className={`sticky bottom-0 z-10 border-t p-3 backdrop-blur ${fullMode?"border-[#9c8d6c] bg-[#bfb6a2]/95":"border-[#31506a] bg-[#0b2236]/95"}`}>
         {fullMode?<div data-operator-workflow-v86="true" className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <button type="button" onClick={()=>validateInput(index)} disabled={busy || row.checking || row.calculating} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">CHECK INPUT</button>
-          <button type="button" onClick={()=>void saveDraft(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">SAVE DRAFT</button>
+          <button type="button" data-address-action onClick={()=>validateInput(index)} disabled={busy || row.checking || row.calculating} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">CHECK INPUT</button>
+          <button type="button" data-address-action onClick={()=>void saveDraft(index)} disabled={busy || row.checking || row.calculating || row.saved} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">SAVE DRAFT</button>
           <button type="button" onClick={()=>void lookupPhoneHistory(index,row.recipient_phone)} disabled={busy || text(row.recipient_phone).replace(/\D/g,"").length<6 || row.historyLookupStatus==="CHECKING"} className="rounded-lg border border-[#6b5d3d] bg-[#efe9db] px-3 py-2 text-[10px] font-black text-[#2b2416] disabled:opacity-50">CHECK MOBILE HISTORY</button>
         </div>:null}
         <div className={`grid grid-cols-1 gap-2 ${fullMode?"sm:grid-cols-4":"sm:grid-cols-[auto_1fr_1.2fr]"}`}>
           <button type="button" onClick={() => skip(index)} disabled={busy || row.checking || row.calculating || row.saved} className={`rounded-lg border px-3 py-2.5 text-[10px] font-black disabled:opacity-50 ${fullMode?"border-amber-600/50 bg-amber-100 text-amber-900":"border-amber-300/40 text-amber-200"}`}>{row.skipped ? "RESUME" : "PENDING / SKIP"}</button>
-          <button type="button" onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-[11px] font-black disabled:opacity-50 ${fullMode?"border-sky-500 bg-sky-100 text-sky-900":"border-[#3aa7de]/50 bg-[#12314a] text-[#8fd3ff]"}`}>
+          <button type="button" data-address-action onClick={() => calculate(index)} disabled={busy || row.calculating || row.skipped} className={`inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2.5 text-[11px] font-black disabled:opacity-50 ${fullMode?"border-sky-500 bg-sky-100 text-sky-900":"border-[#3aa7de]/50 bg-[#12314a] text-[#8fd3ff]"}`}>
             {row.calculating ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14}/>} CALCULATE
           </button>
-          <button type="button" onClick={() => save(index)} disabled={saveBlocked} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[11px] font-black disabled:opacity-40 ${fullMode?"bg-emerald-600 text-white":"bg-[#21c7e8] text-[#04111d]"}`}>
+          <button type="button" data-address-action onClick={() => save(index)} disabled={saveBlocked} className={`inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-[11px] font-black disabled:opacity-40 ${fullMode?"bg-emerald-600 text-white":"bg-[#21c7e8] text-[#04111d]"}`}>
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} {row.saved?"REGISTERED":row.registrationExists?"SAVE CHANGES":"SAVE"}
           </button>
-          {fullMode?<button type="button" onClick={()=>void saveAndNext(index)} disabled={saveBlocked || row.saved} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#163c7a] px-3 py-2.5 text-[11px] font-black text-white disabled:opacity-40">
+          {fullMode?<button type="button" data-address-action onClick={()=>void saveAndNext(index)} disabled={saveBlocked || row.saved} className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#163c7a] px-3 py-2.5 text-[11px] font-black text-white disabled:opacity-40">
             {row.checking ? <Loader2 size={14} className="animate-spin" /> : <Save size={14}/>} SAVE & NEXT
           </button>:null}
         </div>
@@ -1701,15 +1788,18 @@ export default function DataEntryFinancialV2Page() {
       }
       setRows((current)=>{
         const row=current[index];
-        if(!row || text(row.recipient_phone).trim()!==phone) return current;
+        if(!row || row.waybillPublished || text(row.recipient_phone).trim()!==phone) return current;
         const recipient_name=row.recipient_name||text(match.recipient_name);
-        const delivery_address=row.delivery_address||text(match.recipient_address);
         const township=row.township||text(match.township);
-        const candidate={...row,recipient_name,delivery_address,township};
-        const route=resolveDataEntryServiceProvider(township,delivery_address,tariffOptions,{fallbackUnknownToRoyal:true,itemPrice:row.item_price,requestedProvider:row.service_provider_code});
+        const historyAddress = !row.delivery_address && !row.merchantLabelAddress && text(match.recipient_address);
+        const candidate = {
+          ...row, recipient_name, township,
+          ...(historyAddress ? addressLabelPatch(historyAddress, { ...row, township }) : {}),
+        };
+        const route=routeForRow(candidate,tariffOptions);
         const filled=[
           !row.recipient_name&&Boolean(recipient_name)?"recipient name":"",
-          !row.delivery_address&&Boolean(delivery_address)?"address":"",
+          historyAddress?"address":"",
           !row.township&&Boolean(township)?"township":"",
         ].filter(Boolean);
         const updated=current.slice();
@@ -1999,7 +2089,7 @@ export default function DataEntryFinancialV2Page() {
       const {data,error}=await (supabase as any).rpc("be_data_entry_registration_delete_v1",{p_payload:{pickup_id:row.pickup_id,parcel_sequence:row.parcel_sequence,reason:explanation,expected_updated_at:row.registrationVersion||null}});
       if(error||!data?.ok||data?.deleted!==true)throw error||new Error(data?.message||data?.code||"Deletion was not confirmed. Refresh the registration.");
       workspaceLoadRevision.current++;setLoadingRows(false);
-      const clear=(candidate:ParcelRow)=>matches(candidate)?{...candidate,saved:false,registrationExists:false,registrationVersion:"",checking:false,calculation:{},recipient_name:"",recipient_phone:"",delivery_address:"",item_price:"",delivery_charges:"",merchant_stated_total_amount:"",message:"Unpublished registration deleted. Pickup evidence retained. Enter corrected details before saving again."} as ParcelRow:candidate;
+      const clear=(candidate:ParcelRow)=>matches(candidate)?{...candidate,saved:false,registrationExists:false,registrationVersion:"",checking:false,calculation:{},recipient_name:"",recipient_phone:"",delivery_address:"",merchantLabelAddress:undefined,addressLandmarks:undefined,addressNeedsReview:false,item_price:"",delivery_charges:"",merchant_stated_total_amount:"",message:"Unpublished registration deleted. Pickup evidence retained. Enter corrected details before saving again."} as ParcelRow:candidate;
       setRows(current=>current.map(clear));
       setBulkImportDrafts(current=>Object.fromEntries(Object.entries(current).map(([id,draft]:[string,any])=>[id,{...draft,rows:draft.rows.map(clear)}])));
       setPickups(current=>current.map(pickup=>pickup.pickup_id===row.pickup_id?{...pickup,registered_parcels:Math.max(0,pickup.registered_parcels-1)}:pickup));
@@ -2254,6 +2344,10 @@ export default function DataEntryFinancialV2Page() {
 
     if(!selectedPickup) return false;
     const row=rows[index]; if(!row || row.skipped) return false;
+    if (!row.delivery_address.trim()) {
+      updateRow(index,{message:"Enter the final recipient address before saving."});
+      return false;
+    }
 
     if (!row.isAdditionalRegistration && !row.photoUnavailableAcknowledged && !row.photoTemporaryWaiver && !row.proof_ref) {
       updateRow(index,{message:"No stored parcel photo exists. Enter a reason and select Skip Photo, or upload a photo before saving."});
@@ -2571,7 +2665,13 @@ export default function DataEntryFinancialV2Page() {
         ?sourceRow.paymentType
         :defaultAmountEntryType(sourceRow.merchantName || pickup.merchant_id)) as AmountType;
       const routedItemPrice=amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"";
-      const destination=resolveImportedDestination(sourceRow.townshipProvider,sourceRow.deliveryAddress,routedItemPrice,tariffOptions,sourceRow.ward,sourceRow.postalCode);
+      const importRemark = `OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}, Way ID ${sourceRow.wayId||pickup.pickup_id}, merchant ${sourceRow.merchantName||pickup.merchant_id||pickup.merchant_name}.`;
+      const address = addressLabelPatch(sourceRow.deliveryAddress, {
+        ...existing,
+        township: sourceRow.townshipProvider,
+        remarks: [existing.remarks, importRemark].filter(Boolean).join("\n"),
+      });
+      const destination=resolveImportedDestination(sourceRow.townshipProvider,address.delivery_address,routedItemPrice,tariffOptions,sourceRow.ward,sourceRow.postalCode);
       const tariffOption=destination.option as TariffOption|null;
       const tariffDelivery:number|""=tariffOption?tariffRate(tariffOption,customerTier):"";
       const declaredDelivery:number|""=sourceRow.osSetPrice;
@@ -2591,7 +2691,7 @@ export default function DataEntryFinancialV2Page() {
         recipient_name:sourceRow.recipientName,
         recipient_phone:sourceRow.recipientPhone,
         township:destination.township,
-        delivery_address:sourceRow.deliveryAddress,
+        ...address,
         weight_kg:sourceRow.actualWeight,
         customer_tier:customerTier,
         tier_override:Boolean(pickupTierAccess.registered&&pickupTierAccess.profile_tier&&customerTier!==pickupTierAccess.profile_tier&&pickupTierAccess.can_override_profile_tier),
@@ -2605,7 +2705,6 @@ export default function DataEntryFinancialV2Page() {
         item_price:amountType==="ITEM_PRICE_PLUS_DECLARED_DELIVERY"?sourceRow.itemPrice:"",
         delivery_charges:amountType==="EXACT_COLLECTION_AMOUNT"?"":declaredDelivery,
         merchant_stated_total_amount:amountType==="EXACT_COLLECTION_AMOUNT"?exactTotal:"",
-        remarks:[existing.remarks,`OS softcopy ${importPayload.fileName}, source row ${sourceRow.sourceRowNumber}, Way ID ${sourceRow.wayId||pickup.pickup_id}, merchant ${sourceRow.merchantName||pickup.merchant_id||pickup.merchant_name}.`].filter(Boolean).join(" "),
         calculation:{},
         calculating:false,
         checking:false,
@@ -2644,13 +2743,14 @@ export default function DataEntryFinancialV2Page() {
   }
 
   function patchImportedLocationsBatch(
-    updates:Array<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>,
+    updates:ImportedLocationUpdate[],
   ){
     if(!updates.length) return;
     const byKey=new Map(updates.map((update)=>[update.pickupId+":"+update.parcelSequence,update]));
     const applyPatch=(row:ParcelRow)=>{
       const update=byKey.get(row.pickup_id+":"+row.parcel_sequence);
       if(!update) return row;
+      if(update.address && (row.delivery_address !== update.address.delivery_address || row.township !== update.address.township)) return row;
       if(update.expectedStatuses&&!update.expectedStatuses.includes(row.locationStatus)) return row;
       return {...row,...update.patch};
     };
@@ -2658,8 +2758,13 @@ export default function DataEntryFinancialV2Page() {
     setRows((current)=>current.map(applyPatch));
   }
 
-  async function validateImportedLocationResult(row:ParcelRow):Promise<{pickupId:string;parcelSequence:number;patch:Partial<ParcelRow>;expectedStatuses?:DataEntryLocationResolution[]}>{
-    const base={pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,expectedStatuses:["PENDING","SEARCHING"] as DataEntryLocationResolution[]};
+  async function validateImportedLocationResult(row:ParcelRow):Promise<ImportedLocationUpdate>{
+    const base = {
+      pickupId: row.pickup_id,
+      parcelSequence: row.parcel_sequence,
+      expectedStatuses: ["PENDING", "SEARCHING"] as DataEntryLocationResolution[],
+      address: { delivery_address: row.delivery_address, township: row.township },
+    };
     try{
       const found=await Promise.race([
         resolveDeliveryLocation({deliveryWayId:row.delivery_way_id,address:row.delivery_address,township:row.township,ward:row.sourceWard,postalCode:row.sourcePostalCode,merchantId:row.pickup_id,client:supabase}),
@@ -2696,6 +2801,7 @@ export default function DataEntryFinancialV2Page() {
       const batch=jobs.slice(offset,offset+LOCATION_VALIDATION_BATCH_SIZE);
       patchImportedLocationsBatch(batch.map((row)=>({
         pickupId:row.pickup_id,parcelSequence:row.parcel_sequence,
+        address:{delivery_address:row.delivery_address,township:row.township},
         patch:{locationStatus:"SEARCHING",message:"Validating this address in the controlled background queue…"},
         expectedStatuses:["PENDING"],
       })));
@@ -3618,7 +3724,7 @@ export default function DataEntryFinancialV2Page() {
   );
 
   return (
-    <div data-financial-v2-preserved-workflows="true" className="min-h-[calc(100vh-100px)] bg-[#06101e] px-2 py-2 text-[#eef8ff]">
+    <div data-financial-v2-preserved-workflows="true" onPointerDownCapture={keepAddressActionTarget} className="min-h-[calc(100vh-100px)] bg-[#06101e] px-2 py-2 text-[#eef8ff]">
       <div className="mx-auto max-w-none space-y-2">
         <header data-financial-v2-command-bar="true" className="sticky top-0 z-30 flex min-h-16 flex-wrap items-center justify-between gap-2 rounded-xl border border-[#1a3a5c] bg-[#0a192f] px-3 py-2 shadow-xl">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -3633,8 +3739,8 @@ export default function DataEntryFinancialV2Page() {
             <button type="button" className="rounded-lg border border-slate-600 bg-[#112240] px-2.5 py-2 text-[11px] font-bold text-amber-300" onClick={()=>setToolDrawer("CONTRACT")}>Contract &amp; Qty</button>
             <button type="button" className="rounded-lg border border-slate-600 bg-[#112240] px-2.5 py-2 text-[11px] font-bold text-sky-300" onClick={()=>setToolDrawer("BATCH")}>Batch &amp; Excel</button>
             <button type="button" data-registration-export-shortcut="true" className="inline-flex items-center gap-1.5 rounded-lg bg-cyan-400 px-3 py-2 text-[11px] font-black text-[#04111d] hover:bg-cyan-300" onClick={()=>setToolDrawer("EXPORT")}><Download size={14}/>Download Registration Excel</button>
-            <button type="button" className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-2 text-[11px] font-black text-emerald-300 disabled:opacity-40" disabled={!rows.length||bulkCalculating||bulkSaving||waybillBusy} onClick={()=>void calculateAll()}><Calculator size={13} className="mr-1 inline"/>Calc All</button>
-            <button type="button" className="rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-black text-[#06101e] disabled:opacity-40" disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} onClick={()=>void saveAll()}><Save size={13} className="mr-1 inline"/>Save All</button>
+            <button type="button" data-address-action className="rounded-lg border border-emerald-500/50 bg-emerald-500/10 px-2.5 py-2 text-[11px] font-black text-emerald-300 disabled:opacity-40" disabled={!rows.length||bulkCalculating||bulkSaving||waybillBusy} onClick={()=>void calculateAll()}><Calculator size={13} className="mr-1 inline"/>Calc All</button>
+            <button type="button" data-address-action className="rounded-lg bg-emerald-500 px-3 py-2 text-[11px] font-black text-[#06101e] disabled:opacity-40" disabled={!rows.length||bulkSaving||bulkCalculating||waybillBusy} onClick={()=>void saveAll()}><Save size={13} className="mr-1 inline"/>Save All</button>
           </div>
         </header>
 
@@ -3762,13 +3868,13 @@ export default function DataEntryFinancialV2Page() {
               </select>
             </div>
             <button type="button" onClick={()=>void loadStartup()} className="inline-flex items-center gap-2 rounded-lg border border-[#3aa7de]/40 bg-[#12314a] px-4 py-2.5 text-[11px] font-black text-[#8fd3ff]"><RefreshCw size={14}/>ပြန်ဖတ်ရန်</button>
-            <button type="button" onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+            <button type="button" data-address-action onClick={()=>void calculateAll()} disabled={!rows.length || bulkCalculating || bulkSaving || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-[#34d399]/40 bg-[#0d3b32] px-4 py-2.5 text-[11px] font-black text-[#68e8bd] disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
             <button type="button" onClick={downloadUnresolvedRows} disabled={!rows.length||bulkCalculating||bulkSaving} className="rounded-lg border border-amber-300/40 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-50">DOWNLOAD UNRESOLVED ROWS</button>
             <button type="button" onClick={()=>void skipPendingClarificationAll()} disabled={!pendingClarificationRows.length||bulkCalculating||bulkSaving||locationReviewBusy||waybillBusy} className="rounded-lg border border-amber-300/50 bg-amber-400/10 px-3 py-2 text-[11px] font-black text-amber-100 disabled:opacity-40">SKIP PENDING CLARIFICATION FOR ALL ({pendingClarificationRows.length})</button>
             <button type="button" onClick={()=>void skipPhotoReviewAll()} disabled={!pendingPhotoWaiverRows.length||bulkCalculating||bulkSaving||waybillBusy} className="rounded-lg border border-orange-300/50 bg-orange-400/10 px-3 py-2 text-[11px] font-black text-orange-100 disabled:opacity-40">SKIP PHOTO REVIEW WITH REASON FOR ALL ({pendingPhotoWaiverRows.length})</button>
-            <button type="button" onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
+            <button type="button" data-address-action onClick={()=>void saveAll()} disabled={!rows.length || bulkSaving || bulkCalculating || waybillBusy} className="inline-flex items-center gap-2 rounded-lg border border-emerald-300/50 bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
             <button
-              type="button"
+              type="button" data-address-action
               onClick={()=>void createAndGenerateWaybill()}
               disabled={!rows.length || waybillBusy || bulkSaving || bulkCalculating}
               className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50"
@@ -3779,7 +3885,7 @@ export default function DataEntryFinancialV2Page() {
               }
               GENERATE COMPLETED WAYBILLS
             </button>
-            <button type="button" onClick={()=>{const row=rows[pageStart];if(row) void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating} className="rounded-lg border border-emerald-300/50 bg-emerald-700 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">GENERATE CURRENT PARCEL WAYBILL</button>
+            <button type="button" data-address-action onClick={()=>{const row=rows[pageStart];if(row) void createAndGenerateWaybill(row.parcel_sequence);}} disabled={!rows[pageStart]||waybillBusy||bulkSaving||bulkCalculating} className="rounded-lg border border-emerald-300/50 bg-emerald-700 px-4 py-2.5 text-[11px] font-black text-white disabled:opacity-50">GENERATE CURRENT PARCEL WAYBILL</button>
             <button type="button" onClick={()=>setFullRegistration(true)} disabled={!rows.length} className="inline-flex items-center gap-2 rounded-lg bg-[#f6b84b] px-4 py-2.5 text-[11px] font-black text-[#061524] disabled:opacity-50"><Maximize2 size={14}/>စာရင်းသွင်းမျက်နှာပြင် အပြည့်</button>
             <DataEntryOsBulkImport
               pickups={pickups as OsBulkPickup[]}
@@ -3881,8 +3987,8 @@ export default function DataEntryFinancialV2Page() {
           <div className="mx-auto flex max-w-[1900px] items-center justify-between gap-3">
             <div><div className="text-[17px] font-black uppercase tracking-[0.12em] text-[#f6d74b]">FULL REGISTRATION</div><div className="mt-1 text-[13px] font-black">{selectedPickupId} · {rows.length} PARCELS</div><div className="mt-1 text-[12px] font-bold text-white">စာရင်းသွင်းမျက်နှာပြင်အပြည့်</div></div>
             <div className="flex flex-wrap gap-5">
-              <button type="button" onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] shadow disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
-              <button type="button" onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-400 px-6 py-2.5 text-[11px] font-black text-[#24101a] shadow disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
+              <button type="button" data-address-action onClick={()=>void calculateAll()} disabled={bulkCalculating || bulkSaving} className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-400 px-5 py-2.5 text-[11px] font-black text-[#04111d] shadow disabled:opacity-50">{bulkCalculating?<Loader2 size={14} className="animate-spin"/>:<Calculator size={14}/>}CALCULATE ALL</button>
+              <button type="button" data-address-action onClick={()=>void saveAll()} disabled={bulkSaving || bulkCalculating} className="inline-flex items-center gap-2 rounded-full border border-pink-200 bg-pink-400 px-6 py-2.5 text-[11px] font-black text-[#24101a] shadow disabled:opacity-50">{bulkSaving?<Loader2 size={14} className="animate-spin"/>:<Save size={14}/>}SAVE ALL</button>
               <button type="button" onClick={()=>setFullRegistration(false)} className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-red-500 px-6 py-2.5 text-[11px] font-black text-white shadow"><X size={14}/>CLOSE</button>
             </div>
           </div>

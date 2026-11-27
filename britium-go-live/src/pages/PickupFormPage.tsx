@@ -1,4 +1,5 @@
 // LIVE: pickup submit uses be_submit_pickup_request canonical backend.
+import { revisedFeePolicyApplies } from "@/lib/revisedFeePolicy";
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Package, Download, UploadCloud, Calendar, Filter, Printer } from "lucide-react";
@@ -19,6 +20,7 @@ const TRANSLATIONS = {
     lblPaymentType: "Payment Type",
     lblDeclaredValue: "Declared Item Value (MMK)",
     codPolicyNote: "COD policy: Yangon parcels up to 200,000 MMK are standard COD. Above 200,000 MMK requires Finance approval and 2% COD service fee.",
+    revisedCodPolicyNote: "Britium charges no separate COD service fee. Cash advance is available for eligible non-Royal parcels worth up to 200,000 MMK in Yangon, Mandalay and Naypyitaw.",
     lblContact: "Contact Person",
     lblPhone: "Phone",
     lblDate: "Date",
@@ -47,6 +49,7 @@ const TRANSLATIONS = {
     lblPaymentType: "ငွေပေးချေမှု အမျိုးအစား",
     lblDeclaredValue: "ကြေညာထားသော ပစ္စည်းတန်ဖိုး (ကျပ်)",
     codPolicyNote: "COD စည်းမျဉ်း - ရန်ကုန်အတွင်း ပစ္စည်းတန်ဖိုး ၂၀၀,၀၀၀ ကျပ်အထိ Standard COD ဖြစ်ပြီး၊ ၂၀၀,၀၀၀ ကျပ်ကျော်ပါက Finance အတည်ပြုချက်နှင့် ပစ္စည်းတန်ဖိုး၏ ၂% COD ဝန်ဆောင်ခ လိုအပ်ပါသည်။",
+    revisedCodPolicyNote: "COD ဝန်ဆောင်ခ သီးခြားမကောက်ခံပါ။ ရန်ကုန်၊ မန္တလေးနှင့် နေပြည်တော်သို့ ပို့မည့် တန်ဖိုး ကျပ် ၂၀၀,၀၀၀ အထိ Royal Express မဟုတ်သော သတ်မှတ်ချက်ပြည့်မီသည့် ပါဆယ်များအတွက် ငွေကြိုရှင်းနိုင်ပါသည်။",
     lblContact: "ဆက်သွယ်ရန်",
     lblPhone: "ဖုန်းနံပါတ်",
     lblDate: "ရက်စွဲ",
@@ -367,7 +370,7 @@ const t = TRANSLATIONS[activeLang];
               />
               {formData.paymentType === "COD" ? (
                 <div className="mt-2 rounded-lg border border-[#f6b84b]/30 bg-[#f6b84b]/10 p-2 text-[11px] leading-relaxed text-[#ffd98a]">
-                  {t.codPolicyNote}
+                  {revisedFeePolicyApplies() ? t.revisedCodPolicyNote : t.codPolicyNote}
                   <div className="mt-1 text-[#8fb1c7]">
                     Final COD eligibility is confirmed during Data Entry using the parcel delivery region.
                   </div>

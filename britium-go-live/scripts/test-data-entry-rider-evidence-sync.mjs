@@ -18,9 +18,13 @@ Function('require','module','exports',ts.transpileModule(fs.readFileSync(new URL
 const BufferedInput=bufferedModule.exports.default;
 const text=v=>String(v??'').trim(),positiveInt=v=>Math.max(0,parseInt(v)||0);
 const fresh={id:'verification-uuid',pickup_id:'P',parcel_sequence:1,actual_weight_kg:5,parcel_weight_kg:5,proof_photo_url:'new-photo',proof_check_status:'PENDING_REVIEW',verification_status:'PENDING_REVIEW'};
+const addressFormatter = {exports:{}};
+Function('exports',transpile(fs.readFileSync(new URL('../src/lib/recipientAddress.ts',import.meta.url),'utf8')))(addressFormatter.exports);
+const addressEnv = {...addressFormatter.exports};
+for(const name of ['addressLabelPatch','prepareDraftAddress','mergePickupEvidence']) addressEnv[name] = production(name,addressEnv);
 function workspaceEnv(draft,authoritative=fresh,otherSources={}){
- const env={text,positiveInt,num:v=>Number(v)||0,AMOUNT_TYPES:['ITEM_PRICE_PLUS_DECLARED_DELIVERY'],defaultAmountEntryType:()=> 'ITEM_PRICE_PLUS_DECLARED_DELIVERY',requestedParcelCount:()=>1,authorizedParcelCount:()=>1,canonicalWayId:(p,n)=>`${p}-${n}`,displayPhotoUrl:async s=>s,money:String,tariffOptions:[],resolveDataEntryServiceProvider:()=>({providerCode:''}),routeForRow:()=>({}),routingPatch:()=>({}),validMyanmarCoordinate:()=>false,console:{info(){},warn(){}},supabase:{rpc:async name=>({data:name==='be_delivery_location_batch_v10'?[]:{registered:false},error:null}),from:name=>{const q={select(){return q},eq(){return q},order(){return q},then(resolve){return Promise.resolve({error:null,data:name==='be_pickup_parcel_verifications'?[authoritative]:name==='be_data_entry_pending_drafts'&&draft?[draft]:(otherSources[name]||[])}).then(resolve);}};return q;}}};
- for(const name of ['proofUrl','parcelRowFromProof','mergePickupEvidence']) {try{env[name]=production(name,env);}catch(e){if(name!=='mergePickupEvidence')throw e;}}
+ const env={...addressEnv,text,positiveInt,num:v=>Number(v)||0,AMOUNT_TYPES:['ITEM_PRICE_PLUS_DECLARED_DELIVERY'],defaultAmountEntryType:()=> 'ITEM_PRICE_PLUS_DECLARED_DELIVERY',requestedParcelCount:()=>1,authorizedParcelCount:()=>1,canonicalWayId:(p,n)=>`${p}-${n}`,displayPhotoUrl:async s=>s,money:String,tariffOptions:[],resolveDataEntryServiceProvider:()=>({providerCode:''}),routeForRow:()=>({}),routingPatch:()=>({}),validMyanmarCoordinate:()=>false,console:{info(){},warn(){}},supabase:{rpc:async name=>({data:name==='be_delivery_location_batch_v10'?[]:{registered:false},error:null}),from:name=>{const q={select(){return q},eq(){return q},order(){return q},then(resolve){return Promise.resolve({error:null,data:name==='be_pickup_parcel_verifications'?[authoritative]:name==='be_data_entry_pending_drafts'&&draft?[draft]:(otherSources[name]||[])}).then(resolve);}};return q;}}};
+ for(const name of ['proofUrl','parcelRowFromProof']) env[name]=production(name,env);
  return env;
 }
 const pickup={pickup_id:'P',merchant_id:'M'};
@@ -72,7 +76,7 @@ test('photo queue includes modern Rider rows even when legacy review rows exist'
 function pending(){let resolve;const promise=new Promise(r=>resolve=r);return{resolve,promise};}
 test('late workspace response cannot replace a newer selected pickup',async()=>{
  const a=pending(),b=pending();let rows=[],rowsPickupId;
- const env={workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId:id=>rowsPickupId=id,fetchPickupWorkspace:p=>p.pickup_id==='A'?a.promise:b.promise,mergePickupEvidence:production('mergePickupEvidence',{})};
+ const env={workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId:id=>rowsPickupId=id,fetchPickupWorkspace:p=>p.pickup_id==='A'?a.promise:b.promise,mergePickupEvidence:addressEnv.mergePickupEvidence};
  const load=production('loadPickupRows',env);const first=load({pickup_id:'A'}),second=load({pickup_id:'B'});
  b.resolve({tierAccess:{},rows:[{pickup_id:'B',parcel_sequence:1,proof_url:'B'}]});await second;
  a.resolve({tierAccess:{},rows:[{pickup_id:'A',parcel_sequence:1,proof_url:'A'}]});await first;
@@ -85,7 +89,7 @@ test('failed refresh preserves the current unsaved workspace',async()=>{
 });
 test('in-memory refresh updates evidence while preserving unsaved recipient and explicit weight edits',async()=>{
  let rows=[{pickup_id:'P',parcel_sequence:1,recipient_name:'Unsaved receiver',weight_kg:3,evidenceWeightKg:1,proof_url:'old-photo',photoReviewed:true,saved:false}];
- const load=production('loadPickupRows',{workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId(){},fetchPickupWorkspace:async()=>({tierAccess:{},rows:[{...fresh,weight_kg:5,evidenceWeightKg:5,proof_url:'new-photo',photoReviewed:false,saved:false}]}),mergePickupEvidence:production('mergePickupEvidence',{})});
+ const load=production('loadPickupRows',{workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId(){},fetchPickupWorkspace:async()=>({tierAccess:{},rows:[{...fresh,weight_kg:5,evidenceWeightKg:5,proof_url:'new-photo',photoReviewed:false,saved:false}]}),mergePickupEvidence:addressEnv.mergePickupEvidence});
  await load(pickup);assert.equal(rows[0].recipient_name,'Unsaved receiver');assert.equal(rows[0].weight_kg,3);assert.equal(rows[0].proof_url,'new-photo');assert.equal(rows[0].photoReviewed,false);
 });
 test('photo decision application failure cannot announce success or fall back to unsynchronized table writes',async()=>{
@@ -129,7 +133,7 @@ test('Rider replacement pending review removes Warehouse rework despite stale re
  const ui=await warehouseHost();ui.pending();await ui.refresh();assert.equal(ui.view.root.findAllByType('article').length,0);assert.match(ui.text(),/No rejected parcel-photo rework is waiting/);ui.close();
 });
 test('cached drafts cannot restore obsolete delivery identifiers over current Rider allocation',()=>{
- const merge=production('mergePickupEvidence',{});
+ const merge=addressEnv.mergePickupEvidence;
  const row=merge({delivery_way_id:'old-synthetic',recipient_name:'Unsaved receiver'},{delivery_way_id:'D-CANONICAL',pickup_id:'P',parcel_sequence:1,weight_kg:5,evidenceWeightKg:5});
  assert.equal(row.delivery_way_id,'D-CANONICAL');assert.equal(row.recipient_name,'Unsaved receiver');
 });
@@ -139,11 +143,69 @@ test('Warehouse legacy-only rejection retains its replacement file control',asyn
 });
 test('committed unsaved edits to a registered parcel survive fresh saved server row',async()=>{
  let rows=[{pickup_id:'P',parcel_sequence:1,delivery_way_id:'D-OLD',recipient_name:'Operator correction after blur',item_price:123,weight_kg:3,evidenceWeightKg:1,proof_url:'old-photo',photoReviewed:true,saved:false}];
- const load=production('loadPickupRows',{workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId(){},fetchPickupWorkspace:async()=>({tierAccess:{},rows:[{...fresh,delivery_way_id:'D-CANONICAL',recipient_name:'Saved server recipient',item_price:99,weight_kg:5,evidenceWeightKg:5,proof_url:'new-photo',photoReviewed:false,saved:true}]}),mergePickupEvidence:production('mergePickupEvidence',{})});
+ const load=production('loadPickupRows',{workspaceLoadRevision:{current:0},setLoadingRows(){},setMessage(){},setTierAccess(){},setRows:update=>{rows=typeof update==='function'?update(rows):update;},setRowsPickupId(){},fetchPickupWorkspace:async()=>({tierAccess:{},rows:[{...fresh,delivery_way_id:'D-CANONICAL',recipient_name:'Saved server recipient',item_price:99,weight_kg:5,evidenceWeightKg:5,proof_url:'new-photo',photoReviewed:false,saved:true}]}),mergePickupEvidence:addressEnv.mergePickupEvidence});
  await load(pickup,true);assert.equal(rows[0].recipient_name,'Operator correction after blur');assert.equal(rows[0].item_price,123);assert.equal(rows[0].weight_kg,3);assert.equal(rows[0].saved,false);assert.equal(rows[0].delivery_way_id,'D-CANONICAL');assert.equal(rows[0].proof_url,'new-photo');assert.equal(rows[0].photoReviewed,false);
 });
 test('photo review cannot approve a modern row without current photo evidence',async()=>{
  let calls=0,message;
  const decide=production('decide',{getPhoto:production('getPhoto',{},photoPage),parcelNo:production('parcelNo',{},photoPage),reason:'',note:'',localStorage:{getItem:()=> 'reviewer'},setLoading(){},setMessage:v=>message=v,setRejecting(){},setNote(){},setReason(){},load:async()=>{},supabase:{rpc:async()=>{calls++;return{data:{ok:true}};}}},photoPage);
  await decide({id:'verification-uuid',pickup_id:'P',parcel_sequence:1,review_source:'VERIFICATION'},'APPROVE');assert.equal(calls,0);assert.match(message,/photo.*required/i);
+});
+
+test('the final address editor keeps the merchant wording while saving only the corrected address and remarks', () => {
+ const AddressFields = production('RecipientAddressFields', {
+  React, BufferedDataEntryInput: BufferedInput, Field: ({ children }) => React.createElement('label', null, children),
+ });
+ const serialize = production('payload', { canonicalWayId: (id, sequence) => id + '-' + sequence, isExact: () => false });
+ const original = 'Yangon, No. 145, 58th Street, behind the clinic';
+ let current;
+ function Host(){
+  const [row, setRow] = React.useState({pickup_id:'P', parcel_sequence:1, remarks:'Call before arrival', township:'', delivery_address:''});
+  current = row;
+  return React.createElement(AddressFields, {
+   row, inputClass:'', disabled:false,
+   onLabel: value => setRow(existing => ({...existing, ...addressEnv.addressLabelPatch(value, existing)})),
+   onFinal: value => setRow(existing => ({...existing, delivery_address:value.trim()})),
+  });
+ }
+ let ui;
+ act(() => { ui = TestRenderer.create(React.createElement(Host)); });
+ const editField = (index, value) => {
+  const field = ui.root.findAllByType('textarea')[index];
+  act(() => field.props.onChange({target:{value}}));
+  act(() => field.props.onBlur());
+ };
+ editField(0, original);
+ assert.deepEqual(ui.root.findAllByType('textarea').map(field => field.props.value),
+  [original, 'No. 145, 58th Street, Yangon']);
+ editField(1, 'No. 146, 58th Street, Yangon');
+ const saved = serialize(current,pickup);
+ assert.equal(saved.delivery_address,'No. 146, 58th Street, Yangon');
+ assert.equal(saved.remarks,'Call before arrival\nbehind the clinic');
+ assert.equal(Object.values(saved).includes(original),false);
+ assert.equal(ui.root.findAllByType('textarea')[0].props.value,original);
+ act(() => ui.unmount());
+});
+
+test('workspace restores operator address corrections and respects an already saved final address', async () => {
+ const original = 'Yangon, No. 145, behind the clinic';
+ const edited = 'No. 146, Yangon';
+ const env = workspaceEnv({parcel_sequence:1, skipped:false, snapshot:{
+  merchantLabelAddress:original, delivery_address:edited, addressLandmarks:['behind the clinic'], remarks:'behind the clinic',
+ }});
+ const draft = (await production('fetchPickupWorkspace',env)(pickup)).rows[0];
+ assert.equal(draft.delivery_address,edited);
+ assert.equal(draft.merchantLabelAddress,original);
+ assert.equal(draft.remarks,'behind the clinic');
+ const saved = env.parcelRowFromProof(pickup, {}, {saved_at:'2026-11-26', delivery_address:original, recipient_address:edited},1);
+ assert.equal(saved.delivery_address,edited);
+ assert.equal(saved.merchantLabelAddress,undefined);
+});
+
+test('printed recipient address matches the saved address and falls back for legacy rows without one', () => {
+ const studio = fs.readFileSync(new URL('../src/pages/WaybillStudioPage.tsx',import.meta.url),'utf8');
+ const renderLocation = production('recipientLocation',{normalized: row => row},studio);
+ assert.equal(renderLocation({recipientAddress:'No. 146, 58th Street, Mandalay',township:'Pyigyitagon'},'WAYBILL'),
+  'No. 146, 58th Street, Mandalay');
+ assert.equal(renderLocation({recipientAddress:'',township:'Pyigyitagon'},'WAYBILL'),'Pyigyitagon');
 });

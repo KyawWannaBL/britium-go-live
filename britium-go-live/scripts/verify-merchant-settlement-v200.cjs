@@ -9,7 +9,11 @@ let calls = [], snapshot;
 const source = fs.readFileSync('src/pages/MerchantSettlementPage.tsx', 'utf8');
 const compiled = ts.transpileModule(source, {compilerOptions:{module:ts.ModuleKind.CommonJS, jsx:ts.JsxEmit.ReactJSX, target:ts.ScriptTarget.ES2020}}).outputText;
 let uploadReply, uploadPending;
-const client={from:(name)=>({select:()=>({limit:async()=>({data:name==='merchant_master'?[{merchant_code:'TSW',merchant_name:'Three & Six Online Store',business_name:'Three & Six'}]:[],error:null})})}),rpc:async(name,args)=>{calls.push({name,args});return {data:name==='be_finance_settlement_snapshot_v3'?snapshot:{ok:true},error:null};},auth:{getUser:async()=>({data:{user:{id:'USER1'}},error:null})},storage:{from:bucket=>({upload:async()=>uploadPending||uploadReply||{data:{path:'receipt.png'},error:null},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/'+bucket+'/'+path}}),createSignedUrl:async()=>({data:{signedUrl:'https://example.supabase.co/signed'},error:null})})}};
+const rtoRows = [
+  {delivery_way_id:'RETURN-01',policy_month:'2026-11-01',monthly_ways:100,waiver_limit:5,rto_position:1,return_fee:0,fee_status:'EXEMPT'},
+  {delivery_way_id:'RETURN-06',policy_month:'2026-11-01',monthly_ways:100,waiver_limit:5,rto_position:6,return_fee:4000,fee_status:'PENDING_DEDUCTION'},
+];
+const client={from:(name)=>({select:()=>({limit:async()=>({data:name==='merchant_master'?[{merchant_code:'TSW',merchant_name:'Three & Six Online Store',business_name:'Three & Six'}]:[],error:null})})}),rpc:async(name,args)=>{calls.push({name,args});return {data:name==='be_finance_settlement_snapshot_v3'?snapshot:name==='be_finance_monthly_rto_preview'?rtoRows:name==='be_merchant_return_queue_v1'?[]:{ok:true},error:null};},auth:{getUser:async()=>({data:{user:{id:'USER1'}},error:null})},storage:{from:bucket=>({upload:async()=>uploadPending||uploadReply||{data:{path:'receipt.png'},error:null},getPublicUrl:path=>({data:{publicUrl:'https://example.supabase.co/storage/v1/object/public/'+bucket+'/'+path}}),createSignedUrl:async()=>({data:{signedUrl:'https://example.supabase.co/signed'},error:null})})}};
 function loadLocal(path){const m={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync(path,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}}).outputText,{exports:m.exports,require:localRequire,URL,crypto:require('node:crypto').webcrypto,console});return m.exports;}
 function localRequire(name){if(name==='@/integrations/supabase/client')return {supabase:client};if(name.startsWith('@/lib/'))return loadLocal('src/lib/'+name.slice(6)+'.ts');if(name.startsWith('@/components/'))return loadLocal('src/components/'+name.slice(13)+'.tsx');return require(name);}
 const mod = {exports:{}};
@@ -39,6 +43,12 @@ async function openPayments(tree) { await act(async()=>button(tree,'03 · Record
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY1'}).props.disabled,false);
  assert.equal(tree.root.findByProps({'aria-label':'Select WAY2'}).props.disabled,true);
  await act(async()=>tree.root.findByProps({'aria-label':'Select WAY1'}).props.onChange());
+ assert.ok(text(tree.toJSON()).includes('46,000 MMK'),'selected draft preview deducts only the non-waived return fee');
+ await act(async()=>button(tree,'Review RTO allowance').props.onClick());
+ assert.ok(calls.some(call=>call.name==='be_merchant_return_queue_v1'),'RTO inspector retains merchant return custody history');
+ assert.ok(text(tree.toJSON()).includes('Return fee waived'),'RTO inspector shows the fee waiver');
+ assert.ok(text(tree.toJSON()).includes('100 Britium-managed ways'),'RTO inspector shows the monthly basis');
+ await act(async()=>tree.root.findByProps({'aria-label':'Close drawer'}).props.onClick());
  await act(async()=>button(tree,'Create draft batch').props.onClick());
  assert.deepEqual(JSON.parse(JSON.stringify(calls.find(c=>c.name==='be_finance_create_settlement_batch_v3').args.p_parcel_ids)),['P1']);
  await openPayments(tree);

@@ -1,10 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, RefreshCw, WalletCards } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { revisedFeePolicyApplies } from "@/lib/revisedFeePolicy";
 import { uploadSettlementReceipt } from "@/lib/merchantSettlementReceipt";
 import MerchantReturnQueue from "@/components/warehouse/MerchantReturnQueue";
 import SettlementReceiptLink from "@/components/SettlementReceiptLink";
 type Row = Record<string, any>;
+type RtoRow = {
+  delivery_way_id: string;
+  policy_month: string;
+  monthly_ways: number;
+  waiver_limit: number;
+  rto_position: number | null;
+  one_way_fee: number | null;
+  return_fee: number | null;
+  fee_status: "BATCHED" | "MONTH_OPEN" | "EXEMPT" | "ON_HOLD" | "TARIFF_REVIEW" | "PENDING_DEDUCTION" | "THIRD_PARTY" | "PROVIDER_REVIEW";
+  batch_number: string | null;
+};
+const rtoStatus: Record<RtoRow["fee_status"], string> = {
+  BATCHED: "Included in batch",
+  MONTH_OPEN: "Finalizes at month-end",
+  EXEMPT: "Return fee waived",
+  ON_HOLD: "Finance hold or dispute",
+  TARIFF_REVIEW: "One-way tariff needs review",
+  PENDING_DEDUCTION: "Awaiting settlement",
+  THIRD_PARTY: "Third-party fee applies",
+  PROVIDER_REVIEW: "Provider needs verification",
+};
 const money=(n:unknown)=>Number(n||0).toLocaleString("en-US")+" MMK";
 const field="rounded-xl border border-slate-700 bg-slate-950 p-3 text-white";
 const button="rounded-xl border border-sky-700 px-4 py-2 font-bold disabled:opacity-40";
@@ -24,6 +46,7 @@ export default function MerchantSettlementPage(){
  const [post,setPost]=useState({batch:"",type:"REFUND",direction:"CREDIT",amount:"",reason:"",evidence:""});
  const [review,setReview]=useState({id:"",action:"APPROVE",note:""});
  const [requests,setRequests]=useState<Row[]>([]);
+ const [rtoPreview,setRtoPreview]=useState<{ merchant: string; snapshot: Row; rows: RtoRow[]; error?: string }>();
  const mutation=useRef(false),uploadLock=useRef(false);
  const [uploading,setUploading]=useState(false),[receiptName,setReceiptName]=useState("");
  async function uploadReceipt(event:React.ChangeEvent<HTMLInputElement>){
@@ -73,6 +96,23 @@ export default function MerchantSettlementPage(){
  async function requestPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_request_v1",{p_batch_id:post.batch,p_type:post.type,p_direction:post.direction,p_amount:Number(post.amount),p_reason:post.reason,p_evidence_url:post.evidence.trim()||null}),"Adjustment requested without transferring funds.");if(ok)await loadRequests();}
  async function reviewPost(){const ok=await mutate(()=>rpc("be_finance_post_payment_adjustment_review_v1",{p_adjustment_id:review.id,p_action:review.action,p_note:review.note}),"Review recorded; funds have not been transferred.");if(ok){setReview({id:"",action:"APPROVE",note:""});await loadRequests();}}
  useEffect(()=>{void load();void loadRequests();},[]);
+ useEffect(() => {
+   if (!merchant) return;
+   let current = true;
+   void rpc("be_finance_monthly_rto_preview", {p_merchant_id: merchant})
+     .then(rows => {
+       if (!Array.isArray(rows)) throw new Error("The RTO preview returned an invalid response.");
+       if (current) setRtoPreview({merchant, snapshot: data, rows});
+     })
+     .catch((error: Error) => {
+       if (current) setRtoPreview({merchant, snapshot: data, rows: [], error: error.message});
+     });
+   return () => { current = false; };
+ }, [merchant, data]);
+ const currentRtoPreview = rtoPreview?.merchant === merchant && rtoPreview.snapshot === data ? rtoPreview : undefined;
+ const rtoRows = currentRtoPreview?.rows || [];
+ const pendingReturns = rtoRows.filter(row => row.fee_status === "PENDING_DEDUCTION");
+ const pendingReturnFee = pendingReturns.reduce((sum, row) => sum + Number(row.return_fee || 0), 0);
  const role=String(data.scope?.role||"");
  const canCreate=["FINANCE_CREATOR","FINANCE_ADMIN","FINANCE","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
  const canUploadReceipt=["FINANCE","FINANCE_CREATOR","FINANCE_REVIEWER","FINANCE_APPROVER","PAYMENT_OFFICER","FINANCE_ADMIN","FINANCE_MANAGER","ACCOUNTS","ADMIN","SUPERADMIN"].includes(role);
@@ -124,6 +164,10 @@ export default function MerchantSettlementPage(){
    setSelected(s=>s.includes(r.parcel_id)?s.filter(x=>x!==r.parcel_id):[...s,r.parcel_id]);
  }
  async function createBatch(){
+   if (!currentRtoPreview || currentRtoPreview.error) {
+     setError("Refresh the monthly RTO preview before creating a settlement draft.");
+     return;
+   }
    const amount=adjustment.type==="NONE"?0:Number(adjustment.amount);
    if(adjustment.type!=="NONE"&&(!Number.isFinite(amount)||amount<=0||Math.round(amount*100)/100!==amount||!adjustment.reason.trim())){setError("Provide a positive adjustment amount and manual reason.");return;}
    if(!chosen.length||chosen.length!==selected.length||chosen.some(r=>!r.settlement_eligible||Number(r.merchant_final_settlement_amount)<=0)){setError("Recheck selected parcels against current filters before creating a batch.");return;}
@@ -137,7 +181,20 @@ export default function MerchantSettlementPage(){
  const paymentRows=Object.entries(allocations).filter(([,amount])=>Number(amount)>0).map(([batch_id,amount])=>({batch_id,amount:Number(amount)}));
  const paymentTotal=paymentRows.reduce((s,r)=>s+r.amount,0);
  const selectedPayable=chosen.reduce((total,r)=>total+Number(r.merchant_final_settlement_amount||0),0);
- const canDraft=canCreate&&!loading&&!busy&&selected.length>0&&chosen.length===selected.length&&chosen.every(r=>r.settlement_eligible&&Number(r.merchant_final_settlement_amount)>0)&&selectedPayable>0;
+ const manualAdjustment=adjustment.type==="NONE"?0:(adjustment.direction==="CREDIT"?1:-1)*Number(adjustment.amount||0);
+ const payoutBeforeRto=selectedPayable+manualAdjustment;
+ let draftReturnFee=0;
+ if (chosen.length) {
+   const capacityInCents=Math.round(payoutBeforeRto*100);
+   let feesInCents=0;
+   for (const row of pendingReturns) {
+     const next=feesInCents+Math.round(Number(row.return_fee||0)*100);
+     if (next>=capacityInCents) break;
+     feesInCents=next;
+   }
+   draftReturnFee=feesInCents/100;
+ }
+ const canDraft=canCreate&&Boolean(currentRtoPreview&&!currentRtoPreview.error)&&!loading&&!busy&&selected.length>0&&chosen.length===selected.length&&chosen.every(r=>r.settlement_eligible&&Number(r.merchant_final_settlement_amount)>0)&&selectedPayable>0;
  const canSubmitAdjustment=canCreate&&!busy&&Boolean(post.batch)&&postAmountValid&&postEvidenceValid&&post.reason.trim().length>=8;
  const stageButton="inline-flex min-h-10 shrink-0 items-center justify-center rounded-lg px-3 py-2 text-xs font-extrabold transition disabled:cursor-not-allowed disabled:opacity-50";
  const primaryStageButton=stageButton+" bg-amber-400 text-[#06101e] hover:bg-amber-300";
@@ -237,7 +294,7 @@ export default function MerchantSettlementPage(){
     </div>
     <div className="flex items-center gap-2 text-xs"><span className="rounded-lg bg-[#06101e] px-3 py-2">Unsettled: <strong>{merchantRows.length}</strong></span><button className="rounded-lg border border-sky-600/50 bg-sky-950/40 px-3 py-2 font-bold text-sky-300" onClick={()=>setDrawer("history")}>Settled ({merchantSettledRows.length})</button><button className="rounded-lg bg-emerald-500 px-3 py-2 font-extrabold text-[#06101e] lg:hidden" onClick={()=>setMobilePayout(v=>!v)}>{mobilePayout?"Back to Parcels":"Payout ("+selected.length+")"}</button></div>
    </div>
-   {merchantRtoRows.length>0&&<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-rose-700/60 bg-rose-950/60 px-4 py-2 text-xs text-rose-200"><span className="font-bold">RTO Alert — {merchantRtoRows.length} return parcel(s) require separate review before any deduction.</span><button className="rounded-lg border border-rose-500 px-3 py-1.5 font-bold" onClick={()=>setDrawer("rto")}>Inspect RTO</button></div>}
+   {merchant&&(merchantRtoRows.length>0||rtoRows.length>0||currentRtoPreview?.error)&&<div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-rose-700/60 bg-rose-950/60 px-4 py-2 text-xs text-rose-200"><span className="font-bold">Monthly RTO return fees · {currentRtoPreview?.error?"Policy preview unavailable":money(pendingReturnFee)+" awaiting settlement"}</span><button className="rounded-lg border border-rose-500 px-3 py-1.5 font-bold" onClick={()=>setDrawer("rto")}>Review RTO allowance</button></div>}
    <div className="grid min-h-0 flex-1 grid-cols-1 overflow-hidden lg:grid-cols-12">
     <section className={(mobilePayout?"hidden ":"flex ")+"min-h-0 min-w-0 flex-col overflow-hidden border-r border-slate-800 bg-[#06101e] lg:col-span-7 lg:flex xl:col-span-8"}>
      <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-800 bg-[#0a192f] px-3 py-2">
@@ -265,7 +322,9 @@ export default function MerchantSettlementPage(){
        <div className="flex justify-between gap-2"><span className="text-slate-400">Finance received COD</span><strong>{money(chosen.reduce((a,r)=>a+Number(r.cod_received||0),0))}</strong></div>
        <div className="flex justify-between gap-2"><span className="text-slate-400">Britium entitlement</span><strong className="text-sky-400">{money(chosen.reduce((a,r)=>a+Number(r.net_system_delivery_charge||0),0))}</strong></div>
        <div className="border-t border-slate-800 pt-2"><p className="text-xs font-semibold text-rose-300">Optional reviewed deduction or credit</p><div className="mt-2 grid grid-cols-2 gap-2"><select aria-label="Adjustment purpose" className={field+" col-span-2 w-full text-xs"} value={adjustment.type} onChange={e=>setAdjustment({...adjustment,type:e.target.value})}>{["NONE","REFUND","PROMOTION","GOODWILL","OTHER"].map(v=><option key={v} value={v}>{v==="NONE"?"No adjustment":v}</option>)}</select><select aria-label="Adjustment direction" className={field+" w-full text-xs"} disabled={adjustment.type==="NONE"} value={adjustment.direction} onChange={e=>setAdjustment({...adjustment,direction:e.target.value})}><option value="CREDIT">Credit (+)</option><option value="DEDUCTION">Deduction (-)</option></select><input aria-label="Adjustment amount" type="number" min="0" step=".01" className="w-full rounded-lg bg-white px-3 py-2 text-xs text-slate-900" disabled={adjustment.type==="NONE"} placeholder="Amount MMK" value={adjustment.amount} onChange={e=>setAdjustment({...adjustment,amount:e.target.value})}/></div><textarea aria-label="Adjustment reason" maxLength={1000} rows={2} className="mt-2 w-full rounded-lg bg-white px-3 py-2 text-xs text-slate-900" disabled={adjustment.type==="NONE"} placeholder="Document the reason and approval reference" value={adjustment.reason} onChange={e=>setAdjustment({...adjustment,reason:e.target.value})}/><button className="text-xs font-bold text-rose-300 underline" onClick={()=>setDrawer("rto")}>Inspect RTO / returns</button></div>
-       <div className="flex items-center justify-between gap-2 border-t border-slate-700 pt-3"><span className="font-extrabold uppercase text-amber-400">Net Merchant Payout</span><strong className="text-lg text-emerald-400">{money(chosen.reduce((a,r)=>a+Number(r.merchant_final_settlement_amount||0),0)+(adjustment.type==="NONE"?0:(adjustment.direction==="CREDIT"?1:-1)*Number(adjustment.amount||0)))}</strong></div>
+       {merchant&&<div className="flex justify-between gap-2"><span className="text-slate-400">Monthly RTO return fee</span><strong>{!currentRtoPreview?"Checking…":currentRtoPreview.error?"Preview unavailable":money(draftReturnFee)}</strong></div>}
+       {pendingReturnFee>draftReturnFee&&<p className="text-slate-400">{money(pendingReturnFee-draftReturnFee)} in return fees will remain available for a later settlement.</p>}
+       <div className="flex items-center justify-between gap-2 border-t border-slate-700 pt-3"><span className="font-extrabold uppercase text-amber-400">Net Merchant Payout</span><strong className="text-lg text-emerald-400">{money(payoutBeforeRto-draftReturnFee)}</strong></div>
       </div>
       <div className="space-y-2 rounded-xl border border-slate-800 bg-[#0a192f] p-3 text-xs"><p className="font-extrabold uppercase text-sky-400">Disbursement details · after approval only</p><p className="text-slate-300">Create a draft now, then send it through independent review and approval. Record the bank or wallet transaction only after an actual transfer.</p><button className="font-semibold text-sky-400 underline" onClick={()=>setActiveTab("payments")}>Open confirmed payment recorder</button></div>
      </div>
@@ -274,9 +333,10 @@ export default function MerchantSettlementPage(){
    </div>
   </section>}
   <div className="min-h-0 flex-1 overflow-y-auto p-3 md:p-5">
-  {activeTab==="batches"&&<section id="settlement-batches" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Batches and approval</h2><p className="mt-2 text-xs text-slate-300">Use the Action column to submit, review or approve individual batches. Buttons are disabled when your role lacks permission.</p>{!batches.length&&<p className="mt-3 rounded-lg border border-slate-700 p-4 text-sm">No batches yet. Select eligible parcels in Merchant settlement and create a draft.</p>}<div className="mt-4 overflow-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{merchantLabel(b.merchant_id)}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button type="button" className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button>{!actions(b)&&<span className="ml-2 text-xs text-slate-400">{["APPROVED","PARTIALLY_PAID","PAID"].includes(b.status)?"Use Payment tab": "No permitted transition"}</span>}</td></tr>)}</tbody></table></div></section>}
+  {activeTab==="batches"&&<section id="settlement-batches" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Batches and approval</h2><p className="mt-2 text-xs text-slate-300">Use the Action column to submit, review or approve individual batches. Buttons are disabled when your role lacks permission.</p>{!batches.length&&<p className="mt-3 rounded-lg border border-slate-700 p-4 text-sm">No batches yet. Select eligible parcels in Merchant settlement and create a draft.</p>}<div className="mt-4 overflow-auto"><table className="w-full min-w-[750px] text-left text-sm"><thead><tr>{["Batch / merchant","Status","Payable","Paid","Outstanding","Action"].map(h=><th className="p-3" key={h}>{h}</th>)}</tr></thead><tbody>{batches.map((b:Row)=><tr key={b.id} className="border-t border-slate-700"><td className="p-3">{b.batch_number}<br/>{merchantLabel(b.merchant_id)}</td><td className="p-3">{b.status}</td><td className="p-3">{money(b.batch_net_payable)}{Number(b.rto_return_fee_deduction)>0&&<p className="text-xs text-slate-400">RTO return fee: {money(b.rto_return_fee_deduction)}</p>}</td><td className="p-3">{money(b.paid_amount)}</td><td className="p-3">{money(b.outstanding_amount)}</td><td className="p-3">{actions(b)} <button type="button" className={button} onClick={()=>window.print()}><FileText size={14} className="mr-1 inline"/>Print</button>{!actions(b)&&<span className="ml-2 text-xs text-slate-400">{["APPROVED","PARTIALLY_PAID","PAID"].includes(b.status)?"Use Payment tab": "No permitted transition"}</span>}</td></tr>)}</tbody></table></div></section>}
   {activeTab==="payments"&&<section id="settlement-payments" role="tabpanel" className="rounded-2xl border border-slate-700 bg-[#0a192f] p-4 md:p-5"><h2 className="text-xl font-bold">Record confirmed payment</h2><p className="mt-2 text-sm text-slate-300">Record a payment already made. Enter each batch allocation for partial, split or bulk payments. Each transfer needs its own reference and receipt evidence.</p>
    <div className="mt-4 grid gap-3 sm:grid-cols-2">{payableBatches.map((b:Row)=><label key={b.id} className="rounded-xl border border-slate-700 p-3">{b.batch_number} · {merchantLabel(b.merchant_id)} · outstanding {money(b.outstanding_amount)}<input type="number" min="0" step="0.01" max={b.outstanding_amount} className={field+" mt-2 w-full"} aria-label={"Payment amount "+b.batch_number} value={allocations[b.id]||""} onChange={e=>setAllocations({...allocations,[b.id]:e.target.value})}/></label>)}</div>
+   {payment.method==="KBZ_PAY"&&revisedFeePolicyApplies()&&<p className="mt-3 rounded-lg border border-emerald-700 bg-emerald-950/40 p-2 text-sm text-emerald-100">Britium’s KBZ Pay payout charge is temporarily waived. Record the full merchant payout due.</p>}
    <div className="mt-4 grid gap-3 md:grid-cols-2"><label>Payment method<select className={field+" mt-1 w-full"} value={payment.method} onChange={e=>setPayment({...payment,method:e.target.value})}>{methods.map(m=><option key={m}>{m}</option>)}</select></label><label>Transfer / receipt reference<input className={field+" mt-1 w-full"} value={payment.reference} onChange={e=>setPayment({...payment,reference:e.target.value})}/></label><label>Beneficiary bank / wallet / cheque account<input className={field+" mt-1 w-full"} value={payment.account} onChange={e=>setPayment({...payment,account:e.target.value})}/></label><label>Receipt / evidence URL (HTTPS)<input disabled={busy||uploading} type="url" className={field+" mt-1 w-full"} value={payment.evidence} onChange={e=>{setPayment({...payment,evidence:e.target.value});setReceiptName("");}}/></label></div>
    <div className="mt-3 space-y-2"><label className={button+" inline-block cursor-pointer"}>Upload receipt<input aria-label="Upload receipt" type="file" accept="image/jpeg,image/png,application/pdf" className="mt-2 block max-w-full text-sm" disabled={busy||loading||uploading||!canUploadReceipt} onChange={uploadReceipt}/></label><p className="text-sm text-slate-300">JPG, PNG or PDF · up to 10 MB. Upload a file or paste an existing HTTPS evidence link.</p>{uploading&&<p role="status">Uploading receipt…</p>}{receiptName&&<p role="status">Attached: {receiptName} · <SettlementReceiptLink url={payment.evidence} label="Preview receipt"/></p>}</div>
    <button className={button+" mt-4"} disabled={busy||loading||uploading||!canPay||!paymentValid} onClick={()=>void recordPayment()}>Record {money(paymentTotal)} · {paymentRows.length} batches</button>
@@ -300,7 +360,19 @@ export default function MerchantSettlementPage(){
 
   </div>
   {drawer&&<div className="fixed inset-0 z-50 flex justify-end bg-black/70" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)setDrawer(null);}}><aside role="dialog" aria-modal="true" aria-label={drawer==="rto"?"Return parcel inspection":drawer==="history"?"Settled history":"Adjustment requests"} className={`flex h-full w-full ${drawer==="rto"?"max-w-4xl":"max-w-xl"} flex-col border-l border-slate-700 bg-[#0a192f] text-white shadow-2xl`}><div className="flex shrink-0 items-center justify-between border-b border-slate-700 p-4"><h2 className="font-extrabold">{drawer==="rto"?"RTO Inspector & Fee Review":drawer==="history"?"Settled Parcels & Payment History":"Refund & Promotion Adjustments"}</h2><button aria-label="Close drawer" className={button} onClick={()=>setDrawer(null)}>Close</button></div><div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 text-sm">
-   {drawer==="rto"&&<><MerchantReturnQueue readOnly merchant={merchant} /><p className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-rose-200">RTO charges must be reviewed and documented before adding a deduction. No fee is assumed automatically.</p>{merchantRtoRows.map((r:Row)=><div key={r.parcel_id} className="rounded-xl border border-slate-700 p-3"><strong className="text-rose-300">{r.delivery_way_id}</strong><p className="mt-1 text-slate-300">{r.status} · {r.validation_message||r.settlement_state||"Return case"}</p><p className="mt-1">Original collection: {money(r.customer_total_collection)}</p></div>)}{!merchantRtoRows.length&&<p>No RTO items found for this merchant in the current snapshot.</p>}</>}
+   {drawer==="rto"&&<>
+     <MerchantReturnQueue readOnly merchant={merchant} />
+     <p className="rounded-lg border border-rose-700 bg-rose-950/40 p-3 text-rose-200">From 27 November 2026, each merchant’s return-fee allowance is 5% of their monthly Britium-managed ways, rounded down to a whole parcel. The earliest eligible RTOs use the allowance first. Excess Britium-managed returns incur the one-way tariff after month-end. Third-party return fees are mandatory and follow the provider settlement process.</p>
+     {!currentRtoPreview&&<p>Loading the monthly allowance…</p>}
+     {currentRtoPreview?.error&&<p role="alert">Unable to load RTO allowance. {currentRtoPreview.error}</p>}
+     {rtoRows.map(row=><div key={row.delivery_way_id} className="rounded-xl border border-slate-700 p-3">
+       <div className="flex flex-wrap justify-between gap-2"><strong className="text-rose-300">{row.delivery_way_id}</strong><span>{rtoStatus[row.fee_status]}</span></div>
+       <p className="mt-1 text-slate-300">{row.policy_month.slice(0,7)}{row.rto_position!==null&&` · ${row.monthly_ways} Britium-managed ways · ${row.waiver_limit} waived returns allowed · RTO #${row.rto_position}`}</p>
+       {row.return_fee!==null&&<p className="mt-1">Return fee: {money(row.return_fee)}{row.batch_number&&` · ${row.batch_number}`}</p>}
+     </div>)}
+     {merchantRtoRows.filter(row=>!rtoRows.some(rto=>rto.delivery_way_id===String(row.delivery_way_id).trim().toUpperCase())).map((row:Row)=><div key={row.parcel_id} className="rounded-xl border border-slate-700 p-3"><strong className="text-rose-300">{row.delivery_way_id}</strong><p className="mt-1 text-slate-300">{row.status} · Review the recorded return date and service type.</p></div>)}
+     {currentRtoPreview&&!currentRtoPreview.error&&!rtoRows.length&&!merchantRtoRows.length&&<p>No RTO items found for this merchant.</p>}
+   </>}
    {drawer==="history"&&<><h3 className="font-bold text-amber-400">Settled ways · {merchant?merchantLabel(merchant):"All merchants"}</h3>{merchantSettledRows.slice(0,100).map((r:Row)=><div key={r.parcel_id} className="flex justify-between gap-3 border-b border-slate-700 py-2"><span>{r.delivery_way_id}</span><strong>{money(r.merchant_final_settlement_amount)}</strong></div>)}{!merchantSettledRows.length&&<p>No settled parcel rows returned in this snapshot.</p>}<h3 className="pt-4 font-bold text-amber-400">Confirmed payment records</h3>{payments.slice(0,100).map((p:Row)=><div key={p.id} className="rounded-lg border border-slate-700 p-3"><p className="font-semibold">{p.batch_number} · {money(p.amount)}</p><p className="text-xs text-slate-400">{p.payment_method} · {p.payment_group_reference||p.payment_reference}</p><SettlementReceiptLink url={p.evidence_url||""}/></div>)}</>}
    {drawer==="adjustments"&&<><p>Use the Adjustments tab to submit and review requests with the existing approval functions.</p><button className={button} onClick={()=>{setDrawer(null);setActiveTab("adjustments");}}>Open adjustment workflow</button></>}
   </div></aside></div>}

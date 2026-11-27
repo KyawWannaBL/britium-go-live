@@ -4,7 +4,8 @@ import type { CSSProperties } from 'react';
 /** Keep keystrokes local. Commit on blur, before a subsequent Save/Calculate click. */
 export default memo(function BufferedDataEntryInput({value, onCommit, multiline = false, ...props}: {
   value: string | number; onCommit: (value: string) => void; multiline?: boolean;
-  className?: string; type?: string; step?: string; min?: string; rows?: number; placeholder?: string; style?: CSSProperties;
+  className?: string; type?: string; step?: string; min?: string; rows?: number; placeholder?: string; style?: CSSProperties; disabled?: boolean;
+  "data-recipient-address-input"?: true;
 }) {
   const [draft, setDraft] = useState(String(value ?? ''));
   const dirty = useRef(false);
