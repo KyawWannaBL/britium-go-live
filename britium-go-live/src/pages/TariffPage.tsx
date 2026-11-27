@@ -4,6 +4,8 @@ import { AlertCircle, Calculator, Database, Edit3, RefreshCw, Save, Search, Tras
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { royalTariffDestinationKey } from "@/lib/royalTariffDestination";
+import { ProviderTariffPanel, type ProviderTariff } from "@/components/tariff/ProviderTariffPanel";
+import { TariffExportButtons } from "@/components/tariff/TariffExportButtons";
 import { CorporateTariffPanel } from "@/components/tariff/CorporateTariffPanel";
 
 type TariffRow = {
@@ -62,14 +64,37 @@ async function loadTownshipTariffs(){
   throw new Error(errors[0]||"No live tariff rows returned.");
 }
 
+async function loadProviderTariffs(): Promise<ProviderTariff[]> {
+  const pageSize = 500;
+  const rows: ProviderTariff[] = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase.from("be_data_entry_tariff_catalog")
+      .select("destination_key,destination_name,standard_rate_mmk,special_rate_mmk,rack_code,is_active,provider_code")
+      .order("destination_name").order("destination_key").range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}
+
+const tariffTabs = {
+  BRITIUM: "Britium Tariffs",
+  "ROYAL EXPRESS": "Royal Express Tariffs",
+  CORPORATE: "Corporate Services Tariffs",
+  PROVIDERS: "Other Provider Tariffs",
+};
+
 export default function TariffPage(){
   const {profile}=useAuth();
   const role=String(profile?.role||"").toLowerCase().replaceAll("-","_");
   const isSuperadmin=role==="superadmin"||role==="super_admin";
   const [canEdit,setCanEdit]=useState(false);
   const [rights,setRights]=useState<any>(null);
-  const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS"|"CORPORATE">("BRITIUM");
-  const [royal,setRoyal]=useState<any[]>([]);
+  const [activeTab,setActiveTab]=useState<keyof typeof tariffTabs>("BRITIUM");
+  const [royal,setRoyal]=useState<ProviderTariff[]>([]);
+  const [otherProviders, setOtherProviders] = useState<ProviderTariff[]>([]);
+  const [providerError, setProviderError] = useState("");
   const [royalSearch,setRoyalSearch]=useState("");
   const [royalFeedback,setRoyalFeedback]=useState<{ text: string; error: boolean } | null>(null);
   const [royalEdit,setRoyalEdit]=useState<any>(null);
@@ -91,12 +116,12 @@ export default function TariffPage(){
   const [message,setMessage]=useState("");
 
   async function load(){
-    setLoading(true);setMessage("");
-    const [tierResult,townResult,rightsResult,royalResult]=await Promise.allSettled([
+    setLoading(true);setMessage("");setProviderError("");
+    const [tierResult,townResult,rightsResult,providerResult]=await Promise.allSettled([
       (supabase as any).rpc("be_tariff_list"),
       loadTownshipTariffs(),
       (supabase as any).rpc("be_tariff_rights_list_v1"),
-      (supabase as any).from("be_data_entry_tariff_catalog").select("destination_key,destination_name,standard_rate_mmk,is_active,provider_code").eq("provider_code","ROYAL EXPRESS").order("destination_name").limit(2000),
+      loadProviderTariffs(),
     ]);
     if(rightsResult.status==="fulfilled"&&!rightsResult.value.error){
       setRights(rightsResult.value.data);
@@ -105,11 +130,13 @@ export default function TariffPage(){
       setCanEdit(false);setRights(null);
       setMessage(rightsResult.status==="fulfilled"?rightsResult.value.error?.message||"Tariff permissions unavailable":String(rightsResult.reason));
     }
-    if(royalResult.status==="fulfilled"&&!royalResult.value.error){
-      setRoyal(royalResult.value.data||[]);
-    }else{
+    if (providerResult.status === "fulfilled") {
+      setRoyal(providerResult.value.filter(row => row.provider_code === "ROYAL EXPRESS"));
+      setOtherProviders(providerResult.value.filter(row => !["BRITIUM", "ROYAL EXPRESS"].includes(row.provider_code)));
+    } else {
       setRoyal([]);
-      setMessage(royalResult.status==="fulfilled"?royalResult.value.error?.message||"Royal tariffs unavailable":String(royalResult.reason));
+      setOtherProviders([]);
+      setProviderError(providerResult.reason?.message || "The provider tariff catalog could not be loaded.");
     }
     if(tierResult.status==="fulfilled"&&!tierResult.value.error){
       setTiers(Array.isArray(tierResult.value.data)?tierResult.value.data:[]);
@@ -315,18 +342,30 @@ export default function TariffPage(){
       </header>
 
       <nav aria-label="Tariff provider" className="flex flex-wrap gap-2 rounded-2xl border border-[#1a3a5c] bg-[#0b2236] p-3">
-        {(["BRITIUM","ROYAL EXPRESS","CORPORATE"] as const).map(provider=><button key={provider} type="button"
+        {(Object.keys(tariffTabs) as (keyof typeof tariffTabs)[]).map(provider=><button key={provider} type="button"
           onClick={()=>setActiveTab(provider)} aria-pressed={activeTab===provider}
           className={"rounded-xl px-5 py-3 text-sm font-black "+(activeTab===provider?"bg-[#f6b84b] text-[#061524]":"bg-[#061524] text-[#c8dff0]")}>
-          {provider==="BRITIUM"?"Britium Tariffs":provider==="ROYAL EXPRESS"?"Royal Express Tariffs":"Corporate Services Tariffs"}
+          {tariffTabs[provider]}
         </button>)}
       </nav>
-      {activeTab==="CORPORATE" ? <CorporateTariffPanel canEdit={canEdit} isSuperadmin={Boolean(rights?.is_superadmin)}/> : activeTab==="ROYAL EXPRESS" ? <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
+      {activeTab === "PROVIDERS" ? <ProviderTariffPanel rows={otherProviders} loading={loading} error={providerError} />
+      : activeTab==="CORPORATE" ? <CorporateTariffPanel canEdit={canEdit} isSuperadmin={Boolean(rights?.is_superadmin)}/> : activeTab==="ROYAL EXPRESS" ? <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div><h2 className="text-xl font-black text-white">Royal Express — Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{royal.length} destinations · Search by town or township name, or add a confirmed Royal Express rate.</p></div>
-          <input aria-label="Search Royal Express destinations" value={royalSearch} onChange={e=>setRoyalSearch(e.target.value)}
-            placeholder="Search Royal Express destinations" className="rounded-xl bg-white px-3 py-2 text-[#061524]" />
+          <div className="flex flex-wrap items-center gap-2">
+            <input aria-label="Search Royal Express destinations" value={royalSearch} onChange={e=>setRoyalSearch(e.target.value)}
+              placeholder="Search Royal Express destinations" className="rounded-xl bg-white px-3 py-2 text-[#061524]" />
+            <TariffExportButtons title="Royal Express Destination Tariffs" disabled={loading || saving || Boolean(providerError)}
+              columns={[
+                { key: "destination_name", label: "Destination" },
+                { key: "standard_rate_mmk", label: "Rate (MMK)", kind: "number" },
+                { key: "status", label: "Status" },
+              ]}
+              rows={searchedRoyal.map(row => ({ ...row, status: row.is_active ? "Active" : "Inactive" }))}
+              filters={{ Search: royalSearch.trim() }} note="Royal Express destination rates in MMK." />
+          </div>
         </div>
+        {providerError && <p role="alert" className="text-rose-200">{providerError}</p>}
         {royalFeedback && <p role={royalFeedback.error ? "alert" : "status"}
           className={`rounded-xl border p-3 text-sm ${royalFeedback.error ? "border-rose-600 text-rose-200" : "border-emerald-600 text-emerald-200"}`}>
           {royalFeedback.text}
@@ -385,6 +424,17 @@ export default function TariffPage(){
       </section> : <>
       <section className="rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <div><h2 className="text-lg font-black text-white">Core Customer Tier Master</h2><p className="mt-1 text-xs text-[#9cc2d9]">Edits call <b>be_tariff_update</b>. Backend authorization uses revocable role permissions. Only Super Admin can grant or revoke editing rights.</p></div>
+        <div className="mt-3">
+          <TariffExportButtons title="Britium Customer Tier Tariffs" disabled={loading || saving}
+            columns={[
+              { key: "tier_name", label: "Tier" }, { key: "base_fee_mmk", label: "Base fee (MMK)", kind: "number" },
+              { key: "free_allowance_kg", label: "Included weight (kg)", kind: "number" },
+              { key: "extra_per_kg_mmk", label: "Extra per kg (MMK)", kind: "number" },
+              { key: "highway_fee_mmk", label: "Highway fee (MMK)", kind: "number" }, { key: "status", label: "Status" },
+            ]}
+            rows={tiers.map(tier => ({ ...tier, status: tier.is_active === false ? "Inactive" : "Active" }))}
+            filters={{}} note="Core Britium customer tier tariff settings." />
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           {tiers.map((t:any)=><div key={t.tier_name} className="rounded-2xl border border-[#1a3a5c] bg-[#061524] p-4">
             <div className="flex items-start justify-between gap-3"><div><div className="font-black text-[#f6b84b]">{t.tier_name}</div><div className="mt-1 text-[10px] font-black text-emerald-300">{t.is_active===false?"INACTIVE":"ACTIVE"}</div></div>{canEdit&&<div className="flex gap-2"><button onClick={()=>setEdit({...t})} className="inline-flex items-center gap-1 rounded-lg border border-[#f6b84b]/40 px-3 py-2 text-xs font-black text-[#f6b84b]"><Edit3 size={14}/>Edit</button><button disabled={!isSuperadmin||saving} onClick={()=>void deleteTier(t)} className="inline-flex items-center gap-1 rounded-lg border border-rose-500/40 px-3 py-2 text-xs font-black text-rose-300"><Trash2 size={14}/>Delete</button></div>}</div>
@@ -402,6 +452,18 @@ export default function TariffPage(){
 
       <section className="overflow-hidden rounded-3xl border border-[#1a3a5c] bg-[#0b2236]">
         <div className="flex flex-col gap-3 border-b border-[#1a3a5c] p-4 lg:flex-row lg:items-center lg:justify-between"><div><h2 className="font-black text-white">Operational Township / Destination Tariffs</h2><p className="text-xs text-amber-500">Saving a master rate does not activate the separate parcel calculation rate. Use Publish for Calculations after confirming the rate and effective date.</p><p className="text-xs text-[#9cc2d9]">{rows.length} live rows · Canonical delivery rows are editable by authorized tariff managers</p></div><div className="relative w-full lg:w-[420px]"><Search size={16} className="absolute left-3 top-3 text-[#64748b]"/><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search township, zone, tier, status..." className="h-10 w-full rounded-xl bg-white pl-9 pr-3 text-sm font-bold text-[#061524] outline-none"/></div></div>
+        <div className="border-b border-[#1a3a5c] px-4 py-3">
+          <TariffExportButtons title="Britium Operational Township Tariffs" disabled={loading || saving}
+            columns={[
+              { key: "township", label: "Township / Destination" }, { key: "zone", label: "Zone" },
+              { key: "tier", label: "Customer tier" }, { key: "baseFee", label: "Base fee (MMK)", kind: "number" },
+              { key: "includedKg", label: "Included weight (kg)", kind: "number" },
+              { key: "extraPerKg", label: "Extra per kg (MMK)", kind: "number" },
+              { key: "status", label: "Status" }, { key: "note", label: "Notes" }, { key: "source", label: "Source" },
+            ]}
+            rows={filtered} filters={{ Search: search.trim() }}
+            note="Operational master rates. Calculation rates are published separately." />
+        </div>
         {canEdit&&<div className="border-b border-[#1a3a5c] bg-[#061524] p-4 text-[#c8dff0]">
           <h3 className="text-lg font-black text-[#f6b84b]">Add New Operational Tariff</h3>
           <p className="mb-3 text-xs text-[#9cc2d9]">Creates an audited township/destination rate in the live Britium tariff master. Existing active township/tier rates cannot be duplicated.</p>
