@@ -176,6 +176,8 @@ const DataEntrySynchronizedPage = safeLazy(() => import("@/pages/DataEntrySynchr
 const DataEntryUATUploadPage = safeLazy(() => import("@/pages/DataEntryUATUploadPage"));
 const DataEntryWaybillStudio = safeLazy(() => import("@/pages/DataEntryWaybillStudio"));
 const ProofGalleryPortalPage = safeLazy(() => import("@/pages/ProofGalleryPortalPage"));
+const ParcelLifecycleReportPage = safeLazy(() => import("@/pages/ParcelLifecycleReportPage"));
+const ProviderCustodyPage = safeLazy(() => import("@/pages/ProviderCustodyPage"));
 const ReportingPage = safeLazy(() => import("@/pages/ReportingPage"));
 const WarehouseOperations = safeLazy(() => import("@/pages/WarehouseOperations"));
 const WarehouseRegistrationTemplatePage = safeLazy(() => import("@/pages/WarehouseRegistrationTemplatePage"));
@@ -328,6 +330,8 @@ function AppRoutes() {
             <Route path="/data-entry-uat" element={<DataEntryUATUploadPage />} />
             <Route path="/data-entry-waybill" element={<DataEntryWaybillStudio />} />
             <Route path="/proof-gallery" element={<ProofGalleryPortalPage />} />
+            <Route path="/parcel-lifecycle-report" element={<ParcelLifecycleReportPage />} />
+            <Route path="/provider-custody" element={<ProviderCustodyPage />} />
             <Route path="/reporting" element={<ReportingPage />} />
             <Route path="/warehouse-ops-alt" element={<WarehouseOperations />} />
             <Route path="/warehouse-reg" element={<WarehouseRegistrationTemplatePage />} />

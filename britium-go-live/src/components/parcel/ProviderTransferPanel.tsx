@@ -38,7 +38,7 @@ async function rpc<T>(name: string, args?: Record<string, unknown>): Promise<T> 
   return data as T;
 }
 
-export default function ProviderTransferPanel({ onDraftCreated }: { onDraftCreated: () => void }) {
+export default function ProviderTransferPanel({ onDraftCreated }: { onDraftCreated?: () => void }) {
   const { role } = useAuth();
   const roleCode = role.toLowerCase().replaceAll("-", "_");
   const isSuperadmin = ["superadmin", "super_admin"].includes(roleCode);
@@ -166,7 +166,7 @@ export default function ProviderTransferPanel({ onDraftCreated }: { onDraftCreat
       });
       setSelected([]);
       setMessage(`Draft ${result.wayplan_id} created. Send it for Supervisor review.`);
-      onDraftCreated();
+      onDraftCreated?.();
       await refresh();
     });
   }
