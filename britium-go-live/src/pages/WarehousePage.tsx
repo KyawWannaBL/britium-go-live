@@ -82,6 +82,7 @@ export default function WarehousePage() {
   const [dateBasis,setDateBasis]=useState<"WAYBILL_CREATION"|"WAREHOUSE_ACTIVITY"|"SOURCE_OPERATION">("WAYBILL_CREATION");
   const [closeWayplanCode, setCloseWayplanCode] = useState("");
   const [message, setMessage] = useState("");
+  const [returnScanFeedback, setReturnScanFeedback] = useState<{ text: string; error: boolean } | null>(null);
   const [scanChoices,setScanChoices]=useState<any>(null);
   const [handoffArchive,setHandoffArchive]=useState<any>({rows:[],count:0});
   const [handoffArchiveExpanded,setHandoffArchiveExpanded]=useState(false);
@@ -258,11 +259,16 @@ export default function WarehousePage() {
       return;
     }
     if(scanBusy.current) return;
+    const reportScanResult = (text: string, error: boolean) => {
+      if (kind === "return") setReturnScanFeedback({ text, error });
+      else setMessage(text);
+    };
+    setReturnScanFeedback(null);
     let tracking:string;
     try {tracking=normalizeWarehouseScan(code || scanCode || "");}
-    catch(error:any){setMessage(error.message);return;}
+    catch(error:any){reportScanResult(error.message, true);return;}
     if (!tracking) {
-      setMessage("Scan or enter Delivery Way / Tracking No first.");
+      reportScanResult("Scan or enter Delivery Way / Tracking No first.", true);
       return;
     }
 
@@ -319,19 +325,20 @@ export default function WarehousePage() {
 
       if (res?.error) throw res.error;
       const data = res?.data || {};
-      if (data.ok === false) throw new Error(data.reason || "Scan rejected.");
+      if (data.ok === false) throw new Error(data.message || data.reason || data.error || "Scan rejected.");
 
-      setMessage(
+      reportScanResult(
         kind === "return"
           ? `Return Scan ${data.physical_return_scan_number || data.attempt_count || ""} saved for ${displayId}. ${data.rto ? "Explicit RTO state confirmed." : (data.next_attempt_priority ? "Parcel is returned and prioritized for the next Wayplan." : "Third physical return recorded; Operations review is required before any RTO decision.")}`
-          : `${kind.toUpperCase()} scan saved for ${displayId}.`
+          : `${kind.toUpperCase()} scan saved for ${displayId}.`,
+        false
       );
 
       setScanCode("");
       if (kind === "return") setRescheduleDate("");
       await loadAll();
     } catch (e: any) {
-      setMessage(e.message || "Scan confirmation unavailable. Check the parcel status before retrying.");
+      reportScanResult(e?.message || "Scan confirmation unavailable. Check the parcel status before retrying.", true);
     } finally {
       scanBusy.current=false;
       setLoading(false);
@@ -885,12 +892,14 @@ export default function WarehousePage() {
           if(batchBusyRef.current)return;
           setScanChoices(null);
           if(scanMode==="dispatch") enqueueDispatchScan(code);
-          else {setScanCode(code);setMessage("Read "+code+". Choose Inbound or Return to save.");}
+          else {setReturnScanFeedback(null);setScanCode(code);setMessage("Read "+code+". Choose Inbound or Return to save.");}
         }} />
-        <p role="status" aria-live="polite" className="mb-3 font-semibold text-emerald-300">{scanChoices ? "Choose the matching pickup to continue." : scanMode==="dispatch" && dispatchProcessing ? `Continuous dispatch scanning active · ${dispatchQueueCount} queued · scanner remains ready` : loading ? "Processing scan — please wait…" : "Ready for next scan"}</p>
+        {!returnScanFeedback && (
+          <p role="status" aria-live="polite" className="mb-3 font-semibold text-emerald-300">{scanChoices ? "Choose the matching pickup to continue." : scanMode==="dispatch" && dispatchProcessing ? `Continuous dispatch scanning active · ${dispatchQueueCount} queued · scanner remains ready` : loading ? "Processing scan — please wait…" : "Ready for next scan"}</p>
+        )}
         <button type="button" disabled={!!scanChoices} className="mb-3 rounded bg-sky-700 px-3 py-2" onClick={focusScanner}>Focus scanner</button>
         <label className="mb-3 block text-sm">Scanner Enter action:
-          <select value={scanMode} onChange={e=>setScanMode(e.target.value as any)} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
+          <select value={scanMode} onChange={e=>{setReturnScanFeedback(null);setScanMode(e.target.value as any);}} disabled={loading} className="ml-2 rounded bg-slate-900 p-2">
             <option value="inbound">Inbound</option><option value="dispatch" disabled={!dispatchRequiredRows.length}>Dispatch{dispatchRequiredRows.length ? ` (${dispatchRequiredRows.length} released)` : " — Supervisor release required"}</option><option value="return">Return</option>
           </select>
         </label>
@@ -902,7 +911,7 @@ export default function WarehousePage() {
             autoComplete="off" autoCapitalize="off" spellCheck={false}
             disabled={batchBusy||(loading && scanMode!=="dispatch")}
             value={scanCode}
-            onChange={(e) => {setScanCode(e.target.value);setScanChoices(null);}}
+            onChange={(e) => {setReturnScanFeedback(null);setScanCode(e.target.value);setScanChoices(null);}}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.repeat) {
                 e.preventDefault();
@@ -965,7 +974,7 @@ export default function WarehousePage() {
               Inbound
             </button>
             <button
-              disabled={!dispatchRequiredRows.length || (loading && scanMode!=="dispatch")} onClick={() => doScan("dispatch")}
+              disabled={!dispatchRequiredRows.length || (loading && scanMode!=="dispatch")} onClick={() => {setReturnScanFeedback(null);void doScan("dispatch");}}
               className="rounded-lg bg-blue-700 px-3 py-2 text-sm font-semibold hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Truck className="mr-1 inline h-4 w-4" />
@@ -980,6 +989,16 @@ export default function WarehousePage() {
             </button>
           </div>
         </div>
+        {returnScanFeedback && (
+          <p
+            role={returnScanFeedback.error ? "alert" : "status"}
+            className={`mt-3 rounded-lg border p-3 text-sm ${returnScanFeedback.error
+              ? "border-red-500/60 bg-red-950/30 text-red-200"
+              : "border-emerald-700/50 bg-emerald-950/20 text-emerald-200"}`}
+          >
+            {returnScanFeedback.text}
+          </p>
+        )}
       </section>
 
       {!isBranchManager && <section className="mb-4 rounded-xl border border-slate-800 bg-[#0B2133] p-4">
