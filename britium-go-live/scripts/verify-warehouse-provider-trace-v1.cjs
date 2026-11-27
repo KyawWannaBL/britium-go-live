@@ -1,0 +1,12 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');const ts=require('typescript');
+const file='src/components/warehouse/WarehouseCustodyMonitor.tsx';const ui=fs.readFileSync(file,'utf8');
+const result=ts.transpileModule(ui,{fileName:file,reportDiagnostics:true,compilerOptions:{jsx:ts.JsxEmit.ReactJSX,target:ts.ScriptTarget.ES2020}});
+const errors=(result.diagnostics||[]).filter(x=>x.category===ts.DiagnosticCategory.Error);
+assert.equal(errors.length,0,'Monitor TSX parse: '+errors.map(x=>ts.flattenDiagnosticMessageText(x.messageText,' ')).join('; '));
+const sql=fs.readFileSync('supabase/migrations/20261122160000_warehouse_provider_trace_v1.sql','utf8');
+for(const x of ['Britium Express','DK Delivery','Mandalay Branch','Insein Branch','Royal Express','Other third-party','ဂိတ်ချ','Wayplan / Branch','Provider Handover','Delivery / RTO','COD / Finance Settlement','be_warehouse_provider_trace_v1','delivery_proof_recorded','merchant_settlement_status'])assert.ok(ui.includes(x),'Missing provider workflow UI '+x);
+for(const x of ['WAREHOUSE_PROVIDER_TRACE_ROLE_REQUIRED','auth.uid() is null','revoke all','p_way_ids text[]','be_wayplan_dispatch_stops','be_provider_transfer_custody_v1','be_wayplan_cod_settlements','be_v_finance_merchant_settlement_queue_v2','be_thirdparty_finance_review_queue_v1','HIGHWAY_BUS_STATION','ROYAL_EXPRESS','PROVIDER_OVERRIDE_NO_CUSTODY_PROOF','ROUTE_INDICATION_ONLY'])assert.ok(sql.includes(x),'Missing safe provider trace SQL '+x);
+assert.ok(!/\b(update|delete from|insert into|truncate)\b/i.test(sql),'Trace RPC must be read-only');
+assert.ok(ui.includes('traceError')&&ui.includes('setData(result as Response)'), 'Monitor must preserve warehouse rows if provider trace unavailable');
+console.log('Warehouse all-provider trace regression PASS');
