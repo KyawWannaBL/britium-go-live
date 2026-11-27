@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { TariffExportButtons } from "./TariffExportButtons";
 import { supabase } from "@/integrations/supabase/client";
 
 type Contract = {
@@ -79,7 +80,20 @@ export function CorporateTariffPanel({canEdit,isSuperadmin}:{canEdit:boolean;isS
   <div className="my-3 flex flex-wrap items-center justify-between gap-2"><strong>Corporate contract rates: {contracts.length}</strong>
    <input aria-label="Search corporate contracts" placeholder="Find company, project or contract" className={control} value={search} onChange={e=>setSearch(e.target.value)}/>
   </div>
-  <div className="max-h-[640px] overflow-auto"><table className="min-w-[1000px] w-full text-sm"><thead><tr className="text-left text-amber-300">{["Company / Project","Merchant","Contract","Area","Rate","Extra / kg","Bill to","Dates","Approval","Action"].map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead>
+  <TariffExportButtons title="Corporate and Project Tariffs" disabled={busy}
+    columns={[
+      { key: "company_name", label: "Company" }, { key: "project_name", label: "Project / Campaign" },
+      { key: "merchant_code", label: "Merchant code" }, { key: "contract_ref", label: "Contract reference" },
+      { key: "service_type", label: "Service category" }, { key: "area", label: "Area" },
+      { key: "fixed_rate_mmk", label: "Base rate (MMK)", kind: "number" },
+      { key: "included_kg", label: "Included weight (kg)", kind: "number" },
+      { key: "extra_per_kg_mmk", label: "Extra per kg (MMK)", kind: "number" },
+      { key: "bill_to", label: "Billing party" }, { key: "valid_from", label: "Valid from" },
+      { key: "valid_until", label: "Valid until" }, { key: "approval", label: "Approval" },
+    ]}
+    rows={shown.map(contract => ({ ...contract, approval: contract.approved_at ? "Approved" : "Pending" }))}
+    filters={{ Search: search.trim() }} note="Project and contract rates with their validity periods and approval status." />
+  <div className="mt-3 max-h-[640px] overflow-auto"><table className="min-w-[1000px] w-full text-sm"><thead><tr className="text-left text-amber-300">{["Company / Project","Merchant","Contract","Area","Rate","Extra / kg","Bill to","Dates","Approval","Action"].map(h=><th key={h} className="p-2">{h}</th>)}</tr></thead>
    <tbody>{shown.map(c=><tr key={c.id} className="border-t border-[#31516a]">
     <td className="p-2">{c.company_name}<div className="text-xs text-cyan-200">{c.project_name} · {c.service_type}</div></td><td>{c.merchant_code}</td><td>{c.contract_ref}</td><td>{c.area}</td><td>{fmt(c.fixed_rate_mmk)}</td><td>{fmt(c.extra_per_kg_mmk)}<div className="text-xs">Included {c.included_kg} kg</div></td><td>{c.bill_to}</td><td>{c.valid_from} → {c.valid_until}</td><td>{c.approved_at?"Approved":"Pending"}</td>
     <td className="p-2"><div className="flex gap-2">

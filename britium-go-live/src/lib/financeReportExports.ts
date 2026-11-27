@@ -41,21 +41,27 @@ export async function exportFinanceExcel(report:FinanceReport):Promise<void>{
 function escapeHtml(value:unknown){
  return String(value??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
 }
-export function printFinancePdf(report:FinanceReport):void {
+export function printFinancePdf(report:FinanceReport, printLabels?: {department:string;footer:string}):void {
+ const department=printLabels?.department??"FINANCE OPERATIONS";
+ const footer=printLabels?.footer??"Britium Express · Internal finance report · This export does not constitute payment confirmation or settlement authorization.";
  if(!report.rows.length)throw new Error("No report rows match the selected filters.");
  const pop=window.open("","_blank");
  if(!pop)throw new Error("PDF preview was blocked. Allow popups for Britium Express and try again.");
  const generated=(report.generatedAt||new Date()).toLocaleString("en-GB",{timeZone:"Asia/Yangon"});
  const filters=Object.entries(report.filters).filter(([,v])=>v!==null&&v!==undefined&&String(v)!=="").map(([k,v])=>`<span><b>${escapeHtml(k)}:</b> ${escapeHtml(v)}</span>`).join("");
  const header=report.columns.map(c=>`<th>${escapeHtml(c.label)}</th>`).join("");
- const body=financeReportRows(report).map(row=>"<tr>"+row.map((v,i)=>`<td class="${report.columns[i].kind==="number"?"numeric":""}">${escapeHtml(v)}</td>`).join("")+"</tr>").join("");
+ const body=report.rows.map(row=>"<tr>"+report.columns.map(column=>{
+  const value=row[column.key];
+  const cell=value===null||value===undefined||value===""?(column.kind==="number"?"Not recorded":"—"):value;
+  return `<td class="${column.kind==="number"?"numeric":""}">${escapeHtml(cell)}</td>`;
+ }).join("")+"</tr>").join("");
  // The browser's print engine preserves complex Myanmar fonts and paginates large tables
  // correctly; choose "Save as PDF" in the dialog for the downloadable PDF file.
  const html=`<!doctype html><html><head><meta charset="utf-8"/>
  <title>${escapeHtml(report.title)} — Britium Express</title>
  <style>
  @page { size:A3 landscape; margin:12mm; }
- * {box-sizing:border-box} body{margin:0;padding:18px;color:#172334;background:#fff;font:11px Arial,"Noto Sans Myanmar",sans-serif}
+ * {box-sizing:border-box} body{margin:0;padding:18px;color:#172334;background:#fff;font:11px Arial,"Noto Sans Myanmar","Pyidaungsu","Myanmar Text",sans-serif}
  h1{font-size:21px;margin:0 0 6px;color:#091c32}.brand{letter-spacing:2px;font-weight:900;color:#b06b00;font-size:12px;margin-bottom:4px}
  .meta{display:flex;gap:12px;flex-wrap:wrap;padding:8px 0 12px;font-size:11px;color:#374151}
  .note{padding:9px;border:1px solid #d1d5db;border-radius:5px;margin:10px 0 14px;font-size:11px;line-height:1.6}
@@ -67,12 +73,12 @@ export function printFinancePdf(report:FinanceReport):void {
  @media print{body{padding:0} .toolbar{display:none!important} h1{break-after:avoid} thead{display:table-header-group} footer{break-before:avoid}}
  </style></head><body>
  <div class="toolbar"><button onclick="window.print()">Print / Save as PDF</button> <span style="margin-left:12px">Select <b>Save as PDF</b> as the printer destination.</span></div>
- <div class="brand">BRITIUM EXPRESS · FINANCE OPERATIONS</div>
+ <div class="brand">BRITIUM EXPRESS · ${escapeHtml(department)}</div>
  <h1>${escapeHtml(report.title)}</h1>
  <div class="meta"><span>Generated: ${escapeHtml(generated)} (Myanmar Time)</span><span>Records: ${report.rows.length}</span><span>Scope: loaded and filtered</span>${filters}</div>
  <div class="note">${escapeHtml(report.note)}</div>
  <table><thead><tr>${header}</tr></thead><tbody>${body}</tbody></table>
- <footer>Britium Express · Internal finance report · This export does not constitute payment confirmation or settlement authorization.</footer>
+ <footer>${escapeHtml(footer)}</footer>
  </body></html>`;
  pop.document.open();
  pop.document.write(html);
