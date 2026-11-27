@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AlertCircle, Calculator, Database, Edit3, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { royalTariffDestinationKey } from "@/lib/royalTariffDestination";
 import { CorporateTariffPanel } from "@/components/tariff/CorporateTariffPanel";
 
 type TariffRow = {
@@ -70,6 +71,7 @@ export default function TariffPage(){
   const [activeTab,setActiveTab]=useState<"BRITIUM"|"ROYAL EXPRESS"|"CORPORATE">("BRITIUM");
   const [royal,setRoyal]=useState<any[]>([]);
   const [royalSearch,setRoyalSearch]=useState("");
+  const [royalFeedback,setRoyalFeedback]=useState<{ text: string; error: boolean } | null>(null);
   const [royalEdit,setRoyalEdit]=useState<any>(null);
   const [newRoyalName,setNewRoyalName]=useState("");
   const [newRoyalRate,setNewRoyalRate]=useState("");
@@ -220,39 +222,54 @@ export default function TariffPage(){
   }
 
   async function manageRoyal(action:"ADD"|"SAVE"|"REMOVE", row:any){
-    if(!canEdit){setMessage("Tariff edit permission required.");return;}
-    const name=String(row.destination_name||"").trim();
-    const rate=String(row.standard_rate_mmk??"").trim();
-    if(action!=="REMOVE"&&(!name||!/^\d+$/.test(rate)||Number(rate)<=0)){setMessage("Enter a destination and its confirmed positive whole-number Royal Express rate. Do not reuse another provider\u0027s tariff.");return;}
-    if(action==="REMOVE"&&!window.confirm("Deactivate Royal Express tariff for "+name+"?"))return;
-    const key=action==="ADD"?name.toLowerCase().replace(/\s+/g,"-")+"-royal":row.destination_key;
-    setSaving(true);setMessage("");
-    try{
-      const {data,error}=await (supabase as any).rpc("be_tariff_catalog_manage_v1",{
-        p_provider:"ROYAL EXPRESS",p_action:action,p_key:key,p_name:name,
-        p_rate:action==="REMOVE"?null:Number(rate),
+    if (!canEdit || saving) return;
+    const name = String(row.destination_name ?? "").trim();
+    const rate = String(row.standard_rate_mmk ?? "").trim()
+      .replace(/[၀-၉]/g, digit => String(digit.charCodeAt(0) - "၀".charCodeAt(0)));
+    const amount = Number(rate.replace(/[ ,]/g, ""));
+    setRoyalFeedback(null);
+    if (action !== "REMOVE" && (!royalTariffDestinationKey(name) || !/^\d+(?:[ ,]\d{3})*$/.test(rate) ||
+        !Number.isSafeInteger(amount) || amount <= 0)) {
+      setRoyalFeedback({ error: true, text: "Enter a destination and the confirmed positive whole-number rate in MMK." });
+      return;
+    }
+    if (action === "REMOVE" && !window.confirm("Deactivate Royal Express tariff for " + name + "?")) return;
+    setSaving(true);
+    try {
+      const { data, error } = await supabase.rpc("be_royal_tariff_save_v1", {
+        p_action: action, p_key: row.destination_key ?? null, p_name: name,
+        p_rate: action === "REMOVE" ? null : amount,
       });
-      if(error)throw error;
-      if(data?.ok!==true)throw Error(data?.error||"Tariff change was not accepted by the backend.");
-      // A successful mutation is not enough: confirm the exact catalog row
-      // is visible to the authenticated operator before reporting success.
-      const { data: savedRows, error: readbackError } = await (supabase as any)
-        .from("be_data_entry_tariff_catalog")
-        .select("destination_key,destination_name,standard_rate_mmk,is_active,provider_code")
-        .eq("destination_key",key).eq("provider_code","ROYAL EXPRESS").limit(1);
-      if(readbackError)throw new Error("Tariff was submitted but could not be verified: "+readbackError.message);
-      const persisted=Array.isArray(savedRows)?savedRows[0]:null;
-      if(!persisted || Boolean(persisted.is_active)!==(action!=="REMOVE")
-         || (action!=="REMOVE" && (Number(persisted.standard_rate_mmk)!==Number(rate) || String(persisted.destination_name)!==name))){
-        throw new Error("Royal tariff was not confirmed in the live destination catalog. Refresh and check before trying again.");
+      if (error || data?.ok !== true || !data.tariff?.destination_key) {
+        throw new Error(error?.message || "Royal Express did not save the tariff. Refresh the list before retrying.");
       }
+      const saved = data.tariff;
+      setRoyal(current => [...current.filter(item => item.destination_key !== saved.destination_key), saved]
+        .sort((a, b) => a.destination_name.localeCompare(b.destination_name)));
       setRoyalEdit(null);
-      if(action==="ADD"){setNewRoyalName("");setNewRoyalRate("");setRoyalSearch(name);}
-      await load();
-      setMessage("Royal Express destination "+name+" "+(action==="REMOVE"?"deactivated":"saved and verified")+" at "+(action==="REMOVE"?"its prior":Number(rate).toLocaleString()+" MMK")+" in the live catalog.");
-    }catch(e:any){setMessage(e?.message||"Royal Express tariff operation failed.");}
-    finally{setSaving(false);}
+      if (action === "ADD") {
+        setNewRoyalName("");
+        setNewRoyalRate("");
+        setRoyalSearch(saved.destination_name);
+      }
+      setRoyalFeedback({
+        error: false,
+        text: action === "REMOVE" ? `${saved.destination_name} deactivated.` :
+          `${saved.destination_name} saved at ${Number(saved.standard_rate_mmk).toLocaleString()} MMK. It is available in Data Entry.`,
+      });
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "The tariff could not be saved.";
+      const text = detail.includes("ROYAL_SAME_DAY_REPRICING_REQUIRES_FINANCE_REVIEW")
+        ? "This rate already took effect today. Ask Finance to review a same-day correction."
+        : detail.includes("ROYAL_FINANCE_CONFLICTING_ACTIVE_TARIFF")
+          ? "Multiple active Finance tariffs match this destination. Ask Finance to resolve the duplicate before saving."
+          : detail;
+      setRoyalFeedback({ error: true, text });
+    } finally {
+      setSaving(false);
+    }
   }
+
   async function toggleRole(roleCode:string,allowed:boolean){
     if(!rights?.is_superadmin){setMessage("Super Admin authority is required.");return;}
     setSaving(true);setMessage("");
@@ -267,12 +284,13 @@ export default function TariffPage(){
 
   useEffect(()=>{void load()},[]);
 
-  const royalLookup=(value:any)=>String(value||"").toLocaleLowerCase().replace(/[\\/\s\-()（）၊။]/g,"");
-  const searchedRoyal=useMemo(()=>{
-    const key=royalLookup(royalSearch);
-    if(!key)return royal;
-    return royal.filter(row=>royalLookup(row.destination_name+" "+row.destination_key).includes(key));
-  },[royal,royalSearch]);
+  const searchedRoyal = useMemo(() => {
+    const key = royalTariffDestinationKey(royalSearch);
+    if (!key) return royal;
+    return royal.filter(row => [row.destination_name, row.destination_key]
+      .some(value => royalTariffDestinationKey(value).includes(key)));
+  }, [royal, royalSearch]);
+  const existingRoyal = royal.find(row => royalTariffDestinationKey(row.destination_name) === royalTariffDestinationKey(newRoyalName));
 
   const filtered=useMemo(()=>{
     const q=search.trim().toLowerCase();if(!q)return rows;
@@ -305,22 +323,44 @@ export default function TariffPage(){
       </nav>
       {activeTab==="CORPORATE" ? <CorporateTariffPanel canEdit={canEdit} isSuperadmin={Boolean(rights?.is_superadmin)}/> : activeTab==="ROYAL EXPRESS" ? <section className="space-y-4 rounded-3xl border border-[#1a3a5c] bg-[#0b2236] p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div><h2 className="text-xl font-black text-white">Royal Express — Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{royal.length} destinations · Changes save to the live catalog through the audited tariff RPC.</p></div>
+          <div><h2 className="text-xl font-black text-white">Royal Express — Destination Tariffs</h2><p className="text-xs text-[#9cc2d9]">{royal.length} destinations · Search by town or township name, or add a confirmed Royal Express rate.</p></div>
           <input aria-label="Search Royal Express destinations" value={royalSearch} onChange={e=>setRoyalSearch(e.target.value)}
             placeholder="Search Royal Express destinations" className="rounded-xl bg-white px-3 py-2 text-[#061524]" />
         </div>
-        {canEdit&&<div className="flex flex-wrap gap-2">
-          <input aria-label="New Royal destination" value={newRoyalName} onChange={e=>setNewRoyalName(e.target.value)}
-            placeholder="Destination" className="rounded-lg bg-white px-3 py-2 text-[#061524]"/>
-          <input aria-label="New Royal tariff MMK" type="number" min="0" step="1" value={newRoyalRate}
-            onChange={e=>setNewRoyalRate(e.target.value)} className="w-36 rounded-lg bg-white px-3 py-2 text-[#061524]"/>
-          <button type="button" disabled={saving||!newRoyalName.trim()||!/^\d+$/.test(newRoyalRate)||Number(newRoyalRate)<=0} onClick={()=>void manageRoyal("ADD",{destination_name:newRoyalName,standard_rate_mmk:newRoyalRate})}
-            className="rounded-lg bg-[#f6b84b] px-4 py-2 font-black text-[#061524] disabled:opacity-50">Add destination</button>
-        </div>}
+        {royalFeedback && <p role={royalFeedback.error ? "alert" : "status"}
+          className={`rounded-xl border p-3 text-sm ${royalFeedback.error ? "border-rose-600 text-rose-200" : "border-emerald-600 text-emerald-200"}`}>
+          {royalFeedback.text}
+        </p>}
+        {canEdit && <form className="rounded-xl border border-[#1a3a5c] bg-[#061524] p-4"
+          onSubmit={event => { event.preventDefault(); void manageRoyal("ADD", {destination_name:newRoyalName,standard_rate_mmk:newRoyalRate}); }}>
+          <h3 className="font-bold text-white">Add a Royal Express tariff</h3>
+          <div className="mt-2 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1 text-sm">Town or township / မြို့ သို့မဟုတ် မြို့နယ်
+              <input id="royal-new-destination" autoComplete="off" required maxLength={160} disabled={saving} value={newRoyalName}
+                onChange={e=>setNewRoyalName(e.target.value)} placeholder="e.g. အသုတ်" className="rounded-lg bg-white px-3 py-2 text-[#061524]"/>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">Confirmed rate / ကုန်ကျစရိတ် (MMK)
+              <input required inputMode="numeric" disabled={saving} value={newRoyalRate} onChange={e=>setNewRoyalRate(e.target.value)}
+                placeholder="MMK" className="w-40 rounded-lg bg-white px-3 py-2 text-[#061524]"/>
+            </label>
+            <button type="submit" disabled={loading || saving || Boolean(existingRoyal)}
+              className="rounded-lg bg-[#f6b84b] px-4 py-2 font-black text-[#061524] disabled:opacity-50">
+              {saving ? "Saving…" : "Add tariff / နှုန်းထားထည့်ရန်"}
+            </button>
+          </div>
+          {existingRoyal && <p className="mt-2 text-sm text-amber-200">
+            {existingRoyal.destination_name} already has {existingRoyal.is_active ? "an active" : "an inactive"} tariff.
+            <button type="button" disabled={saving} className="ml-2 underline"
+              onClick={() => { setRoyalSearch(existingRoyal.destination_name); setRoyalEdit({...existingRoyal}); }}>
+              {existingRoyal.is_active ? "Edit existing rate" : "Open to reactivate"}
+            </button>
+          </p>}
+        </form>}
         {royalSearch.trim() && searchedRoyal.length===0 && <div data-royal-tariff-missing="true" className="rounded-xl border border-amber-500/50 bg-amber-500/10 p-3 text-sm text-amber-100">
-          No saved Royal Express tariff matches “{royalSearch}”. An address/township alias alone does not create a payable Royal tariff.
-          {canEdit && <button type="button" className="ml-3 rounded-lg bg-[#f6b84b] px-3 py-2 font-black text-[#061524]" onClick={()=>{setNewRoyalName(royalSearch.trim());setMessage("Enter the confirmed Royal Express charge in MMK above, then click Add destination.");}}>
-            Prepare new Royal destination
+          No Royal Express tariff matches “{royalSearch}”.
+          {canEdit && <button type="button" className="ml-3 rounded-lg bg-[#f6b84b] px-3 py-2 font-black text-[#061524]"
+            onClick={()=>{setNewRoyalName(royalSearch.trim());document.getElementById("royal-new-destination")?.focus();}}>
+            Use this destination
           </button>}
         </div>}
         <div className="max-h-[620px] overflow-auto"><table className="w-full min-w-[720px] text-left text-sm">
@@ -329,7 +369,7 @@ export default function TariffPage(){
             const selected=royalEdit?.destination_key===row.destination_key;
             const draft=selected?royalEdit:row;
             return <tr key={row.destination_key} className="border-t border-[#1a3a5c]">
-              <td className="p-3">{selected?<input aria-label="Edit Royal destination" value={draft.destination_name} onChange={e=>setRoyalEdit({...draft,destination_name:e.target.value})} className="rounded-lg bg-white p-2 text-[#061524]"/>:row.destination_name}</td>
+              <td className="p-3">{selected?<input aria-label="Edit Royal destination" value={draft.destination_name} readOnly className="rounded-lg bg-white p-2 text-[#061524]"/>:row.destination_name}</td>
               <td className="p-3">{selected?<input aria-label="Edit Royal tariff" type="number" min="0" step="1" value={draft.standard_rate_mmk} onChange={e=>setRoyalEdit({...draft,standard_rate_mmk:e.target.value})} className="w-32 rounded-lg bg-white p-2 text-[#061524]"/>:Number(row.standard_rate_mmk).toLocaleString()}</td>
               <td className="p-3">{row.is_active?"Active":"Inactive"}</td>
               <td className="p-3">{canEdit&&(selected?<div className="flex gap-2">

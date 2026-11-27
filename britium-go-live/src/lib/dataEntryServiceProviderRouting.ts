@@ -1,3 +1,4 @@
+import { royalTariffDestinationKey } from "./royalTariffDestination.ts";
 import { distinctDagonTownship } from "@/lib/distinctDagonTownship";
 import { resolvePostalCode, type PostalMatch } from "@/lib/postalCodeResolver";
 import { convertMyanmarTownshipToEnglish } from "@/lib/myanmarAddressConverter";
@@ -154,9 +155,12 @@ function matchingTariffs(
     compactLocationKey(postal.townshipMm),
   ].filter(Boolean));
 
+  const royalKey = royalTariffDestinationKey(rawTownship);
   return options.filter((option) =>
     keys.has(compactLocationKey(option.destination_name))
-      || keys.has(compactLocationKey(option.destination_key)),
+      || keys.has(compactLocationKey(option.destination_key))
+      || (option.provider_code === "ROYAL EXPRESS" && Boolean(royalKey)
+        && royalTariffDestinationKey(option.destination_name) === royalKey),
   );
 }
 
