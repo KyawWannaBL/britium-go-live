@@ -91,9 +91,64 @@ function statusColor(status?: string | null) {
   return C.blue;
 }
 
+function ConfirmParcelRto({ wayId, onConfirmed }: { wayId: string; onConfirmed: () => Promise<void> }) {
+  const [confirmedWith, setConfirmedWith] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+
+  async function confirm() {
+    if (saving || confirmed || !confirmedWith || note.trim().length < 12) return;
+    setSaving(true);
+    setFeedback("");
+    try {
+      const { data, error } = await (supabase as any).rpc("be_cs_confirm_rto_v1", {
+        p_way_id: wayId,
+        p_confirmed_with: confirmedWith,
+        p_confirmation_note: note.trim(),
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error("RTO confirmation could not be saved.");
+      setConfirmed(true);
+      await onConfirmed();
+    } catch (error: any) {
+      setFeedback(error?.message || "RTO confirmation could not be saved.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return <form onSubmit={(event) => { event.preventDefault(); void confirm(); }}
+    style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: 16, padding: 14, marginTop: 14 }}>
+    <h3 style={{ marginTop: 0 }}>Confirm Return to Merchant (RTO) / ပစ္စည်းပြန်အပ်ရန် အတည်ပြု</h3>
+    <p style={{ color: C.sub }}>Confirm the return with the customer or merchant. For a dispatched parcel, Warehouse must scan the physical return first.</p>
+    <label style={{ display: "block", marginBottom: 8 }}>Confirmed with
+      <select required value={confirmedWith} disabled={saving || confirmed} onChange={(e) => setConfirmedWith(e.target.value)} style={fieldStyle}>
+        <option value="">Choose Customer or Merchant</option>
+        <option value="CUSTOMER">Customer</option>
+        <option value="MERCHANT">Merchant</option>
+      </select>
+    </label>
+    <label style={{ display: "block" }}>Confirmation details
+      <textarea required minLength={12} maxLength={1000} rows={2} value={note}
+        disabled={saving || confirmed} onChange={(e) => setNote(e.target.value)}
+        placeholder="Record who confirmed the return, when, and why" style={{ ...fieldStyle, display: "block", width: "100%" }} />
+    </label>
+    {feedback && <p role="alert" style={{ color: C.red }}>{feedback}</p>}
+    <button type="submit" disabled={saving || confirmed || !confirmedWith || note.trim().length < 12}
+      style={{ ...secondaryButton, marginTop: 10 }}>
+      {confirmed ? "RTO confirmed" : saving ? "Confirming…" : "Confirm RTO"}
+    </button>
+  </form>;
+}
+
 export default function CustomerServicePortalPage() {
   const { profile } = useAuth();
   const isSuperadmin = ["superadmin", "super_admin"].includes(
+    String(profile?.role || "").trim().toLowerCase().replace(/[ _-]+/g, "_")
+  );
+  const canConfirmRto = ["customer_service", "cs", "support", "superadmin", "super_admin", "operation_manager", "operations_manager", "admin", "app_owner"].includes(
     String(profile?.role || "").trim().toLowerCase().replace(/[ _-]+/g, "_")
   );
   const [queue, setQueue] = useState<CustomerServiceParcelQueue>({
@@ -370,6 +425,14 @@ export default function CustomerServicePortalPage() {
               <div><div style={{ color: C.gold, fontSize: 12, fontWeight: 900 }}>PARCEL SUPPORT RECORD</div><h2 style={{ margin: "4px 0" }}>{selectedParcel.delivery_way_id}</h2></div>
               <button onClick={() => { if (!rebookBusy) setSelectedParcel(null); }} style={{ background: "transparent", color: C.text, border: `1px solid ${C.border}`, borderRadius: 10, padding: 8 }}><X size={18}/></button>
             </div>
+
+            {canConfirmRto && !appointmentClosed && selectedWay && <ConfirmParcelRto
+              key={selectedWay} wayId={selectedWay}
+              onConfirmed={async () => {
+                setNotice(`RTO confirmed for ${selectedWay}. Warehouse can manage the handover in Merchant Returns.`);
+                await refreshSelected();
+              }}
+            />}
 
             {!appointmentClosed && (
               <form onSubmit={event => { event.preventDefault(); void saveCustomerAppointment(); }}

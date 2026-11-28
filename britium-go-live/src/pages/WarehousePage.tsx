@@ -520,7 +520,7 @@ export default function WarehousePage() {
       // after the physical return scan was accepted.
       const authoritativeStage=String(row.dispatch_workflow_stage||"").toUpperCase();
       if(new Set([
-        "SCHEDULED_HOLD","RETURNED_WAITING_REPLAN","RTO",
+        "SCHEDULED_HOLD","AWAITING_RETURN_SCAN","RTO_AWAITING_RETURN_SCAN","RETURNED_WAITING_REPLAN","RTO",
         "DISPATCH_SCAN_REQUIRED","IN_WAYPLAN_AWAITING_SUPERVISOR",
         "SUPERVISOR_APPROVED_AWAITING_RELEASE"
       ]).has(authoritativeStage)) return row;
@@ -591,6 +591,11 @@ export default function WarehousePage() {
     if(r.inbound_scan_at || ["RECEIVED","WAREHOUSE_RECEIVED","WAREHOUSE_READY","READY_FOR_DELIVERY"].includes(String(r.warehouse_scan_status||r.warehouse_status||"").toUpperCase())) return "READY_FOR_WAYPLAN";
     return "PENDING";
   };
+
+  const returnScanRows = useMemo(() => operationalRows.filter((row: any) =>
+    warehouseQueueStatus(row) !== "DELIVERED" &&
+    (row.scheduled_return_pending || ["AWAITING_RETURN_SCAN", "RTO_AWAITING_RETURN_SCAN"].includes(row.dispatch_workflow_stage))
+  ), [operationalRows]);
 
   const dispatchRequiredRows=useMemo(
     ()=>operationalRows.filter((r:any)=>Boolean(r.dispatch_scan_required)),
@@ -795,6 +800,27 @@ export default function WarehousePage() {
       )}
 
       {!isFinanceReadOnly && <>
+      <section className="mb-4 rounded-xl border border-amber-600/60 bg-amber-950/20 p-4">
+        <h2 className="text-base font-bold text-amber-200">Return Scan Queue ({returnScanRows.length})</h2>
+        <p className="mb-2 text-xs text-slate-300">Scan each parcel when it physically arrives back at Warehouse. The main table filters do not affect this queue.</p>
+        {!snapshotLoadError && !returnScanRows.length && <p className="text-sm text-slate-400">No parcels awaiting a Return Scan.</p>}
+        {!!returnScanRows.length && <ul className="max-h-72 divide-y divide-slate-700 overflow-y-auto">
+          {returnScanRows.map((row: any) => {
+            const id = canonicalDeliveryWayId(row);
+            return <li key={id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+              <div className="text-sm">
+                <strong className="text-amber-200">{id}</strong>
+                <span className="ml-2 text-slate-300">{row.pending_return_reason_name || returnReason(row) || "Awaiting physical return"}</span>
+                {row.rescheduled_delivery_date && <span className="ml-2 text-slate-400">Appointment {row.rescheduled_delivery_date}</span>}
+              </div>
+              <button type="button" className="rounded border border-amber-600 px-3 py-1 text-xs text-amber-200"
+                onClick={() => { setScanMode("return"); setScanCode(id); scanInputRef.current?.scrollIntoView({ block: "center" }); scanInputRef.current?.focus({ preventScroll: true }); }}>
+                Open in Return Scanner
+              </button>
+            </li>;
+          })}
+        </ul>}
+      </section>
       {dispatchRequiredRows.length ? (
         <section className="mb-4 rounded-xl border border-amber-500 bg-amber-950/20 p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1098,7 +1124,7 @@ export default function WarehousePage() {
                   <option value="DISPATCH_SCANNED">Dispatch scanned</option>
                   <option value="DELIVERED">Delivered / successful ways</option>
                   <option value="SCHEDULED_HOLD">Scheduled hold</option>
-                  <option value="AWAITING_RETURN_SCAN">Failed delivery / awaiting Return Scan</option>
+                  <option value="AWAITING_RETURN_SCAN">Awaiting physical Return Scan</option>
                   <option value="RETURNED_WAITING_REPLAN">Returned / waiting replan</option>
                   <option value="RTO">RTO</option>
                 </select>
