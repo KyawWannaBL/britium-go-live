@@ -25,23 +25,24 @@ const payload = {
   ],
 };
 
-function request() {
+function request(input = payload) {
   return new Request("https://example.test/api/wayplan-route", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: "Bearer test-token",
     },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(input),
   });
 }
 
 function googleMatrixResponse() {
   return [
-    { originIndex: 0, destinationIndex: 0, condition: "ROUTE_EXISTS", distanceMeters: 0, duration: "0s" },
-    { originIndex: 0, destinationIndex: 1, condition: "ROUTE_EXISTS", distanceMeters: 7200, duration: "900s" },
-    { originIndex: 1, destinationIndex: 0, condition: "ROUTE_EXISTS", distanceMeters: 7100, duration: "880s" },
-    { originIndex: 1, destinationIndex: 1, condition: "ROUTE_EXISTS", distanceMeters: 0, duration: "0s" },
+    { condition: "ROUTE_EXISTS" },
+    { destinationIndex: 1, condition: "ROUTE_EXISTS", distanceMeters: 7200, duration: "900s" },
+    { destinationIndex: 2, condition: "ROUTE_EXISTS", distanceMeters: 7200, duration: "900s" },
+    { originIndex: 1, destinationIndex: 2, condition: "ROUTE_EXISTS", duration: "0s" },
+    { originIndex: 2, destinationIndex: 1, condition: "ROUTE_NOT_FOUND" },
   ];
 }
 
@@ -73,6 +74,20 @@ try {
   assert.equal(recoveredBody.source, "DEFERRED_PROVIDER");
   assert.equal(googleCalls, 0, "Mapbox outage must not cause unexpected Google fees");
 
+  process.env.WAYPLAN_ROAD_PROVIDER_MODE = "GOOGLE_ONLY";
+  const samePin = { ...payload.stops[0], delivery_way_id: "DTEST-002" };
+  const google = await (await routeHandler.fetch(request({ ...payload, stops: [...payload.stops, samePin] }))).json();
+  assert.equal(google.source, "GOOGLE_ROUTES");
+  assert.equal(google.distance_m, 7200);
+  assert.deepEqual(google.ordered_stops.map((row) => row.delivery_way_id), ["DTEST-001", "DTEST-002"]);
+  const originMatrix = await (await routeHandler.fetch(request({ ...payload, matrix_mode: "ONE_TO_MANY" }))).json();
+  assert.equal(originMatrix.source, "GOOGLE_ROUTES");
+  assert.deepEqual(originMatrix.distances, [[0]]);
+  const health = await (await routeHandler.fetch(new Request("https://example.test/api/wayplan-route?health=1"))).json();
+  assert.equal(health.mapbox_fallback_configured, false);
+  assert.equal(health.road_routing_available, null);
+
+  process.env.WAYPLAN_ROAD_PROVIDER_MODE = "MAPBOX_PREFERRED_BILLING_HOLD";
   process.env.GOOGLE_ROUTES_API_KEY = "";
   globalThis.fetch = async (input) => {
     const url = String(input);

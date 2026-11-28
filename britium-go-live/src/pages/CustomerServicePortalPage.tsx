@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
 import {
   AlertTriangle,
@@ -91,6 +92,10 @@ function statusColor(status?: string | null) {
 }
 
 export default function CustomerServicePortalPage() {
+  const { profile } = useAuth();
+  const isSuperadmin = ["superadmin", "super_admin"].includes(
+    String(profile?.role || "").trim().toLowerCase().replace(/[ _-]+/g, "_")
+  );
   const [queue, setQueue] = useState<CustomerServiceParcelQueue>({
     ok: true,
     summary: { total_records: 0, open_voices: 0, escalated: 0, urgent: 0 },
@@ -128,7 +133,7 @@ export default function CustomerServicePortalPage() {
   const [actionNote, setActionNote] = useState("");
   const [escalationReason, setEscalationReason] = useState("");
   const [requestedDepartment, setRequestedDepartment] = useState<CustomerVoiceDepartment | "">("");
-  const [overrideDepartment, setOverrideDepartment] = useState<CustomerVoiceDepartment>("operations");
+  const [overrideDepartment, setOverrideDepartment] = useState<CustomerVoiceDepartment | "">("");
   const [overrideReason, setOverrideReason] = useState("");
 
   async function load(search = query) {
@@ -259,9 +264,13 @@ export default function CustomerServicePortalPage() {
   }
 
   async function overrideRoute() {
-    if (!activeVoice || !overrideReason.trim()) { setError("Superadmin override requires a reason."); return; }
-    await runTransition("Superadmin Override", () => superadminOverrideCustomerVoiceRoute(activeVoice.id, overrideDepartment, overrideReason.trim()));
-    setOverrideReason("");
+    if (!isSuperadmin || !activeVoice || !overrideDepartment ||
+        overrideDepartment === activeVoice.current_department || !overrideReason.trim()) return;
+    await runTransition("Superadmin Override", async () => {
+      await superadminOverrideCustomerVoiceRoute(activeVoice.id, overrideDepartment, overrideReason.trim());
+      setOverrideReason("");
+      setOverrideDepartment("");
+    });
   }
 
   async function saveCustomerAppointment() {
@@ -468,12 +477,12 @@ export default function CustomerServicePortalPage() {
                 <button disabled={busy || !escalationReason.trim()} onClick={() => void escalate()} style={{ ...secondaryButton, marginTop: 8, borderColor: C.amber, color: C.amber }}>Escalate for Review</button>
               </section>
 
-              <section style={{ background: "rgba(248,113,113,.07)", border: `1px solid ${C.red}`, borderRadius: 16, padding: 14, marginTop: 14 }}>
+              {isSuperadmin && <section style={{ background: "rgba(248,113,113,.07)", border: `1px solid ${C.red}`, borderRadius: 16, padding: 14, marginTop: 14 }}>
                 <h3 style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 0, color: C.red }}><ShieldAlert size={17}/> Superadmin Override</h3>
-                <p style={{ color: C.sub }}>Only Superadmin may override the automatically selected department. A mandatory reason is permanently audited.</p>
-                <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 8 }}><select value={overrideDepartment} onChange={(e) => setOverrideDepartment(e.target.value as CustomerVoiceDepartment)} style={fieldStyle}>{DEPARTMENTS.map((d) => <option key={d} value={d}>{customerVoiceDepartmentLabel(d)}</option>)}</select><input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Mandatory override reason" style={fieldStyle}/></div>
-                <button disabled={busy || !overrideReason.trim()} onClick={() => void overrideRoute()} style={{ ...secondaryButton, marginTop: 8, borderColor: C.red, color: C.red }}>Apply Superadmin Override</button>
-              </section>
+                <p style={{ color: C.sub }}>Use this when a Customer Voice case reached the wrong department. Choose the department that should handle the case and record why. The new department is notified and the change is saved to action history.</p>
+                <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 8 }}><select aria-label="New department" value={overrideDepartment === activeVoice.current_department ? "" : overrideDepartment} onChange={(e) => setOverrideDepartment(e.target.value as CustomerVoiceDepartment | "")} style={fieldStyle}><option value="">Choose a new department</option>{DEPARTMENTS.filter((d) => d !== activeVoice.current_department).map((d) => <option key={d} value={d}>{customerVoiceDepartmentLabel(d)}</option>)}</select><input value={overrideReason} onChange={(e) => setOverrideReason(e.target.value)} placeholder="Mandatory override reason" style={fieldStyle}/></div>
+                <button disabled={busy || !overrideDepartment || overrideDepartment === activeVoice.current_department || !overrideReason.trim()} onClick={() => void overrideRoute()} style={{ ...secondaryButton, marginTop: 8, borderColor: C.red, color: C.red }}>Apply Superadmin Override</button>
+              </section>}
             </>}
           </aside>
         </div>

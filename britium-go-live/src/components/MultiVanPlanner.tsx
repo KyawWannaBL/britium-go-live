@@ -752,7 +752,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
           fallback: Boolean(p.route?.fallback),
           manual: Boolean(p.route?.manual),
           warning: p.route?.warning || null,
-          optimized_at: p.route?.optimized_at || new Date().toISOString(),
+          optimized_at: p.route?.optimized_at || null,
         },
       })),
       approve_below_minimum: approved,
@@ -854,7 +854,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       <button style={button} disabled={busy || !context || !scopedRows.length || !origin} onClick={preview}>{busy ? "Planning road routes…" : isYangonMaster ? "Generate reviewed Yangon route plan" : "Generate reviewed route plan"}</button>
     </div>
 
-    {message && <p role="status" style={{ margin: 0 }}>{message}</p>}
+    {!plans.length && message && <p role="status" style={{ margin: 0 }}>{message}</p>}
     {blockedWayIds.length > 0 && <div data-wayplan-dispatch-preflight-v221="true" style={{ padding: 10, border: "1px solid #eab308", borderRadius: 8 }}>
       <strong>Dispatch hold: {blockedWayIds.length} Way ID(s)</strong>
       <div style={{ marginTop: 4, fontSize: 12 }}>{blockedWayIds.join(", ")}</div>
@@ -935,6 +935,7 @@ export default function MultiVanPlanner({ rows, region, onSaved }: { rows: Stop[
       {readinessIssues.length ? <ul style={{ margin: "6px 0 0", paddingLeft: 20 }}>{readinessIssues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : <div style={{ marginTop: 4 }}>Road route and vehicle-driven crew checks are complete. Motor Bike/Bicycle routes require a Rider only; van/car/truck routes require a Driver with optional Helper. Incompatible crew selectors stay disabled.</div>}
       {invalidCrew && <div style={{ marginTop: 8, fontSize: 12 }}>Crew is intentionally not auto-assigned. Choose the vehicle first, then select only the crew enabled for that vehicle type.</div>}
     </div>}
-    <button data-create-reviewed-wayplans-v56="true" style={{ ...button, opacity: cannotSave ? 0.55 : 1 }} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : cannotSave ? "Create reviewed Wayplans — resolve items above" : "Create reviewed Wayplans"}</button>
+    {plans.length > 0 && <p role="status" aria-live="polite" style={{ margin: 0 }}>{message}</p>}
+    <button type="button" data-create-reviewed-wayplans-v56="true" style={{ ...button, opacity: cannotSave ? 0.55 : 1 }} disabled={cannotSave} onClick={save}>{busy ? "Creating reviewed Wayplans…" : cannotSave ? "Create reviewed Wayplans — resolve items above" : "Create reviewed Wayplans"}</button>
   </section>;
 }

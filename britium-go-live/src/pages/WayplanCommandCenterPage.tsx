@@ -152,7 +152,7 @@ export default function WayplanCommandCenterPage() {
   const WAYPLAN_MULTI_VAN_ENTRY_V50 = true;
 
   const selectedRows = useMemo(
-    () => readyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
+    () => readyRows.filter((row) => row.wayplan_eligible !== false && selected[text(row.delivery_way_id || row.waybill_no)]),
     [readyRows, selected]
   );
   const selectedRegionOption = useMemo(
@@ -171,25 +171,29 @@ export default function WayplanCommandCenterPage() {
     [readyRows, townshipFilters, merchantFilters, providerFilters, statusFilters, queueSearch]
   );
   const filteredRouteReadyRows = useMemo(
-    () => filteredReadyRows.filter((row) => row.route_ready !== false),
+    () => filteredReadyRows.filter((row) => row.route_ready === true),
+    [filteredReadyRows]
+  );
+  const filteredEligibleRows = useMemo(
+    () => filteredReadyRows.filter((row) => row.wayplan_eligible !== false),
     [filteredReadyRows]
   );
   const filteredSelectedRows = useMemo(
-    () => filteredReadyRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
-    [filteredReadyRows, selected]
+    () => filteredEligibleRows.filter((row) => selected[text(row.delivery_way_id || row.waybill_no)]),
+    [filteredEligibleRows, selected]
   );
   const locationPendingCount = useMemo(
-    () => readyRows.filter((row) => row.route_ready === false).length,
+    () => readyRows.filter((row) => row.route_block_reason === "LOCATION_PENDING").length,
     [readyRows]
   );
-  const routeReadyCount = readyRows.length - locationPendingCount;
+  const routeReadyCount = readyRows.filter((row) => row.route_ready === true).length;
   const plannerRows = selectedRows;
   const revisionPlannerRows = revisionRows;
   const groupedReadyRows = useMemo(
     () => groupWayplanQueueRows(filteredReadyRows, groupBy),
     [filteredReadyRows, groupBy]
   );
-  const allVisibleSelected = filteredReadyRows.length > 0 && filteredSelectedRows.length === filteredReadyRows.length;
+  const allVisibleSelected = filteredEligibleRows.length > 0 && filteredSelectedRows.length === filteredEligibleRows.length;
   const canEditCreatedWayplan = activeWayplan?.wayplan_status === "CREATED";
   const removeCount = Object.values(revisionRemoveSelected).filter(Boolean).length;
 
@@ -247,7 +251,7 @@ export default function WayplanCommandCenterPage() {
       });
 
       const queueRows = Array.isArray(q) ? q : [];
-      const queueIds = queueRows.map((row:any)=>text(row.delivery_way_id)).filter(Boolean);
+      const queueIds = queueRows.filter((row: Row) => row.wayplan_eligible !== false).map((row: Row) => text(row.delivery_way_id)).filter(Boolean);
       if(queueIds.length){
         const acknowledgement=await (supabase as any).rpc("be_warehouse_ack_wayplan_handoff_v150",{p_delivery_way_ids:queueIds});
         if(acknowledgement.error) console.warn("Warehouse handoff acknowledgement unavailable",acknowledgement.error);
@@ -260,7 +264,7 @@ export default function WayplanCommandCenterPage() {
         const matched=new Set<string>();
         queueRows.forEach((row:any)=>{
           const id=text(row.delivery_way_id);
-          if(id && requestedSet.has(id.toUpperCase())){
+          if (id && row.wayplan_eligible !== false && requestedSet.has(id.toUpperCase())){
             handoffSelection[id]=true;
             matched.add(id.toUpperCase());
           }
@@ -351,7 +355,7 @@ export default function WayplanCommandCenterPage() {
 
   function toggleAllVisible() {
     const selecting = !allVisibleSelected;
-    setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredReadyRows));
+    setSelected((prev) => toggleVisibleWayplanSelection(prev, filteredEligibleRows));
     if (selecting) setFiltersExpanded(false);
   }
 
@@ -718,8 +722,8 @@ export default function WayplanCommandCenterPage() {
                   {filteredReadyRows.length} filtered / {readyRows.length} warehouse-ready · {routeReadyCount} route-ready · {locationPendingCount} location pending · {selectedRows.length} selected
                 </p>
               </div>
-              <button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}>
-                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}
+              <button data-wayplan-select-all-filtered-v52="true" onClick={toggleAllVisible} disabled={!filteredEligibleRows.length} style={btn("gold")}>
+                <CheckCircle2 size={15} /> {allVisibleSelected ? "Clear Filtered (" + filteredEligibleRows.length + ")" : "Select All Filtered (" + filteredEligibleRows.length + ")"}
               </button>
             </div>
 
@@ -727,7 +731,7 @@ export default function WayplanCommandCenterPage() {
               <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", color: C.gold, fontSize: 12, fontWeight: 900 }}><SlidersHorizontal size={15} /> FILTER & GROUP WAYS</div>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <span style={{ alignSelf: "center", color: C.sub, fontSize: 11 }}>{filteredReadyRows.length} filtered · {filteredRouteReadyRows.length} route-ready · {filteredReadyRows.length-filteredRouteReadyRows.length} location pending · {filteredSelectedRows.length} selected</span>
+                  <span style={{ alignSelf: "center", color: C.sub, fontSize: 11 }}>{filteredReadyRows.length} filtered · {filteredRouteReadyRows.length} route-ready · {filteredReadyRows.filter((row) => row.route_block_reason === "LOCATION_PENDING").length} location pending · {filteredReadyRows.length - filteredEligibleRows.length} on hold · {filteredSelectedRows.length} selected</span>
                   <button type="button" onClick={() => setFiltersExpanded((value) => !value)} style={btn("plain")}>{filtersExpanded ? "Hide Filters" : "Show Filters"}</button>
                 </div>
               </div>
@@ -743,7 +747,7 @@ export default function WayplanCommandCenterPage() {
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 8 }}>
                   <div style={{ color: C.sub, fontSize: 11, alignSelf: "center" }}>Choose the filters, then use Select All Filtered. The filter panel collapses automatically so it does not cover the operation table.</div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                    <button onClick={toggleAllVisible} disabled={!filteredReadyRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered (" + filteredReadyRows.length + ")" : "Select All Filtered (" + filteredReadyRows.length + ")"}</button>
+                    <button onClick={toggleAllVisible} disabled={!filteredEligibleRows.length} style={btn("gold")}><CheckCircle2 size={14} /> {allVisibleSelected ? "Clear Filtered (" + filteredEligibleRows.length + ")" : "Select All Filtered (" + filteredEligibleRows.length + ")"}</button>
                     <button onClick={resetQueueFilters} style={btn("plain")}><RotateCcw size={14} /> Reset Filters</button>
                   </div>
                 </div>
@@ -764,8 +768,12 @@ export default function WayplanCommandCenterPage() {
                       {groupBy !== "NONE" && <tr><td colSpan={7} style={{ padding: "9px 12px", background: "rgba(78,168,222,0.12)", color: C.blue, fontWeight: 900, borderTop: `1px solid ${C.border}` }}>{group.label} <span style={{ color: C.sub, fontWeight: 600 }}>· {group.rows.length} ways</span></td></tr>}
                       {group.rows.map((row) => {
                         const id = text(row.delivery_way_id || row.waybill_no);
-                        const routeReady = row.route_ready !== false;
-                        return <tr key={id} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 10 }}><input type="checkbox" checked={Boolean(selected[id])} onChange={() => toggleOne(row)} title={routeReady ? "Road-route ready" : "Location pending — Wayplan assignment allowed; road optimization deferred"} /></td><td style={{ padding: 10 }}><div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no, id)}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>{!routeReady && <div style={{ color: C.red, fontSize: 10, marginTop: 3 }}>LOCATION PENDING — selectable for Wayplan; road optimization deferred until pin is available</div>}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div><div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div><div style={{ color: C.blue, fontSize: 10, marginTop: 3 }}>{text(row.merchant_name, "Unknown Merchant")}</div></td><td style={{ padding: 10 }}>{text(row.township, "-")}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code, "-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode, "DOORSTEP_MAP")}</div></td><td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td><td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td></tr>;
+                        const held = row.wayplan_eligible === false;
+                        const locationPending = row.route_block_reason === "LOCATION_PENDING";
+                        const selectionHint = held ? "Check the scheduled date and physical Return Scan in Warehouse." :
+                          locationPending ? "Wayplan assignment is available. Road optimization needs a verified pin." :
+                          row.route_ready ? "Road-route ready" : "Road pin is optional for this route";
+                        return <tr key={id} style={{ borderTop: `1px solid ${C.border}` }}><td style={{ padding: 10 }}><input type="checkbox" checked={!held && Boolean(selected[id])} disabled={held} onChange={() => toggleOne(row)} title={selectionHint} aria-label={selectionHint} /></td><td style={{ padding: 10 }}><div style={{ color: C.gold, fontWeight: 900 }}>{text(row.waybill_no, id)}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.dispatch_status)} / {text(row.warehouse_status)}</div>{held && <div style={{ color: C.gold, fontSize: 10, marginTop: 3 }}>WAREHOUSE HOLD · {selectionHint}</div>}{locationPending && <div style={{ color: C.red, fontSize: 10, marginTop: 3 }}>LOCATION PENDING · Road optimization needs a verified pin</div>}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.recipient_name || row.merchant_name, "Customer")}</div><div style={{ color: C.sub, fontSize: 11, maxWidth: 520, whiteSpace: "normal" }}>{text(row.address, "No address")}</div><div style={{ color: C.blue, fontSize: 10, marginTop: 3 }}>{text(row.merchant_name, "Unknown Merchant")}</div></td><td style={{ padding: 10 }}>{text(row.township, "-")}</td><td style={{ padding: 10 }}><div style={{ fontWeight: 800 }}>{text(row.service_provider_code, "-")}</div><div style={{ color: C.sub, fontSize: 11 }}>{text(row.delivery_route_mode, "DOORSTEP_MAP")}</div></td><td style={{ padding: 10, textAlign: "right", color: C.green, fontWeight: 900 }}>{money(row.cod_amount)}</td><td style={{ padding: 10, textAlign: "right", color: C.gold, fontWeight: 900 }}>{Number(row.parcel_weight_kg || 0).toLocaleString()} kg</td></tr>;
                       })}
                     </React.Fragment>
                   )) : <tr><td colSpan={7} style={{ padding: 32, textAlign: "center", color: C.sub }}>{readyRows.length ? "No ways match the current filters. Reset or change the filters to continue." : selectedRegionOption?.is_active ? "No parcels are ready for this regional wayplan. In Warehouse, mark received parcels ready for Wayplan, then click Open queue again." : "This regional Wayplan queue is disabled."}</td></tr>}

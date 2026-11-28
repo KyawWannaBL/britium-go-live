@@ -42,6 +42,11 @@ function statusClass(status?: string) {
   return "bg-slate-700/40 text-slate-300 border-slate-600/40";
 }
 
+function returnReason(row: any) {
+  return String(row?.pending_return_reason_code ||
+    (row?.scheduled_return_pending ? "CUSTOMER_REQUESTED_RESCHEDULE" : "")).trim().toUpperCase();
+}
+
 export default function WarehousePage() {
   const { profile } = useAuth();
   const currentRole = normalizeRole(profile?.role);
@@ -98,13 +103,13 @@ export default function WarehousePage() {
     const needle = String(rawCode || "").trim().toUpperCase();
     if (!needle) return null;
     return rows.find((r: any) => {
-      if (!r.field_exception_pending) return false;
+      if (!r.field_exception_pending && !r.scheduled_return_pending) return false;
       return [r.canonical_delivery_way_id, r.delivery_way_id, r.display_way_id, r.waybill_no, r.tracking_no]
         .some((id) => String(id || "").trim().toUpperCase() === needle);
     }) || null;
   }, [rows]);
   const scannedFieldReturn = useMemo(() => fieldReturnForScan(scanCode), [fieldReturnForScan, scanCode]);
-  const scannedFieldReason = String(scannedFieldReturn?.pending_return_reason_code || "").trim().toUpperCase();
+  const scannedFieldReason = returnReason(scannedFieldReturn);
 
 
   const loadAll = useCallback(async (quiet=false) => {
@@ -305,13 +310,12 @@ export default function WarehousePage() {
       }
 
       if (kind === "return") {
-        // Source of truth: recorded field failure. Never require a second reason.
-        // The server also derives the final code from the delivery attempt state.
+        // The scanner uses the saved field reason or delivery appointment.
         const filed = fieldReturnForScan(tracking) || fieldReturnForScan(displayId);
-        const submittedReason = String(filed?.pending_return_reason_code || "").trim().toUpperCase();
-        const resolvedReason = submittedReason || String(reason || "").trim().toUpperCase();
-        const effectiveRescheduleDate = rescheduleDate ||
-          String(filed?.requested_delivery_date || filed?.next_attempt_date || "").slice(0, 10);
+        const resolvedReason = returnReason(filed) || String(reason || "").trim().toUpperCase();
+        const effectiveRescheduleDate = String(
+          filed?.rescheduled_delivery_date || filed?.requested_delivery_date || filed?.next_attempt_date || rescheduleDate
+        ).slice(0, 10);
         res = await (supabase as any).rpc("be_warehouse_return_scan_v71", {
           p_tracking_no: tracking,
           p_reason_code: resolvedReason || null,
@@ -329,7 +333,9 @@ export default function WarehousePage() {
 
       reportScanResult(
         kind === "return"
-          ? `Return Scan ${data.physical_return_scan_number || data.attempt_count || ""} saved for ${displayId}. ${data.rto ? "Explicit RTO state confirmed." : (data.next_attempt_priority ? "Parcel is returned and prioritized for the next Wayplan." : "Third physical return recorded; Operations review is required before any RTO decision.")}`
+          ? data.scheduled_return
+            ? `Scheduled Return Scan ${data.duplicate_return_scan ? "already recorded" : "saved"} for ${displayId}. Delivery date: ${data.requested_delivery_date} (Myanmar time).`
+            : `Return Scan ${data.physical_return_scan_number || data.attempt_count || ""} saved for ${displayId}. ${data.rto ? "Explicit RTO state confirmed." : (data.next_attempt_priority ? "Parcel is returned and prioritized for the next Wayplan." : "Third physical return recorded; Operations review is required before any RTO decision.")}`
           : `${kind.toUpperCase()} scan saved for ${displayId}.`,
         false
       );
@@ -356,7 +362,7 @@ export default function WarehousePage() {
         if(r.warehouse_scan_status !== "RECEIVED") return false;
         const stage=String(r.dispatch_workflow_stage||"").toUpperCase();
         if(["SCHEDULED_HOLD","AWAITING_RETURN_SCAN","RTO_AWAITING_RETURN_SCAN","RTO"].includes(stage)) return false;
-        if(r.return_scan_required===true || r.field_exception_pending===true) return false;
+        if (r.scheduled_return_pending || (stage !== "RETURNED_WAITING_REPLAN" && (r.return_scan_required || r.field_exception_pending))) return false;
         // All final decisions remain guarded by the server-side Wayplan eligibility RPC.
         return true;
       })
@@ -940,7 +946,7 @@ export default function WarehousePage() {
 
           {scanMode === "return" && scannedFieldReason ? (
             <div className="rounded border border-emerald-700/50 bg-emerald-950/20 p-3 text-xs text-emerald-200">
-              Field-submitted reason: <strong>{scannedFieldReturn?.pending_return_reason_name || scannedFieldReason}</strong>.
+              Field-submitted reason: <strong>{scannedFieldReturn?.pending_return_reason_name || (scannedFieldReturn?.scheduled_return_pending ? "Customer requested a reschedule" : scannedFieldReason)}</strong>.
               This reason is inherited automatically; Warehouse does not need to enter it again.
             </div>
           ) : null}
@@ -949,7 +955,8 @@ export default function WarehousePage() {
               Customer dedicated delivery date *
               <input
                 type="date"
-                value={rescheduleDate}
+                value={scannedFieldReturn?.rescheduled_delivery_date || rescheduleDate}
+                disabled={Boolean(scannedFieldReturn?.rescheduled_delivery_date)}
                 min={new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Yangon"})}
                 onChange={(e)=>setRescheduleDate(e.target.value)}
                 className="mt-1 w-full rounded-lg border border-amber-700 bg-[#071827] p-2 text-slate-100 outline-none focus:border-[#C09B30]"
@@ -1213,6 +1220,8 @@ export default function WarehousePage() {
                           <AlertTriangle className="mr-1 h-3 w-3" />
                           RTO
                         </span>
+                      ) : r.scheduled_return_pending ? (
+                        <span className="text-amber-300">Scheduled Return Scan required</span>
                       ) : r.field_exception_pending ? (
                         <span className="inline-flex items-center rounded-full border border-orange-500/30 bg-orange-500/15 px-2 py-1 text-xs font-semibold text-orange-300">
                           Return Scan required · Attempt {r.pending_return_attempt_no || "-"}
