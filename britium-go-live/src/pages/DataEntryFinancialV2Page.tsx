@@ -1943,7 +1943,7 @@ export default function DataEntryFinancialV2Page() {
       "be_v_data_entry_parcel_rows",
       "be_pickup_parcel_verifications",
     ];
-    const [tierResponse,proofResponses,registrationResponse]=await Promise.all([
+    const [tierResponse,proofResponses,registrationResponse,manifestResponse]=await Promise.all([
       (supabase as any).rpc("be_data_entry_merchant_tier_access_v13",{p_merchant_id:pickup.merchant_id}),
       Promise.all(proofSources.map(async (source)=>({
         source,
@@ -1954,9 +1954,14 @@ export default function DataEntryFinancialV2Page() {
           .order("parcel_sequence",{ascending:true}),
       }))),
       (supabase as any).rpc("be_data_entry_registration_state_v1",{p_pickup_id:pickup.pickup_id}),
+      supabase.rpc("be_merchant_portal_manifest",{p_pickup_id:pickup.pickup_id}),
     ]);
     if(registrationResponse.error||registrationResponse.data?.ok===false)throw new Error(registrationResponse.error?.message||registrationResponse.data?.message||"Unable to verify registration publication status. Refresh the pickup.");
     const registrationStates=Array.isArray(registrationResponse.data?.rows)?registrationResponse.data.rows:[];
+    const merchantManifest=Array.isArray(manifestResponse.data)?manifestResponse.data:[];
+    if(manifestResponse.error&&manifestResponse.error.code!=="PGRST202"){
+      console.warn("Merchant shipment details could not be loaded.",manifestResponse.error.message);
+    }
     if(tierResponse.error) throw tierResponse.error;
     if(tierResponse.data?.ok===false) throw new Error(tierResponse.data?.message||"Merchant tier access could not be resolved.");
     const nextTierAccess:MerchantTierAccess={
@@ -2004,7 +2009,23 @@ export default function DataEntryFinancialV2Page() {
           return merged;
         },{});
       const registration=registrationStates.find((entry:any)=>positiveInt(entry.parcel_sequence)===sequence);
+      const merchantShipment=merchantManifest[offset];
+      // Saved registrations and verified rider details take precedence over merchant declarations.
+      if(merchantShipment&&!registration){
+        proof.recipient_name ||= merchantShipment.recipient_name;
+        proof.recipient_phone ||= merchantShipment.recipient_phone;
+        proof.township ||= merchantShipment.township;
+        proof.delivery_address ||= proof.recipient_address||merchantShipment.delivery_address;
+        if(proof.merchant_stated_total_amount==null&&proof.item_price==null&&proof.delivery_charges==null){
+          proof.amount_entry_type="EXACT_COLLECTION_AMOUNT";
+          proof.merchant_stated_total_amount=merchantShipment.cod_amount;
+        }
+      }
       const row=parcelRowFromProof(pickup,nextTierAccess,proof,sequence);
+      if(merchantShipment&&!registration){
+        if(row.weight_kg==="")row.weight_kg=merchantShipment.weight_kg;
+        row.message=[row.message,"Review merchant-submitted shipment details before saving."].filter(Boolean).join(" ");
+      }
       row.registrationExists=Boolean(registration||row.registrationExists);
       row.registrationVersion=text(registration?.updated_at||row.registrationVersion);
       row.waybillPublished=Boolean(registration?.published||row.waybillPublished);
